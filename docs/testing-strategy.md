@@ -51,7 +51,8 @@ without accounts remain valid.
 
 ### Time, lifecycle, tokens, and notifications
 
-Test Service plus buffer, breaks/time off/overrides, notice/window boundaries,
+Test Service plus buffer, breaks/time off/overrides, minimum-notice and
+Business-configured booking-window boundaries (including the 30-day default),
 cancelled-slot release, qualifications, no-preference ties, fixed clocks,
 `Europe/Sofia` DST gaps/overlaps, UTC storage/display, and
 `COMPLETED`/`NO_SHOW` rejection before start and acceptance at/after start.
@@ -75,14 +76,20 @@ industry-specific engine or authorization branch.
 2. Owner consumes the invitation and configures Business, StaffMember, Service,
    qualification, and schedule.
 3. DRAFT blocks public booking; activation enables it.
-4. Guest selects Service, “Специалист” or “Без предпочитание”, date/time, and
-   books without an account.
+4. Guest selects a Service, answers “При кого искаш да запазиш час?” with a
+   person or “Без предпочитание”, selects date/time, and books without an
+   account.
 5. Business calendars show the automatically CONFIRMED Appointment.
 6. Guest cancels securely and the slot returns.
 7. Staff create/edit/reschedule/cancel/complete/no-show within permission and
    time rules.
 8. SUSPENDED shows a Bulgarian unavailable state, rejects booking, and permits
    read-only administration; PLATFORM_ADMIN can reactivate.
+
+UI tests prove that daily and weekly administrative calendar views are only
+presentation/query modes and do not limit booking up to the configured horizon.
+Generic administration uses “Екип” and “Член на екипа”; internal fixtures and
+technical APIs continue to use `StaffMember`.
 
 ## Accessibility, fixtures, and gates
 

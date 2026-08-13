@@ -52,7 +52,10 @@ dependencies absent separate approval.
 - Generic Business settings, Services, StaffMembers without mandatory accounts,
   qualifications, weekly intervals, breaks, time off, and overrides.
 - Enforce optional same-Business one-to-one StaffMember/Membership linkage with
-  constraints/tests and use “Специалист” in Customer-facing UI.
+  constraints/tests. Use “Екип” and “Член на екипа” in generic Bulgarian
+  administration while preserving `StaffMember` internally; public booking uses
+  contextual wording such as “При кого искаш да запазиш час?” and “Без
+  предпочитание”.
 - Exit: availability inputs can be configured for every BusinessType; role and
   tenant tests pass without industry branches.
 
@@ -60,6 +63,9 @@ dependencies absent separate approval.
 
 - Timezone-aware intervals, buffers, notice/window, overrides/absence,
   qualification, and deterministic no-preference assignment.
+- Preserve the 30-day default while allowing each Business to configure how
+  many days ahead Customers may book. Keep that booking window independent of
+  daily and weekly administrative calendar views.
 - Generic public Business/Profile/Service APIs and Bulgarian UI through slot
   selection.
 - Exit: DST/boundary/cancelled-slot/assignment and BusinessType parity pass.
@@ -78,8 +84,10 @@ dependencies absent separate approval.
 
 ## Phase 7 — calendar and Appointment operations
 
-- Responsive daily/weekly Business calendars and staff creation/edit/
+- Responsive daily and weekly Business calendar views and staff creation/edit/
   reschedule/cancel/complete/no-show.
+- Ensure both calendar views can navigate/query the configured booking horizon
+  and do not impose a separate limit on future booking.
 - Reject completed/no-show before start; separate Customer and internal notes;
   enforce STAFF ownership and SUSPENDED read-only mode.
 - Exit: operational, accessibility, role, and isolation flows pass.

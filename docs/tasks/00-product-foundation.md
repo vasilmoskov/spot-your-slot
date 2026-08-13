@@ -33,9 +33,10 @@ and “Your time. Your slot.”—must not expand the MVP.
 
 Build a reliable mobile-first, multi-tenant SaaS appointment platform for small
 businesses providing individual services of known duration. Reduce calls and
-messages, show real availability, prevent overlaps, provide daily/weekly
-calendars, accept staff-entered phone/in-person Appointments, allow secure guest
-cancellation, and notify Customers and Business users.
+messages, show real availability, prevent overlaps, provide daily and weekly
+administrative calendar views, accept staff-entered phone/in-person
+Appointments, allow secure guest cancellation, and notify Customers and
+Business users.
 
 The shared MVP supports hair salons, barbershops, nail studios/manicurists,
 massage studios/therapists, makeup artists, beauty/cosmetic studios, and other
@@ -87,16 +88,18 @@ schedules. Raw invitation/reset tokens are not stored.
   reactivate it.
 
 An ACTIVE public page shows generic Business/contact/working details, active
-Services with EUR price/duration, active qualified Specialists, and “Запази
+Services with EUR price/duration, available qualified team members, and “Запази
 час”. DRAFT/SUSPENDED show a clear Bulgarian unavailable message.
 
 ## Booking and availability
 
-The guest opens the Business URL, selects a Service, selects a Specialist or
-“Без предпочитание”, selects date/time, provides name/phone/email/optional note,
-accepts privacy/cancellation information, and receives a Bulgarian confirmation,
-email, and secure cancellation link. “Специалист” is the preferred Bulgarian
-customer-facing performer label.
+The guest opens the Business URL, selects a Service, answers “При кого искаш да
+запазиш час?” by selecting a person or “Без предпочитание”, selects date/time,
+provides name/phone/email/optional note, accepts privacy/cancellation
+information, and receives a Bulgarian confirmation, email, and secure
+cancellation link. Public booking does not require one generic performer noun.
+Generic Bulgarian administration uses “Екип” and “Член на екипа”, while
+`StaffMember` remains the internal English domain and technical term.
 
 Services have name/description, `BigDecimal` price, duration, buffer, active
 state, and qualified StaffMembers. StaffMembers have display name, active state,
@@ -109,6 +112,11 @@ preference, choose the available qualified StaffMember with fewest non-cancelled
 Appointments that local day, then creation time and ID. Revalidate in the
 booking transaction. Store Appointment instants in UTC and handle Sofia DST
 gaps/overlaps explicitly.
+
+Each Business configures how many days in advance Customers may book. The
+default booking window remains 30 days. Daily and weekly administrative
+calendar views are display/query modes only and must not limit that booking
+horizon.
 
 PostgreSQL and backend prevent double booking. A GiST exclusion constraint uses
 `staff_member_id` plus half-open UTC occupied range for `CONFIRMED` Appointments.
@@ -138,8 +146,9 @@ Resend is only a separately approved production proposal. SMS is excluded.
 
 ## Administration
 
-The mobile-friendly Business UI covers authentication, daily/weekly calendars,
-manual Appointment operations, Service/StaffMember/schedule/break/time-off
+The mobile-friendly Business UI covers authentication, daily and weekly
+calendar views, manual Appointment operations,
+Service/StaffMember/schedule/break/time-off
 management, Customers/history, and Business settings. The platform UI covers
 only protected onboarding and lifecycle operations. Forms are accessible,
 keyboard-operable, validated, and Bulgarian-facing.

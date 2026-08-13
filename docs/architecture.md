@@ -71,6 +71,12 @@ the latter captures Service duration plus buffer. Weekly schedules use local
 weekday/time and the Business IANA timezone. Availability intersects working
 intervals/overrides, subtracts breaks/time off/blocking Appointments, and applies
 qualification, notice, window, and DST rules with an injected clock.
+The booking window is a Business setting defining how many days ahead Customers
+may book, defaulting to 30 days. Daily and weekly administrative calendars are
+query/presentation views over Appointments; they do not constrain that horizon.
+`StaffMember` remains the internal English term, while generic Bulgarian
+administration uses “Екип” and “Член на екипа” and public booking may use
+contextual wording instead of a fixed performer label.
 
 ## Conflict-safe booking
 

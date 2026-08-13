@@ -37,6 +37,13 @@
 - Treat the backend and PostgreSQL as the source of truth for availability.
 - Every business-owned query and mutation must derive or validate the Business
   from authenticated Membership; never trust a client-supplied business ID.
+- Preserve `StaffMember` as the internal English domain/technical term. In
+  generic Bulgarian administration use “Екип” and “Член на екипа”; in public
+  booking prefer contextual wording such as “При кого искаш да запазиш час?”
+  and the option “Без предпочитание”, rather than a mandatory performer noun.
+- A Business configures how many days in advance Customers may book; the default
+  booking window is 30 days. Daily and weekly administrative calendar views are
+  display modes only and never limit how far ahead booking is possible.
 - Normal business operations never physically delete appointments.
 
 ## Verification and handoff

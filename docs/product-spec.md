@@ -3,9 +3,9 @@
 ## Purpose and success criteria
 
 SpotYourSlot reduces booking calls and messages, exposes genuine availability,
-prevents double booking, and gives Business teams a mobile-friendly daily and
-weekly calendar. It is one multi-tenant SaaS for small businesses providing
-individual appointment-based services with known durations.
+prevents double booking, and gives Business teams mobile-friendly daily and
+weekly administrative calendar views. It is one multi-tenant SaaS for small
+businesses providing individual appointment-based services with known durations.
 
 The shared MVP supports hair salons, barbershops, nail studios/manicurists,
 massage studios/therapists, makeup artists, beauty/cosmetic studios, and similar
@@ -81,11 +81,12 @@ activates it. Normal users cannot elevate themselves.
 ## Public page and booking flow
 
 An ACTIVE Business page shows its generic profile, contact/working information,
-active Services with price/duration, and active qualified Specialists. The
+active Services with price/duration, and available qualified team members. The
 Bulgarian mobile-first flow is:
 
 1. select a Service;
-2. select a Specialist or “Без предпочитание”;
+2. answer “При кого искаш да запазиш час?” by selecting a person or “Без
+   предпочитание”;
 3. select an available date and time;
 4. provide name, phone, email, and optional booking note;
 5. accept privacy information and cancellation rules;
@@ -101,6 +102,11 @@ A Business stores `BusinessType`, slug, name, description, one address, phone,
 email, timezone (default `Europe/Sofia`), booking window (default 30 days),
 minimum notice (default two hours), cancellation window (default 24 hours),
 currency (`EUR`), and status.
+
+The booking window is the Business-configurable number of days in advance that
+Customers may book; its default remains 30 days. It is independent of the daily
+and weekly administrative calendar views. Those views only change how Business
+users inspect and manage Appointments and never cap the booking horizon.
 
 A Service stores name, description, `BigDecimal` price, duration, buffer
 duration, active state, and qualified StaffMembers. Each StaffMember has a
@@ -144,9 +150,13 @@ special-category data.
 ## Administration and notifications
 
 The responsive Business administration UI includes authentication, daily and
-weekly calendars, manual Appointment operations, Service and StaffMember
+weekly calendar views, manual Appointment operations, Service and StaffMember
 management, schedules/breaks/time off, Customers/history, and Business settings.
-Customer-facing performer selection uses the Bulgarian label “Специалист”.
+Generic Bulgarian administration uses “Екип” and “Член на екипа”. Public
+booking uses natural contextual wording such as “При кого искаш да запазиш
+час?” and “Без предпочитание”; it does not require one generic performer noun.
+`StaffMember` remains the internal English domain and technical term. Daily and
+weekly views do not limit the configured booking window.
 
 The future `EmailService` uses a persistent outbox. Notifications include
 invitation/setup/reset, booking/cancellation/change confirmation, reminder
