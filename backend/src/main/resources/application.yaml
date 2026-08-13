@@ -1,0 +1,31 @@
+spring:
+  application:
+    name: spot-your-slot-backend
+  autoconfigure:
+    exclude: org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration
+  profiles:
+    default: dev
+  jpa:
+    open-in-view: false
+  flyway:
+    enabled: true
+
+debug: false
+trace: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+server:
+  port: ${SERVER_PORT:8080}
+
+logging:
+  level:
+    root: INFO
+    org.springframework.security: WARN

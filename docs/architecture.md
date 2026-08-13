@@ -109,6 +109,45 @@ experimental dependencies without separate approval. PostgreSQL is the latest
 stable major supported by both local Docker and the approved host. Upgrades are
 controlled and reviewable.
 
+### Verified bootstrap versions
+
+Verified on **2026-08-13** using official primary documentation and package
+metadata:
+
+| Technology | Selected version | Compatibility basis |
+|---|---:|---|
+| Java | Temurin 25.0.4 LTS | Required project LTS; Spring Boot 4.1 supports Java 17–26 |
+| Spring Boot | 4.1.0 GA | Current stable GA; official system requirements include Java 25 and Maven 3.6.3+ |
+| Maven / Wrapper | 3.9.16 / 3.3.4 | Installed stable Maven satisfies Boot; wrapper pins the same distribution |
+| Node.js / npm | 24.19.0 LTS / 11.17.0 | Node 24 is the current suitable LTS and satisfies Vite/Vitest/jsdom engines |
+| React / React DOM | 19.2.8 | Latest stable React release resolved during bootstrap |
+| TypeScript | 6.0.3 | Latest stable release compatible with stable `typescript-eslint` 8.67.0 (`<6.1`) |
+| Vite / React plugin | 8.2.1 / 6.0.5 | Stable releases; Vite supports Node 24 and plugin supports Vite 8 |
+| Vitest / jsdom | 4.1.10 / 30.0.1 | Stable releases with Node 24 support |
+| PostgreSQL | 18.4 (`postgres:18.4-bookworm`) | Current stable major/minor; PostgreSQL recommends current minor and Render supports major 18 |
+| Testcontainers | 2.0.5 | Stable release managed by Spring Boot 4.1; uses the official 2.x prefixed module coordinates |
+
+Primary sources: [Spring Boot system requirements](https://docs.spring.io/spring-boot/system-requirements.html),
+[Node release status](https://nodejs.org/en/about/previous-releases),
+[React versions](https://react.dev/versions),
+[TypeScript download/version guidance](https://www.typescriptlang.org/download/),
+[Vite releases](https://vite.dev/releases),
+[Vite Node requirements](https://vite.dev/guide/),
+[PostgreSQL version policy](https://www.postgresql.org/support/versioning/),
+[Render PostgreSQL support](https://render.com/docs/postgresql-upgrading), and
+[Testcontainers PostgreSQL module](https://java.testcontainers.org/modules/databases/postgres/).
+
+Direct npm dependencies are exact-pinned and the lockfile fixes the complete
+graph. Spring Boot dependency management fixes the supported backend graph;
+explicit build plugins and Maven distribution are pinned. Docker images use
+full non-floating tags. Upgrades require the same official compatibility review,
+lockfile regeneration, full checks, and a focused reviewed change.
+GitHub Actions are pinned to reviewed major release lines (`checkout@v6`,
+`setup-java@v5`, and `setup-node@v6`); Dependabot or a focused maintenance
+change may advance them only after release-note review and green CI. Immutable
+commit SHAs may replace major pins if the repository later adopts that stricter
+supply-chain policy.
+
 Flyway owns schema evolution. Structured redacted logs, correlation IDs,
 health checks, and audit/delivery records support operations. BusinessType is
 descriptive only. Scaling begins with measurement, indexes, stateless replicas,

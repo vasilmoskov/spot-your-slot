@@ -1,6 +1,20 @@
-# IntelliJ IDEA
+# Local environment and secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Backend output and IDE metadata
+backend/target/
+*.log
 .idea/
 *.iml
+.vscode/
 
-# macOS
+# Frontend dependencies and output
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+
+# Operating-system files
 .DS_Store

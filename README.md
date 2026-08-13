@@ -12,9 +12,10 @@ Each Business has isolated data and one public page at
 it is not registered or configured by this task, and neither domain nor
 trademark availability has been legally verified.
 
-This repository is in the **documentation-only product-foundation phase**. No
-Spring Boot or React application, dependency manifest, Docker/CI/hosting
-configuration, or external resource has been created.
+This repository contains the Phase 1 application shells: a Spring Boot backend,
+a React frontend, local PostgreSQL through Docker Compose, and non-deploying CI.
+No domain schema, authentication, tenant logic, booking behavior, production
+email, hosting, or external resource has been implemented.
 
 ## Product identity
 
@@ -48,32 +49,19 @@ expand the MVP.
 - [Implementation plan](docs/implementation-plan.md)
 - [Foundation task](docs/tasks/00-product-foundation.md)
 
-## Planned technology and version policy
+## Selected toolchain
 
-The planned monorepo uses Java 25 LTS, a Spring Boot/Maven modular-monolith REST
-API, React/TypeScript/Vite, and PostgreSQL. Bootstrap must verify official
-primary documentation and select the latest stable GA Spring Boot release that
-officially supports Java 25, a supported stable Maven release, the latest
-suitable Node.js LTS, compatible stable React/TypeScript/Vite releases, and the
-latest stable PostgreSQL major supported by both local Docker and the approved
-host. Other libraries must be stable and mutually compatible—never alpha, beta,
-milestone, release-candidate, snapshot, preview, or experimental without
-separate approval.
-
-Bootstrap records exact versions and compatibility reasoning, pins direct
-dependencies/tools and Docker image versions, commits generated lockfiles, and
-keeps upgrades controlled. Exact versions are intentionally not selected or
-installed during this documentation-only task.
-
-Production hosting remains an unconfigured proposal: Cloudflare Pages, a paid
-Render service and PostgreSQL, and Resend.
+The exact Phase 1 versions and official compatibility basis are recorded in
+[architecture.md](docs/architecture.md#verified-bootstrap-versions). Locally,
+use Java 25, Node.js 24 LTS, npm 11, and Docker with Compose. Maven itself is
+downloaded by the committed wrapper. Production hosting remains unconfigured.
 
 ## Planned repository layout
 
 ```text
 spot-your-slot/
-├── backend/                 # future phase
-├── frontend/                # future phase
+├── backend/
+├── frontend/
 ├── docs/
 │   ├── tasks/
 │   ├── product-spec.md
@@ -82,12 +70,110 @@ spot-your-slot/
 │   ├── security.md
 │   ├── testing-strategy.md
 │   └── implementation-plan.md
-├── .github/workflows/       # future phase
-├── compose.yaml             # future phase
+├── .github/workflows/
+├── compose.yaml
 ├── AGENTS.md
 ├── README.md
-└── .gitignore               # future phase
+└── .gitignore
 ```
+
+## Local development
+
+### Prerequisites and ports
+
+- Temurin or another Java 25 JDK (`java -version`)
+- Node.js 24 LTS and npm 11 (`node --version && npm --version`)
+- Docker and Docker Compose (`docker compose version`)
+
+PostgreSQL uses `localhost:5432`, the backend `localhost:8080`, and the Vite
+frontend `localhost:5173`. Override the database port with `POSTGRES_PORT` and
+the backend port with `SERVER_PORT` when necessary.
+
+### Environment and PostgreSQL
+
+From the repository root:
+
+```bash
+cp .env.example .env
+```
+
+Change the local-only password in `.env`; never commit `.env`. Start and inspect
+PostgreSQL:
+
+```bash
+docker compose up -d postgres
+docker compose ps
+```
+
+The named volume preserves local data. Compose creates database `spotyourslot`.
+
+### Backend
+
+Export the same local credentials as `.env` (Compose reads `.env`, the shell
+does not), then run:
+
+```bash
+cd backend
+export POSTGRES_USER=spotyourslot
+export POSTGRES_PASSWORD='the-value-from-your-local-env-file'
+./mvnw spring-boot:run
+```
+
+Health is public at `http://localhost:8080/actuator/health`. All other routes are
+temporarily denied by the bootstrap-only security configuration; this is not
+the final authentication or authorization model.
+
+### Frontend
+
+In a second terminal:
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+Open `http://localhost:5173`. `VITE_API_BASE_URL` defaults conceptually to
+`http://localhost:8080`; copy `frontend/.env.example` to an ignored local env
+file only when an explicit override is needed. The shell does not yet call an
+API or implement product screens.
+
+### Checks
+
+```bash
+cd backend
+./mvnw test
+./mvnw verify
+
+cd ../frontend
+npm ci
+npm run lint
+npm run test
+npm run build
+```
+
+### Stop local services
+
+```bash
+docker compose down
+```
+
+This keeps the named database volume. Removing it is intentionally not part of
+the normal command because that destroys local data.
+
+### Troubleshooting
+
+- **Port already in use:** set `POSTGRES_PORT` in `.env`, `SERVER_PORT` for the
+  backend, or stop the conflicting process. Vite intentionally fails rather
+  than silently switching from port 5173.
+- **Backend database authentication failure:** ensure exported shell values
+  match `.env`, then check `docker compose ps` and `docker compose logs postgres`.
+- **Wrong Java/Node version:** Maven Enforcer and npm `engines` reject unsupported
+  toolchains; select Java 25 and Node 24 LTS.
+- **Stale frontend install:** use `npm ci`, which recreates dependencies exactly
+  from `package-lock.json`.
+- **Database not ready:** wait for the Compose health status before starting the
+  backend.
 
 ## Current scope boundary
 
