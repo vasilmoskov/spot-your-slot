@@ -98,9 +98,21 @@ protection. Invitations, resets, and cancellation links are high-entropy tokens
 stored only as hashes. Detailed rules are in `security.md`.
 
 Phase 2 implements `identity`, `business`, and `shared` as Spring Modulith-
-verified package boundaries. Identity application services own transaction
-boundaries and JDBC persistence remains internal. The initial schema contains
-no later operational-domain tables.
+verified package boundaries. Phase 3A adds `platform` orchestration. Platform
+code depends on the published Business administration API and the published
+identity active-owner query; it does not access either module's infrastructure.
+Business owns validation, persistence, lifecycle rules, and atomic transitions.
+Identity owns Membership persistence and the active-owner query. There are no
+reverse dependencies or cycles.
+
+The platform Business API provides bounded deterministic listing, retrieval,
+DRAFT creation, profile update, initial activation, suspension, and
+reactivation. Mutations carry `expectedVersion`; PostgreSQL compare-and-update
+predicates increment the version once and prevent lost updates. Initial
+activation is one read-write platform transaction. Its identity query locks one
+qualifying active `BUSINESS_OWNER` Membership using deterministic
+`ORDER BY id LIMIT 1 FOR SHARE`, so concurrent deactivation waits until the
+Business transition commits or rolls back.
 
 Business transactions atomically add outbox records. A worker claims/retries
 with bounded backoff; idempotency keys prevent duplicate reminders. Development

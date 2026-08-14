@@ -1,6 +1,6 @@
 # SpotYourSlot — Platform Business Backend
 
-Status: Pending  
+Status: Complete
 GitHub issue: #5 — Build platform Business management backend
 Parent issue: #4 — Create platform admin tools and onboard businesses
 
@@ -357,3 +357,68 @@ After implementation:
 11. Confirm that the platform-admin frontend remains unimplemented.
 12. Do not commit or push.
 13. Stop and wait for human review.
+
+## Completion evidence
+
+Completed on 2026-08-14. The implementation provides the seven approved
+PLATFORM_ADMIN-only endpoints, Flyway V3 profile fields, deterministic bounded
+pagination, expected-version optimistic concurrency, the three approved
+lifecycle transitions, and same-Business active-owner readiness for initial
+activation. The owner query uses `FOR SHARE` inside the platform activation
+transaction. V1 and V2 remain unchanged, and no Phase 4+ domain or
+platform-admin frontend was added.
+
+Acceptance evidence:
+
+1. `PlatformBusinessApiIntegrationTests` proves creation returns DRAFT/version 0.
+2. `BusinessDomainTests`, `BusinessSchemaIntegrationTests`, and
+   `BusinessAdministrationServiceIntegrationTests` prove slug validation and
+   PostgreSQL uniqueness handling.
+3. `PlatformBusinessApiIntegrationTests` proves bounded listing and retrieval
+   expose only approved metadata.
+4. `BusinessInputValidatorTests`, `BusinessAdministrationServiceTests`, and the
+   API integration suite prove only approved profile fields are mutable.
+5. `BusinessDomainTests`, Business service/store integration tests, and the API
+   suite prove all allowed and rejected lifecycle transitions.
+6. `ActiveBusinessOwnerQueryIntegrationTests`,
+   `PlatformBusinessServiceTests`, `PlatformBusinessServiceIntegrationTests`,
+   and the API suite prove initial activation requires an active owner for the
+   same Business and holds the qualifying row lock through activation.
+7. `BusinessStoreIntegrationTests` and
+   `BusinessAdministrationServiceIntegrationTests` use coordinated PostgreSQL
+   writers to prove exactly one same-version mutation succeeds.
+8. `PlatformBusinessApiIntegrationTests` proves unauthenticated and non-platform
+   role rejection and PLATFORM_ADMIN access.
+9. Controller/advice tests and the API integration suite prove the stable safe
+   validation, authentication, authorization, not-found, uniqueness, lifecycle,
+   missing-owner, concurrency, and unexpected-error mappings.
+10. `BusinessSchemaIntegrationTests` migrates an empty PostgreSQL database
+    through V1, V2, and V3 and verifies the schema; repository diff inspection
+    confirms V1 and V2 were not edited.
+11. Targeted unit/PostgreSQL/API/security/concurrency suites and the complete
+    Maven verification pass.
+12. Complete Maven verification includes and passes the Phase 2 regression
+    suites, including `AuthenticationApiIntegrationTests` and
+    `ProductionProfileIntegrationTests`.
+13. Repository diff/status inspection confirms no frontend or Phase 4+ work.
+14. Changed Java files were reviewed and the focused compressed-body search has
+    no prohibited matches.
+15. `git diff --check` passes.
+16. Tracked-file and secret-pattern inspection finds no credentials, generated
+    output, or unrelated files.
+17. No commit or push was performed during finalization; handoff stops for human
+    review.
+
+Executed final verification:
+
+```text
+cd backend
+./mvnw -Dtest=BusinessInputValidatorTests,BusinessAdministrationServiceIntegrationTests,BusinessStoreIntegrationTests,ActiveBusinessOwnerQueryIntegrationTests,BusinessSchemaIntegrationTests,ModuleBoundaryTests test
+./mvnw verify
+cd ..
+git diff --check
+git status --short --untracked-files=all
+```
+
+The focused suite passed 155 tests and complete verification passed 306 tests,
+with zero failures, errors, or skips. Generated Maven output remained ignored.

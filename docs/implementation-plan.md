@@ -45,6 +45,10 @@ dependencies absent separate approval.
 - PLATFORM_ADMIN APIs/UI list/create/edit Business, type, slug, invitation,
   activation, suspension, and reactivation.
 - Enforce DRAFT/ACTIVE/SUSPENDED behavior and Bulgarian unavailable state.
+- Backend Business management is complete: seven PLATFORM_ADMIN-only endpoints,
+  bounded deterministic pagination, expected-version concurrency, profile
+  fields, and active-owner locking for initial activation. The platform-admin
+  React UI, invitation integration, and Bulgarian unavailable UI remain pending.
 - Exit: unique URL and lifecycle flows pass.
 
 ## Phase 4 — Business configuration and workforce

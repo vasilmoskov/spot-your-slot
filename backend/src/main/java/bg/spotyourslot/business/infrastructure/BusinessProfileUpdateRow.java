@@ -15,4 +15,5 @@ public record BusinessProfileUpdateRow(
         String phone,
         String contactEmail,
         long expectedVersion,
-        Instant updatedAt) {}
+        Instant updatedAt) {
+}

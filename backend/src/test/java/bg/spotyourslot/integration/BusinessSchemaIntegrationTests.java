@@ -272,11 +272,13 @@ class BusinessSchemaIntegrationTests extends PostgresIntegrationTest {
         }
     }
 
-    private record ColumnMetadata(String name, int maximumLength, String nullable) {}
+    private record ColumnMetadata(String name, int maximumLength, String nullable) {
+    }
 
     private record BusinessProfile(
             String description,
             String address,
             String phone,
-            String contactEmail) {}
+            String contactEmail) {
+    }
 }

@@ -366,5 +366,6 @@ class ActiveBusinessOwnerQueryIntegrationTests extends PostgresIntegrationTest {
         }
     }
 
-    private record LockWait(String waitEventType, String waitEvent) {}
+    private record LockWait(String waitEventType, String waitEvent) {
+    }
 }

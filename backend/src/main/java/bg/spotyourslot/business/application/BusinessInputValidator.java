@@ -179,7 +179,9 @@ public class BusinessInputValidator {
         return value.codePointCount(0, value.length());
     }
 
-    public record PageInput(int page, int size) {}
+    public record PageInput(int page, int size) {
+    }
 
-    private record ContactEmailCandidate(@Email String value) {}
+    private record ContactEmailCandidate(@Email String value) {
+    }
 }

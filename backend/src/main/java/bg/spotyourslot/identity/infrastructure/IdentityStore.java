@@ -338,14 +338,16 @@ public class IdentityStore {
             String email,
             Instant expiresAt,
             boolean consumed,
-            boolean invalidated) {}
+            boolean invalidated) {
+    }
 
     public record ResetRow(
             UUID id,
             UUID userId,
             Instant expiresAt,
             boolean consumed,
-            boolean invalidated) {}
+            boolean invalidated) {
+    }
 
     private static OffsetDateTime db(Instant value) {
         return OffsetDateTime.ofInstant(value, ZoneOffset.UTC);

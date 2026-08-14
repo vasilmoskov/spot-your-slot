@@ -20,4 +20,5 @@ public record BusinessRow(
         String contactEmail,
         long version,
         Instant createdAt,
-        Instant updatedAt) {}
+        Instant updatedAt) {
+}

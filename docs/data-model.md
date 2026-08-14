@@ -32,6 +32,18 @@ authorized Business, activity/absolute expiry, and revocation time. Invitation
 and reset tokens also persist only SHA-256 hashes. The database restricts
 Membership roles to `BUSINESS_OWNER`, `MANAGER`, and `STAFF`.
 
+Flyway `V2__enforce_single_active_identity_tokens.sql` enforces single active
+invitation/reset issuance. Flyway `V3__add_business_profile_fields.sql` adds
+nullable `description` (2,000 characters), `address` (500), `phone` (50), and
+`contact_email` (320). PostgreSQL rejects non-null whitespace-only values and
+requires persisted contact email to be lowercase; application validation also
+normalizes and validates supplied contact email. V1 and V2 were not rewritten.
+
+Platform-created Businesses always persist as `DRAFT` with version 0. Profile
+and lifecycle mutations compare the supplied expected version atomically and
+increment `version` exactly once. Lists are bounded to 100 rows and ordered by
+`created_at DESC, id DESC` with a separate total count.
+
 Business status is `DRAFT`, `ACTIVE`, or `SUSPENDED`. BusinessType is
 `HAIR_SALON`, `BARBERSHOP`, `NAIL_STUDIO`, `MASSAGE_STUDIO`, `MAKEUP_STUDIO`,
 `BEAUTY_STUDIO`, or `OTHER` and has no behavioral branching.

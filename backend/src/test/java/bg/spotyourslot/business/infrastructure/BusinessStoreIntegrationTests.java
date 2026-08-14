@@ -386,5 +386,6 @@ class BusinessStoreIntegrationTests extends PostgresIntegrationTest {
                         .map(target -> Arguments.of(current, target)));
     }
 
-    private record ConcurrentOutcome(int backendPid, boolean successful) {}
+    private record ConcurrentOutcome(int backendPid, boolean successful) {
+    }
 }

@@ -70,7 +70,8 @@ public final class BusinessRecords {
             String description,
             String address,
             String phone,
-            String contactEmail) {}
+            String contactEmail) {
+    }
 
     public record UpdateBusinessCommand(
             String slug,
@@ -81,7 +82,8 @@ public final class BusinessRecords {
             String address,
             String phone,
             String contactEmail,
-            long expectedVersion) {}
+            long expectedVersion) {
+    }
 
     public static CreateBusinessCommand createCommand(
             String slug,

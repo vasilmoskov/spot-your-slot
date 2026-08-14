@@ -38,12 +38,37 @@ persistent for 12 hours, and `Secure` in production. Credentialed CORS uses one
 exact environment-configured origin. Forwarding headers are ignored unless a
 trusted deployment is explicitly configured.
 
+The exact origin permits credentialed `GET`, `POST`, `PUT`, and `OPTIONS`
+requests with only `Content-Type` and `X-XSRF-TOKEN` request headers. POST and
+PUT remain CSRF-protected. Filter-level missing-authentication and
+access-denied/CSRF failures return `application/problem+json` without exposing
+roles, sessions, tokens, or framework details.
+
 ## Authorization and tenant isolation
 
 Every protected use case requires authentication, active Membership in the
 server-resolved Business, and the required role. PLATFORM_ADMIN routes are
 separate. Public Business context comes from `{businessSlug}`; authenticated
 context comes from Membership. Client Business IDs are untrusted references.
+
+Every `/api/platform/businesses` operation requires the independent
+`PLATFORM_ADMIN` authority; `BUSINESS_OWNER`, `MANAGER`, and `STAFF` Memberships
+never imply it. Initial `DRAFT → ACTIVE` activation additionally requires an
+active `BUSINESS_OWNER` Membership for that same Business. The qualifying row is
+held with PostgreSQL `FOR SHARE` inside the activation transaction, preventing
+concurrent deactivation from invalidating readiness before activation commits.
+
+Platform Business failures use stable safe codes and Bulgarian details:
+`VALIDATION_ERROR` (400, “Проверете въведените данни.”), `AUTH_REQUIRED` (401,
+“Необходим е вход.”), `ACCESS_DENIED` (403, “Нямате достъп до тази операция.”),
+and `BUSINESS_NOT_FOUND` (404, “Бизнесът не е намерен.”). Conflict responses are
+`BUSINESS_SLUG_CONFLICT` (“Този адрес на бизнеса вече се използва.”),
+`BUSINESS_INVALID_LIFECYCLE` (“Промяната на статуса не е разрешена.”),
+`BUSINESS_MISSING_ACTIVE_OWNER` (“За активиране е необходим активен
+собственик.”), and `BUSINESS_CONCURRENT_UPDATE` (“Бизнесът е променен. Обновете
+данните и опитайте отново.”), all with status 409. Arbitrary exception messages,
+SQL details, constraint names, stack traces, and Membership data are never
+response content.
 
 Repositories require `business_id`; foreign/composite constraints validate
 common ownership. STAFF is restricted to the linked StaffMember’s schedule and

@@ -16,4 +16,5 @@ public record NewBusinessRow(
         String address,
         String phone,
         String contactEmail,
-        Instant createdAt) {}
+        Instant createdAt) {
+}

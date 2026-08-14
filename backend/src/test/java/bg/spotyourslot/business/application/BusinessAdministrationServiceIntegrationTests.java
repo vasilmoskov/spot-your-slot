@@ -326,5 +326,6 @@ class BusinessAdministrationServiceIntegrationTests extends PostgresIntegrationT
         CONFLICT
     }
 
-    private record ConcurrentOutcome(int backendPid, ConcurrentResult result) {}
+    private record ConcurrentOutcome(int backendPid, ConcurrentResult result) {
+    }
 }
