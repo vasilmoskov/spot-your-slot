@@ -76,6 +76,23 @@ public class IdentityStore {
                 .optional();
     }
 
+    public boolean lockActiveBusinessOwner(UUID businessId) {
+        return jdbc.sql("""
+                        SELECT id
+                        FROM membership
+                        WHERE business_id = :businessId
+                          AND role = 'BUSINESS_OWNER'
+                          AND active = true
+                        ORDER BY id
+                        LIMIT 1
+                        FOR SHARE
+                        """)
+                .param("businessId", businessId)
+                .query(UUID.class)
+                .optional()
+                .isPresent();
+    }
+
     public void createSession(UUID id, String hash, User user, Instant now, Instant expires) {
         jdbc.sql("""
                 INSERT INTO user_session(id,token_hash,user_id,credential_version,created_at,last_activity_at,absolute_expires_at)
