@@ -25,6 +25,18 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 @Configuration
 public class SecurityConfiguration {
+    private static final String AUTHENTICATION_REQUIRED_PROBLEM =
+            "{\"type\":\"about:blank\","
+                    + "\"title\":\"Необходим е вход.\","
+                    + "\"status\":401,"
+                    + "\"code\":\"AUTH_REQUIRED\"}";
+    private static final String ACCESS_DENIED_PROBLEM =
+            "{\"type\":\"about:blank\","
+                    + "\"title\":\"Заявката не може да бъде изпълнена.\","
+                    + "\"status\":403,"
+                    + "\"detail\":\"Нямате достъп до тази операция.\","
+                    + "\"code\":\"ACCESS_DENIED\"}";
+
     @Bean
     Clock clock() {
         return Clock.systemUTC();
@@ -51,7 +63,7 @@ public class SecurityConfiguration {
             @Value("${spotyourslot.security.allowed-origin}") String origin) {
         var configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(List.of(origin));
-        configuration.setAllowedMethods(List.of("GET", "POST", "OPTIONS"));
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("Content-Type", "X-XSRF-TOKEN"));
         configuration.setAllowCredentials(true);
         var source = new UrlBasedCorsConfigurationSource();
@@ -90,12 +102,16 @@ public class SecurityConfiguration {
                 .httpBasic(config -> config.disable())
                 .formLogin(config -> config.disable())
                 .logout(config -> config.disable())
-                .exceptionHandling(config -> config.authenticationEntryPoint(
-                        (request, response, error) -> {
+                .exceptionHandling(config -> config
+                        .authenticationEntryPoint((request, response, error) -> {
                             response.setStatus(401);
                             response.setContentType("application/problem+json");
-                            response.getWriter()
-                                    .write("{\"type\":\"about:blank\",\"title\":\"Необходим е вход.\",\"status\":401,\"code\":\"AUTH_REQUIRED\"}");
+                            response.getWriter().write(AUTHENTICATION_REQUIRED_PROBLEM);
+                        })
+                        .accessDeniedHandler((request, response, error) -> {
+                            response.setStatus(403);
+                            response.setContentType("application/problem+json");
+                            response.getWriter().write(ACCESS_DENIED_PROBLEM);
                         }))
                 .headers(headers -> headers.contentSecurityPolicy(csp -> csp.policyDirectives(
                         "default-src 'self'; frame-ancestors 'none'")))

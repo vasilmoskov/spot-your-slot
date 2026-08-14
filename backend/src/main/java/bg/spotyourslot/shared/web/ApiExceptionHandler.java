@@ -1,5 +1,6 @@
 package bg.spotyourslot.shared.web;
 
+import jakarta.validation.ConstraintViolationException;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
@@ -51,10 +52,11 @@ public class ApiExceptionHandler {
     }
 
     @ExceptionHandler({
+        ConstraintViolationException.class,
+        HandlerMethodValidationException.class,
         HttpMessageNotReadableException.class,
         MethodArgumentTypeMismatchException.class,
-        MissingServletRequestParameterException.class,
-        HandlerMethodValidationException.class
+        MissingServletRequestParameterException.class
     })
     ProblemDetail malformedInput() {
         return problem(
