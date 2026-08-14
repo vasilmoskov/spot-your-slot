@@ -20,12 +20,19 @@
 ## Delivery rules
 
 - Read the applicable task in `docs/tasks/` and the permanent documentation
-  before implementation.
-- Work in small, reviewable phases from `docs/implementation-plan.md`.
+  before implementation. Permanent documentation remains authoritative even
+  when a task file or prompt is intentionally brief.
+- Work in small, independently reviewable phases from
+  `docs/implementation-plan.md`. When an approved task contains multiple
+  substantial concerns, propose a short ordered sequence, complete and verify
+  one step, and only then begin the next.
 - Obtain explicit approval before persistent changes, dependency changes,
   generated files, external writes, Git mutations, or state-changing checks.
 - Inspect existing code and tests before proposing a change. Keep changes
   focused and preserve unrelated user work.
+- Do not expand into a later phase or adjacent concern for convenience. If work
+  reveals a conflict, missing decision, unexpected dependency, or necessary
+  scope expansion, stop and request approval.
 - Never commit credentials, production tokens, or personal data. Do not log
   passwords, raw security tokens, session identifiers, or customer notes.
 - Do not weaken authentication, authorization, tenant checks, validation, or
@@ -46,12 +53,55 @@
   display modes only and never limit how far ahead booking is possible.
 - Normal business operations never physically delete appointments.
 
+## Code quality and formatting
+
+- Write conventional, readable Java and TypeScript with consistent indentation,
+  line wrapping, and organized imports. Avoid wildcard imports in new or
+  modified code.
+- Do not compress classes, methods, constructors, records, annotations, field
+  declarations, or tests onto single lines. Keep one field declaration per
+  readable statement.
+- Prefer focused classes and methods with clear responsibilities over large
+  services or controllers.
+- Review formatting and readability before completion. Formatting-only changes
+  must preserve behavior and remain separate from unrelated refactoring.
+
+## Security and state management
+
+- Never return arbitrary internal exception messages, SQL details, stack traces,
+  or secret values to API clients. Use stable public error codes and safe
+  Bulgarian client messages.
+- In-memory state reachable from public requests requires an explicit capacity
+  limit, expiration cleanup, and documented behavior at saturation. Document
+  when an in-process mechanism is unsuitable for multiple instances.
+- Never retain raw passwords, session tokens, invitation tokens, or reset tokens
+  in rate-limiter keys, logs, or diagnostic state.
+- Protect security-sensitive replacement and single-use flows with both database
+  constraints and transactional application logic where applicable.
+
 ## Verification and handoff
 
 - Run the narrowest relevant checks first, then justified broader checks.
 - Use real PostgreSQL through Testcontainers for persistence, concurrency, and
   tenant-isolation behavior.
-- Review the final diff for naming, scope, security, and accidental files.
+- Map every acceptance criterion to a concrete test or explicitly documented
+  manual verification. A successful build or broad suite alone is not evidence
+  for every behavior; name the tests or commands proving important security,
+  tenant, lifecycle, and concurrency claims.
+- Use real PostgreSQL integration tests when persistence constraints, tenant
+  isolation, or concurrency depend on database behavior. Coordinate concurrent
+  operations deterministically without arbitrary sleeps, and use controllable
+  clocks for expiration and lifecycle tests where practical.
+- Never weaken, delete, or generalize a valid assertion merely to make a test
+  pass. Distinguish checks actually executed from recommendations or deferred
+  checks.
+- Before completion, compare the implementation with the task scope and every
+  acceptance criterion. Review the final diff for naming, scope, security,
+  accidental files, generated output, secrets, compressed formatting, and
+  later-phase functionality.
+- Report exact test counts only when supported by executed output. Do not call
+  partially implemented or indirectly tested behavior complete; state remaining
+  limitations and operational tradeoffs explicitly.
 - Report files changed, checks run, limitations, assumptions, and decisions
   still requiring approval. Do not commit or push unless explicitly approved.
 
