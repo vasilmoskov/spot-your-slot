@@ -61,6 +61,10 @@
 - Do not compress classes, methods, constructors, records, annotations, field
   declarations, or tests onto single lines. Keep one field declaration per
   readable statement.
+- Format empty Java bodies conventionally, including empty constructors: use
+  `private Example() {` followed by `}` on its own line, never
+  `private Example() {}`. Apply the same rule to empty methods, classes, and
+  record bodies.
 - Prefer focused classes and methods with clear responsibilities over large
   services or controllers.
 - Review formatting and readability before completion. Formatting-only changes
@@ -99,6 +103,11 @@
   acceptance criterion. Review the final diff for naming, scope, security,
   accidental files, generated output, secrets, compressed formatting, and
   later-phase functionality.
+- For every task that creates or modifies Java, run a focused search over every
+  changed Java file for compressed empty constructors, methods, classes, and
+  record bodies. Review and correct every match unless it is generated code or
+  an explicitly justified exception, and confirm this check in the completion
+  report.
 - Report exact test counts only when supported by executed output. Do not call
   partially implemented or indirectly tested behavior complete; state remaining
   limitations and operational tradeoffs explicitly.
