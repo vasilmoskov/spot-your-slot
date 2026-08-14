@@ -22,4 +22,13 @@ class ApiExceptionHandlerTests {
         assertThat(problem.getDetail()).doesNotContain("internal-secret-detail");
         assertThat(problem.getProperties()).containsEntry("code", "INTERNAL_ERROR");
     }
+
+    @Test
+    void malformedHttpInputUsesSafeValidationProblem() {
+        var problem = handler.malformedInput();
+
+        assertThat(problem.getStatus()).isEqualTo(400);
+        assertThat(problem.getDetail()).isEqualTo("Проверете въведените данни.");
+        assertThat(problem.getProperties()).containsEntry("code", "VALIDATION_ERROR");
+    }
 }

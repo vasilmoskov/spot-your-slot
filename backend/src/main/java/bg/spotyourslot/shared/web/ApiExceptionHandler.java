@@ -1,14 +1,21 @@
 package bg.spotyourslot.shared.web;
 
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.server.ResponseStatusException;
 
+@Order(Ordered.LOWEST_PRECEDENCE)
 @RestControllerAdvice
 public class ApiExceptionHandler {
     @ExceptionHandler(BadCredentialsException.class)
@@ -42,6 +49,20 @@ public class ApiExceptionHandler {
                 "VALIDATION_ERROR",
                 "Проверете въведените данни.");
     }
+
+    @ExceptionHandler({
+        HttpMessageNotReadableException.class,
+        MethodArgumentTypeMismatchException.class,
+        MissingServletRequestParameterException.class,
+        HandlerMethodValidationException.class
+    })
+    ProblemDetail malformedInput() {
+        return problem(
+                HttpStatus.BAD_REQUEST,
+                "VALIDATION_ERROR",
+                "Проверете въведените данни.");
+    }
+
     @ExceptionHandler(ResponseStatusException.class)
     ProblemDetail status(ResponseStatusException exception) {
         var status = HttpStatus.valueOf(exception.getStatusCode().value());

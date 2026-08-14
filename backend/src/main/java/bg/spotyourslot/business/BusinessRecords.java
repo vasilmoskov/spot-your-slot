@@ -7,7 +7,8 @@ import java.util.List;
 import java.util.UUID;
 
 public final class BusinessRecords {
-    private BusinessRecords() {}
+    private BusinessRecords() {
+    }
 
     public record BusinessSummary(
             UUID id,
@@ -18,7 +19,15 @@ public final class BusinessRecords {
             String timezone,
             long version,
             Instant createdAt,
-            Instant updatedAt) {}
+            Instant updatedAt) {
+        public String businessTypeValue() {
+            return businessType.name();
+        }
+
+        public String statusValue() {
+            return status.name();
+        }
+    }
 
     public record BusinessDetails(
             UUID id,
@@ -33,7 +42,15 @@ public final class BusinessRecords {
             String contactEmail,
             long version,
             Instant createdAt,
-            Instant updatedAt) {}
+            Instant updatedAt) {
+        public String businessTypeValue() {
+            return businessType.name();
+        }
+
+        public String statusValue() {
+            return status.name();
+        }
+    }
 
     public record BusinessPage(
             List<BusinessSummary> businesses,
@@ -65,4 +82,46 @@ public final class BusinessRecords {
             String phone,
             String contactEmail,
             long expectedVersion) {}
+
+    public static CreateBusinessCommand createCommand(
+            String slug,
+            String displayName,
+            String businessType,
+            String timezone,
+            String description,
+            String address,
+            String phone,
+            String contactEmail) {
+        return new CreateBusinessCommand(
+                slug,
+                displayName,
+                BusinessType.valueOf(businessType),
+                timezone,
+                description,
+                address,
+                phone,
+                contactEmail);
+    }
+
+    public static UpdateBusinessCommand updateCommand(
+            String slug,
+            String displayName,
+            String businessType,
+            String timezone,
+            String description,
+            String address,
+            String phone,
+            String contactEmail,
+            long expectedVersion) {
+        return new UpdateBusinessCommand(
+                slug,
+                displayName,
+                BusinessType.valueOf(businessType),
+                timezone,
+                description,
+                address,
+                phone,
+                contactEmail,
+                expectedVersion);
+    }
 }
