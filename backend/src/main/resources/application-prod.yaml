@@ -8,4 +8,12 @@ spring:
       ddl-auto: validate
 
 server:
-  forward-headers-strategy: framework
+  forward-headers-strategy: ${FORWARD_HEADERS_STRATEGY:none}
+  servlet:
+    session:
+      cookie:
+        secure: ${SESSION_COOKIE_SECURE:true}
+
+spotyourslot:
+  security:
+    allowed-origin: ${ALLOWED_ORIGIN}

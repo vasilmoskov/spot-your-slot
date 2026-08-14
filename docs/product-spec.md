@@ -182,7 +182,8 @@ behavior above, generic Business/StaffMember terminology, optional one-to-one
 StaffMember/Membership linkage, EUR, a 15-minute slot grid with minute-precise
 durations, and deterministic no-preference assignment.
 
-Before implementation or launch, humans still decide session lifetimes/storage,
+Approved Phase 2 decisions set server-managed session storage, a 12-hour maximum
+lifetime, and a two-hour idle timeout. Before launch, humans still decide
 retention periods, privacy/legal wording and roles, any audited PLATFORM_ADMIN
 support access, frontend/calendar libraries and styling, hosting vendors/region/
 budget/backups/recovery, email domain/templates/retry window, slug redirects and

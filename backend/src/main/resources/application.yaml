@@ -7,6 +7,8 @@ spring:
     default: dev
   jpa:
     open-in-view: false
+    hibernate:
+      ddl-auto: validate
   flyway:
     enabled: true
 
@@ -24,6 +26,20 @@ management:
 
 server:
   port: ${SERVER_PORT:8080}
+  servlet:
+    session:
+      cookie:
+        secure: ${SESSION_COOKIE_SECURE:false}
+
+spotyourslot:
+  security:
+    allowed-origin: ${ALLOWED_ORIGIN:http://localhost:5173}
+    trusted-proxy: ${TRUSTED_PROXY:false}
+    bootstrap-admin:
+      enabled: ${BOOTSTRAP_ADMIN_ENABLED:false}
+      email: ${BOOTSTRAP_ADMIN_EMAIL:}
+      display-name: ${BOOTSTRAP_ADMIN_DISPLAY_NAME:}
+      password: ${BOOTSTRAP_ADMIN_PASSWORD:}
 
 logging:
   level:

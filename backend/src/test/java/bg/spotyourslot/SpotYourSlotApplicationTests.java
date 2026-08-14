@@ -8,10 +8,9 @@ import org.springframework.boot.health.actuate.endpoint.HealthEndpoint;
 import org.springframework.boot.health.contributor.Status;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import bg.spotyourslot.integration.PostgresIntegrationTest;
 
-@SpringBootTest
-@ActiveProfiles("test")
-class SpotYourSlotApplicationTests {
+class SpotYourSlotApplicationTests extends PostgresIntegrationTest {
 
     @Autowired
     private HealthEndpoint healthEndpoint;

@@ -14,3 +14,9 @@ section { width: min(100%, 38rem); padding: 2.5rem; border-radius: 1.25rem; back
 h1 { margin: .25rem 0 1rem; font-size: clamp(2rem, 7vw, 3.5rem); line-height: 1.05; }
 p { line-height: 1.6; }
 .status { margin-top: 1.5rem; padding: 1rem; border-radius: .75rem; background: #eef1ff; }
+form { display: grid; gap: 1rem; margin: 1.5rem 0; }
+label { display: grid; gap: .4rem; font-weight: 650; }
+input, select, button { min-height: 2.75rem; border: 1px solid #9aa4b8; border-radius: .55rem; padding: .65rem .8rem; font: inherit; }
+button { border-color: #4558d9; background: #4558d9; color: white; font-weight: 700; cursor: pointer; }
+button:disabled { opacity: .6; cursor: wait; }
+button.link { border: 0; background: transparent; color: #3446bb; text-decoration: underline; }

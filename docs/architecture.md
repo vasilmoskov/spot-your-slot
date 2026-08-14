@@ -97,6 +97,11 @@ Administrators use server-managed Secure/HttpOnly/SameSite sessions with CSRF
 protection. Invitations, resets, and cancellation links are high-entropy tokens
 stored only as hashes. Detailed rules are in `security.md`.
 
+Phase 2 implements `identity`, `business`, and `shared` as Spring Modulith-
+verified package boundaries. Identity application services own transaction
+boundaries and JDBC persistence remains internal. The initial schema contains
+no later operational-domain tables.
+
 Business transactions atomically add outbox records. A worker claims/retries
 with bounded backoff; idempotency keys prevent duplicate reminders. Development
 and tests never send real email.
@@ -132,6 +137,8 @@ metadata:
 | Vitest / jsdom | 4.1.10 / 30.0.1 | Stable releases with Node 24 support |
 | PostgreSQL | 18.4 (`postgres:18.4-bookworm`) | Current stable major/minor; PostgreSQL recommends current minor and Render supports major 18 |
 | Testcontainers | 2.0.5 | Stable release managed by Spring Boot 4.1; uses the official 2.x prefixed module coordinates |
+| Bouncy Castle | 1.84 | Stable provider required by Spring Security Argon2 |
+| Spring Modulith | 2.1.0 | Stable test-only module verification for the Spring Boot 4.1 line |
 
 Primary sources: [Spring Boot system requirements](https://docs.spring.io/spring-boot/system-requirements.html),
 [Node release status](https://nodejs.org/en/about/previous-releases),

@@ -12,10 +12,10 @@ Each Business has isolated data and one public page at
 it is not registered or configured by this task, and neither domain nor
 trademark availability has been legally verified.
 
-This repository contains the Phase 1 application shells: a Spring Boot backend,
-a React frontend, local PostgreSQL through Docker Compose, and non-deploying CI.
-No domain schema, authentication, tenant logic, booking behavior, production
-email, hosting, or external resource has been implemented.
+This repository contains the Phase 2 identity and tenancy foundation: a Spring
+Boot backend, a minimal Bulgarian React identity client, Flyway-managed
+PostgreSQL, local Docker Compose, and non-deploying CI. Services, StaffMembers,
+Customers, Appointments, booking, production email, and hosting are not implemented.
 
 ## Product identity
 
@@ -119,9 +119,21 @@ export POSTGRES_PASSWORD='the-value-from-your-local-env-file'
 ./mvnw spring-boot:run
 ```
 
-Health is public at `http://localhost:8080/actuator/health`. All other routes are
-temporarily denied by the bootstrap-only security configuration; this is not
-the final authentication or authorization model.
+Health is public at `http://localhost:8080/actuator/health`. Flyway applies the
+identity migration on startup and Hibernate validates the schema.
+
+To create the first local `PLATFORM_ADMIN`, explicitly opt in for one startup:
+
+```bash
+export BOOTSTRAP_ADMIN_ENABLED=true
+export BOOTSTRAP_ADMIN_EMAIL='admin@example.invalid'
+export BOOTSTRAP_ADMIN_DISPLAY_NAME='Local Administrator'
+export BOOTSTRAP_ADMIN_PASSWORD='replace-with-a-long-local-only-password'
+./mvnw spring-boot:run
+```
+
+This is idempotent, has no default credential, and is rejected in production.
+Remove the variables afterward. Business creation remains Phase 3.
 
 ### Frontend
 
@@ -133,10 +145,35 @@ npm ci
 npm run dev
 ```
 
-Open `http://localhost:5173`. `VITE_API_BASE_URL` defaults conceptually to
-`http://localhost:8080`; copy `frontend/.env.example` to an ignored local env
-file only when an explicit override is needed. The shell does not yet call an
-API or implement product screens.
+Open `http://localhost:5173`. The client supports login, forgotten/reset
+password, invitation acceptance, Business selection, password change, and
+logout. It stores no authentication token in browser storage.
+
+### Identity API and local links
+
+State-changing calls require the `X-XSRF-TOKEN` returned by
+`GET /api/auth/csrf` and browser credentials. Main endpoints are:
+
+| Method and path | Purpose |
+|---|---|
+| `POST /api/auth/login`, `POST /api/auth/logout` | Shared login and logout |
+| `GET /api/auth/session` | Current user and authorized Businesses |
+| `POST /api/auth/business` | Select an already-authorized Business |
+| `POST /api/auth/password/change` | Change password and revoke other sessions |
+| `POST /api/auth/password/forgot`, `POST /api/auth/password/reset` | Reset flow |
+| `POST /api/auth/invitations/accept` | Accept an owner invitation |
+| `POST /api/platform/identity/businesses/{id}/owner-invitation` | Create/replace owner invitation |
+| `GET /api/dev/mailbox` | Platform-admin-only local/test links; absent in production |
+
+The development mailbox retains at most 50 links in memory and never logs,
+writes, or persists raw tokens. Sessions use an opaque `SPOTYOURSESSION` cookie
+with `HttpOnly`, `SameSite=Lax`, path `/`, a 12-hour lifetime, and `Secure` in
+production. Idle expiry is two hours. Invitations last 48 hours and resets 30 minutes.
+The process-local authentication limiter permits 10 attempts per 15-minute
+fingerprint window, retains at most 10,000 SHA-256-only keys, removes expired
+counters, and fails closed for unseen keys at capacity. Saturation can
+temporarily reject new attempts; multi-instance enforcement remains a future
+deployment concern.
 
 ### Checks
 
@@ -174,6 +211,12 @@ the normal command because that destroys local data.
   from `package-lock.json`.
 - **Database not ready:** wait for the Compose health status before starting the
   backend.
+- **403 on a browser POST:** fetch `/api/auth/csrf`, send `X-XSRF-TOKEN`, and
+  confirm the frontend origin exactly matches `ALLOWED_ORIGIN`.
+- **Cookie missing locally:** keep `SESSION_COOKIE_SECURE=false` only for local
+  HTTP development; production uses `true` and HTTPS.
+- **Unexpected logout:** check the two-hour idle and 12-hour absolute limits or
+  whether credentials were changed/reset.
 
 ## Current scope boundary
 

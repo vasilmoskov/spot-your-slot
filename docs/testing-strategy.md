@@ -107,3 +107,9 @@ build, Playwright flows, and security scans. Before release: migrate a clean
 database, run the full suite, inspect production configuration, test approved
 backup restore, review security/privacy decisions, and perform a Bulgarian
 mobile smoke test.
+
+Phase 2 migrates PostgreSQL 18.4 Testcontainers from empty, verifies identity
+schema constraints for `BUSINESS_OWNER`, `MANAGER`, and `STAFF`, and runs Spring
+Modulith verification. Identity tests cover normalization, password/token/session
+lifecycle, rate limits, cookie/CSRF/CORS behavior, authorization, and Business
+A/B isolation using deterministic fixtures and test-only credentials.

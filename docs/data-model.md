@@ -26,6 +26,12 @@
 - **password_reset** and **user_session:** hash/reference and lifecycle metadata;
   raw secrets are never stored or logged.
 
+Flyway migration `V1__identity_and_tenancy.sql` creates these seven Phase 2
+tables. Sessions store a SHA-256 token hash, credential version, selected
+authorized Business, activity/absolute expiry, and revocation time. Invitation
+and reset tokens also persist only SHA-256 hashes. The database restricts
+Membership roles to `BUSINESS_OWNER`, `MANAGER`, and `STAFF`.
+
 Business status is `DRAFT`, `ACTIVE`, or `SUSPENDED`. BusinessType is
 `HAIR_SALON`, `BARBERSHOP`, `NAIL_STUDIO`, `MASSAGE_STUDIO`, `MAKEUP_STUDIO`,
 `BEAUTY_STUDIO`, or `OTHER` and has no behavioral branching.

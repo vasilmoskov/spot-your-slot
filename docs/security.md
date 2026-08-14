@@ -10,11 +10,16 @@ Administrative users use opaque server-managed sessions. Cookies are random,
 `Secure`, `HttpOnly`, appropriately `SameSite`, and narrowly scoped to the
 example `spotyourslot.bg` origin in production. HTTPS is mandatory. Rotate
 sessions at login/privilege change; expire and invalidate them at logout/reset.
-Exact session persistence and lifetimes require approval.
+Sessions persist hash-only opaque identifiers. Maximum lifetime is 12 hours and
+idle timeout is two hours. Logout revokes the current session; password change
+revokes other sessions and advances the current credential version; password
+reset revokes every session.
 
-Use Spring Security with Argon2id where supported, otherwise reviewed-cost
-bcrypt. Favor long passwords and password managers, rate-limit attempts, and
-use enumeration-safe reset/login responses. Never log or recover passwords.
+Use Spring Security Argon2id with its v5.8 parameters (16-byte salt, 32-byte
+hash, 16 MiB memory, two iterations, parallelism one) and stable Bouncy Castle.
+Stored hashes carry an `argon2id` identifier for future upgrades. Passwords
+contain 12–128 Unicode code points without composition rules or truncation.
+Rate-limit attempts and use enumeration-safe responses. Never log passwords.
 
 Invitations, password resets, and Customer cancellation links use at least 256
 bits of secure randomness, expiry, revocation, single use, transactional
@@ -27,6 +32,11 @@ Cookie-authenticated unsafe methods and login require CSRF protection. CORS
 allows only exact configured origins/methods/headers with credentials—never a
 wildcard origin. Use restrictive CSP, frame protection, `X-Content-Type-Options`,
 strict referrer policy, production HSTS, and text rendering for user content.
+
+The session cookie is `SPOTYOURSESSION`, `HttpOnly`, `SameSite=Lax`, path `/`,
+persistent for 12 hours, and `Secure` in production. Credentialed CORS uses one
+exact environment-configured origin. Forwarding headers are ignored unless a
+trusted deployment is explicitly configured.
 
 ## Authorization and tenant isolation
 
@@ -52,7 +62,15 @@ Availability, booking, login, reset, invitation, and cancellation endpoints
 receive conservative per-endpoint limits using normalized IP plus a non-secret
 slug/account/token fingerprint. Return 429 without account disclosure. An
 in-process limiter is acceptable for one instance; scaling requires shared or
-edge enforcement. CAPTCHA is not default.
+edge enforcement. CAPTCHA is not default. Phase 2 uses a deterministic
+10-attempt/15-minute window per flow, remote address, and sensitive-input
+fingerprint. Keys are irreversible SHA-256 digests; raw emails, tokens, and
+passwords are never retained. Counters are per-process and non-durable. The
+process retains at most 10,000 counters, removes expired counters before each
+decision, and fails closed for previously unseen keys while capacity remains
+full. This prevents memory exhaustion but can temporarily reject new
+authentication attempts during a saturated 15-minute window. Multi-instance
+deployment requires separately approved shared or edge enforcement.
 
 Strictly validate all inputs. Revalidate availability transactionally and use
 the PostgreSQL overlap exclusion constraint on `staff_member_id`. Return safe,
