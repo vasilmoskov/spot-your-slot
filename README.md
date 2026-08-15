@@ -47,6 +47,7 @@ expand the MVP.
 - [Data model](docs/data-model.md)
 - [Security](docs/security.md)
 - [Testing strategy](docs/testing-strategy.md)
+- [UI design guidelines](docs/ui-design-guidelines.md)
 - [Implementation plan](docs/implementation-plan.md)
 - [Foundation task](docs/tasks/00-product-foundation.md)
 

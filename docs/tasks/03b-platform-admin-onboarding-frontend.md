@@ -25,6 +25,7 @@ Before proposing or implementing a slice, read completely:
 - `docs/architecture.md`;
 - `docs/security.md`;
 - `docs/testing-strategy.md`;
+- `docs/ui-design-guidelines.md`;
 - `docs/implementation-plan.md`;
 - `docs/tasks/03a-platform-business-backend.md`;
 - this task file;
@@ -81,6 +82,11 @@ automated checks.
 
 ## Slice A — shell, navigation, and Business list
 
+Slice A is the first implementation of the permanent
+`docs/ui-design-guidelines.md`. Apply its product-wide tokens, typography,
+controls, feedback, accessibility, responsive behavior, and platform-admin
+layout conventions. Do not invent a separate visual specification in this task.
+
 ### User-visible behavior
 
 - Preserve the existing unauthenticated and authenticated identity experience.
@@ -97,6 +103,10 @@ automated checks.
   access-denied, and generic safe-error states.
 - Keep all interactive controls keyboard-operable and prevent duplicate
   submissions or requests while the relevant action is busy.
+
+The permanent UI guide owns the complete visual specification. Slice A must use
+its desktop sidebar, mobile header/navigation, desktop table, mobile cards,
+translated status badges, and shared state patterns.
 
 ### Expected implementation area
 

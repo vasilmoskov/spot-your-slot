@@ -69,6 +69,11 @@
   services or controllers.
 - Review formatting and readability before completion. Formatting-only changes
   must preserve behavior and remain separate from unrelated refactoring.
+- Before proposing any user-facing UI change, read
+  `docs/ui-design-guidelines.md` completely. Reuse its semantic tokens and
+  interaction patterns, do not introduce a conflicting visual style, and update
+  the guide when a human-approved decision changes it. Include a manual visual
+  checkpoint when meaningful UI becomes available.
 
 ## Security and state management
 
