@@ -104,6 +104,9 @@
 - Never weaken, delete, or generalize a valid assertion merely to make a test
   pass. Distinguish checks actually executed from recommendations or deferred
   checks.
+- For user-facing UI, distinguish automated checks and CSS inspection from
+  rendered browser review and explicit human visual approval. Never claim that
+  a layout is visually verified without the corresponding browser review.
 - Before completion, compare the implementation with the task scope and every
   acceptance criterion. Review the final diff for naming, scope, security,
   accidental files, generated output, secrets, compressed formatting, and

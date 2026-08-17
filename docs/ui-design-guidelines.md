@@ -68,6 +68,7 @@ Use a restrained type scale with clear page headings, section headings, body
 text, labels, and supporting text. Keep body text comfortably readable and avoid
 very light weights. Bulgarian labels and messages should be natural, concise,
 and understandable rather than literal translations of technical terminology.
+Avoid redundant headings or generic labels that do not add useful hierarchy.
 
 ## 5. Spacing, borders, radii, and shadows
 
@@ -100,6 +101,12 @@ Links look and behave like links. Buttons perform actions. Icon-only controls,
 if later justified, require an accessible name and must not depend on an icon
 library.
 
+Align primary and secondary actions consistently within their content region.
+Secondary text actions remain content-sized and visually quieter than primary
+actions while retaining clear text, background, hover, and focus contrast.
+Desktop form actions should normally remain content-sized; on narrow mobile
+layouts they may use the available width when that improves usability.
+
 ## 7. Forms and validation
 
 Every control has a visible, programmatically associated label. Mark required
@@ -124,11 +131,30 @@ values when safe, but do not retain authentication or sensitive data in browser
 storage. Backend rules and safe Bulgarian problem responses remain
 authoritative.
 
+Browser constraint messages shown to Bulgarian users must use natural Bulgarian
+while preserving native validation, focus behavior, and keyboard submission
+where practical. New and replacement passwords use the authoritative minimum
+of eight Unicode code points, and frontend length checks count code points
+consistently with the backend. Login-password and current-password verification
+fields must not impose the current new-password minimum on an existing
+credential.
+
+Use confirmation for new passwords where a mistype could lock the user out.
+Validate confirmation locally and never send it to the backend. Safe failed
+submissions preserve entered values; successful password replacement clears all
+password fields. Editing the relevant form or starting a new submission clears
+stale success and error feedback as appropriate.
+
 ## 8. Loading, empty, success, warning, and error states
 
 Every data-driven view defines useful loading, empty, success, warning, and
 error behavior. Announce asynchronous status changes through appropriate live
 regions without excessive interruption.
+
+Every user-triggered mutation provides an explicit success or safe failure
+result. Feedback must be contextual to the operation: do not reuse a login
+failure message for password change, invitation, Business mutation, or another
+unrelated flow merely because the message is safe.
 
 - Loading states explain what is loading and prevent duplicate actions.
 - Empty states explain the absence of data and offer only an available next
@@ -237,6 +263,9 @@ appropriate, and with keyboard-only navigation.
 Review visual hierarchy, Bulgarian wording, spacing, responsive transformations,
 focus, contrast, loading and feedback states, error recovery, and duplicate-
 submission protection. Automated checks support but do not replace this review.
-Stop for human feedback at the task's review gate. When feedback establishes or
-changes an enduring design decision, update this guide as part of the approved
-change so future screens remain consistent.
+Completion reports distinguish automated tests, DOM assertions, and CSS
+inspection from rendered browser review and explicit human visual approval.
+Never describe a layout as visually verified when it has not been reviewed in a
+rendered browser. Stop for human feedback at the task's review gate. When
+feedback establishes or changes an enduring design decision, update this guide
+as part of the approved change so future screens remain consistent.

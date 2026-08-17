@@ -82,6 +82,11 @@ automated checks.
 
 ## Slice A — shell, navigation, and Business list
 
+Progress: the A1 shell, identity, and Profile foundation is implemented and its
+manual visual review is human-approved. This approval does not complete Slice A;
+the A2 Business-list implementation and the formal Slice A checkpoint remain
+pending.
+
 Slice A is the first implementation of the permanent
 `docs/ui-design-guidelines.md`. Apply its product-wide tokens, typography,
 controls, feedback, accessibility, responsive behavior, and platform-admin
