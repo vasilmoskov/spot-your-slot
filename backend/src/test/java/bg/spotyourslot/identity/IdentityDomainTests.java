@@ -92,6 +92,39 @@ class IdentityDomainTests {
         assertThat(limiter.retainedEntries()).isEqualTo(1);
     }
 
+    @Test
+    void rateLimiterResetRemovesOnlyTheExactFingerprint() {
+        var limiter = new AuthenticationRateLimiter(
+                Clock.fixed(Instant.parse("2026-08-13T10:00:00Z"), ZoneOffset.UTC), 4);
+
+        exhaust(limiter, "login", "192.0.2.1", "person@example.invalid");
+        exhaust(limiter, "login", "192.0.2.1", "other@example.invalid");
+        exhaust(limiter, "login", "192.0.2.2", "person@example.invalid");
+        exhaust(limiter, "forgot", "192.0.2.1", "person@example.invalid");
+
+        limiter.reset("login", "192.0.2.1", "person@example.invalid");
+
+        assertThat(limiter.allow("login", "192.0.2.1", "person@example.invalid"))
+                .isTrue();
+        assertThat(limiter.allow("login", "192.0.2.1", "other@example.invalid"))
+                .isFalse();
+        assertThat(limiter.allow("login", "192.0.2.2", "person@example.invalid"))
+                .isFalse();
+        assertThat(limiter.allow("forgot", "192.0.2.1", "person@example.invalid"))
+                .isFalse();
+    }
+
+    private void exhaust(
+            AuthenticationRateLimiter limiter,
+            String flow,
+            String clientAddress,
+            String sensitiveInput) {
+        for (int attempt = 0; attempt < 10; attempt++) {
+            assertThat(limiter.allow(flow, clientAddress, sensitiveInput)).isTrue();
+        }
+        assertThat(limiter.allow(flow, clientAddress, sensitiveInput)).isFalse();
+    }
+
     private static final class MutableClock extends Clock {
         private Instant instant;
 

@@ -67,6 +67,7 @@ public class AuthController {
             HttpServletResponse response) {
         limit("login", request.email(), servletRequest);
         var result = authentication.login(request.email(), request.password());
+        limiter.reset("login", servletRequest.getRemoteAddr(), request.email());
         response.addCookie(cookie(result.token(), (int) Duration.ofHours(12).toSeconds()));
         return SessionView.of(result.user(), result.businesses(), null);
     }
@@ -148,21 +149,27 @@ public class AuthController {
         return cookie;
     }
 
-    public record LoginRequest(@Email @NotBlank String email, @NotBlank String password) {}
+    public record LoginRequest(@Email @NotBlank String email, @NotBlank String password) {
+    }
 
-    public record EmailRequest(@Email @NotBlank String email) {}
+    public record EmailRequest(@Email @NotBlank String email) {
+    }
 
-    public record BusinessRequest(UUID businessId) {}
+    public record BusinessRequest(UUID businessId) {
+    }
 
     public record ChangePasswordRequest(
-            @NotBlank String currentPassword, @NotBlank String newPassword) {}
+            @NotBlank String currentPassword, @NotBlank String newPassword) {
+    }
 
-    public record ResetRequest(@NotBlank String token, @NotBlank String password) {}
+    public record ResetRequest(@NotBlank String token, @NotBlank String password) {
+    }
 
     public record AcceptInvitationRequest(
             @NotBlank String token,
             @NotBlank String displayName,
-            @NotBlank String password) {}
+            @NotBlank String password) {
+    }
 
     public record SessionView(
             UUID userId,

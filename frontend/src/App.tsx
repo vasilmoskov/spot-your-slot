@@ -15,19 +15,35 @@ import { PlatformAdminShell } from './platform/PlatformAdminShell'
 const safeErrorDetail = (error: unknown): string =>
   error instanceof Error ? error.message : 'Възникна грешка.'
 
+type Feedback = {
+  kind: 'error' | 'info' | 'success'
+  text: string
+}
+
 export function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [page, setPage] = useState<IdentityPage>(readIdentityPage())
-  const [message, setMessage] = useState('')
+  const [feedback, setFeedback] = useState<Feedback | null>(null)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
     request<Session>('/api/auth/session').then(setSession).catch(() => undefined)
   }, [])
 
+  useEffect(
+    () =>
+      subscribeToNavigation(() => {
+        if (!window.location.hash) {
+          setPage(readIdentityPage())
+          setFeedback(null)
+        }
+      }),
+    [],
+  )
+
   const navigate = (next: IdentityPage) => {
     setPage(next)
-    setMessage('')
+    setFeedback(null)
     history.pushState(
       {},
       '',
@@ -42,7 +58,7 @@ export function App() {
   ) => {
     event.preventDefault()
     setBusy(true)
-    setMessage('')
+    setFeedback(null)
     const data = Object.fromEntries(new FormData(event.currentTarget))
     try {
       const result = await request<Session>(path, {
@@ -50,9 +66,9 @@ export function App() {
         body: JSON.stringify(data),
       })
       if (path.endsWith('login')) setSession(result)
-      setMessage(success)
+      if (success) setFeedback({ kind: 'info', text: success })
     } catch (error) {
-      setMessage(safeErrorDetail(error))
+      setFeedback({ kind: 'error', text: safeErrorDetail(error) })
     } finally {
       setBusy(false)
     }
@@ -65,8 +81,8 @@ export function App() {
         setSession={setSession}
         busy={busy}
         setBusy={setBusy}
-        message={message}
-        setMessage={setMessage}
+        feedback={feedback}
+        setFeedback={setFeedback}
       />
     )
   }
@@ -75,7 +91,9 @@ export function App() {
     <main className="identity-main">
       <section className="identity-card" aria-labelledby="app-title">
         <p className="eyebrow">SpotYourSlot</p>
-        <h1 id="app-title">Вход за бизнеса</h1>
+        <h1 id="app-title">
+          {page === 'forgot' ? 'Възстановяване на парола' : 'Вход'}
+        </h1>
         {page === 'login' && (
           <form onSubmit={(event) => submit(event, '/api/auth/login', '')}>
             <Field name="email" label="Имейл" type="email" />
@@ -87,18 +105,31 @@ export function App() {
           </form>
         )}
         {page === 'forgot' && (
-          <form
-            onSubmit={(event) =>
-              submit(
-                event,
-                '/api/auth/password/forgot',
-                'Ако съществува профил, ще получите инструкции.',
-              )
-            }
-          >
-            <Field name="email" label="Имейл" type="email" />
-            <button disabled={busy}>Изпрати инструкции</button>
-          </form>
+          <>
+            <p>
+              Ако съществува профил с този имейл, ще изпратим инструкции за
+              възстановяване.
+            </p>
+            <form
+              onSubmit={(event) =>
+                submit(
+                  event,
+                  '/api/auth/password/forgot',
+                  'Ако съществува профил, ще получите инструкции.',
+                )
+              }
+            >
+              <Field name="email" label="Имейл" type="email" />
+              <button disabled={busy}>Изпрати</button>
+              <button
+                className="link-button"
+                type="button"
+                onClick={() => navigate('login')}
+              >
+                Обратно към вход
+              </button>
+            </form>
+          </>
         )}
         {page === 'reset' && (
           <form
@@ -135,13 +166,31 @@ export function App() {
             <button disabled={busy}>Приеми поканата</button>
           </form>
         )}
-        {message && (
-          <p className="status-message" role="status">
-            {message}
-          </p>
-        )}
+        <FeedbackMessage feedback={feedback} />
       </section>
     </main>
+  )
+}
+
+function FeedbackMessage({ feedback }: { feedback: Feedback | null }) {
+  if (!feedback) return null
+
+  if (feedback.kind === 'error') {
+    return (
+      <p className="status-message status-error" role="alert">
+        {feedback.text}
+      </p>
+    )
+  }
+
+  return (
+    <p
+      className={`status-message status-${feedback.kind}`}
+      role="status"
+      aria-live="polite"
+    >
+      {feedback.text}
+    </p>
   )
 }
 
@@ -159,8 +208,8 @@ type AuthenticatedApplicationProps = {
   setSession: (session: Session | null) => void
   busy: boolean
   setBusy: (busy: boolean) => void
-  message: string
-  setMessage: (message: string) => void
+  feedback: Feedback | null
+  setFeedback: (feedback: Feedback | null) => void
 }
 
 function AuthenticatedApplication({
@@ -168,8 +217,8 @@ function AuthenticatedApplication({
   setSession,
   busy,
   setBusy,
-  message,
-  setMessage,
+  feedback,
+  setFeedback,
 }: AuthenticatedApplicationProps) {
   const initialRoute = readAuthenticatedRoute()
   const [route, setRoute] = useState<AuthenticatedRoute>(
@@ -203,19 +252,21 @@ function AuthenticatedApplication({
     if (nextRoute.kind === 'platform-businesses' && !session.platformAdmin) return
     pushRoute(nextRoute)
     setRoute(nextRoute)
-    setMessage('')
+    setFeedback(null)
   }
 
   const action = async (path: string, body?: object) => {
     setBusy(true)
-    setMessage('')
+    setFeedback(null)
     try {
       const options: RequestInit = { method: 'POST' }
       if (body) options.body = JSON.stringify(body)
       const value = await request<Session>(path, options)
       if (value) setSession(value)
+      return true
     } catch (error) {
-      setMessage(safeErrorDetail(error))
+      setFeedback({ kind: 'error', text: safeErrorDetail(error) })
+      return false
     } finally {
       setBusy(false)
     }
@@ -223,13 +274,13 @@ function AuthenticatedApplication({
 
   const logout = async () => {
     setBusy(true)
-    setMessage('')
+    setFeedback(null)
     try {
       await request('/api/auth/logout', { method: 'POST' })
       history.replaceState({}, '', '/')
       setSession(null)
     } catch (error) {
-      setMessage(safeErrorDetail(error))
+      setFeedback({ kind: 'error', text: safeErrorDetail(error) })
     } finally {
       setBusy(false)
     }
@@ -245,7 +296,13 @@ function AuthenticatedApplication({
       onLogout={logout}
     >
       {route.kind === 'profile' ? (
-        <Profile session={session} busy={busy} message={message} action={action} />
+        <Profile
+          session={session}
+          busy={busy}
+          feedback={feedback}
+          setFeedback={setFeedback}
+          action={action}
+        />
       ) : null}
     </PlatformAdminShell>
   )
@@ -254,11 +311,12 @@ function AuthenticatedApplication({
 type ProfileProps = {
   session: Session
   busy: boolean
-  message: string
-  action: (path: string, body?: object) => Promise<void>
+  feedback: Feedback | null
+  setFeedback: (feedback: Feedback | null) => void
+  action: (path: string, body?: object) => Promise<boolean>
 }
 
-function Profile({ session, busy, message, action }: ProfileProps) {
+function Profile({ session, busy, feedback, setFeedback, action }: ProfileProps) {
   return (
     <section className="content-card" aria-label="Настройки на профила">
       <h2>Настройки</h2>
@@ -283,21 +341,25 @@ function Profile({ session, busy, message, action }: ProfileProps) {
         </label>
       )}
       <form
-        onSubmit={(event) => {
+        onChange={() => setFeedback(null)}
+        onSubmit={async (event) => {
           event.preventDefault()
           const data = Object.fromEntries(new FormData(event.currentTarget))
-          void action('/api/auth/password/change', data)
+          const form = event.currentTarget
+          if (await action('/api/auth/password/change', data)) {
+            form.reset()
+            setFeedback({
+              kind: 'success',
+              text: 'Паролата е променена успешно.',
+            })
+          }
         }}
       >
         <Field name="currentPassword" label="Текуща парола" type="password" />
         <Field name="newPassword" label="Нова парола" type="password" minLength={12} />
-        <button disabled={busy}>Промени паролата</button>
+        <button disabled={busy}>Запази</button>
       </form>
-      {message && (
-        <p role="status" className="status-message">
-          {message}
-        </p>
-      )}
+      <FeedbackMessage feedback={feedback} />
     </section>
   )
 }

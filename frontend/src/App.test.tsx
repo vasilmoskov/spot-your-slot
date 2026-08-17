@@ -56,9 +56,36 @@ describe('identity application', () => {
     })
     fireEvent.change(screen.getByLabelText('Парола'), { target: { value: 'wrong password' } })
     fireEvent.click(screen.getByRole('button', { name: 'Вход' }))
-    expect(await screen.findByRole('status')).toHaveTextContent(
+    const error = await screen.findByRole('alert')
+    expect(error).toHaveTextContent(
       'Имейлът или паролата са невалидни.',
     )
+    expect(error).toHaveClass('status-error')
+  })
+
+  it('shows recovery guidance and returns accessibly to login with browser history', async () => {
+    render(<App />)
+    expect(screen.getByRole('heading', { name: 'Вход' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Забравена парола' }))
+    expect(
+      screen.getByRole('heading', { name: 'Възстановяване на парола' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/Ако съществува профил с този имейл/),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Изпрати' })).toBeInTheDocument()
+
+    const back = screen.getByRole('button', { name: 'Обратно към вход' })
+    back.focus()
+    expect(back).toHaveFocus()
+    fireEvent.click(back)
+    expect(screen.getByRole('heading', { name: 'Вход' })).toBeInTheDocument()
+
+    history.back()
+    expect(
+      await screen.findByRole('heading', { name: 'Възстановяване на парола' }),
+    ).toBeInTheDocument()
   })
 
   it('submits forgot-password and shows the enumeration-safe response', async () => {
@@ -68,7 +95,7 @@ describe('identity application', () => {
     fireEvent.change(screen.getByLabelText('Имейл'), {
       target: { value: 'person@example.invalid' },
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Изпрати инструкции' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Изпрати' }))
     expect(await screen.findByRole('status')).toHaveTextContent(
       'Ако съществува профил, ще получите инструкции.',
     )
@@ -105,7 +132,7 @@ describe('identity application', () => {
     )
   })
 
-  it('keeps Business selection, password change and logout reachable', async () => {
+  it('keeps Business selection, successful password change and logout reachable', async () => {
     mockedRequest.mockResolvedValue(session)
     render(<App />)
     const businessSelect = await screen.findByLabelText('Избери бизнес')
@@ -123,19 +150,48 @@ describe('identity application', () => {
     fireEvent.change(screen.getByLabelText('Нова парола'), {
       target: { value: 'new secure passphrase' },
     })
-    fireEvent.submit(screen.getByLabelText('Текуща парола').closest('form')!)
+    fireEvent.click(screen.getByRole('button', { name: 'Запази' }))
     await waitFor(() =>
       expect(mockedRequest).toHaveBeenCalledWith(
         '/api/auth/password/change',
         expect.objectContaining({ body: expect.stringContaining('new secure passphrase') }),
       ),
     )
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Паролата е променена успешно.',
+    )
+    expect(screen.getByRole('status')).toHaveClass('status-success')
+    expect(screen.getByLabelText('Текуща парола')).toHaveValue('')
+    expect(screen.getByLabelText('Нова парола')).toHaveValue('')
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Изход' })[0]!)
     await waitFor(() =>
       expect(mockedRequest).toHaveBeenCalledWith('/api/auth/logout', { method: 'POST' }),
     )
-    expect(await screen.findByRole('heading', { name: 'Вход за бизнеса' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Вход' })).toBeInTheDocument()
+  })
+
+  it('retains password fields and shows no false success after failure', async () => {
+    mockedRequest
+      .mockResolvedValueOnce(session)
+      .mockRejectedValueOnce(new Error('Текущата парола е невалидна.'))
+    render(<App />)
+
+    const currentPassword = await screen.findByLabelText('Текуща парола')
+    const newPassword = screen.getByLabelText('Нова парола')
+    fireEvent.change(currentPassword, { target: { value: 'wrong current password' } })
+    fireEvent.change(newPassword, { target: { value: 'new secure passphrase' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Запази' }))
+
+    const error = await screen.findByRole('alert')
+    expect(error).toHaveTextContent('Текущата парола е невалидна.')
+    expect(error).toHaveClass('status-error')
+    expect(currentPassword).toHaveValue('wrong current password')
+    expect(newPassword).toHaveValue('new secure passphrase')
+    expect(screen.queryByText('Паролата е променена успешно.')).not.toBeInTheDocument()
+
+    fireEvent.change(newPassword, { target: { value: 'another secure passphrase' } })
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('shows platform navigation to PLATFORM_ADMIN and synchronizes browser navigation', async () => {

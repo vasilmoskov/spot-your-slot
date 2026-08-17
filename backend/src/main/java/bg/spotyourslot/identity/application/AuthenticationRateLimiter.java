@@ -60,6 +60,11 @@ public class AuthenticationRateLimiter {
         return counters.size();
     }
 
+    public synchronized void reset(
+            String flow, String clientAddress, String sensitiveInput) {
+        counters.remove(fingerprint(flow, clientAddress, sensitiveInput));
+    }
+
     private void removeExpired(Instant now) {
         Iterator<Counter> iterator = counters.values().iterator();
         while (iterator.hasNext()) {
@@ -81,5 +86,6 @@ public class AuthenticationRateLimiter {
         }
     }
 
-    private record Counter(Instant startedAt, int count) {}
+    private record Counter(Instant startedAt, int count) {
+    }
 }

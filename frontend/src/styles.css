@@ -146,6 +146,18 @@ label {
   background: var(--color-action-primary-subtle);
 }
 
+.status-error {
+  border-left: 0.25rem solid var(--color-danger);
+  color: var(--color-danger);
+  background: var(--color-surface);
+}
+
+.status-success {
+  border-left: 0.25rem solid var(--color-success);
+  color: var(--color-success);
+  background: var(--color-surface);
+}
+
 .link-button,
 .secondary-button {
   color: var(--color-action-primary);
@@ -153,6 +165,8 @@ label {
 }
 
 .link-button {
+  width: auto;
+  justify-self: start;
   border-color: transparent;
   text-decoration: underline;
 }
@@ -267,6 +281,12 @@ label {
   .sidebar-brand,
   .sidebar-account {
     display: grid;
+  }
+
+  form button,
+  .sidebar-account button {
+    width: auto;
+    justify-self: start;
   }
 
   .mobile-account {

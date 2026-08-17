@@ -226,6 +226,39 @@ class AuthenticationApiIntegrationTests extends PostgresIntegrationTest {
     }
 
     @Test
+    void successfulLoginResetsOnlyTheMatchingRateLimitEntry() throws Exception {
+        String clientAddress = "successful-reset-client";
+        for (int attempt = 0; attempt < 9; attempt++) {
+            loginAttempt(EMAIL, "wrong password value", clientAddress)
+                    .andExpect(status().isUnauthorized());
+        }
+
+        loginAttempt(EMAIL, PASSWORD, clientAddress)
+                .andExpect(status().isOk());
+
+        for (int attempt = 0; attempt < 10; attempt++) {
+            loginAttempt(EMAIL, "wrong password value", clientAddress)
+                    .andExpect(status().isUnauthorized());
+        }
+        loginAttempt(EMAIL, "wrong password value", clientAddress)
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.code").value("RATE_LIMITED"));
+    }
+
+    @Test
+    void rateLimitedCorrectCredentialsCannotBypassTheActiveRestriction() throws Exception {
+        String clientAddress = "blocked-correct-password-client";
+        for (int attempt = 0; attempt < 10; attempt++) {
+            loginAttempt(EMAIL, "wrong password value", clientAddress)
+                    .andExpect(status().isUnauthorized());
+        }
+
+        loginAttempt(EMAIL, PASSWORD, clientAddress)
+                .andExpect(status().isTooManyRequests())
+                .andExpect(jsonPath("$.code").value("RATE_LIMITED"));
+    }
+
+    @Test
     void corsAllowsExactOriginOnly() throws Exception {
         mvc.perform(options("/api/auth/session")
                         .header("Origin", "http://localhost:5173")
@@ -245,6 +278,18 @@ class AuthenticationApiIntegrationTests extends PostgresIntegrationTest {
                         .content(loginJson(EMAIL, PASSWORD)))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("AUTH_FAILED"));
+    }
+
+    private org.springframework.test.web.servlet.ResultActions loginAttempt(
+            String email, String password, String clientAddress) throws Exception {
+        return mvc.perform(post("/api/auth/login")
+                .with(csrf())
+                .with(request -> {
+                    request.setRemoteAddr(clientAddress);
+                    return request;
+                })
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(loginJson(email, password)));
     }
 
     private Cookie login() throws Exception {
