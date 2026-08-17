@@ -90,98 +90,94 @@ export function App() {
   return (
     <main className="identity-main">
       <section className="identity-card" aria-labelledby="app-title">
-        <p className="eyebrow">SpotYourSlot</p>
-        <h1 id="app-title">
-          {page === 'forgot' ? 'Забравена парола?' : 'Вход'}
-        </h1>
-        {page === 'login' && (
-          <form
-            className="compact-form"
-            onSubmit={(event) => submit(event, '/api/auth/login', '')}
-          >
-            <Field name="email" label="Имейл" type="email" />
-            <Field name="password" label="Парола" type="password" />
-            <button className="form-primary-action" disabled={busy}>
-              Вход
-            </button>
-            <button
-              className="form-secondary-action"
-              type="button"
-              onClick={() => navigate('forgot')}
-            >
-              Забравена парола
-            </button>
-          </form>
-        )}
-        {page === 'forgot' && (
-          <>
-            <p>Въведи имейла си, за да получиш инструкции.</p>
-            <form
-              className="compact-form"
-              onSubmit={(event) =>
-                submit(
-                  event,
-                  '/api/auth/password/forgot',
-                  'Ако съществува профил, ще получите инструкции.',
-                )
-              }
-            >
+        <div className="compact-content">
+          <p className="eyebrow">SpotYourSlot</p>
+          <h1 id="app-title">
+            {page === 'forgot' ? 'Забравена парола?' : 'Вход'}
+          </h1>
+          {page === 'login' && (
+            <form onSubmit={(event) => submit(event, '/api/auth/login', '')}>
               <Field name="email" label="Имейл" type="email" />
+              <Field name="password" label="Парола" type="password" />
               <button className="form-primary-action" disabled={busy}>
-                Изпрати
+                Вход
               </button>
               <button
                 className="form-secondary-action"
                 type="button"
-                onClick={() => navigate('login')}
+                onClick={() => navigate('forgot')}
               >
-                Обратно към вход
+                Забравена парола
               </button>
             </form>
-          </>
-        )}
-        {page === 'reset' && (
-          <form
-            className="compact-form"
-            onSubmit={(event) =>
-              submit(event, '/api/auth/password/reset', 'Паролата е променена.')
-            }
-          >
-            <input
-              type="hidden"
-              name="token"
-              value={new URLSearchParams(location.search).get('token') ?? ''}
-            />
-            <Field name="password" label="Нова парола" type="password" minLength={8} />
-            <button className="form-primary-action" disabled={busy}>
-              Промени паролата
-            </button>
-          </form>
-        )}
-        {page === 'invitation' && (
-          <form
-            className="compact-form"
-            onSubmit={(event) =>
-              submit(
-                event,
-                '/api/auth/invitations/accept',
-                'Профилът е създаден. Вече можете да влезете.',
-              )
-            }
-          >
-            <input
-              type="hidden"
-              name="token"
-              value={new URLSearchParams(location.search).get('token') ?? ''}
-            />
-            <Field name="displayName" label="Име" />
-            <Field name="password" label="Парола" type="password" minLength={8} />
-            <button className="form-primary-action" disabled={busy}>
-              Приеми поканата
-            </button>
-          </form>
-        )}
-        <FeedbackMessage feedback={feedback} />
+          )}
+          {page === 'forgot' && (
+            <>
+              <p>Въведи имейла си, за да получиш инструкции.</p>
+              <form
+                onSubmit={(event) =>
+                  submit(
+                    event,
+                    '/api/auth/password/forgot',
+                    'Ако съществува профил, ще получите инструкции.',
+                  )
+                }
+              >
+                <Field name="email" label="Имейл" type="email" />
+                <button className="form-primary-action" disabled={busy}>
+                  Изпрати
+                </button>
+                <button
+                  className="form-secondary-action"
+                  type="button"
+                  onClick={() => navigate('login')}
+                >
+                  Обратно към вход
+                </button>
+              </form>
+            </>
+          )}
+          {page === 'reset' && (
+            <form
+              onSubmit={(event) =>
+                submit(event, '/api/auth/password/reset', 'Паролата е променена.')
+              }
+            >
+              <input
+                type="hidden"
+                name="token"
+                value={new URLSearchParams(location.search).get('token') ?? ''}
+              />
+              <Field name="password" label="Нова парола" type="password" minLength={8} />
+              <button className="form-primary-action" disabled={busy}>
+                Промени паролата
+              </button>
+            </form>
+          )}
+          {page === 'invitation' && (
+            <form
+              onSubmit={(event) =>
+                submit(
+                  event,
+                  '/api/auth/invitations/accept',
+                  'Профилът е създаден. Вече можете да влезете.',
+                )
+              }
+            >
+              <input
+                type="hidden"
+                name="token"
+                value={new URLSearchParams(location.search).get('token') ?? ''}
+              />
+              <Field name="displayName" label="Име" />
+              <Field name="password" label="Парола" type="password" minLength={8} />
+              <button className="form-primary-action" disabled={busy}>
+                Приеми поканата
+              </button>
+            </form>
+          )}
+          <FeedbackMessage feedback={feedback} />
+        </div>
       </section>
     </main>
   )
@@ -377,69 +373,71 @@ type ProfileProps = {
 
 function Profile({ session, busy, feedback, setFeedback, action }: ProfileProps) {
   return (
-    <section className="content-card" aria-label="Настройки на профила">
-      <h2>Настройки</h2>
-      {session.businesses.length > 1 && (
-        <label>
-          Избери бизнес
-          <select
-            value={session.activeBusinessId ?? ''}
-            onChange={(event) =>
-              action('/api/auth/business', { businessId: event.target.value })
-            }
+    <div className="platform-content">
+      <section className="content-card" aria-label="Настройки на профила">
+        <div className="compact-content">
+          {session.businesses.length > 1 && (
+            <label>
+              Избери бизнес
+              <select
+                value={session.activeBusinessId ?? ''}
+                onChange={(event) =>
+                  action('/api/auth/business', { businessId: event.target.value })
+                }
+              >
+                <option value="" disabled>
+                  Изберете
+                </option>
+                {session.businesses.map((business) => (
+                  <option key={business.id} value={business.id}>
+                    {business.displayName} — {business.role}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <form
+            onChange={() => setFeedback(null)}
+            onSubmit={async (event) => {
+              event.preventDefault()
+              setFeedback(null)
+              const data = Object.fromEntries(new FormData(event.currentTarget))
+              const currentPassword = String(data.currentPassword ?? '')
+              const newPassword = String(data.newPassword ?? '')
+              const passwordConfirmation = String(data.passwordConfirmation ?? '')
+              if (newPassword !== passwordConfirmation) {
+                setFeedback({
+                  kind: 'error',
+                  text: 'Паролите не съвпадат.',
+                })
+                return
+              }
+              const form = event.currentTarget
+              if (await action('/api/auth/password/change', { currentPassword, newPassword })) {
+                form.reset()
+                setFeedback({
+                  kind: 'success',
+                  text: 'Паролата е променена успешно.',
+                })
+              }
+            }}
           >
-            <option value="" disabled>
-              Изберете
-            </option>
-            {session.businesses.map((business) => (
-              <option key={business.id} value={business.id}>
-                {business.displayName} — {business.role}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
-      <form
-        className="compact-form"
-        onChange={() => setFeedback(null)}
-        onSubmit={async (event) => {
-          event.preventDefault()
-          setFeedback(null)
-          const data = Object.fromEntries(new FormData(event.currentTarget))
-          const currentPassword = String(data.currentPassword ?? '')
-          const newPassword = String(data.newPassword ?? '')
-          const passwordConfirmation = String(data.passwordConfirmation ?? '')
-          if (newPassword !== passwordConfirmation) {
-            setFeedback({
-              kind: 'error',
-              text: 'Новата парола и потвърждението не съвпадат.',
-            })
-            return
-          }
-          const form = event.currentTarget
-          if (await action('/api/auth/password/change', { currentPassword, newPassword })) {
-            form.reset()
-            setFeedback({
-              kind: 'success',
-              text: 'Паролата е променена успешно.',
-            })
-          }
-        }}
-      >
-        <h2>Смяна на парола</h2>
-        <Field name="currentPassword" label="Текуща парола" type="password" />
-        <Field name="newPassword" label="Нова парола" type="password" minLength={8} />
-        <Field
-          name="passwordConfirmation"
-          label="Потвърди новата парола"
-          type="password"
-          minLength={8}
-        />
-        <button className="form-primary-action" disabled={busy}>
-          Запази
-        </button>
-      </form>
-      <FeedbackMessage feedback={feedback} />
-    </section>
+            <h2>Смяна на парола</h2>
+            <Field name="currentPassword" label="Текуща парола" type="password" />
+            <Field name="newPassword" label="Нова парола" type="password" minLength={8} />
+            <Field
+              name="passwordConfirmation"
+              label="Потвърди новата парола"
+              type="password"
+              minLength={8}
+            />
+            <button className="form-primary-action" disabled={busy}>
+              Запази
+            </button>
+          </form>
+          <FeedbackMessage feedback={feedback} />
+        </div>
+      </section>
+    </div>
   )
 }

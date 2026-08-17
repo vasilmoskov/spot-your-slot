@@ -33,8 +33,15 @@ describe('identity application', () => {
     mockedRequest.mockRejectedValueOnce(new Error('Необходим е вход.')).mockResolvedValueOnce(session)
     render(<App />)
     const loginPassword = screen.getByLabelText('Парола')
+    const identityCard = loginPassword.closest('.identity-card')
+    const loginContent = screen.getByRole('heading', { name: 'Вход' }).closest(
+      '.compact-content',
+    )
+    expect(identityCard?.parentElement).toHaveClass('identity-main')
+    expect(document.querySelector('.platform-content')).toBeNull()
     expect(loginPassword).not.toHaveAttribute('minlength')
-    expect(loginPassword.closest('form')).toHaveClass('compact-form')
+    expect(loginContent).toContainElement(screen.getByText('SpotYourSlot'))
+    expect(loginContent).toContainElement(loginPassword.closest('form'))
     expect(screen.getByRole('button', { name: 'Вход' })).toHaveClass(
       'form-primary-action',
     )
@@ -110,8 +117,15 @@ describe('identity application', () => {
     )
 
     const back = screen.getByRole('button', { name: 'Обратно към вход' })
+    const recoveryContent = screen
+      .getByRole('heading', { name: 'Забравена парола?' })
+      .closest('.compact-content')
+    expect(recoveryContent).toContainElement(screen.getByText('SpotYourSlot'))
+    expect(recoveryContent).toContainElement(
+      screen.getByText('Въведи имейла си, за да получиш инструкции.'),
+    )
+    expect(recoveryContent).toContainElement(back.closest('form'))
     expect(back).toHaveClass('form-secondary-action')
-    expect(back.closest('form')).toHaveClass('compact-form')
     back.focus()
     expect(back).toHaveFocus()
     fireEvent.click(back)
@@ -131,8 +145,12 @@ describe('identity application', () => {
       target: { value: 'person@example.invalid' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Изпрати' }))
-    expect(await screen.findByRole('status')).toHaveTextContent(
+    const feedback = await screen.findByRole('status')
+    expect(feedback).toHaveTextContent(
       'Ако съществува профил, ще получите инструкции.',
+    )
+    expect(feedback.closest('.compact-content')).toContainElement(
+      screen.getByRole('heading', { name: 'Забравена парола?' }),
     )
   })
 
@@ -141,7 +159,9 @@ describe('identity application', () => {
     mockedRequest.mockRejectedValueOnce(new Error('Необходим е вход.')).mockResolvedValueOnce(undefined)
     render(<App />)
     expect(screen.getByLabelText('Парола')).toHaveAttribute('minlength', '8')
-    expect(screen.getByLabelText('Парола').closest('form')).toHaveClass('compact-form')
+    expect(screen.getByLabelText('Парола').closest('.compact-content')).toContainElement(
+      screen.getByRole('heading', { name: 'Вход' }),
+    )
     fireEvent.change(screen.getByLabelText('Име'), { target: { value: 'Иван' } })
     fireEvent.change(screen.getByLabelText('Парола'), {
       target: { value: 'secure passphrase' },
@@ -200,7 +220,9 @@ describe('identity application', () => {
     render(<App />)
     const resetPassword = screen.getByLabelText('Нова парола')
     expect(resetPassword).toHaveAttribute('minlength', '8')
-    expect(resetPassword.closest('form')).toHaveClass('compact-form')
+    expect(resetPassword.closest('.compact-content')).toContainElement(
+      screen.getByRole('heading', { name: 'Вход' }),
+    )
     fireEvent.change(resetPassword, {
       target: { value: 'secure passphrase' },
     })
@@ -216,6 +238,17 @@ describe('identity application', () => {
     mockedRequest.mockResolvedValue(session)
     render(<App />)
     const businessSelect = await screen.findByLabelText('Избери бизнес')
+    const profileContent = businessSelect.closest('.compact-content') as HTMLElement
+    const profileCard = profileContent.closest('.content-card') as HTMLElement
+    const platformContent = profileCard?.parentElement
+    expect(platformContent).toHaveClass('platform-content')
+    expect(platformContent?.children).toHaveLength(1)
+    expect(platformContent?.firstElementChild).toBe(profileCard)
+    expect(profileCard).toContainElement(profileContent)
+    expect(screen.queryByRole('heading', { name: 'Настройки' })).not.toBeInTheDocument()
+    expect(profileContent).toContainElement(
+      screen.getByRole('heading', { name: 'Смяна на парола' }),
+    )
     fireEvent.change(businessSelect, { target: { value: 'b' } })
     await waitFor(() =>
       expect(mockedRequest).toHaveBeenCalledWith(
@@ -245,8 +278,8 @@ describe('identity application', () => {
       'type',
       'password',
     )
-    expect(screen.getByRole('button', { name: 'Запази' }).closest('form')).toHaveClass(
-      'compact-form',
+    expect(profileContent).toContainElement(
+      screen.getByRole('button', { name: 'Запази' }).closest('form'),
     )
     fireEvent.click(screen.getByRole('button', { name: 'Запази' }))
     await waitFor(() =>
@@ -266,6 +299,7 @@ describe('identity application', () => {
       'Паролата е променена успешно.',
     )
     expect(screen.getByRole('status')).toHaveClass('status-success')
+    expect(profileContent).toContainElement(screen.getByRole('status'))
     expect(screen.getByLabelText('Текуща парола')).toHaveValue('')
     expect(screen.getByLabelText('Нова парола')).toHaveValue('')
     expect(screen.getByLabelText('Потвърди новата парола')).toHaveValue('')
@@ -318,7 +352,7 @@ describe('identity application', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Запази' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Новата парола и потвърждението не съвпадат.',
+      'Паролите не съвпадат.',
     )
     expect(screen.getByRole('alert')).toHaveClass('status-error')
     expect(currentPassword).toHaveValue('current passphrase')

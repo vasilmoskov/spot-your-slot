@@ -105,16 +105,17 @@ form {
   margin: var(--space-5) 0;
 }
 
-.compact-form {
+.compact-content {
   width: 100%;
   max-width: 32rem;
   margin-inline: auto;
+  text-align: left;
 }
 
-.compact-form .form-primary-action,
-.compact-form .form-secondary-action {
+.compact-content .form-primary-action,
+.compact-content .form-secondary-action {
   width: auto;
-  justify-self: center;
+  justify-self: start;
 }
 
 label {
@@ -154,9 +155,8 @@ label {
 }
 
 .status-message {
-  width: min(100%, 32rem);
+  width: 100%;
   margin: var(--space-5) 0 0;
-  margin-inline: auto;
   padding: var(--space-4);
   border-radius: var(--radius-control);
   background: var(--color-action-primary-subtle);
@@ -264,17 +264,17 @@ label {
 }
 
 .platform-page-header,
-.content-card {
+.platform-content {
+  width: min(100%, 70rem);
   margin-inline: auto;
 }
 
 .platform-page-header {
-  width: min(100%, 70rem);
   margin-bottom: var(--space-5);
 }
 
-.content-card {
-  width: min(100%, 70rem);
+.platform-content > .content-card {
+  margin-inline: auto;
 }
 
 @media (min-width: 48rem) {

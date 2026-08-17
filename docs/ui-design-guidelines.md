@@ -107,6 +107,16 @@ and optional information clearly, provide useful input hints, and keep fields in
 a logical keyboard order. Use suitable native input types and autocomplete
 attributes without weakening backend validation.
 
+Identity cards are compact and centered in the viewport. Compact Profile forms
+use the same compact card and internal geometry, centered within the available
+administrative content area beneath the page header. Wide, data-heavy
+administrative screens may use the full administrative content width. Within a
+compact card, center the complete compact content column and left-align its
+headings, explanatory text, labels, inputs, primary and secondary actions,
+validation, and feedback. Fields use the full column width while actions remain
+content-sized. Do not center individual controls independently or constrain a
+form separately from its surrounding heading and feedback.
+
 Show validation near the affected field when possible and provide an accessible
 form-level summary when several errors need attention. Move focus deliberately
 after failed submission when that helps recovery. Preserve entered non-secret
