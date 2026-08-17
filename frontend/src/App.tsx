@@ -92,25 +92,32 @@ export function App() {
       <section className="identity-card" aria-labelledby="app-title">
         <p className="eyebrow">SpotYourSlot</p>
         <h1 id="app-title">
-          {page === 'forgot' ? 'Възстановяване на парола' : 'Вход'}
+          {page === 'forgot' ? 'Забравена парола?' : 'Вход'}
         </h1>
         {page === 'login' && (
-          <form onSubmit={(event) => submit(event, '/api/auth/login', '')}>
+          <form
+            className="compact-form"
+            onSubmit={(event) => submit(event, '/api/auth/login', '')}
+          >
             <Field name="email" label="Имейл" type="email" />
             <Field name="password" label="Парола" type="password" />
-            <button disabled={busy}>Вход</button>
-            <button className="link-button" type="button" onClick={() => navigate('forgot')}>
+            <button className="form-primary-action" disabled={busy}>
+              Вход
+            </button>
+            <button
+              className="form-secondary-action"
+              type="button"
+              onClick={() => navigate('forgot')}
+            >
               Забравена парола
             </button>
           </form>
         )}
         {page === 'forgot' && (
           <>
-            <p>
-              Ако съществува профил с този имейл, ще изпратим инструкции за
-              възстановяване.
-            </p>
+            <p>Въведи имейла си, за да получиш инструкции.</p>
             <form
+              className="compact-form"
               onSubmit={(event) =>
                 submit(
                   event,
@@ -120,9 +127,11 @@ export function App() {
               }
             >
               <Field name="email" label="Имейл" type="email" />
-              <button disabled={busy}>Изпрати</button>
+              <button className="form-primary-action" disabled={busy}>
+                Изпрати
+              </button>
               <button
-                className="link-button"
+                className="form-secondary-action"
                 type="button"
                 onClick={() => navigate('login')}
               >
@@ -133,6 +142,7 @@ export function App() {
         )}
         {page === 'reset' && (
           <form
+            className="compact-form"
             onSubmit={(event) =>
               submit(event, '/api/auth/password/reset', 'Паролата е променена.')
             }
@@ -142,12 +152,15 @@ export function App() {
               name="token"
               value={new URLSearchParams(location.search).get('token') ?? ''}
             />
-            <Field name="password" label="Нова парола" type="password" minLength={12} />
-            <button disabled={busy}>Промени паролата</button>
+            <Field name="password" label="Нова парола" type="password" minLength={8} />
+            <button className="form-primary-action" disabled={busy}>
+              Промени паролата
+            </button>
           </form>
         )}
         {page === 'invitation' && (
           <form
+            className="compact-form"
             onSubmit={(event) =>
               submit(
                 event,
@@ -162,8 +175,10 @@ export function App() {
               value={new URLSearchParams(location.search).get('token') ?? ''}
             />
             <Field name="displayName" label="Име" />
-            <Field name="password" label="Парола" type="password" minLength={12} />
-            <button disabled={busy}>Приеми поканата</button>
+            <Field name="password" label="Парола" type="password" minLength={8} />
+            <button className="form-primary-action" disabled={busy}>
+              Приеми поканата
+            </button>
           </form>
         )}
         <FeedbackMessage feedback={feedback} />
@@ -195,10 +210,54 @@ function FeedbackMessage({ feedback }: { feedback: Feedback | null }) {
 }
 
 function Field(props: { name: string; label: string; type?: string; minLength?: number }) {
+  const minimumPasswordLengthMessage = (value: string): string => {
+    if (
+      props.type === 'password' &&
+      props.minLength === 8 &&
+      value.length > 0 &&
+      Array.from(value).length < 8
+    ) {
+      return 'Паролата трябва да бъде поне 8 знака.'
+    }
+    return ''
+  }
+
+  const validationMessage = (input: HTMLInputElement): string => {
+    if (input.validity.valueMissing) {
+      if (props.type === 'email') return 'Моля, въведете имейл адрес.'
+      if (props.type === 'password') return 'Моля, въведете парола.'
+      return 'Моля, попълнете това поле.'
+    }
+    if (input.validity.typeMismatch && props.type === 'email') {
+      return 'Моля, въведете валиден имейл адрес.'
+    }
+    if (
+      props.type === 'password' &&
+      props.minLength === 8 &&
+      (input.validity.tooShort || Array.from(input.value).length < 8)
+    ) {
+      return 'Паролата трябва да бъде поне 8 знака.'
+    }
+    return ''
+  }
+
   return (
     <label>
       {props.label}
-      <input required {...props} />
+      <input
+        required
+        {...props}
+        onInvalid={(event) => {
+          event.currentTarget.setCustomValidity('')
+          event.currentTarget.setCustomValidity(validationMessage(event.currentTarget))
+        }}
+        onInput={(event) => {
+          event.currentTarget.setCustomValidity('')
+          event.currentTarget.setCustomValidity(
+            minimumPasswordLengthMessage(event.currentTarget.value),
+          )
+        }}
+      />
     </label>
   )
 }
@@ -341,12 +400,24 @@ function Profile({ session, busy, feedback, setFeedback, action }: ProfileProps)
         </label>
       )}
       <form
+        className="compact-form"
         onChange={() => setFeedback(null)}
         onSubmit={async (event) => {
           event.preventDefault()
+          setFeedback(null)
           const data = Object.fromEntries(new FormData(event.currentTarget))
+          const currentPassword = String(data.currentPassword ?? '')
+          const newPassword = String(data.newPassword ?? '')
+          const passwordConfirmation = String(data.passwordConfirmation ?? '')
+          if (newPassword !== passwordConfirmation) {
+            setFeedback({
+              kind: 'error',
+              text: 'Новата парола и потвърждението не съвпадат.',
+            })
+            return
+          }
           const form = event.currentTarget
-          if (await action('/api/auth/password/change', data)) {
+          if (await action('/api/auth/password/change', { currentPassword, newPassword })) {
             form.reset()
             setFeedback({
               kind: 'success',
@@ -355,9 +426,18 @@ function Profile({ session, busy, feedback, setFeedback, action }: ProfileProps)
           }
         }}
       >
+        <h2>Смяна на парола</h2>
         <Field name="currentPassword" label="Текуща парола" type="password" />
-        <Field name="newPassword" label="Нова парола" type="password" minLength={12} />
-        <button disabled={busy}>Запази</button>
+        <Field name="newPassword" label="Нова парола" type="password" minLength={8} />
+        <Field
+          name="passwordConfirmation"
+          label="Потвърди новата парола"
+          type="password"
+          minLength={8}
+        />
+        <button className="form-primary-action" disabled={busy}>
+          Запази
+        </button>
       </form>
       <FeedbackMessage feedback={feedback} />
     </section>

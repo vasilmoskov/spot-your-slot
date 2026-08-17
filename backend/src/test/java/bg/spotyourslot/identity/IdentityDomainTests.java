@@ -25,11 +25,15 @@ class IdentityDomainTests {
     }
 
     @Test
-    void passwordPolicyUsesLengthWithoutCompositionRules() {
+    void passwordPolicyUsesUnicodeCodePointLengthWithoutCompositionRules() {
         var policy = new PasswordPolicy();
-        assertThatCode(() -> policy.validate("дълга парола 123")).doesNotThrowAnyException();
-        assertThatThrownBy(() -> policy.validate("short"))
-                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> policy.validate("абвгдеж"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Паролата трябва да бъде между 8 и 128 знака.");
+        assertThatCode(() -> policy.validate("абвгдежз")).doesNotThrowAnyException();
+        assertThatCode(() -> policy.validate("🔒abcdefg")).doesNotThrowAnyException();
+        assertThatCode(() -> policy.validate("дълга парола 123"))
+                .doesNotThrowAnyException();
     }
 
     @Test

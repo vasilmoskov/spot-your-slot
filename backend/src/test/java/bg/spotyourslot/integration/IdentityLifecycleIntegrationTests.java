@@ -32,6 +32,8 @@ import org.springframework.test.context.jdbc.Sql;
                 "TRUNCATE user_session,password_reset,owner_invitation,membership,platform_role,app_user,business CASCADE",
         executionPhase = Sql.ExecutionPhase.BEFORE_TEST_METHOD)
 class IdentityLifecycleIntegrationTests extends PostgresIntegrationTest {
+    private static final String MINIMUM_PASSWORD = "абвгдежз";
+
     @Autowired JdbcClient jdbc;
     @Autowired PasswordEncoder encoder;
     @Autowired InvitationService invitations;
@@ -69,10 +71,10 @@ class IdentityLifecycleIntegrationTests extends PostgresIntegrationTest {
         String token = token(last("OWNER_INVITATION", "owner@example.invalid").url());
         assertThat(jdbc.sql("SELECT token_hash FROM owner_invitation").query(String.class).single())
                 .doesNotContain(token);
-        invitations.accept(token, "Owner", "owner secure passphrase");
+        invitations.accept(token, "Owner", MINIMUM_PASSWORD);
         assertThat(jdbc.sql("SELECT role FROM membership").query(String.class).single())
                 .isEqualTo("BUSINESS_OWNER");
-        assertThatThrownBy(() -> invitations.accept(token, "Owner", "owner secure passphrase"))
+        assertThatThrownBy(() -> invitations.accept(token, "Owner", MINIMUM_PASSWORD))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -104,7 +106,7 @@ class IdentityLifecycleIntegrationTests extends PostgresIntegrationTest {
         String token = token(last("PASSWORD_RESET", "owner@example.invalid").url());
         assertThat(jdbc.sql("SELECT token_hash FROM password_reset").query(String.class).single())
                 .doesNotContain(token);
-        recovery.reset(token, "replacement secure password");
+        recovery.reset(token, MINIMUM_PASSWORD);
         assertThat(jdbc.sql("SELECT count(*) FROM user_session WHERE revoked_at IS NOT NULL")
                         .query(Integer.class)
                         .single())
@@ -127,7 +129,7 @@ class IdentityLifecycleIntegrationTests extends PostgresIntegrationTest {
                 currentSession.id(),
                 userId,
                 "original secure password",
-                "replacement secure password");
+                MINIMUM_PASSWORD);
 
         assertThat(authentication.authenticate(currentLogin.token()).orElseThrow().revoked()).isFalse();
         assertThat(authentication.authenticate(otherLogin.token()).orElseThrow().revoked()).isTrue();
@@ -135,7 +137,7 @@ class IdentityLifecycleIntegrationTests extends PostgresIntegrationTest {
                         "change@example.invalid", "original secure password"))
                 .isInstanceOf(org.springframework.security.authentication.BadCredentialsException.class);
         assertThatCode(() -> authentication.login(
-                        "change@example.invalid", "replacement secure password"))
+                        "change@example.invalid", MINIMUM_PASSWORD))
                 .doesNotThrowAnyException();
         assertThat(otherSession.id()).isNotEqualTo(currentSession.id());
     }

@@ -38,8 +38,10 @@ roles rather than repeating literal colors. The initial palette is:
   --color-action-primary: #5b5ce2;
   --color-action-primary-hover: #4747c7;
   --color-success: #168f6b;
+  --color-success-subtle: #ecfdf3;
   --color-warning: #d97706;
   --color-danger: #d92d20;
+  --color-danger-subtle: #fef3f2;
   --color-border: #e4e7ec;
 }
 ```
@@ -48,6 +50,10 @@ Add derived tokens such as subtle state backgrounds, focus rings, disabled
 states, or text-on-action colors only when an implemented component needs them.
 Accessibility and sufficient contrast override exact palette values when
 necessary. Do not communicate meaning through color alone.
+
+Error and success panels use their semantic text color, matching subtle
+background, and a balanced full border. Avoid isolated decorative side borders
+that make a state panel appear visually incomplete.
 
 ## 4. Typography
 

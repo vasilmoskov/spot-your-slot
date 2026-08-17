@@ -18,7 +18,7 @@ reset revokes every session.
 Use Spring Security Argon2id with its v5.8 parameters (16-byte salt, 32-byte
 hash, 16 MiB memory, two iterations, parallelism one) and stable Bouncy Castle.
 Stored hashes carry an `argon2id` identifier for future upgrades. Passwords
-contain 12–128 Unicode code points without composition rules or truncation.
+contain 8–128 Unicode code points without composition rules or truncation.
 Rate-limit attempts and use enumeration-safe responses. Never log passwords.
 
 Invitations, password resets, and Customer cancellation links use at least 256

@@ -261,7 +261,7 @@ Define and validate an MVP password policy that favors length over arbitrary com
 
 Recommended baseline:
 
-- minimum 12 characters;
+- minimum 8 Unicode code points;
 - maximum reasonable length to prevent abuse;
 - allow password managers and passphrases;
 - do not silently truncate passwords;
