@@ -11,11 +11,11 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.security.access.AccessDeniedException;
 
 @Service
 public class AuthenticationService {
@@ -78,7 +78,7 @@ public class AuthenticationService {
             UUID sessionId, UUID userId, String current, String replacement) {
         var user = store.userById(userId).orElseThrow();
         if (!passwords.matches(current, user.passwordHash())) {
-            throw new BadCredentialsException("invalid");
+            throw new CurrentPasswordInvalid();
         }
         policy.validate(replacement);
         Instant now = clock.instant();

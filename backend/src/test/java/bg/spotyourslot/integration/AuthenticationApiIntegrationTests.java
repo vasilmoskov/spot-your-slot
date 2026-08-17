@@ -68,6 +68,7 @@ class AuthenticationApiIntegrationTests extends PostgresIntegrationTest {
                         .content(loginJson(EMAIL, "wrong password value")))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("AUTH_FAILED"))
+                .andExpect(jsonPath("$.detail").value("Имейлът или паролата са невалидни."))
                 .andExpect(content().string(not(containsString(EMAIL))));
 
         mvc.perform(post("/api/auth/login")
@@ -79,6 +80,49 @@ class AuthenticationApiIntegrationTests extends PostgresIntegrationTest {
                 .andExpect(cookie().sameSite("SPOTYOURSESSION", "Lax"))
                 .andExpect(jsonPath("$.businesses.length()").value(1))
                 .andExpect(jsonPath("$.businesses[0].role").value("MANAGER"));
+    }
+
+    @Test
+    void wrongCurrentPasswordPreservesPasswordAndEverySession() throws Exception {
+        Cookie currentSession = login();
+        Cookie otherSession = login();
+        String passwordHash = jdbc.sql("SELECT password_hash FROM app_user WHERE id=:id")
+                .param("id", userId)
+                .query(String.class)
+                .single();
+
+        mvc.perform(post("/api/auth/password/change")
+                        .with(csrf())
+                        .cookie(currentSession)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "currentPassword": "wrong current password",
+                                  "newPassword": "replacement secure password"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("CURRENT_PASSWORD_INVALID"))
+                .andExpect(jsonPath("$.detail").value("Текущата парола е невалидна."))
+                .andExpect(content().string(not(containsString("wrong current password"))))
+                .andExpect(content().string(not(containsString("CurrentPasswordInvalid"))))
+                .andExpect(content().string(not(containsString("password_hash"))));
+
+        assertThatStoredPasswordIsUnchanged(passwordHash);
+        mvc.perform(get("/api/auth/session").cookie(currentSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.userId").value(userId.toString()));
+        mvc.perform(get("/api/auth/session").cookie(otherSession))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.userId").value(userId.toString()));
+        org.assertj.core.api.Assertions.assertThat(jdbc.sql("""
+                                SELECT count(*) FROM user_session
+                                WHERE user_id=:userId AND revoked_at IS NOT NULL
+                                """)
+                        .param("userId", userId)
+                        .query(Integer.class)
+                        .single())
+                .isZero();
     }
 
     @Test
@@ -318,6 +362,18 @@ class AuthenticationApiIntegrationTests extends PostgresIntegrationTest {
 
     private String loginJson(String email, String password) {
         return "{\"email\":\"" + email + "\",\"password\":\"" + password + "\"}";
+    }
+
+    private void assertThatStoredPasswordIsUnchanged(String expectedHash) {
+        String actualHash = jdbc.sql("SELECT password_hash FROM app_user WHERE id=:id")
+                .param("id", userId)
+                .query(String.class)
+                .single();
+        org.assertj.core.api.Assertions.assertThat(actualHash).isEqualTo(expectedHash);
+        org.assertj.core.api.Assertions.assertThat(encoder.matches(PASSWORD, actualHash)).isTrue();
+        org.assertj.core.api.Assertions.assertThat(
+                        encoder.matches("replacement secure password", actualHash))
+                .isFalse();
     }
 
     private UUID createUser(
