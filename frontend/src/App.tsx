@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useState } from 'react'
 import { request, type Session } from './identity/api'
 import {
   PROFILE_ROUTE,
@@ -11,6 +11,7 @@ import {
   type IdentityPage,
 } from './navigation'
 import { PlatformAdminShell } from './platform/PlatformAdminShell'
+import { BusinessList } from './platform/businesses/BusinessList'
 
 const safeErrorDetail = (error: unknown): string =>
   error instanceof Error ? error.message : 'Възникна грешка.'
@@ -281,6 +282,13 @@ function AuthenticatedApplication({
       ? PROFILE_ROUTE
       : initialRoute,
   )
+  const authenticationRequired = useCallback(
+    (detail: string) => {
+      setFeedback({ kind: 'error', text: detail })
+      setSession(null)
+    },
+    [setFeedback, setSession],
+  )
 
   useEffect(() => {
     const synchronizeRoute = () => {
@@ -358,7 +366,9 @@ function AuthenticatedApplication({
           setFeedback={setFeedback}
           action={action}
         />
-      ) : null}
+      ) : (
+        <BusinessList onAuthenticationRequired={authenticationRequired} />
+      )}
     </PlatformAdminShell>
   )
 }

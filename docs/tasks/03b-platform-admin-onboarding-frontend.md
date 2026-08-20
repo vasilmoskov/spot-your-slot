@@ -99,8 +99,12 @@ layout conventions. Do not invent a separate visual specification in this task.
   account view and “Бизнеси”.
 - Never show platform navigation solely because a user has a
   `BUSINESS_OWNER`, `MANAGER`, or `STAFF` Membership.
-- Render a responsive Business list containing only approved summary metadata:
-  display name, slug, BusinessType, status, timezone, version, and update time.
+- Render a responsive Business list containing only approved presentation
+  metadata: display name, slug, BusinessType, status, timezone, and update time.
+  Returned `version` remains part of the typed response and authoritative
+  application state for later `expectedVersion` mutations, but is intentionally
+  not displayed in the list as a UX and metadata-minimization decision, not as a
+  security boundary.
 - Request page 0 with size 50 by default. Provide accessible previous/next
   controls, the current page, and total count without adding search, filters, or
   client-selected sorting.

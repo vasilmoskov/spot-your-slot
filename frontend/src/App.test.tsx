@@ -2,11 +2,38 @@ import '@testing-library/jest-dom/vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
-import { request, type Session } from './identity/api'
+import { ApiError, request, type Session } from './identity/api'
+import { listBusinesses, type BusinessPage } from './platform/businesses/api'
 
-vi.mock('./identity/api', () => ({ request: vi.fn() }))
+vi.mock('./identity/api', async (importOriginal) => {
+  const original = await importOriginal<typeof import('./identity/api')>()
+  return { ...original, request: vi.fn() }
+})
+vi.mock('./platform/businesses/api', async (importOriginal) => {
+  const original = await importOriginal<typeof import('./platform/businesses/api')>()
+  return { ...original, listBusinesses: vi.fn() }
+})
 
 const mockedRequest = vi.mocked(request)
+const mockedListBusinesses = vi.mocked(listBusinesses)
+const businessPage: BusinessPage = {
+  businesses: [
+    {
+      id: 'business-a',
+      slug: 'studio-a',
+      displayName: 'Студио А',
+      businessType: 'BEAUTY_STUDIO',
+      status: 'DRAFT',
+      timezone: 'Europe/Sofia',
+      version: 0,
+      createdAt: '2026-08-19T09:00:00Z',
+      updatedAt: '2026-08-20T12:30:00Z',
+    },
+  ],
+  page: 0,
+  size: 50,
+  totalElements: 1,
+}
 const session: Session = {
   displayName: 'Иван',
   platformAdmin: false,
@@ -21,6 +48,8 @@ beforeEach(() => {
   history.replaceState({}, '', '/')
   mockedRequest.mockReset()
   mockedRequest.mockRejectedValue(new Error('Необходим е вход.'))
+  mockedListBusinesses.mockReset()
+  mockedListBusinesses.mockResolvedValue(businessPage)
 })
 
 afterEach(() => vi.restoreAllMocks())
@@ -369,8 +398,10 @@ describe('identity application', () => {
     render(<App />)
 
     expect(await screen.findByRole('heading', { name: 'Бизнеси' })).toBeInTheDocument()
+    expect(await screen.findByText('Студио А')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Бизнеси' })).toHaveAttribute('aria-current', 'page')
     expect(mockedRequest).toHaveBeenCalledTimes(1)
+    expect(mockedListBusinesses).toHaveBeenCalledWith(0, 50, expect.any(AbortSignal))
 
     history.pushState({}, '', '/#/profile')
     window.dispatchEvent(new PopStateEvent('popstate'))
@@ -379,6 +410,37 @@ describe('identity application', () => {
     history.pushState({}, '', '/#/platform/businesses')
     window.dispatchEvent(new HashChangeEvent('hashchange'))
     expect(await screen.findByRole('heading', { name: 'Бизнеси' })).toBeInTheDocument()
+  })
+
+  it('clears a stale authenticated view when the Business list returns 401', async () => {
+    const adminSession = { ...session, platformAdmin: true }
+    history.replaceState({}, '', '/#/platform/businesses')
+    mockedRequest.mockResolvedValueOnce(adminSession)
+    mockedListBusinesses.mockRejectedValueOnce(
+      new ApiError(401, 'AUTH_REQUIRED', 'Необходим е вход.'),
+    )
+
+    render(<App />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Вход' })).toBeInTheDocument()
+      expect(screen.getByRole('alert')).toHaveTextContent('Необходим е вход.')
+    })
+    expect(screen.queryByRole('link', { name: 'Бизнеси' })).not.toBeInTheDocument()
+  })
+
+  it('does not write Business or authentication state to browser storage', async () => {
+    const browserStorageWrite = vi.spyOn(Storage.prototype, 'setItem')
+    const indexedDatabaseOpen = vi.fn()
+    vi.stubGlobal('indexedDB', { open: indexedDatabaseOpen })
+    history.replaceState({}, '', '/#/platform/businesses')
+    mockedRequest.mockResolvedValueOnce({ ...session, platformAdmin: true })
+
+    render(<App />)
+
+    expect(await screen.findByText('Студио А')).toBeInTheDocument()
+    expect(browserStorageWrite).not.toHaveBeenCalled()
+    expect(indexedDatabaseOpen).not.toHaveBeenCalled()
   })
 
   it.each(['BUSINESS_OWNER', 'MANAGER', 'STAFF'] as const)(

@@ -1,0 +1,261 @@
+import '@testing-library/jest-dom/vitest'
+import { StrictMode } from 'react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { ApiError } from '../../identity/api'
+import { listBusinesses, type BusinessPage } from './api'
+import { BusinessList } from './BusinessList'
+
+vi.mock('./api', async (importOriginal) => {
+  const original = await importOriginal<typeof import('./api')>()
+  return { ...original, listBusinesses: vi.fn() }
+})
+
+const mockedListBusinesses = vi.mocked(listBusinesses)
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason: unknown) => void
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve
+    reject = promiseReject
+  })
+  return { promise, resolve, reject }
+}
+
+const populatedPage: BusinessPage = {
+  businesses: [
+    {
+      id: 'business-a',
+      slug: 'studio-a',
+      displayName: 'Студио А',
+      businessType: 'NAIL_STUDIO',
+      status: 'ACTIVE',
+      timezone: 'Europe/Sofia',
+      version: 3,
+      createdAt: '2026-08-01T09:00:00Z',
+      updatedAt: '2026-08-20T12:30:00Z',
+    },
+  ],
+  page: 0,
+  size: 50,
+  totalElements: 1,
+}
+
+beforeEach(() => {
+  mockedListBusinesses.mockReset()
+})
+
+describe('BusinessList', () => {
+  it('loads page zero with size 50 and renders approved summary metadata once', async () => {
+    mockedListBusinesses.mockResolvedValue(populatedPage)
+
+    render(<BusinessList onAuthenticationRequired={vi.fn()} />)
+
+    expect(screen.getByText('Зареждане на бизнесите…')).toBeInTheDocument()
+    expect(await screen.findByRole('table', { name: 'Списък с бизнеси' }))
+      .toBeInTheDocument()
+    expect(mockedListBusinesses).toHaveBeenCalledWith(
+      0,
+      50,
+      expect.any(AbortSignal),
+    )
+    expect(screen.getAllByText('Студио А')).toHaveLength(1)
+    expect(screen.getByText('studio-a')).toBeInTheDocument()
+    expect(screen.getByText('Студио за маникюр')).toBeInTheDocument()
+    expect(screen.getByText('Активен')).toHaveClass('status-badge-success')
+    expect(screen.getByText('Europe/Sofia')).toBeInTheDocument()
+    expect(screen.getByText('20.08.2026 г., 15:30')).toHaveAttribute(
+      'datetime',
+      '2026-08-20T12:30:00Z',
+    )
+    expect(screen.queryByText('business-a')).not.toBeInTheDocument()
+    expect(screen.queryByText('3')).not.toBeInTheDocument()
+    expect(screen.queryByText('01.08.2026')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link')).not.toBeInTheDocument()
+  })
+
+  it('renders an accessible empty state', async () => {
+    mockedListBusinesses.mockResolvedValue({
+      businesses: [],
+      page: 0,
+      size: 50,
+      totalElements: 0,
+    })
+
+    render(<BusinessList onAuthenticationRequired={vi.fn()} />)
+
+    expect(await screen.findByText('Все още няма създадени бизнеси.'))
+      .toBeInTheDocument()
+  })
+
+  it('notifies App of a stale authenticated session on 401', async () => {
+    const onAuthenticationRequired = vi.fn()
+    mockedListBusinesses.mockRejectedValue(
+      new ApiError(401, 'AUTH_REQUIRED', 'Необходим е вход.'),
+    )
+
+    render(<BusinessList onAuthenticationRequired={onAuthenticationRequired} />)
+
+    await waitFor(() => expect(onAuthenticationRequired).toHaveBeenCalledWith('Необходим е вход.'))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('keeps the authenticated view and renders a dedicated safe 403 state', async () => {
+    mockedListBusinesses.mockRejectedValue(
+      new ApiError(403, 'ACCESS_DENIED', 'Нямате достъп до тази операция.'),
+    )
+
+    render(<BusinessList onAuthenticationRequired={vi.fn()} />)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Нямате достъп до тази операция.',
+    )
+  })
+
+  it('hides malformed failure details and prevents duplicate retries', async () => {
+    let rejectFirstRequest: ((reason: unknown) => void) | undefined
+    mockedListBusinesses.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectFirstRequest = reject
+        }),
+    )
+
+    render(<BusinessList onAuthenticationRequired={vi.fn()} />)
+    expect(mockedListBusinesses).toHaveBeenCalledTimes(1)
+    rejectFirstRequest?.(new Error('SQL select secret_table'))
+    const retry = await screen.findByRole('button', { name: 'Опитай отново' })
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Списъкът с бизнеси не може да бъде зареден.',
+    )
+    expect(screen.queryByText(/SQL|secret_table/)).not.toBeInTheDocument()
+
+    let resolveRetry: ((page: BusinessPage) => void) | undefined
+    mockedListBusinesses.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveRetry = resolve
+        }),
+    )
+    fireEvent.click(retry)
+    fireEvent.click(retry)
+    expect(mockedListBusinesses).toHaveBeenCalledTimes(2)
+    resolveRetry?.(populatedPage)
+    expect(await screen.findByText('Студио А')).toBeInTheDocument()
+  })
+
+  it('does not let an obsolete response replace newer list state', async () => {
+    let resolveObsolete: ((page: BusinessPage) => void) | undefined
+    let resolveCurrent: ((page: BusinessPage) => void) | undefined
+    mockedListBusinesses
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveObsolete = resolve
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveCurrent = resolve
+          }),
+      )
+
+    const { rerender } = render(
+      <BusinessList onAuthenticationRequired={vi.fn()} />,
+    )
+    rerender(<BusinessList onAuthenticationRequired={vi.fn()} />)
+
+    const currentPage: BusinessPage = {
+      ...populatedPage,
+      businesses: [{ ...populatedPage.businesses[0]!, displayName: 'Текущ бизнес' }],
+    }
+    resolveCurrent?.(currentPage)
+    expect(await screen.findByText('Текущ бизнес')).toBeInTheDocument()
+
+    resolveObsolete?.(populatedPage)
+    await waitFor(() => {
+      expect(screen.getByText('Текущ бизнес')).toBeInTheDocument()
+      expect(screen.queryByText('Студио А')).not.toBeInTheDocument()
+    })
+  })
+
+  it('allows only the active StrictMode request to render data', async () => {
+    const replayedRequest = deferred<BusinessPage>()
+    const activeRequest = deferred<BusinessPage>()
+    const signals: AbortSignal[] = []
+    const onAuthenticationRequired = vi.fn()
+    mockedListBusinesses
+      .mockImplementationOnce((_page, _size, signal) => {
+        signals.push(signal!)
+        return replayedRequest.promise
+      })
+      .mockImplementationOnce((_page, _size, signal) => {
+        signals.push(signal!)
+        return activeRequest.promise
+      })
+
+    render(
+      <StrictMode>
+        <BusinessList onAuthenticationRequired={onAuthenticationRequired} />
+      </StrictMode>,
+    )
+
+    expect(mockedListBusinesses).toHaveBeenCalledTimes(2)
+    expect(signals[0]).toHaveProperty('aborted', true)
+    expect(signals[1]).toHaveProperty('aborted', false)
+
+    const currentPage: BusinessPage = {
+      ...populatedPage,
+      businesses: [{ ...populatedPage.businesses[0]!, displayName: 'Активна заявка' }],
+    }
+    activeRequest.resolve(currentPage)
+    expect(await screen.findByText('Активна заявка')).toBeInTheDocument()
+
+    replayedRequest.resolve(populatedPage)
+    await waitFor(() => {
+      expect(screen.getByText('Активна заявка')).toBeInTheDocument()
+      expect(screen.queryByText('Студио А')).not.toBeInTheDocument()
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(onAuthenticationRequired).not.toHaveBeenCalled()
+    })
+  })
+
+  it('ignores authentication errors from canceled StrictMode work', async () => {
+    const replayedRequest = deferred<BusinessPage>()
+    const activeRequest = deferred<BusinessPage>()
+    const signals: AbortSignal[] = []
+    const onAuthenticationRequired = vi.fn()
+    mockedListBusinesses
+      .mockImplementationOnce((_page, _size, signal) => {
+        signals.push(signal!)
+        return replayedRequest.promise
+      })
+      .mockImplementationOnce((_page, _size, signal) => {
+        signals.push(signal!)
+        return activeRequest.promise
+      })
+
+    render(
+      <StrictMode>
+        <BusinessList onAuthenticationRequired={onAuthenticationRequired} />
+      </StrictMode>,
+    )
+
+    expect(signals[0]).toHaveProperty('aborted', true)
+    expect(signals[1]).toHaveProperty('aborted', false)
+    activeRequest.resolve(populatedPage)
+    expect(await screen.findByText('Студио А')).toBeInTheDocument()
+
+    replayedRequest.reject(
+      new ApiError(401, 'AUTH_REQUIRED', 'Необходим е вход.'),
+    )
+    await waitFor(() => {
+      expect(screen.getByText('Студио А')).toBeInTheDocument()
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(onAuthenticationRequired).not.toHaveBeenCalled()
+    })
+  })
+})

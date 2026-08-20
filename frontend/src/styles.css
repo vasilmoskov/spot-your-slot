@@ -277,6 +277,138 @@ label {
   margin-inline: auto;
 }
 
+.business-list-state,
+.business-table-container {
+  padding: var(--space-5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+
+.business-list-state {
+  margin: 0;
+}
+
+.business-table-container {
+  overflow-x: auto;
+}
+
+.business-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.business-table th,
+.business-table td {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.business-table th {
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+.business-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.75rem;
+  padding: var(--space-1) var(--space-2);
+  border-radius: 999px;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.status-badge-neutral {
+  color: var(--color-text-secondary);
+  background: var(--color-page-background);
+}
+
+.status-badge-success {
+  color: var(--color-success);
+  background: var(--color-success-subtle);
+}
+
+.status-badge-warning {
+  color: var(--color-warning);
+  background: var(--color-page-background);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 47.999rem) {
+  .business-table-container {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    overflow: visible;
+  }
+
+  .business-table,
+  .business-table tbody,
+  .business-table tr,
+  .business-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .business-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+  }
+
+  .business-table tr {
+    margin-bottom: var(--space-4);
+    padding: var(--space-4);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-card);
+    background: var(--color-surface);
+    box-shadow: var(--shadow-card);
+  }
+
+  .business-table td,
+  .business-table tbody tr:last-child td {
+    display: grid;
+    grid-template-columns: minmax(6.5rem, 0.4fr) minmax(0, 1fr);
+    gap: var(--space-3);
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--color-border);
+    overflow-wrap: anywhere;
+  }
+
+  .business-table td:last-child {
+    border-bottom: 0;
+  }
+
+  .business-table td::before {
+    content: attr(data-label);
+    color: var(--color-text-secondary);
+    font-size: 0.875rem;
+    font-weight: 700;
+  }
+}
+
 @media (min-width: 48rem) {
   .platform-shell {
     display: grid;
