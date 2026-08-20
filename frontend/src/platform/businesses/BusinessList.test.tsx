@@ -72,7 +72,14 @@ describe('BusinessList', () => {
     expect(screen.queryByText('business-a')).not.toBeInTheDocument()
     expect(screen.queryByText('3')).not.toBeInTheDocument()
     expect(screen.queryByText('01.08.2026')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+    expect(screen.getByText('Страница 1')).toBeInTheDocument()
+    expect(screen.getByText('Общо бизнеси: 1')).toBeInTheDocument()
+    expect(
+      screen.getByRole('navigation', { name: 'Странициране на бизнесите' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Предишна' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Следваща' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: /отвори/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('link')).not.toBeInTheDocument()
   })
 
@@ -88,6 +95,94 @@ describe('BusinessList', () => {
 
     expect(await screen.findByText('Все още няма създадени бизнеси.'))
       .toBeInTheDocument()
+    expect(screen.getByText('Страница 1')).toBeInTheDocument()
+    expect(screen.getByText('Общо бизнеси: 0')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Предишна' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Следваща' })).toBeDisabled()
+  })
+
+  it('requests exact next and previous pages while clearing stale rows', async () => {
+    mockedListBusinesses.mockResolvedValueOnce({
+      ...populatedPage,
+      totalElements: 101,
+    })
+    const nextRequest = deferred<BusinessPage>()
+    mockedListBusinesses.mockImplementationOnce(() => nextRequest.promise)
+
+    render(<BusinessList onAuthenticationRequired={vi.fn()} />)
+
+    const next = await screen.findByRole('button', { name: 'Следваща' })
+    const previous = screen.getByRole('button', { name: 'Предишна' })
+    expect(previous).toBeDisabled()
+    expect(next).toBeEnabled()
+
+    fireEvent.click(next)
+    fireEvent.click(next)
+    expect(screen.getByText('Зареждане на бизнесите…')).toBeInTheDocument()
+    expect(screen.queryByText('Студио А')).not.toBeInTheDocument()
+    expect(mockedListBusinesses).toHaveBeenCalledTimes(2)
+    expect(mockedListBusinesses).toHaveBeenLastCalledWith(
+      1,
+      50,
+      expect.any(AbortSignal),
+    )
+
+    nextRequest.resolve({
+      ...populatedPage,
+      businesses: [{ ...populatedPage.businesses[0]!, displayName: 'Студио Б' }],
+      page: 1,
+      totalElements: 101,
+    })
+    expect(await screen.findByText('Студио Б')).toBeInTheDocument()
+    expect(screen.getByText('Страница 2')).toBeInTheDocument()
+    expect(screen.getByText('Общо бизнеси: 101')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Предишна' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Следваща' })).toBeEnabled()
+
+    mockedListBusinesses.mockResolvedValueOnce({
+      ...populatedPage,
+      totalElements: 101,
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Предишна' }))
+    expect(mockedListBusinesses).toHaveBeenLastCalledWith(
+      0,
+      50,
+      expect.any(AbortSignal),
+    )
+    expect(await screen.findByText('Студио А')).toBeInTheDocument()
+  })
+
+  it('disables Next on the final page', async () => {
+    mockedListBusinesses.mockResolvedValue({
+      ...populatedPage,
+      page: 2,
+      size: 50,
+      totalElements: 101,
+    })
+
+    render(<BusinessList onAuthenticationRequired={vi.fn()} />)
+
+    expect(await screen.findByText('Страница 3')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Предишна' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Следваща' })).toBeDisabled()
+  })
+
+  it('allows only Previous from an empty out-of-range page', async () => {
+    mockedListBusinesses.mockResolvedValue({
+      businesses: [],
+      page: 2,
+      size: 50,
+      totalElements: 51,
+    })
+
+    render(<BusinessList onAuthenticationRequired={vi.fn()} />)
+
+    expect(await screen.findByText('Няма бизнеси на тази страница.'))
+      .toBeInTheDocument()
+    expect(screen.getByText('Страница 3')).toBeInTheDocument()
+    expect(screen.getByText('Общо бизнеси: 51')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Предишна' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Следваща' })).toBeDisabled()
   })
 
   it('notifies App of a stale authenticated session on 401', async () => {
@@ -146,6 +241,32 @@ describe('BusinessList', () => {
     expect(await screen.findByText('Студио А')).toBeInTheDocument()
   })
 
+  it('retries the page that failed', async () => {
+    mockedListBusinesses
+      .mockResolvedValueOnce({ ...populatedPage, totalElements: 51 })
+      .mockRejectedValueOnce(new Error('temporary failure'))
+
+    render(<BusinessList onAuthenticationRequired={vi.fn()} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Следваща' }))
+    const retry = await screen.findByRole('button', { name: 'Опитай отново' })
+    mockedListBusinesses.mockResolvedValueOnce({
+      ...populatedPage,
+      businesses: [{ ...populatedPage.businesses[0]!, displayName: 'Втора страница' }],
+      page: 1,
+      totalElements: 51,
+    })
+    fireEvent.click(retry)
+
+    expect(mockedListBusinesses).toHaveBeenLastCalledWith(
+      1,
+      50,
+      expect.any(AbortSignal),
+    )
+    expect(await screen.findByText('Втора страница')).toBeInTheDocument()
+    expect(screen.getByText('Страница 2')).toBeInTheDocument()
+  })
+
   it('does not let an obsolete response replace newer list state', async () => {
     let resolveObsolete: ((page: BusinessPage) => void) | undefined
     let resolveCurrent: ((page: BusinessPage) => void) | undefined
@@ -179,6 +300,68 @@ describe('BusinessList', () => {
     await waitFor(() => {
       expect(screen.getByText('Текущ бизнес')).toBeInTheDocument()
       expect(screen.queryByText('Студио А')).not.toBeInTheDocument()
+    })
+  })
+
+  it('replaces an active page load without losing the requested page', async () => {
+    mockedListBusinesses.mockResolvedValueOnce({
+      ...populatedPage,
+      totalElements: 51,
+    })
+    const obsoleteRequest = deferred<BusinessPage>()
+    const currentRequest = deferred<BusinessPage>()
+    const pageSignals: AbortSignal[] = []
+    mockedListBusinesses
+      .mockImplementationOnce((_page, _size, signal) => {
+        pageSignals.push(signal!)
+        return obsoleteRequest.promise
+      })
+      .mockImplementationOnce((_page, _size, signal) => {
+        pageSignals.push(signal!)
+        return currentRequest.promise
+      })
+    const onAuthenticationRequired = vi.fn()
+    const { rerender } = render(
+      <BusinessList onAuthenticationRequired={onAuthenticationRequired} />,
+    )
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Следваща' }))
+    rerender(<BusinessList onAuthenticationRequired={vi.fn()} />)
+
+    expect(mockedListBusinesses).toHaveBeenNthCalledWith(
+      2,
+      1,
+      50,
+      pageSignals[0],
+    )
+    expect(mockedListBusinesses).toHaveBeenNthCalledWith(
+      3,
+      1,
+      50,
+      pageSignals[1],
+    )
+    expect(pageSignals[0]).toHaveProperty('aborted', true)
+    expect(pageSignals[1]).toHaveProperty('aborted', false)
+
+    currentRequest.resolve({
+      ...populatedPage,
+      businesses: [{ ...populatedPage.businesses[0]!, displayName: 'Текуща страница' }],
+      page: 1,
+      totalElements: 51,
+    })
+    expect(await screen.findByText('Текуща страница')).toBeInTheDocument()
+    expect(screen.getByText('Страница 2')).toBeInTheDocument()
+
+    obsoleteRequest.resolve({
+      ...populatedPage,
+      businesses: [{ ...populatedPage.businesses[0]!, displayName: 'Остаряла страница' }],
+      page: 1,
+      totalElements: 51,
+    })
+    await waitFor(() => {
+      expect(screen.getByText('Текуща страница')).toBeInTheDocument()
+      expect(screen.queryByText('Остаряла страница')).not.toBeInTheDocument()
+      expect(onAuthenticationRequired).not.toHaveBeenCalled()
     })
   })
 
