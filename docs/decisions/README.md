@@ -81,7 +81,7 @@ with the ADR's actual lifecycle status.
 
 | ADR and planned file | Title / problem | Status | Decision date | Recorded date | Related issue |
 |---|---|---|---|---|---|
-| ADR-0001 — `ADR-0001-use-a-modular-monolith.md` | Use a modular monolith | Pending | Unknown | — | #8 |
+| [ADR-0001](ADR-0001-use-a-modular-monolith.md) | Use a modular monolith | Accepted | 2026-08-12 | 2026-08-25 | #1, #2, #3, #4, #5, #8 |
 | ADR-0002 — `ADR-0002-use-postgresql-as-the-transactional-system-of-record.md` | Use PostgreSQL as the transactional system of record | Pending | Unknown | — | #8 |
 | ADR-0003 — `ADR-0003-use-business-scoped-memberships-for-multi-tenancy.md` | Use Business-scoped Memberships for multi-tenancy | Pending | Unknown | — | #8 |
 | ADR-0004 — `ADR-0004-use-immutable-forward-only-flyway-migrations.md` | Use immutable forward-only Flyway migrations | Pending | Unknown | — | #8 |
