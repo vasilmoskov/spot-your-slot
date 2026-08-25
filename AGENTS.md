@@ -33,6 +33,8 @@
 - Do not expand into a later phase or adjacent concern for convenience. If work
   reveals a conflict, missing decision, unexpected dependency, or necessary
   scope expansion, stop and request approval.
+- Follow the ADR process in `docs/decisions/README.md` and review significant
+  decisions at the end of each substantial issue or phase.
 - Never commit credentials, production tokens, or personal data. Do not log
   passwords, raw security tokens, session identifiers, or customer notes.
 - Do not weaken authentication, authorization, tenant checks, validation, or
