@@ -174,7 +174,7 @@ Business status badges use Bulgarian text and both text and visual treatment:
 
 | Technical status | Bulgarian label | Treatment |
 |---|---|---|
-| `DRAFT` | „Чернова“ | Neutral |
+| `DRAFT` | „Предстои активиране“ | Neutral |
 | `ACTIVE` | „Активен“ | Success |
 | `SUSPENDED` | „Временно спрян“ | Warning |
 
@@ -229,10 +229,13 @@ current page without a clear dismissal method.
 
 ### Business list
 
-Use a table on desktop and readable cards on mobile. Show display name, slug,
-BusinessType, translated status, timezone, updated time, and an explicit open
-action. Preserve backend ordering and bounded pagination. Do not introduce
-speculative search, filters, or actions.
+Use a table on desktop and readable cards on mobile. Show display name, slug as
+“Уеб адрес” without constructing a full public URL, BusinessType as “Дейност”,
+translated status, and an explicit open action. Do not display timestamps,
+timezone, IDs, version, or other technical metadata in the overview; returned
+metadata remains available for later application operations and detail, audit,
+or support views. Preserve backend ordering and bounded pagination. Do not
+introduce speculative search, filters, or actions.
 
 ### Business detail
 

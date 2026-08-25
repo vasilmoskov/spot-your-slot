@@ -4,7 +4,6 @@ import { listBusinesses, type BusinessPage } from './api'
 import {
   BUSINESS_STATUS_PRESENTATION,
   businessTypeLabel,
-  formatBusinessUpdatedAt,
 } from './presentation'
 
 type BusinessListProps = {
@@ -137,11 +136,9 @@ export function BusinessList({ onAuthenticationRequired }: BusinessListProps) {
               <thead>
                 <tr>
                   <th scope="col">Име</th>
-                  <th scope="col">Slug</th>
-                  <th scope="col">Тип</th>
+                  <th scope="col">Уеб адрес</th>
+                  <th scope="col">Дейност</th>
                   <th scope="col">Статус</th>
-                  <th scope="col">Часова зона</th>
-                  <th scope="col">Обновен</th>
                 </tr>
               </thead>
               <tbody>
@@ -150,23 +147,14 @@ export function BusinessList({ onAuthenticationRequired }: BusinessListProps) {
                   return (
                     <tr key={business.id}>
                       <td data-label="Име">{business.displayName}</td>
-                      <td data-label="Slug">{business.slug}</td>
-                      <td data-label="Тип">
+                      <td data-label="Уеб адрес">{business.slug}</td>
+                      <td data-label="Дейност">
                         {businessTypeLabel(business.businessType)}
                       </td>
                       <td data-label="Статус">
                         <span className={`status-badge status-badge-${status.tone}`}>
                           {status.label}
                         </span>
-                      </td>
-                      <td data-label="Часова зона">{business.timezone}</td>
-                      <td data-label="Обновен">
-                        <time dateTime={business.updatedAt}>
-                          {formatBusinessUpdatedAt(
-                            business.updatedAt,
-                            business.timezone,
-                          )}
-                        </time>
                       </td>
                     </tr>
                   )

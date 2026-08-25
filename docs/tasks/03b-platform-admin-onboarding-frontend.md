@@ -82,10 +82,10 @@ automated checks.
 
 ## Slice A — shell, navigation, and Business list
 
-Progress: the A1 shell, identity, and Profile foundation is implemented and its
-manual visual review is human-approved. This approval does not complete Slice A;
-the A2 Business-list implementation and the formal Slice A checkpoint remain
-pending.
+Progress: A1 is implemented, manually reviewed, and human-approved. A2 is
+implemented, manually reviewed with the disposable 55-Business environment,
+and human-approved. Slice A is complete. This does not complete issue #6 or this
+task; Slices B–D remain pending, and the overall task status remains `Pending`.
 
 Slice A is the first implementation of the permanent
 `docs/ui-design-guidelines.md`. Apply its product-wide tokens, typography,
@@ -100,11 +100,12 @@ layout conventions. Do not invent a separate visual specification in this task.
 - Never show platform navigation solely because a user has a
   `BUSINESS_OWNER`, `MANAGER`, or `STAFF` Membership.
 - Render a responsive Business list containing only approved presentation
-  metadata: display name, slug, BusinessType, status, timezone, and update time.
-  Returned `version` remains part of the typed response and authoritative
-  application state for later `expectedVersion` mutations, but is intentionally
-  not displayed in the list as a UX and metadata-minimization decision, not as a
-  security boundary.
+  metadata: display name, raw slug presented as “Уеб адрес”, BusinessType
+  presented as “Дейност”, and translated status. The typed response retains
+  `updatedAt`, `timezone`, `version`, `createdAt`, and its other authoritative
+  application data for later operations and detail, audit, or support views,
+  but these fields are intentionally omitted from list presentation as a UX and
+  metadata-minimization decision, not as a security boundary.
 - Request page 0 with size 50 by default. Provide accessible previous/next
   controls, the current page, and total count without adding search, filters, or
   client-selected sorting.

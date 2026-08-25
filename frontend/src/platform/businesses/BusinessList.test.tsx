@@ -61,14 +61,40 @@ describe('BusinessList', () => {
       expect.any(AbortSignal),
     )
     expect(screen.getAllByText('Студио А')).toHaveLength(1)
+    expect(
+      screen.getAllByRole('columnheader').map((heading) => heading.textContent),
+    ).toEqual([
+      'Име',
+      'Уеб адрес',
+      'Дейност',
+      'Статус',
+    ])
+    expect(
+      Array.from(document.querySelectorAll('tbody td')).map((cell) =>
+        cell.getAttribute('data-label'),
+      ),
+    ).toEqual([
+      'Име',
+      'Уеб адрес',
+      'Дейност',
+      'Статус',
+    ])
     expect(screen.getByText('studio-a')).toBeInTheDocument()
+    expect(document.body).not.toHaveTextContent('spotyourslot.bg/studio-a')
     expect(screen.getByText('Студио за маникюр')).toBeInTheDocument()
     expect(screen.getByText('Активен')).toHaveClass('status-badge-success')
-    expect(screen.getByText('Europe/Sofia')).toBeInTheDocument()
-    expect(screen.getByText('20.08.2026 г., 15:30')).toHaveAttribute(
-      'datetime',
-      '2026-08-20T12:30:00Z',
-    )
+    expect(screen.queryByRole('columnheader', { name: 'Часова зона' }))
+      .not.toBeInTheDocument()
+    expect(document.querySelector('[data-label="Часова зона"]')).toBeNull()
+    expect(screen.queryByText('Europe/Sofia')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('columnheader', { name: 'Дата на последно обновяване' }),
+    ).not.toBeInTheDocument()
+    expect(
+      document.querySelector('[data-label="Дата на последно обновяване"]'),
+    ).toBeNull()
+    expect(document.querySelector('time')).toBeNull()
+    expect(document.body).not.toHaveTextContent('2026-08-20T12:30:00Z')
     expect(screen.queryByText('business-a')).not.toBeInTheDocument()
     expect(screen.queryByText('3')).not.toBeInTheDocument()
     expect(screen.queryByText('01.08.2026')).not.toBeInTheDocument()
@@ -81,6 +107,27 @@ describe('BusinessList', () => {
     expect(screen.getByRole('button', { name: 'Следваща' })).toBeDisabled()
     expect(screen.queryByRole('button', { name: /отвори/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('link')).not.toBeInTheDocument()
+  })
+
+  it('presents BARBERSHOP and DRAFT with the approved Bulgarian labels', async () => {
+    mockedListBusinesses.mockResolvedValue({
+      ...populatedPage,
+      businesses: [
+        {
+          ...populatedPage.businesses[0]!,
+          businessType: 'BARBERSHOP',
+          status: 'DRAFT',
+        },
+      ],
+    })
+
+    render(<BusinessList onAuthenticationRequired={vi.fn()} />)
+
+    expect(await screen.findByText('Бръснарница')).toBeInTheDocument()
+    expect(await screen.findByText('Предстои активиране')).toHaveClass(
+      'status-badge-neutral',
+    )
+    expect(screen.queryByText('Чернова')).not.toBeInTheDocument()
   })
 
   it('renders an accessible empty state', async () => {
