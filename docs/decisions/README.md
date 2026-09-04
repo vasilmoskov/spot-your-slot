@@ -88,5 +88,5 @@ with the ADR's actual lifecycle status.
 | [ADR-0005](ADR-0005-use-server-managed-cookie-authentication.md) | Use server-managed cookie authentication | Accepted | 2026-08-12 | 2026-08-25 | #1, #2, #3, #4, #5, #6, #8 |
 | [ADR-0006](ADR-0006-protect-security-tokens-with-hash-only-persistence-and-database-backed-lifecycle-guarantees.md) | Protect security tokens with hash-only persistence and database-backed lifecycle guarantees | Accepted | 2026-08-12 | 2026-08-25 | #1, #3, #4, #6, #8 |
 | [ADR-0007](ADR-0007-use-optimistic-concurrency-for-business-mutations.md) | Use optimistic concurrency for Business mutations | Accepted | 2026-08-14 | 2026-08-25 | #3, #4, #5, #6, #8 |
-| ADR-0008 — `ADR-0008-use-bounded-process-local-authentication-rate-limiting-for-the-mvp.md` | Use bounded process-local authentication rate limiting for the MVP | Pending | Unknown | — | #8 |
+| [ADR-0008](ADR-0008-use-bounded-process-local-authentication-rate-limiting-for-the-mvp.md) | Use bounded process-local authentication rate limiting for the MVP | Accepted | 2026-08-14 | 2026-08-25 | #1, #3, #4, #6, #8 |
 | ADR-0009 — `ADR-0009-test-persistence-and-concurrency-against-real-postgresql.md` | Test persistence and concurrency against real PostgreSQL | Pending | Unknown | — | #8 |
