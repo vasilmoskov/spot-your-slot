@@ -84,7 +84,7 @@ with the ADR's actual lifecycle status.
 | [ADR-0001](ADR-0001-use-a-modular-monolith.md) | Use a modular monolith | Accepted | 2026-08-12 | 2026-08-25 | #1, #2, #3, #4, #5, #8 |
 | [ADR-0002](ADR-0002-use-postgresql-as-the-transactional-system-of-record.md) | Use PostgreSQL as the transactional system of record | Accepted | 2026-08-12 | 2026-08-25 | #1, #2, #3, #4, #5, #8 |
 | [ADR-0003](ADR-0003-use-business-scoped-memberships-for-multi-tenancy.md) | Use Business-scoped Memberships for multi-tenancy | Accepted | 2026-08-12 | 2026-08-25 | #1, #3, #4, #5, #8 |
-| ADR-0004 — `ADR-0004-use-immutable-forward-only-flyway-migrations.md` | Use immutable forward-only Flyway migrations | Pending | Unknown | — | #8 |
+| [ADR-0004](ADR-0004-use-immutable-forward-only-flyway-migrations.md) | Use immutable forward-only Flyway migrations | Accepted | 2026-08-12 | 2026-08-25 | #1, #2, #3, #4, #5, #8 |
 | ADR-0005 — `ADR-0005-use-server-managed-cookie-authentication.md` | Use server-managed cookie authentication | Pending | Unknown | — | #8 |
 | ADR-0006 — `ADR-0006-protect-security-tokens-with-hash-only-persistence-and-database-backed-lifecycle-guarantees.md` | Protect security tokens with hash-only persistence and database-backed lifecycle guarantees | Pending | Unknown | — | #8 |
 | ADR-0007 — `ADR-0007-use-optimistic-concurrency-for-business-mutations.md` | Use optimistic concurrency for Business mutations | Pending | Unknown | — | #8 |
