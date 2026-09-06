@@ -54,7 +54,11 @@ public class PlatformBusinessController {
                 request.businessType(),
                 request.timezone(),
                 request.description(),
-                request.address(),
+                request.city(),
+                request.postalCode(),
+                request.street(),
+                request.streetNumber(),
+                request.addressDetails(),
                 request.phone(),
                 request.contactEmail()));
         URI location = URI.create("/api/platform/businesses/" + created.id());
@@ -74,7 +78,11 @@ public class PlatformBusinessController {
                         request.businessType(),
                         request.timezone(),
                         request.description(),
-                        request.address(),
+                        request.city(),
+                        request.postalCode(),
+                        request.street(),
+                        request.streetNumber(),
+                        request.addressDetails(),
                         request.phone(),
                         request.contactEmail(),
                         request.expectedVersion()));

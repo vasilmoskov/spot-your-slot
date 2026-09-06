@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import bg.spotyourslot.identity.application.AuthenticationService;
 import bg.spotyourslot.identity.application.DevelopmentMailbox;
+import bg.spotyourslot.identity.application.InvalidInvitation;
+import bg.spotyourslot.identity.application.InvitationCredentialMismatch;
 import bg.spotyourslot.identity.application.IdentityRecords;
 import bg.spotyourslot.identity.application.InvitationService;
 import bg.spotyourslot.identity.application.RecoveryService;
@@ -34,13 +36,26 @@ import org.springframework.test.context.jdbc.Sql;
 class IdentityLifecycleIntegrationTests extends PostgresIntegrationTest {
     private static final String MINIMUM_PASSWORD = "абвгдежз";
 
-    @Autowired JdbcClient jdbc;
-    @Autowired PasswordEncoder encoder;
-    @Autowired InvitationService invitations;
-    @Autowired RecoveryService recovery;
-    @Autowired DevelopmentMailbox mailbox;
-    @Autowired AuthenticationService authentication;
-    @Autowired TokenCodec tokens;
+    @Autowired
+    JdbcClient jdbc;
+
+    @Autowired
+    PasswordEncoder encoder;
+
+    @Autowired
+    InvitationService invitations;
+
+    @Autowired
+    RecoveryService recovery;
+
+    @Autowired
+    DevelopmentMailbox mailbox;
+
+    @Autowired
+    AuthenticationService authentication;
+
+    @Autowired
+    TokenCodec tokens;
 
     private UUID admin;
     private UUID business;
@@ -72,29 +87,86 @@ class IdentityLifecycleIntegrationTests extends PostgresIntegrationTest {
         assertThat(jdbc.sql("SELECT token_hash FROM owner_invitation").query(String.class).single())
                 .doesNotContain(token);
         invitations.accept(token, "Owner", MINIMUM_PASSWORD);
+        assertThat(jdbc.sql("SELECT display_name FROM app_user WHERE normalized_email=:email")
+                        .param("email", "owner@example.invalid")
+                        .query(String.class)
+                        .single())
+                .isEqualTo("Owner");
         assertThat(jdbc.sql("SELECT role FROM membership").query(String.class).single())
                 .isEqualTo("BUSINESS_OWNER");
         assertThatThrownBy(() -> invitations.accept(token, "Owner", MINIMUM_PASSWORD))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(InvalidInvitation.class);
     }
 
     @Test
     void invitationExpirationInvalidationAndReplacementAreEnforced() {
         invitations.invite(business, "expired@example.invalid", admin);
         String expired = token(last("OWNER_INVITATION", "expired@example.invalid").url());
-        jdbc.sql("UPDATE owner_invitation SET expires_at=now() WHERE token_hash=:hash")
+        jdbc.sql("""
+                        UPDATE owner_invitation
+                        SET created_at = created_at - interval '1 day',
+                            expires_at = created_at - interval '1 hour'
+                        WHERE token_hash = :hash
+                        """)
                 .param("hash", tokens.hash(expired))
                 .update();
         assertThatThrownBy(() -> invitations.accept(expired, "Owner", "owner secure passphrase"))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(InvalidInvitation.class);
 
         invitations.invite(business, "replacement@example.invalid", admin);
         String first = token(last("OWNER_INVITATION", "replacement@example.invalid").url());
         invitations.invite(business, "replacement@example.invalid", admin);
         String second = token(last("OWNER_INVITATION", "replacement@example.invalid").url());
         assertThatThrownBy(() -> invitations.accept(first, "Owner", "owner secure passphrase"))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(InvalidInvitation.class);
         invitations.accept(second, "Owner", "owner secure passphrase");
+        assertThatThrownBy(() -> invitations.accept(second, "Owner", "owner secure passphrase"))
+                .isInstanceOf(InvalidInvitation.class);
+    }
+
+    @Test
+    void existingUserCanAcceptInvitationsForDifferentBusinesses() {
+        UUID existingUser = user(
+                "shared-owner@example.invalid", "Existing Name", "existing password");
+        UUID otherBusiness = UUID.randomUUID();
+        jdbc.sql("""
+                        INSERT INTO business(
+                            id,slug,display_name,business_type,status,timezone,created_at,updated_at)
+                        VALUES (:id,'business-b','Business B','OTHER','DRAFT','Europe/Sofia',:now,:now)
+                        """)
+                .param("id", otherBusiness)
+                .param("now", now)
+                .update();
+
+        invitations.invite(business, "SHARED-OWNER@example.invalid", admin);
+        String first = token(last("OWNER_INVITATION", "shared-owner@example.invalid").url());
+        assertThatThrownBy(() -> invitations.accept(first, "Ignored Name", "wrong password"))
+                .isInstanceOf(InvitationCredentialMismatch.class);
+        assertThat(jdbc.sql("SELECT count(*) FROM membership WHERE user_id=:user")
+                        .param("user", existingUser)
+                        .query(Integer.class)
+                        .single())
+                .isZero();
+        invitations.accept(first, "Ignored Replacement Name", "existing password");
+        invitations.invite(otherBusiness, "shared-owner@example.invalid", admin);
+        String second = token(last("OWNER_INVITATION", "shared-owner@example.invalid").url());
+        invitations.accept(second, "Also Ignored", "existing password");
+
+        assertThat(jdbc.sql("SELECT count(*) FROM app_user WHERE normalized_email=:email")
+                        .param("email", "shared-owner@example.invalid")
+                        .query(Integer.class)
+                        .single())
+                .isEqualTo(1);
+        assertThat(jdbc.sql("SELECT display_name FROM app_user WHERE id=:id")
+                        .param("id", existingUser)
+                        .query(String.class)
+                        .single())
+                .isEqualTo("Existing Name");
+        assertThat(jdbc.sql("SELECT business_id FROM membership WHERE user_id=:user ORDER BY business_id")
+                        .param("user", existingUser)
+                        .query(UUID.class)
+                        .list())
+                .containsExactlyInAnyOrder(business, otherBusiness);
     }
 
     @Test
@@ -147,7 +219,12 @@ class IdentityLifecycleIntegrationTests extends PostgresIntegrationTest {
         user("reset@example.invalid", "Reset", "original secure password");
         recovery.request("reset@example.invalid");
         String expired = token(last("PASSWORD_RESET", "reset@example.invalid").url());
-        jdbc.sql("UPDATE password_reset SET expires_at=now() WHERE token_hash=:hash")
+        jdbc.sql("""
+                        UPDATE password_reset
+                        SET created_at = created_at - interval '1 day',
+                            expires_at = created_at - interval '1 hour'
+                        WHERE token_hash = :hash
+                        """)
                 .param("hash", tokens.hash(expired))
                 .update();
         assertThatThrownBy(() -> recovery.reset(expired, "replacement secure password"))

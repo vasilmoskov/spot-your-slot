@@ -12,6 +12,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import bg.spotyourslot.identity.application.DevelopmentMailbox;
+import bg.spotyourslot.identity.application.InvitationService;
 import jakarta.servlet.http.Cookie;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -38,6 +40,8 @@ class AuthenticationApiIntegrationTests extends PostgresIntegrationTest {
     @Autowired MockMvc mvc;
     @Autowired JdbcClient jdbc;
     @Autowired PasswordEncoder encoder;
+    @Autowired InvitationService invitations;
+    @Autowired DevelopmentMailbox mailbox;
 
     private UUID userId;
     private UUID businessA;
@@ -150,7 +154,13 @@ class AuthenticationApiIntegrationTests extends PostgresIntegrationTest {
     @Test
     void absoluteAndIdleExpiredSessionsAreRejectedThroughTheFilter() throws Exception {
         Cookie absolute = login();
-        jdbc.sql("UPDATE user_session SET absolute_expires_at=now() WHERE token_hash IS NOT NULL")
+        jdbc.sql("""
+                        UPDATE user_session
+                        SET created_at = created_at - interval '1 day',
+                            last_activity_at = last_activity_at - interval '1 day',
+                            absolute_expires_at = created_at - interval '1 hour'
+                        WHERE token_hash IS NOT NULL
+                        """)
                 .update();
         mvc.perform(get("/api/auth/session").cookie(absolute)).andExpect(status().isUnauthorized());
 
@@ -242,6 +252,53 @@ class AuthenticationApiIntegrationTests extends PostgresIntegrationTest {
                 .getResponse()
                 .getContentAsString();
         org.assertj.core.api.Assertions.assertThat(known).isEqualTo(unknown);
+    }
+
+    @Test
+    void invalidInvitationUsesItsOwnSafeProblemCode() throws Exception {
+        mvc.perform(post("/api/auth/invitations/accept")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(acceptInvitationJson(
+                                "unknown-invitation-value", "valid password")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVITATION_INVALID"))
+                .andExpect(jsonPath("$.detail")
+                        .value(
+                                "Поканата е невалидна, изтекла или вече е използвана. Поискайте нова покана."))
+                .andExpect(content().string(not(containsString("unknown-invitation-value"))))
+                .andExpect(content().string(not(containsString("InvalidInvitation"))));
+    }
+
+    @Test
+    void existingUserCredentialMismatchUsesItsOwnSafeProblemCode() throws Exception {
+        invitations.invite(businessA, EMAIL, userId);
+        String token = latestInvitationToken(EMAIL);
+
+        mvc.perform(post("/api/auth/invitations/accept")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(acceptInvitationJson(token, "incorrect existing password")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVITATION_CREDENTIAL_MISMATCH"))
+                .andExpect(jsonPath("$.detail")
+                        .value(
+                                "Паролата не съвпада със съществуващия профил за този имейл."))
+                .andExpect(content().string(not(containsString(token))))
+                .andExpect(content().string(not(containsString("incorrect existing password"))))
+                .andExpect(content().string(not(containsString("InvitationCredentialMismatch"))));
+
+        org.assertj.core.api.Assertions.assertThat(jdbc.sql("""
+                                SELECT count(*) FROM membership
+                                WHERE user_id=:userId
+                                  AND business_id=:businessId
+                                  AND role='BUSINESS_OWNER'
+                                """)
+                        .param("userId", userId)
+                        .param("businessId", businessA)
+                        .query(Integer.class)
+                        .single())
+                .isZero();
     }
 
     @Test
@@ -362,6 +419,22 @@ class AuthenticationApiIntegrationTests extends PostgresIntegrationTest {
 
     private String loginJson(String email, String password) {
         return "{\"email\":\"" + email + "\",\"password\":\"" + password + "\"}";
+    }
+
+    private String acceptInvitationJson(String token, String password) {
+        return """
+                {"token":"%s","displayName":"Invitation Owner","password":"%s"}
+                """.formatted(token, password);
+    }
+
+    private String latestInvitationToken(String recipient) {
+        String url = mailbox.messages().stream()
+                .filter(message -> message.kind().equals("OWNER_INVITATION"))
+                .filter(message -> message.recipient().equals(recipient))
+                .reduce((first, second) -> second)
+                .orElseThrow()
+                .url();
+        return url.substring(url.indexOf("token=") + "token=".length());
     }
 
     private void assertThatStoredPasswordIsUnchanged(String expectedHash) {

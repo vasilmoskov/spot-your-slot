@@ -115,7 +115,8 @@ lifecycle, rate limits, cookie/CSRF/CORS behavior, authorization, and Business
 A/B isolation using deterministic fixtures and test-only credentials.
 
 Phase 3A adds deterministic domain/validation tests and PostgreSQL integration
-coverage for Flyway V3, profile constraints, unique slugs, bounded ordering,
+coverage for Flyway V3/V4, structured-profile constraints, preservation of the
+legacy address value, unique slugs, bounded ordering,
 optimistic compare-and-update behavior, and coordinated same-version races with
 no sleeps. The active-owner query tests inspect PostgreSQL lock/activity metadata
 to prove a concurrent Membership deactivation waits for its `FOR SHARE` lock.
@@ -124,3 +125,15 @@ readiness. PostgreSQL-backed MockMvc tests cover all seven platform Business
 routes, the role matrix, safe errors, CSRF, exact-origin credentialed CORS with
 PUT, response privacy, and Phase 2 authentication regressions. Modulith tests
 verify `platform → business` and `platform → identity` without reverse edges.
+
+Phase 3 frontend component tests cover typed hash navigation, platform-only
+navigation visibility, responsive Business listing and pagination, request
+cancellation, structured-address creation and profile-edit payloads,
+authoritative internal version updates, safe conflict recovery, read-only/edit
+transitions, status-specific confirmed lifecycle actions, and the separate
+owner-invitation flow. Identity tests cover new and existing User acceptance,
+replacement-token invalidation, and single use. API-client tests verify exact
+credentialed request paths and bodies through the shared CSRF-aware request
+helper, including successful empty HTTP 202 responses. These
+automated checks do not replace the task's final rendered-browser and human
+visual review or issue #7 end-to-end verification.

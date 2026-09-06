@@ -37,8 +37,11 @@ class PlatformBusinessServiceTests {
             UUID.fromString("00000000-0000-0000-0000-00000000004c");
     private static final Instant NOW = Instant.parse("2026-08-14T12:00:00Z");
 
-    @Mock BusinessAdministration businesses;
-    @Mock ActiveBusinessOwnerQuery activeOwners;
+    @Mock
+    BusinessAdministration businesses;
+
+    @Mock
+    ActiveBusinessOwnerQuery activeOwners;
 
     private PlatformBusinessService service;
 
@@ -198,6 +201,10 @@ class PlatformBusinessServiceTests {
                 BusinessType.OTHER,
                 status,
                 "Europe/Sofia",
+                null,
+                null,
+                null,
+                null,
                 null,
                 null,
                 null,

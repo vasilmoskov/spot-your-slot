@@ -98,10 +98,13 @@ message asking the Customer to choose another time.
 
 ## Business settings and Services
 
-A Business stores `BusinessType`, slug, name, description, one address, phone,
-email, timezone (default `Europe/Sofia`), booking window (default 30 days),
-minimum notice (default two hours), cancellation window (default 24 hours),
-currency (`EUR`), and status.
+A Business stores `BusinessType`, slug, name, description, optional structured
+address fields (city, postal code, street, street number, and additional
+details), phone, email, timezone (default `Europe/Sofia`), booking window
+(default 30 days), minimum notice (default two hours), cancellation window
+(default 24 hours), currency (`EUR`), and status. The current MVP address
+context is fixed to Bulgaria; multiple locations and country selection remain
+outside scope.
 
 The booking window is the Business-configurable number of days in advance that
 Customers may book; its default remains 30 days. It is independent of the daily

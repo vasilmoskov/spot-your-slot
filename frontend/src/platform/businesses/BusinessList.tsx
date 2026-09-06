@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError } from '../../identity/api'
+import {
+  PLATFORM_BUSINESS_NEW_ROUTE,
+  pushRoute,
+  routeHref,
+} from '../../navigation'
 import { listBusinesses, type BusinessPage } from './api'
 import {
   BUSINESS_STATUS_PRESENTATION,
@@ -8,6 +13,8 @@ import {
 
 type BusinessListProps = {
   onAuthenticationRequired: (detail: string) => void
+  onCreate?: () => void
+  onOpen?: (businessId: string) => void
 }
 
 type ListState =
@@ -19,7 +26,12 @@ type ListState =
 const GENERIC_ERROR = 'Списъкът с бизнеси не може да бъде зареден.'
 const PAGE_SIZE = 50
 
-export function BusinessList({ onAuthenticationRequired }: BusinessListProps) {
+export function BusinessList({
+  onAuthenticationRequired,
+  onCreate = () => pushRoute(PLATFORM_BUSINESS_NEW_ROUTE),
+  onOpen = (businessId) =>
+    pushRoute({ kind: 'platform-business-detail', businessId }),
+}: BusinessListProps) {
   const [state, setState] = useState<ListState>({ kind: 'loading' })
   const requestSequence = useRef(0)
   const requestedPage = useRef(0)
@@ -123,6 +135,11 @@ export function BusinessList({ onAuthenticationRequired }: BusinessListProps) {
   return (
     <div className="platform-content">
       <div className="business-list-content">
+        <div className="business-page-actions business-page-actions-end">
+          <button type="button" onClick={onCreate}>
+            Нов бизнес
+          </button>
+        </div>
         {state.page.businesses.length === 0 ? (
           <p className="business-list-state" aria-live="polite">
             {state.page.totalElements === 0
@@ -136,7 +153,7 @@ export function BusinessList({ onAuthenticationRequired }: BusinessListProps) {
               <thead>
                 <tr>
                   <th scope="col">Име</th>
-                  <th scope="col">Уеб адрес</th>
+                  <th scope="col">Идентификатор в уеб адреса</th>
                   <th scope="col">Дейност</th>
                   <th scope="col">Статус</th>
                 </tr>
@@ -146,8 +163,26 @@ export function BusinessList({ onAuthenticationRequired }: BusinessListProps) {
                   const status = BUSINESS_STATUS_PRESENTATION[business.status]
                   return (
                     <tr key={business.id}>
-                      <td data-label="Име">{business.displayName}</td>
-                      <td data-label="Уеб адрес">{business.slug}</td>
+                      <td data-label="Име">
+                        <div className="business-name-cell">
+                          <a
+                            aria-label={`Отвори ${business.displayName}`}
+                            href={routeHref({
+                              kind: 'platform-business-detail',
+                              businessId: business.id,
+                            })}
+                            onClick={(event) => {
+                              event.preventDefault()
+                              onOpen(business.id)
+                            }}
+                          >
+                            {business.displayName}
+                          </a>
+                        </div>
+                      </td>
+                      <td data-label="Идентификатор в уеб адреса">
+                        {business.slug}
+                      </td>
                       <td data-label="Дейност">
                         {businessTypeLabel(business.businessType)}
                       </td>

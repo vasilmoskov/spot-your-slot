@@ -81,6 +81,20 @@ and authorized mutations. SUSPENDED rejects booking, preserves data, and makes
 Business administration read-only except logout/account-security; PLATFORM_ADMIN
 may reactivate it.
 
+Owner-invitation acceptance normalizes email and enforces the invitation's
+single-use lifecycle. For a new normalized email it creates one global User
+with the submitted display name. For an existing active, unlocked User it
+requires that User's current password, retains the existing display name, and
+adds the Business Membership. Invalid, expired, replaced, or consumed
+invitations return 400 `INVITATION_INVALID` with “Поканата е невалидна, изтекла
+или вече е използвана. Поискайте нова покана.” A valid invitation with an
+incorrect existing-User password returns 400
+`INVITATION_CREDENTIAL_MISMATCH` with “Паролата не съвпада със съществуващия
+профил за този имейл.” Ordinary request and password-policy validation remains
+`VALIDATION_ERROR`; rate limiting remains `RATE_LIMITED`. The unique normalized
+email prevents a second global User. Frontend password confirmation is
+local-only and is never sent or persisted.
+
 ## Public endpoint and booking controls
 
 Availability, booking, login, reset, invitation, and cancellation endpoints

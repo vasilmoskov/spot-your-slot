@@ -42,9 +42,14 @@ import org.springframework.transaction.support.TransactionTemplate;
 class BusinessAdministrationServiceIntegrationTests extends PostgresIntegrationTest {
     private static final Instant NOW = Instant.parse("2026-08-14T10:00:00Z");
 
-    @Autowired BusinessAdministration administration;
-    @Autowired JdbcClient jdbc;
-    @Autowired PlatformTransactionManager transactionManager;
+    @Autowired
+    BusinessAdministration administration;
+
+    @Autowired
+    JdbcClient jdbc;
+
+    @Autowired
+    PlatformTransactionManager transactionManager;
 
     @Test
     void createsDraftWithNormalizedValuesDefaultTimezoneAndFixedTimestamps() {
@@ -54,7 +59,11 @@ class BusinessAdministrationServiceIntegrationTests extends PostgresIntegrationT
                 BusinessType.BEAUTY_STUDIO,
                 null,
                 "  Описание  ",
-                "  Адрес  ",
+                "  София  ",
+                "  1000  ",
+                "  Примерна  ",
+                "  1  ",
+                "  вход А  ",
                 "  +359 2 000 0000  ",
                 "  CONTACT@EXAMPLE.INVALID  "));
 
@@ -63,7 +72,8 @@ class BusinessAdministrationServiceIntegrationTests extends PostgresIntegrationT
         assertThat(created.status()).isEqualTo(BusinessStatus.DRAFT);
         assertThat(created.timezone()).isEqualTo("Europe/Sofia");
         assertThat(created.description()).isEqualTo("Описание");
-        assertThat(created.address()).isEqualTo("Адрес");
+        assertThat(created.city()).isEqualTo("София");
+        assertThat(created.addressDetails()).isEqualTo("вход А");
         assertThat(created.phone()).isEqualTo("+359 2 000 0000");
         assertThat(created.contactEmail()).isEqualTo("contact@example.invalid");
         assertThat(created.version()).isZero();
@@ -110,7 +120,8 @@ class BusinessAdministrationServiceIntegrationTests extends PostgresIntegrationT
         assertThat(updated.status()).isEqualTo(BusinessStatus.DRAFT);
         assertThat(updated.timezone()).isEqualTo("Europe/London");
         assertThat(updated.description()).isEqualTo("Updated description");
-        assertThat(updated.address()).isEqualTo("Updated address");
+        assertThat(updated.city()).isEqualTo("Plovdiv");
+        assertThat(updated.addressDetails()).isEqualTo("Updated address");
         assertThat(updated.phone()).isEqualTo("+359 2 111 1111");
         assertThat(updated.contactEmail()).isEqualTo("updated@example.invalid");
         assertThat(updated.version()).isEqualTo(1);
@@ -272,6 +283,10 @@ class BusinessAdministrationServiceIntegrationTests extends PostgresIntegrationT
                 BusinessType.OTHER,
                 "Europe/Sofia",
                 "Description " + slug,
+                "Sofia",
+                "1000",
+                "Example",
+                "1",
                 "Address " + slug,
                 "+359 2 000 0000",
                 slug + "@example.invalid");
@@ -284,6 +299,10 @@ class BusinessAdministrationServiceIntegrationTests extends PostgresIntegrationT
                 BusinessType.MASSAGE_STUDIO,
                 "Europe/London",
                 "Updated description",
+                "Plovdiv",
+                "4000",
+                "Main",
+                "2",
                 "Updated address",
                 "+359 2 111 1111",
                 "updated@example.invalid",

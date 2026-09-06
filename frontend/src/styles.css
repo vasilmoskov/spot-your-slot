@@ -42,7 +42,8 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   min-height: 2.75rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
@@ -50,6 +51,23 @@ select {
   color: var(--color-text-primary);
   background: var(--color-surface);
   font: inherit;
+  line-height: 1.25;
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+}
+
+input,
+select {
+  height: 2.75rem;
+  box-sizing: border-box;
+}
+
+textarea {
+  min-height: 8rem;
 }
 
 button {
@@ -73,7 +91,8 @@ button:disabled {
 a:focus-visible,
 button:focus-visible,
 input:focus-visible,
-select:focus-visible {
+select:focus-visible,
+textarea:focus-visible {
   outline: 3px solid var(--color-focus);
   outline-offset: 2px;
 }
@@ -295,6 +314,186 @@ label {
   gap: var(--space-4);
 }
 
+.business-page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.business-page-actions-end {
+  justify-content: flex-end;
+  margin-bottom: 0;
+}
+
+.business-name-cell a {
+  color: var(--color-action-primary);
+  font-weight: 700;
+}
+
+.business-name-cell a:hover {
+  color: var(--color-action-primary-hover);
+}
+
+.business-section,
+.business-detail-header {
+  padding: var(--space-5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+
+.business-detail {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.business-detail .business-page-actions {
+  margin-bottom: 0;
+}
+
+.business-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.business-detail-header h2 {
+  margin-bottom: var(--space-2);
+  font-size: clamp(1.5rem, 5vw, 2rem);
+}
+
+.business-detail-summary,
+.section-introduction {
+  color: var(--color-text-secondary);
+}
+
+.business-detail-summary,
+.section-introduction {
+  margin-bottom: var(--space-4);
+}
+
+.business-section summary,
+.confirmation-panel h4 {
+  margin-top: 0;
+}
+
+.business-section summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: baseline;
+  gap: var(--space-3);
+  list-style: none;
+  cursor: pointer;
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+
+.business-section summary::-webkit-details-marker {
+  display: none;
+}
+
+.business-section summary::after {
+  content: "⌄";
+  display: inline-block;
+  color: var(--color-text-primary);
+  font-size: 1.25rem;
+  line-height: 1;
+  transform: rotate(0deg);
+  transition: transform 150ms ease;
+}
+
+.business-section[open] summary::after {
+  transform: rotate(180deg);
+}
+
+.business-section[open] summary {
+  margin-bottom: var(--space-4);
+}
+
+.section-summary {
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-align: right;
+}
+
+.business-details-list {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.business-details-list div {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.business-details-list dt {
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+.business-details-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.activation-steps {
+  padding-left: var(--space-5);
+}
+
+.business-information-columns,
+.business-information-column {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.business-description-details {
+  margin-block: var(--space-5);
+}
+
+.business-form textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+.confirmation-panel {
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--color-warning);
+  border-radius: var(--radius-control);
+  background: var(--color-page-background);
+}
+
+.action-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.invitation-accepted {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-4);
+}
+
+.invitation-accepted .status-message {
+  margin-bottom: 0;
+}
+
+.danger-button {
+  border-color: var(--color-danger);
+  background: var(--color-danger);
+}
+
+.danger-button:hover:not(:disabled) {
+  border-color: var(--color-danger);
+  background: var(--color-danger);
+}
+
 .business-table-container {
   overflow-x: auto;
 }
@@ -453,6 +652,18 @@ label {
     font-size: 0.875rem;
     font-weight: 700;
   }
+
+  .business-page-actions-end {
+    justify-content: stretch;
+  }
+
+  .business-page-actions-end button {
+    width: 100%;
+  }
+
+  .business-detail-header {
+    flex-direction: column;
+  }
 }
 
 @media (min-width: 48rem) {
@@ -519,5 +730,15 @@ label {
   .identity-card,
   .content-card {
     padding: var(--space-6);
+  }
+
+  .business-information-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .business-section summary::after {
+    transition: none;
   }
 }

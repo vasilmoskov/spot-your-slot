@@ -48,7 +48,12 @@ dependencies absent separate approval.
 - Backend Business management is complete: seven PLATFORM_ADMIN-only endpoints,
   bounded deterministic pagination, expected-version concurrency, profile
   fields, and active-owner locking for initial activation. The platform-admin
-  React UI, invitation integration, and Bulgarian unavailable UI remain pending.
+  React UI implements the Business list, creation, read-only detail with
+  explicit profile editing, structured Bulgarian addresses, owner-invitation
+  request, and confirmed lifecycle actions. Technical versions and timezone are
+  retained for backend correctness but hidden from the current UI. Final issue
+  #6 human visual and invitation retesting and issue #7 end-to-end lifecycle
+  verification remain pending.
 - Exit: unique URL and lifecycle flows pass.
 
 ## Phase 4 — Business configuration and workforce

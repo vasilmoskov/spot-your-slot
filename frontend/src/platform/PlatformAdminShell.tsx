@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import {
+  isPlatformRoute,
   PROFILE_ROUTE,
   PLATFORM_BUSINESSES_ROUTE,
   routeHref,
@@ -96,7 +97,7 @@ export function PlatformAdminShell({
             <a
               ref={firstNavigationItemRef}
               href={routeHref(PLATFORM_BUSINESSES_ROUTE)}
-              aria-current={route.kind === 'platform-businesses' ? 'page' : undefined}
+              aria-current={isPlatformRoute(route) ? 'page' : undefined}
               onClick={(event) => navigate(event, PLATFORM_BUSINESSES_ROUTE)}
             >
               Бизнеси
@@ -134,7 +135,13 @@ export function PlatformAdminShell({
         <div className="platform-page-header">
           <p className="eyebrow">Администрация</p>
           <h1 ref={headingRef} tabIndex={-1}>
-            {route.kind === 'platform-businesses' ? 'Бизнеси' : 'Профил'}
+            {route.kind === 'profile'
+              ? 'Профил'
+              : route.kind === 'platform-business-new'
+                ? 'Нов бизнес'
+                : route.kind === 'platform-business-detail'
+                  ? 'Бизнес'
+                  : 'Бизнеси'}
           </h1>
         </div>
         {children}

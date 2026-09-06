@@ -19,7 +19,11 @@ public class BusinessInputValidator {
     static final int MAX_PAGE_SIZE = 100;
     static final int DISPLAY_NAME_MAX_LENGTH = 200;
     static final int DESCRIPTION_MAX_LENGTH = 2_000;
-    static final int ADDRESS_MAX_LENGTH = 500;
+    static final int CITY_MAX_LENGTH = 100;
+    static final int POSTAL_CODE_MAX_LENGTH = 20;
+    static final int STREET_MAX_LENGTH = 200;
+    static final int STREET_NUMBER_MAX_LENGTH = 50;
+    static final int ADDRESS_DETAILS_MAX_LENGTH = 500;
     static final int PHONE_MAX_LENGTH = 50;
     static final int CONTACT_EMAIL_MAX_LENGTH = 320;
 
@@ -70,7 +74,17 @@ public class BusinessInputValidator {
                         command.description(),
                         DESCRIPTION_MAX_LENGTH,
                         InputField.DESCRIPTION),
-                optionalText(command.address(), ADDRESS_MAX_LENGTH, InputField.ADDRESS),
+                optionalText(command.city(), CITY_MAX_LENGTH, InputField.CITY),
+                optionalText(command.postalCode(), POSTAL_CODE_MAX_LENGTH, InputField.POSTAL_CODE),
+                optionalText(command.street(), STREET_MAX_LENGTH, InputField.STREET),
+                optionalText(
+                        command.streetNumber(),
+                        STREET_NUMBER_MAX_LENGTH,
+                        InputField.STREET_NUMBER),
+                optionalText(
+                        command.addressDetails(),
+                        ADDRESS_DETAILS_MAX_LENGTH,
+                        InputField.ADDRESS_DETAILS),
                 optionalText(command.phone(), PHONE_MAX_LENGTH, InputField.PHONE),
                 contactEmail(command.contactEmail()));
     }
@@ -92,7 +106,17 @@ public class BusinessInputValidator {
                         command.description(),
                         DESCRIPTION_MAX_LENGTH,
                         InputField.DESCRIPTION),
-                optionalText(command.address(), ADDRESS_MAX_LENGTH, InputField.ADDRESS),
+                optionalText(command.city(), CITY_MAX_LENGTH, InputField.CITY),
+                optionalText(command.postalCode(), POSTAL_CODE_MAX_LENGTH, InputField.POSTAL_CODE),
+                optionalText(command.street(), STREET_MAX_LENGTH, InputField.STREET),
+                optionalText(
+                        command.streetNumber(),
+                        STREET_NUMBER_MAX_LENGTH,
+                        InputField.STREET_NUMBER),
+                optionalText(
+                        command.addressDetails(),
+                        ADDRESS_DETAILS_MAX_LENGTH,
+                        InputField.ADDRESS_DETAILS),
                 optionalText(command.phone(), PHONE_MAX_LENGTH, InputField.PHONE),
                 contactEmail(command.contactEmail()),
                 validateExpectedVersion(command.expectedVersion()));

@@ -49,7 +49,11 @@ class BusinessInputValidatorTests {
                 BusinessType.BEAUTY_STUDIO,
                 null,
                 "  Описание  ",
-                "  Адрес  ",
+                "  София  ",
+                "  1000  ",
+                "  Примерна  ",
+                "  1  ",
+                "  вход А  ",
                 "  +359 2 000 0000  ",
                 "  OFFICE@EXAMPLE.INVALID  "));
 
@@ -60,7 +64,11 @@ class BusinessInputValidatorTests {
                         BusinessType.BEAUTY_STUDIO,
                         "Europe/Sofia",
                         "Описание",
-                        "Адрес",
+                        "София",
+                        "1000",
+                        "Примерна",
+                        "1",
+                        "вход А",
                         "+359 2 000 0000",
                         "office@example.invalid"));
     }
@@ -73,7 +81,11 @@ class BusinessInputValidatorTests {
                 BusinessType.MASSAGE_STUDIO,
                 "Europe/London",
                 null,
-                "  Нов адрес  ",
+                "  Пловдив  ",
+                null,
+                "  Главна  ",
+                "  2  ",
+                "  етаж 1  ",
                 null,
                 "  CONTACT@EXAMPLE.INVALID  ",
                 7));
@@ -81,7 +93,10 @@ class BusinessInputValidatorTests {
         assertThat(normalized.slug()).isEqualTo("updated-business");
         assertThat(normalized.displayName()).isEqualTo("Обновен бизнес");
         assertThat(normalized.timezone()).isEqualTo("Europe/London");
-        assertThat(normalized.address()).isEqualTo("Нов адрес");
+        assertThat(normalized.city()).isEqualTo("Пловдив");
+        assertThat(normalized.street()).isEqualTo("Главна");
+        assertThat(normalized.streetNumber()).isEqualTo("2");
+        assertThat(normalized.addressDetails()).isEqualTo("етаж 1");
         assertThat(normalized.contactEmail()).isEqualTo("contact@example.invalid");
         assertThat(normalized.expectedVersion()).isEqualTo(7);
     }
@@ -126,6 +141,10 @@ class BusinessInputValidatorTests {
         var command = new CreateBusinessCommand(
                 "valid-business",
                 "Valid Business",
+                null,
+                null,
+                null,
+                null,
                 null,
                 null,
                 null,
@@ -331,7 +350,11 @@ class BusinessInputValidatorTests {
                 BusinessType.OTHER,
                 "Europe/Sofia",
                 "Описание",
-                "Адрес",
+                "София",
+                "1000",
+                "Примерна",
+                "1",
+                "вход А",
                 "+359 2 000 0000",
                 "contact@example.invalid");
     }
@@ -344,7 +367,11 @@ class BusinessInputValidatorTests {
                 command.businessType(),
                 command.timezone(),
                 command.description(),
-                command.address(),
+                command.city(),
+                command.postalCode(),
+                command.street(),
+                command.streetNumber(),
+                command.addressDetails(),
                 command.phone(),
                 command.contactEmail());
     }
@@ -357,7 +384,11 @@ class BusinessInputValidatorTests {
                 command.businessType(),
                 command.timezone(),
                 command.description(),
-                command.address(),
+                command.city(),
+                command.postalCode(),
+                command.street(),
+                command.streetNumber(),
+                command.addressDetails(),
                 command.phone(),
                 command.contactEmail());
     }
@@ -370,7 +401,11 @@ class BusinessInputValidatorTests {
                 command.businessType(),
                 timezone,
                 command.description(),
-                command.address(),
+                command.city(),
+                command.postalCode(),
+                command.street(),
+                command.streetNumber(),
+                command.addressDetails(),
                 command.phone(),
                 command.contactEmail());
     }
@@ -388,7 +423,11 @@ class BusinessInputValidatorTests {
                 command.businessType(),
                 command.timezone(),
                 field == OptionalField.DESCRIPTION ? value : command.description(),
-                field == OptionalField.ADDRESS ? value : command.address(),
+                field == OptionalField.CITY ? value : command.city(),
+                field == OptionalField.POSTAL_CODE ? value : command.postalCode(),
+                field == OptionalField.STREET ? value : command.street(),
+                field == OptionalField.STREET_NUMBER ? value : command.streetNumber(),
+                field == OptionalField.ADDRESS_DETAILS ? value : command.addressDetails(),
                 field == OptionalField.PHONE ? value : command.phone(),
                 field == OptionalField.CONTACT_EMAIL ? value : command.contactEmail());
     }
@@ -397,7 +436,11 @@ class BusinessInputValidatorTests {
             CreateBusinessCommand command, OptionalField field) {
         return switch (field) {
             case DESCRIPTION -> command.description();
-            case ADDRESS -> command.address();
+            case CITY -> command.city();
+            case POSTAL_CODE -> command.postalCode();
+            case STREET -> command.street();
+            case STREET_NUMBER -> command.streetNumber();
+            case ADDRESS_DETAILS -> command.addressDetails();
             case PHONE -> command.phone();
             case CONTACT_EMAIL -> command.contactEmail();
         };
@@ -411,7 +454,11 @@ class BusinessInputValidatorTests {
                 command.businessType(),
                 timezone,
                 command.description(),
-                command.address(),
+                command.city(),
+                command.postalCode(),
+                command.street(),
+                command.streetNumber(),
+                command.addressDetails(),
                 command.phone(),
                 command.contactEmail(),
                 0);
@@ -464,7 +511,17 @@ class BusinessInputValidatorTests {
                 Arguments.of(
                         OptionalField.DESCRIPTION,
                         BusinessInputValidator.DESCRIPTION_MAX_LENGTH),
-                Arguments.of(OptionalField.ADDRESS, BusinessInputValidator.ADDRESS_MAX_LENGTH),
+                Arguments.of(OptionalField.CITY, BusinessInputValidator.CITY_MAX_LENGTH),
+                Arguments.of(
+                        OptionalField.POSTAL_CODE,
+                        BusinessInputValidator.POSTAL_CODE_MAX_LENGTH),
+                Arguments.of(OptionalField.STREET, BusinessInputValidator.STREET_MAX_LENGTH),
+                Arguments.of(
+                        OptionalField.STREET_NUMBER,
+                        BusinessInputValidator.STREET_NUMBER_MAX_LENGTH),
+                Arguments.of(
+                        OptionalField.ADDRESS_DETAILS,
+                        BusinessInputValidator.ADDRESS_DETAILS_MAX_LENGTH),
                 Arguments.of(OptionalField.PHONE, BusinessInputValidator.PHONE_MAX_LENGTH));
     }
 
@@ -482,7 +539,11 @@ class BusinessInputValidatorTests {
 
     private enum OptionalField {
         DESCRIPTION(InputField.DESCRIPTION),
-        ADDRESS(InputField.ADDRESS),
+        CITY(InputField.CITY),
+        POSTAL_CODE(InputField.POSTAL_CODE),
+        STREET(InputField.STREET),
+        STREET_NUMBER(InputField.STREET_NUMBER),
+        ADDRESS_DETAILS(InputField.ADDRESS_DETAILS),
         PHONE(InputField.PHONE),
         CONTACT_EMAIL(InputField.CONTACT_EMAIL);
 

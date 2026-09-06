@@ -13,10 +13,12 @@ it is not registered or configured by this task, and neither domain nor
 trademark availability has been legally verified.
 
 This repository contains the Phase 2 identity and tenancy foundation and the
-Phase 3A platform Business management backend: a Spring Boot backend, a minimal
-Bulgarian React identity client, Flyway-managed PostgreSQL, local Docker Compose,
-and non-deploying CI. The platform-admin React interface, Services, StaffMembers,
-Customers, Appointments, booking, production email, and hosting are not implemented.
+Phase 3 platform Business onboarding foundation: a Spring Boot backend, a
+Bulgarian React identity and platform-admin client, Flyway-managed PostgreSQL,
+local Docker Compose, and non-deploying CI. Platform administrators can list,
+create, inspect, edit, invite an initial owner for, activate, suspend, and
+reactivate Businesses. Services, StaffMembers, Customers, Appointments,
+booking, production email, and hosting are not implemented.
 
 ## Product identity
 
@@ -122,7 +124,7 @@ export POSTGRES_PASSWORD='the-value-from-your-local-env-file'
 ```
 
 Health is public at `http://localhost:8080/actuator/health`. Flyway applies the
-three current migrations on startup and Hibernate validates the schema.
+four current migrations on startup and Hibernate validates the schema.
 
 To create the first local `PLATFORM_ADMIN`, explicitly opt in for one startup:
 
@@ -186,7 +188,9 @@ updates and lifecycle operations use `expectedVersion` to reject stale writes.
 Initial activation requires an active `BUSINESS_OWNER` Membership for the same
 Business. The implemented lifecycle is `DRAFT → ACTIVE`, `ACTIVE → SUSPENDED`,
 and `SUSPENDED → ACTIVE`; other transitions are rejected. The platform-admin UI
-remains a separate Phase 3 task.
+provides the matching list, create, read-only detail/edit, owner-invitation, and
+confirmed lifecycle flows; corrected visual and invitation retesting remains
+pending.
 
 The development mailbox retains at most 50 links in memory and never logs,
 writes, or persists raw tokens. Sessions use an opaque `SPOTYOURSESSION` cookie

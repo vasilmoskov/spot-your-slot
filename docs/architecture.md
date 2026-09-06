@@ -114,6 +114,22 @@ qualifying active `BUSINESS_OWNER` Membership using deterministic
 `ORDER BY id LIMIT 1 FOR SHARE`, so concurrent deactivation waits until the
 Business transition commits or rolls back.
 
+The React platform-admin client uses application-owned hash routes for the
+Business list, creation, and detail views without adding a routing dependency.
+It keeps backend-returned Business versions in memory and returns the current
+`expectedVersion` for profile and lifecycle mutations. Concurrent-update
+responses require an explicit reload instead of an automatic overwrite;
+versions remain technical state and are not displayed. Creation omits timezone
+so the backend applies `Europe/Sofia`, while updates preserve the stored value
+without exposing timezone in the current UI. Detail starts read-only and uses
+explicit edit/save/cancel inside accessible collapsible profile, invitation,
+and activation sections with operation-local feedback. Owner invitation input
+is separate from Business contact data; invitation requests use the identity
+API and never persist invitation credentials in frontend-managed browser
+storage. The shared request helper accepts successful empty responses,
+including the invitation endpoint's HTTP 202 response, without attempting JSON
+decoding.
+
 Business transactions atomically add outbox records. A worker claims/retries
 with bounded backoff; idempotency keys prevent duplicate reminders. Development
 and tests never send real email.

@@ -1,6 +1,6 @@
 import type { BusinessStatus, BusinessType } from './api'
 
-const BUSINESS_TYPE_LABELS: Record<BusinessType, string> = {
+export const BUSINESS_TYPE_LABELS: Record<BusinessType, string> = {
   HAIR_SALON: 'Фризьорски салон',
   BARBERSHOP: 'Бръснарница',
   NAIL_STUDIO: 'Студио за маникюр',
@@ -9,6 +9,10 @@ const BUSINESS_TYPE_LABELS: Record<BusinessType, string> = {
   BEAUTY_STUDIO: 'Козметично студио',
   OTHER: 'Друг',
 }
+
+export const BUSINESS_TYPE_OPTIONS = (
+  Object.entries(BUSINESS_TYPE_LABELS) as [BusinessType, string][]
+).map(([value, label]) => ({ value, label }))
 
 export const BUSINESS_STATUS_PRESENTATION: Record<
   BusinessStatus,

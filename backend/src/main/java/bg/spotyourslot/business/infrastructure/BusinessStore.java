@@ -21,7 +21,8 @@ public class BusinessStore {
 
     private static final String RETURNING_COLUMNS = """
             id, slug, display_name, business_type, status, timezone,
-            description, address, phone, contact_email, version, created_at, updated_at
+            description, city, postal_code, street, street_number, address_details,
+            phone, contact_email, version, created_at, updated_at
             """;
 
     private final JdbcClient jdbc;
@@ -36,7 +37,8 @@ public class BusinessStore {
 
         return jdbc.sql("""
                         SELECT id, slug, display_name, business_type, status, timezone,
-                               description, address, phone, contact_email, version,
+                               description, city, postal_code, street, street_number,
+                               address_details, phone, contact_email, version,
                                created_at, updated_at
                         FROM business
                         ORDER BY created_at DESC, id DESC
@@ -57,7 +59,8 @@ public class BusinessStore {
     public Optional<BusinessRow> findById(UUID businessId) {
         return jdbc.sql("""
                         SELECT id, slug, display_name, business_type, status, timezone,
-                               description, address, phone, contact_email, version,
+                               description, city, postal_code, street, street_number,
+                               address_details, phone, contact_email, version,
                                created_at, updated_at
                         FROM business
                         WHERE id = :businessId
@@ -71,11 +74,13 @@ public class BusinessStore {
         return jdbc.sql("""
                         INSERT INTO business(
                             id, slug, display_name, business_type, status, timezone,
-                            description, address, phone, contact_email, version,
+                            description, city, postal_code, street, street_number,
+                            address_details, phone, contact_email, version,
                             created_at, updated_at)
                         VALUES (
                             :id, :slug, :displayName, :businessType, 'DRAFT', :timezone,
-                            :description, :address, :phone, :contactEmail, 0,
+                            :description, :city, :postalCode, :street, :streetNumber,
+                            :addressDetails, :phone, :contactEmail, 0,
                             :createdAt, :createdAt)
                         RETURNING
                         """ + RETURNING_COLUMNS)
@@ -85,7 +90,11 @@ public class BusinessStore {
                 .param("businessType", business.businessType().name())
                 .param("timezone", business.timezone().value())
                 .param("description", business.description())
-                .param("address", business.address())
+                .param("city", business.city())
+                .param("postalCode", business.postalCode())
+                .param("street", business.street())
+                .param("streetNumber", business.streetNumber())
+                .param("addressDetails", business.addressDetails())
                 .param("phone", business.phone())
                 .param("contactEmail", business.contactEmail())
                 .param("createdAt", databaseTime(business.createdAt()))
@@ -102,7 +111,11 @@ public class BusinessStore {
                             business_type = :businessType,
                             timezone = :timezone,
                             description = :description,
-                            address = :address,
+                            city = :city,
+                            postal_code = :postalCode,
+                            street = :street,
+                            street_number = :streetNumber,
+                            address_details = :addressDetails,
                             phone = :phone,
                             contact_email = :contactEmail,
                             version = version + 1,
@@ -116,7 +129,11 @@ public class BusinessStore {
                 .param("businessType", update.businessType().name())
                 .param("timezone", update.timezone().value())
                 .param("description", update.description())
-                .param("address", update.address())
+                .param("city", update.city())
+                .param("postalCode", update.postalCode())
+                .param("street", update.street())
+                .param("streetNumber", update.streetNumber())
+                .param("addressDetails", update.addressDetails())
                 .param("phone", update.phone())
                 .param("contactEmail", update.contactEmail())
                 .param("updatedAt", databaseTime(update.updatedAt()))
@@ -173,7 +190,11 @@ public class BusinessStore {
                 BusinessStatus.valueOf(resultSet.getString("status")),
                 new BusinessTimezone(resultSet.getString("timezone")),
                 resultSet.getString("description"),
-                resultSet.getString("address"),
+                resultSet.getString("city"),
+                resultSet.getString("postal_code"),
+                resultSet.getString("street"),
+                resultSet.getString("street_number"),
+                resultSet.getString("address_details"),
                 resultSet.getString("phone"),
                 resultSet.getString("contact_email"),
                 resultSet.getLong("version"),

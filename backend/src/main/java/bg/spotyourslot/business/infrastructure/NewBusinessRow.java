@@ -13,7 +13,11 @@ public record NewBusinessRow(
         BusinessType businessType,
         BusinessTimezone timezone,
         String description,
-        String address,
+        String city,
+        String postalCode,
+        String street,
+        String streetNumber,
+        String addressDetails,
         String phone,
         String contactEmail,
         Instant createdAt) {

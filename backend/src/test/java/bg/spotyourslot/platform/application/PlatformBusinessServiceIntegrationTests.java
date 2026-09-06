@@ -37,9 +37,14 @@ class PlatformBusinessServiceIntegrationTests extends PostgresIntegrationTest {
     private static final Instant NOW = Instant.parse("2026-08-14T12:00:00Z");
     private static final OffsetDateTime DATABASE_NOW = NOW.atOffset(ZoneOffset.UTC);
 
-    @Autowired PlatformBusinessService service;
-    @Autowired RecordingActiveBusinessOwnerQuery activeOwners;
-    @Autowired JdbcClient jdbc;
+    @Autowired
+    PlatformBusinessService service;
+
+    @Autowired
+    RecordingActiveBusinessOwnerQuery activeOwners;
+
+    @Autowired
+    JdbcClient jdbc;
 
     @BeforeEach
     void resetOwnerQueryCount() {
@@ -133,6 +138,10 @@ class PlatformBusinessServiceIntegrationTests extends PostgresIntegrationTest {
                 "Business " + slug,
                 BusinessType.OTHER,
                 "Europe/Sofia",
+                null,
+                null,
+                null,
+                null,
                 null,
                 null,
                 null,

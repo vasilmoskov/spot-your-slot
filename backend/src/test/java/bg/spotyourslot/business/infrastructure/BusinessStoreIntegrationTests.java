@@ -37,9 +37,14 @@ class BusinessStoreIntegrationTests extends PostgresIntegrationTest {
     private static final Instant CREATED_AT = Instant.parse("2026-08-14T08:00:00Z");
     private static final Instant UPDATED_AT = Instant.parse("2026-08-14T09:00:00Z");
 
-    @Autowired BusinessStore store;
-    @Autowired JdbcClient jdbc;
-    @Autowired PlatformTransactionManager transactionManager;
+    @Autowired
+    BusinessStore store;
+
+    @Autowired
+    JdbcClient jdbc;
+
+    @Autowired
+    PlatformTransactionManager transactionManager;
 
     @Test
     void createsDraftBusinessAtVersionZeroAndRetrievesEveryField() {
@@ -56,7 +61,11 @@ class BusinessStoreIntegrationTests extends PostgresIntegrationTest {
                         BusinessStatus.DRAFT,
                         creation.timezone(),
                         creation.description(),
-                        creation.address(),
+                        creation.city(),
+                        creation.postalCode(),
+                        creation.street(),
+                        creation.streetNumber(),
+                        creation.addressDetails(),
                         creation.phone(),
                         creation.contactEmail(),
                         0,
@@ -149,6 +158,10 @@ class BusinessStoreIntegrationTests extends PostgresIntegrationTest {
                 BusinessType.MASSAGE_STUDIO,
                 new BusinessTimezone("Europe/London"),
                 "Updated description",
+                "Plovdiv",
+                "4000",
+                "Main",
+                "2",
                 "Updated address",
                 "+359 2 111 1111",
                 "updated@example.invalid",
@@ -164,7 +177,11 @@ class BusinessStoreIntegrationTests extends PostgresIntegrationTest {
         assertThat(updated.status()).isEqualTo(BusinessStatus.DRAFT);
         assertThat(updated.timezone()).isEqualTo(update.timezone());
         assertThat(updated.description()).isEqualTo(update.description());
-        assertThat(updated.address()).isEqualTo(update.address());
+        assertThat(updated.city()).isEqualTo(update.city());
+        assertThat(updated.postalCode()).isEqualTo(update.postalCode());
+        assertThat(updated.street()).isEqualTo(update.street());
+        assertThat(updated.streetNumber()).isEqualTo(update.streetNumber());
+        assertThat(updated.addressDetails()).isEqualTo(update.addressDetails());
         assertThat(updated.phone()).isEqualTo(update.phone());
         assertThat(updated.contactEmail()).isEqualTo(update.contactEmail());
         assertThat(updated.version()).isEqualTo(1);
@@ -285,7 +302,11 @@ class BusinessStoreIntegrationTests extends PostgresIntegrationTest {
                 original.businessType(),
                 original.timezone(),
                 original.description(),
-                original.address(),
+                original.city(),
+                original.postalCode(),
+                original.street(),
+                original.streetNumber(),
+                original.addressDetails(),
                 original.phone(),
                 original.contactEmail(),
                 expectedVersion,
@@ -304,6 +325,10 @@ class BusinessStoreIntegrationTests extends PostgresIntegrationTest {
                 BusinessType.OTHER,
                 BusinessTimezone.defaultTimezone(),
                 "Description " + slug,
+                "Sofia",
+                "1000",
+                "Example",
+                "1",
                 "Address " + slug,
                 "+359 2 000 0000",
                 slug + "@example.invalid",

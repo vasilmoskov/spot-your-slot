@@ -3,7 +3,13 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { ApiError, request, type Session } from './identity/api'
-import { listBusinesses, type BusinessPage } from './platform/businesses/api'
+import {
+  createBusiness,
+  getBusiness,
+  listBusinesses,
+  type BusinessDetails,
+  type BusinessPage,
+} from './platform/businesses/api'
 
 vi.mock('./identity/api', async (importOriginal) => {
   const original = await importOriginal<typeof import('./identity/api')>()
@@ -11,10 +17,17 @@ vi.mock('./identity/api', async (importOriginal) => {
 })
 vi.mock('./platform/businesses/api', async (importOriginal) => {
   const original = await importOriginal<typeof import('./platform/businesses/api')>()
-  return { ...original, listBusinesses: vi.fn() }
+  return {
+    ...original,
+    createBusiness: vi.fn(),
+    getBusiness: vi.fn(),
+    listBusinesses: vi.fn(),
+  }
 })
 
 const mockedRequest = vi.mocked(request)
+const mockedCreateBusiness = vi.mocked(createBusiness)
+const mockedGetBusiness = vi.mocked(getBusiness)
 const mockedListBusinesses = vi.mocked(listBusinesses)
 const businessPage: BusinessPage = {
   businesses: [
@@ -34,6 +47,17 @@ const businessPage: BusinessPage = {
   size: 50,
   totalElements: 1,
 }
+const businessDetails: BusinessDetails = {
+  ...businessPage.businesses[0]!,
+  description: null,
+  city: null,
+  postalCode: null,
+  street: null,
+  streetNumber: null,
+  addressDetails: null,
+  phone: null,
+  contactEmail: null,
+}
 const session: Session = {
   displayName: 'Иван',
   platformAdmin: false,
@@ -50,6 +74,10 @@ beforeEach(() => {
   mockedRequest.mockRejectedValue(new Error('Необходим е вход.'))
   mockedListBusinesses.mockReset()
   mockedListBusinesses.mockResolvedValue(businessPage)
+  mockedCreateBusiness.mockReset()
+  mockedCreateBusiness.mockResolvedValue(businessDetails)
+  mockedGetBusiness.mockReset()
+  mockedGetBusiness.mockResolvedValue(businessDetails)
 })
 
 afterEach(() => vi.restoreAllMocks())
@@ -189,17 +217,149 @@ describe('identity application', () => {
     render(<App />)
     expect(screen.getByLabelText('Парола')).toHaveAttribute('minlength', '8')
     expect(screen.getByLabelText('Парола').closest('.compact-content')).toContainElement(
-      screen.getByRole('heading', { name: 'Вход' }),
+      screen.getByRole('heading', { name: 'Приемане на покана' }),
     )
-    fireEvent.change(screen.getByLabelText('Име'), { target: { value: 'Иван' } })
+    expect(screen.getByLabelText('Име')).not.toHaveAttribute('label')
+    expect(screen.getByLabelText('Име')).not.toHaveAttribute('requiretrimmedvalue')
+    fireEvent.change(screen.getByLabelText('Име'), { target: { value: '  Иван ' } })
+    fireEvent.change(screen.getByLabelText('Фамилия'), { target: { value: ' Иванов  ' } })
     fireEvent.change(screen.getByLabelText('Парола'), {
       target: { value: 'secure passphrase' },
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Приеми поканата' }))
-    expect(await screen.findByRole('status')).toHaveTextContent('Профилът е създаден.')
+    fireEvent.change(screen.getByLabelText('Потвърди паролата'), {
+      target: { value: 'secure passphrase' },
+    })
+    fireEvent.submit(screen.getByRole('button', { name: 'Приеми поканата' }).closest('form')!)
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Поканата е приета успешно. Бизнесът очаква активиране от администратор.',
+    )
+    expect(document.body).not.toHaveTextContent('Профилът е създаден.')
+    expect(screen.queryByRole('button', { name: 'Приеми поканата' }))
+      .not.toBeInTheDocument()
+    expect(window.location.search).toContain('token=invite-token')
+    fireEvent.click(screen.getByRole('button', { name: 'Към вход' }))
+    expect(window.location.pathname).toBe('/')
+    expect(window.location.search).toBe('')
+    expect(screen.getByRole('heading', { name: 'Вход' })).toBeInTheDocument()
     expect(mockedRequest).toHaveBeenLastCalledWith(
       '/api/auth/invitations/accept',
-      expect.objectContaining({ body: expect.stringContaining('invite-token') }),
+      expect.objectContaining({
+        body: JSON.stringify({
+          token: 'invite-token',
+          displayName: 'Иван Иванов',
+          password: 'secure passphrase',
+        }),
+      }),
+    )
+  })
+
+  it('keeps invitation password confirmation local and rejects a mismatch', async () => {
+    history.replaceState({}, '', '/invitation?token=invite-token')
+    mockedRequest.mockRejectedValueOnce(new Error('Необходим е вход.'))
+    render(<App />)
+
+    fireEvent.change(screen.getByLabelText('Име'), { target: { value: 'Иван' } })
+    fireEvent.change(screen.getByLabelText('Фамилия'), { target: { value: 'Иванов' } })
+    fireEvent.change(screen.getByLabelText('Парола'), {
+      target: { value: 'secure passphrase' },
+    })
+    const confirmation = screen.getByLabelText('Потвърди паролата')
+    fireEvent.change(confirmation, { target: { value: 'different password' } })
+    fireEvent.submit(screen.getByRole('button', { name: 'Приеми поканата' }).closest('form')!)
+
+    expect(confirmation).toHaveProperty('validationMessage', 'Паролите не съвпадат.')
+    expect(mockedRequest).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows one safe actionable message for an invalid invitation', async () => {
+    history.replaceState({}, '', '/invitation?token=invite-token')
+    mockedRequest
+      .mockRejectedValueOnce(new Error('Необходим е вход.'))
+      .mockRejectedValueOnce(
+        new ApiError(400, 'INVITATION_INVALID', 'Backend invitation detail'),
+      )
+    render(<App />)
+
+    fireEvent.change(screen.getByLabelText('Име'), { target: { value: 'Иван' } })
+    fireEvent.change(screen.getByLabelText('Фамилия'), { target: { value: 'Иванов' } })
+    fireEvent.change(screen.getByLabelText('Парола'), {
+      target: { value: 'secure passphrase' },
+    })
+    fireEvent.change(screen.getByLabelText('Потвърди паролата'), {
+      target: { value: 'secure passphrase' },
+    })
+    fireEvent.submit(screen.getByRole('button', { name: 'Приеми поканата' }).closest('form')!)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Поканата е невалидна, изтекла или вече е използвана. Поискайте нова покана.',
+    )
+    expect(document.body).not.toHaveTextContent('Backend invitation detail')
+  })
+
+  it('shows the distinct existing-user credential mismatch message', async () => {
+    history.replaceState({}, '', '/invitation?token=invite-token')
+    mockedRequest
+      .mockRejectedValueOnce(new Error('Необходим е вход.'))
+      .mockRejectedValueOnce(
+        new ApiError(
+          400,
+          'INVITATION_CREDENTIAL_MISMATCH',
+          'Backend credential detail',
+        ),
+      )
+    render(<App />)
+
+    fireEvent.change(screen.getByLabelText('Име'), { target: { value: 'Иван' } })
+    fireEvent.change(screen.getByLabelText('Фамилия'), { target: { value: 'Иванов' } })
+    fireEvent.change(screen.getByLabelText('Парола'), {
+      target: { value: 'secure passphrase' },
+    })
+    fireEvent.change(screen.getByLabelText('Потвърди паролата'), {
+      target: { value: 'secure passphrase' },
+    })
+    fireEvent.submit(screen.getByRole('button', { name: 'Приеми поканата' }).closest('form')!)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Паролата не съвпада със съществуващия профил за този имейл.',
+    )
+    expect(document.body).not.toHaveTextContent('Backend credential detail')
+  })
+
+  it('keeps ordinary invitation validation separate', async () => {
+    history.replaceState({}, '', '/invitation?token=invite-token')
+    mockedRequest
+      .mockRejectedValueOnce(new Error('Необходим е вход.'))
+      .mockRejectedValueOnce(
+        new ApiError(400, 'VALIDATION_ERROR', 'Проверете въведените данни.'),
+      )
+    render(<App />)
+
+    fireEvent.change(screen.getByLabelText('Име'), { target: { value: 'Иван' } })
+    fireEvent.change(screen.getByLabelText('Фамилия'), { target: { value: 'Иванов' } })
+    fireEvent.change(screen.getByLabelText('Парола'), {
+      target: { value: 'secure passphrase' },
+    })
+    fireEvent.change(screen.getByLabelText('Потвърди паролата'), {
+      target: { value: 'secure passphrase' },
+    })
+    fireEvent.submit(screen.getByRole('button', { name: 'Приеми поканата' }).closest('form')!)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Проверете въведените данни.',
+    )
+    expect(document.body).not.toHaveTextContent('Поканата е невалидна')
+  })
+
+  it('rejects a whitespace-only invitation name with safe Bulgarian validation', () => {
+    history.replaceState({}, '', '/invitation?token=invite-token')
+    render(<App />)
+
+    const firstName = screen.getByLabelText('Име')
+    fireEvent.input(firstName, { target: { value: '   ' } })
+
+    expect(firstName).toHaveProperty(
+      'validationMessage',
+      'Моля, попълнете това поле.',
     )
   })
 
@@ -410,6 +570,31 @@ describe('identity application', () => {
     history.pushState({}, '', '/#/platform/businesses')
     window.dispatchEvent(new HashChangeEvent('hashchange'))
     expect(await screen.findByRole('heading', { name: 'Бизнеси' })).toBeInTheDocument()
+  })
+
+  it('navigates through list, creation and the created DRAFT detail', async () => {
+    history.replaceState({}, '', '/#/platform/businesses')
+    mockedRequest.mockResolvedValue({ ...session, platformAdmin: true })
+    render(<App />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Нов бизнес' }))
+    expect(window.location.hash).toBe('#/platform/businesses/new')
+    expect(screen.getByRole('heading', { name: 'Нов бизнес' })).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Име на бизнеса'), {
+      target: { value: 'Студио А' },
+    })
+    fireEvent.change(screen.getByLabelText(/^Идентификатор в уеб адреса/), {
+      target: { value: 'studio-a' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Създай бизнес' }))
+
+    await waitFor(() => expect(mockedCreateBusiness).toHaveBeenCalledOnce())
+    expect(window.location.hash).toBe('#/platform/businesses/business-a')
+    expect(await screen.findByRole('heading', { name: 'Студио А' }))
+      .toBeInTheDocument()
+    expect(screen.getAllByText('Предстои активиране')).toHaveLength(3)
+    expect(document.body).not.toHaveTextContent(/Версия 0/)
   })
 
   it('clears a stale authenticated view when the Business list returns 401', async () => {

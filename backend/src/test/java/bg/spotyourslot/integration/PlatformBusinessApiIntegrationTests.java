@@ -3,6 +3,7 @@ package bg.spotyourslot.integration;
 import static org.hamcrest.Matchers.aMapWithSize;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
@@ -41,10 +42,17 @@ class PlatformBusinessApiIntegrationTests extends PostgresIntegrationTest {
     private static final UUID MISSING_BUSINESS_ID =
             UUID.fromString("00000000-0000-0000-0000-000000000404");
 
-    @Autowired MockMvc mvc;
-    @Autowired JdbcClient jdbc;
-    @Autowired TokenCodec tokens;
-    @Autowired Clock clock;
+    @Autowired
+    MockMvc mvc;
+
+    @Autowired
+    JdbcClient jdbc;
+
+    @Autowired
+    TokenCodec tokens;
+
+    @Autowired
+    Clock clock;
 
     private UUID adminUserId;
     private Cookie adminSession;
@@ -116,7 +124,7 @@ class PlatformBusinessApiIntegrationTests extends PostgresIntegrationTest {
         mvc.perform(get("/api/platform/businesses/{businessId}", businessId)
                         .cookie(adminSession))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$", aMapWithSize(13)))
+                .andExpect(jsonPath("$", aMapWithSize(17)))
                 .andExpect(jsonPath("$.id").value(businessId.toString()))
                 .andExpect(jsonPath("$.slug").value("api-business"))
                 .andExpect(jsonPath("$.businessType").value("OTHER"))
@@ -158,6 +166,30 @@ class PlatformBusinessApiIntegrationTests extends PostgresIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("ACTIVE"))
                 .andExpect(jsonPath("$.version").value(3));
+    }
+
+    @Test
+    void platformAdminCanRequestOwnerInvitationWithTheDocumentedPayload() throws Exception {
+        UUID businessId = createBusinessThroughApi("invitation-business");
+
+        mvc.perform(post(
+                        "/api/platform/identity/businesses/{businessId}/owner-invitation",
+                        businessId)
+                        .with(csrf())
+                        .cookie(adminSession)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"owner@example.invalid\"}"))
+                .andExpect(status().isAccepted());
+
+        assertThat(jdbc.sql("""
+                                SELECT normalized_email
+                                FROM owner_invitation
+                                WHERE business_id = :businessId
+                                """)
+                        .param("businessId", businessId)
+                        .query(String.class)
+                        .single())
+                .isEqualTo("owner@example.invalid");
     }
 
     @Test
@@ -445,7 +477,11 @@ class PlatformBusinessApiIntegrationTests extends PostgresIntegrationTest {
                   "businessType": "%s",
                   "timezone": "Europe/Sofia",
                   "description": "Описание",
-                  "address": "София",
+                  "city": "София",
+                  "postalCode": "1000",
+                  "street": "Примерна",
+                  "streetNumber": "1",
+                  "addressDetails": "вход А",
                   "phone": "+359 2 000 0000",
                   "contactEmail": "contact@example.invalid"
                 }

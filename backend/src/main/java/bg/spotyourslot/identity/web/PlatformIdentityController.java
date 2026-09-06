@@ -6,6 +6,7 @@ import bg.spotyourslot.identity.application.IdentityRecords.DeliveredLink;
 import bg.spotyourslot.identity.application.InvitationService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.context.annotation.Profile;
@@ -36,7 +37,8 @@ public class PlatformIdentityController {
         invitations.invite(businessId, request.email(), admin.user().id());
     }
 
-    public record InviteRequest(@Email String email) {}
+    public record InviteRequest(@Email @NotBlank String email) {
+    }
 }
 
 @RestController

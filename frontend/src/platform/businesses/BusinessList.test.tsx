@@ -49,8 +49,16 @@ beforeEach(() => {
 describe('BusinessList', () => {
   it('loads page zero with size 50 and renders approved summary metadata once', async () => {
     mockedListBusinesses.mockResolvedValue(populatedPage)
+    const onCreate = vi.fn()
+    const onOpen = vi.fn()
 
-    render(<BusinessList onAuthenticationRequired={vi.fn()} />)
+    render(
+      <BusinessList
+        onAuthenticationRequired={vi.fn()}
+        onCreate={onCreate}
+        onOpen={onOpen}
+      />,
+    )
 
     expect(screen.getByText('Зареждане на бизнесите…')).toBeInTheDocument()
     expect(await screen.findByRole('table', { name: 'Списък с бизнеси' }))
@@ -65,7 +73,7 @@ describe('BusinessList', () => {
       screen.getAllByRole('columnheader').map((heading) => heading.textContent),
     ).toEqual([
       'Име',
-      'Уеб адрес',
+      'Идентификатор в уеб адреса',
       'Дейност',
       'Статус',
     ])
@@ -75,7 +83,7 @@ describe('BusinessList', () => {
       ),
     ).toEqual([
       'Име',
-      'Уеб адрес',
+      'Идентификатор в уеб адреса',
       'Дейност',
       'Статус',
     ])
@@ -105,8 +113,12 @@ describe('BusinessList', () => {
     ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Предишна' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Следваща' })).toBeDisabled()
-    expect(screen.queryByRole('button', { name: /отвори/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('link')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Нов бизнес' }))
+    expect(onCreate).toHaveBeenCalledOnce()
+    const open = screen.getByRole('link', { name: 'Отвори Студио А' })
+    expect(open).toHaveAttribute('href', '/#/platform/businesses/business-a')
+    fireEvent.click(open)
+    expect(onOpen).toHaveBeenCalledWith('business-a')
   })
 
   it('presents BARBERSHOP and DRAFT with the approved Bulgarian labels', async () => {

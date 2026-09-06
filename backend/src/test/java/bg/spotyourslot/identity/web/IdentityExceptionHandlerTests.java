@@ -3,6 +3,8 @@ package bg.spotyourslot.identity.web;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import bg.spotyourslot.identity.application.CurrentPasswordInvalid;
+import bg.spotyourslot.identity.application.InvalidInvitation;
+import bg.spotyourslot.identity.application.InvitationCredentialMismatch;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
@@ -24,6 +26,34 @@ class IdentityExceptionHandlerTests {
         assertThat(problem.getDetail()).isEqualTo("Текущата парола е невалидна.");
         assertThat(problem.getDetail())
                 .doesNotContain("password", "hash", "exception", "database");
+    }
+
+    @Test
+    void mapsInvalidInvitationToOneSafeProblem() {
+        var exception = new InvalidInvitation();
+        var problem = handler.invalidInvitation();
+
+        assertThat(exception.getMessage()).isNull();
+        assertThat(exception.getCause()).isNull();
+        assertThat(problem.getStatus()).isEqualTo(400);
+        assertThat(problem.getProperties()).containsEntry("code", "INVITATION_INVALID");
+        assertThat(problem.getDetail())
+                .isEqualTo(
+                        "Поканата е невалидна, изтекла или вече е използвана. Поискайте нова покана.");
+    }
+
+    @Test
+    void mapsExistingUserCredentialMismatchToOneSafeProblem() {
+        var exception = new InvitationCredentialMismatch();
+        var problem = handler.invitationCredentialMismatch();
+
+        assertThat(exception.getMessage()).isNull();
+        assertThat(exception.getCause()).isNull();
+        assertThat(problem.getStatus()).isEqualTo(400);
+        assertThat(problem.getProperties())
+                .containsEntry("code", "INVITATION_CREDENTIAL_MISMATCH");
+        assertThat(problem.getDetail())
+                .isEqualTo("Паролата не съвпада със съществуващия профил за този имейл.");
     }
 
     @Test

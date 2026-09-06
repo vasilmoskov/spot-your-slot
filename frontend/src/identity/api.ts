@@ -5,6 +5,7 @@ const SAFE_FALLBACK = 'Заявката не може да бъде изпълн
 type ProblemResponse = {
   code?: unknown
   detail?: unknown
+  title?: unknown
 }
 
 export class ApiError extends Error {
@@ -49,10 +50,25 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
     throw new ApiError(
       response.status,
       typeof problem.code === 'string' ? problem.code : 'REQUEST_FAILED',
-      typeof problem.detail === 'string' ? problem.detail : SAFE_FALLBACK,
+      typeof problem.detail === 'string'
+        ? problem.detail
+        : problem.code === 'AUTH_REQUIRED' && typeof problem.title === 'string'
+          ? problem.title
+          : SAFE_FALLBACK,
     )
   }
-  return response.status === 204 ? (undefined as T) : response.json()
+  if (response.status === 204) {
+    return undefined as T
+  }
+  const responseBody = await response.text()
+  if (responseBody === '') {
+    return undefined as T
+  }
+  try {
+    return JSON.parse(responseBody) as T
+  } catch {
+    throw new ApiError(response.status, 'REQUEST_FAILED', SAFE_FALLBACK)
+  }
 }
 
 export type Business = {

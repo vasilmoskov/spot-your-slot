@@ -1,20 +1,33 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react'
-import { request, type Session } from './identity/api'
+import { ApiError, request, type Session } from './identity/api'
 import {
   PROFILE_ROUTE,
+  PLATFORM_BUSINESSES_ROUTE,
+  PLATFORM_BUSINESS_NEW_ROUTE,
+  isPlatformRoute,
   pushRoute,
   readAuthenticatedRoute,
   readIdentityPage,
   replaceRoute,
+  routeHref,
   subscribeToNavigation,
   type AuthenticatedRoute,
   type IdentityPage,
 } from './navigation'
 import { PlatformAdminShell } from './platform/PlatformAdminShell'
 import { BusinessList } from './platform/businesses/BusinessList'
+import { BusinessCreate } from './platform/businesses/BusinessCreate'
+import { BusinessDetail } from './platform/businesses/BusinessDetail'
 
 const safeErrorDetail = (error: unknown): string =>
   error instanceof Error ? error.message : 'Възникна грешка.'
+
+const invitationErrorDetail = (error: unknown): string =>
+  error instanceof ApiError && error.code === 'INVITATION_INVALID'
+    ? 'Поканата е невалидна, изтекла или вече е използвана. Поискайте нова покана.'
+    : error instanceof ApiError && error.code === 'INVITATION_CREDENTIAL_MISMATCH'
+      ? 'Паролата не съвпада със съществуващия профил за този имейл.'
+      : safeErrorDetail(error)
 
 type Feedback = {
   kind: 'error' | 'info' | 'success'
@@ -26,6 +39,7 @@ export function App() {
   const [page, setPage] = useState<IdentityPage>(readIdentityPage())
   const [feedback, setFeedback] = useState<Feedback | null>(null)
   const [busy, setBusy] = useState(false)
+  const [invitationAccepted, setInvitationAccepted] = useState(false)
 
   useEffect(() => {
     request<Session>('/api/auth/session').then(setSession).catch(() => undefined)
@@ -37,6 +51,7 @@ export function App() {
         if (!window.location.hash) {
           setPage(readIdentityPage())
           setFeedback(null)
+          setInvitationAccepted(false)
         }
       }),
     [],
@@ -45,6 +60,7 @@ export function App() {
   const navigate = (next: IdentityPage) => {
     setPage(next)
     setFeedback(null)
+    setInvitationAccepted(false)
     history.pushState(
       {},
       '',
@@ -56,20 +72,46 @@ export function App() {
     event: FormEvent<HTMLFormElement>,
     path: string,
     success: string,
+    bodyFactory: ((data: FormData) => Record<string, FormDataEntryValue>) | null = null,
   ) => {
     event.preventDefault()
+    const formData = new FormData(event.currentTarget)
+    const confirmation = event.currentTarget.elements.namedItem(
+      'passwordConfirmation',
+    ) as HTMLInputElement | null
+    if (confirmation) {
+      const password = String(formData.get('password') ?? '')
+      if (confirmation.value !== password) {
+        confirmation.setCustomValidity('Паролите не съвпадат.')
+        confirmation.reportValidity()
+        return
+      }
+    }
     setBusy(true)
     setFeedback(null)
-    const data = Object.fromEntries(new FormData(event.currentTarget))
+    const data = bodyFactory
+      ? bodyFactory(formData)
+      : Object.fromEntries(formData)
     try {
       const result = await request<Session>(path, {
         method: 'POST',
         body: JSON.stringify(data),
       })
       if (path.endsWith('login')) setSession(result)
-      if (success) setFeedback({ kind: 'info', text: success })
+      if (path.endsWith('invitations/accept')) setInvitationAccepted(true)
+      if (success) {
+        setFeedback({
+          kind: path.endsWith('invitations/accept') ? 'success' : 'info',
+          text: success,
+        })
+      }
     } catch (error) {
-      setFeedback({ kind: 'error', text: safeErrorDetail(error) })
+      setFeedback({
+        kind: 'error',
+        text: path.endsWith('invitations/accept')
+          ? invitationErrorDetail(error)
+          : safeErrorDetail(error),
+      })
     } finally {
       setBusy(false)
     }
@@ -94,7 +136,11 @@ export function App() {
         <div className="compact-content">
           <p className="eyebrow">SpotYourSlot</p>
           <h1 id="app-title">
-            {page === 'forgot' ? 'Забравена парола?' : 'Вход'}
+            {page === 'forgot'
+              ? 'Забравена парола?'
+              : page === 'invitation'
+                ? 'Приемане на покана'
+                : 'Вход'}
           </h1>
           {page === 'login' && (
             <form onSubmit={(event) => submit(event, '/api/auth/login', '')}>
@@ -155,13 +201,18 @@ export function App() {
               </button>
             </form>
           )}
-          {page === 'invitation' && (
+          {page === 'invitation' && !invitationAccepted && (
             <form
               onSubmit={(event) =>
                 submit(
                   event,
                   '/api/auth/invitations/accept',
-                  'Профилът е създаден. Вече можете да влезете.',
+                  'Поканата е приета успешно. Бизнесът очаква активиране от администратор.',
+                  (data) => ({
+                    token: data.get('token') ?? '',
+                    displayName: `${String(data.get('firstName') ?? '').trim()} ${String(data.get('lastName') ?? '').trim()}`,
+                    password: data.get('password') ?? '',
+                  }),
                 )
               }
             >
@@ -170,14 +221,30 @@ export function App() {
                 name="token"
                 value={new URLSearchParams(location.search).get('token') ?? ''}
               />
-              <Field name="displayName" label="Име" />
+              <Field name="firstName" label="Име" requireTrimmedValue />
+              <Field name="lastName" label="Фамилия" requireTrimmedValue />
               <Field name="password" label="Парола" type="password" minLength={8} />
+              <Field
+                name="passwordConfirmation"
+                label="Потвърди паролата"
+                type="password"
+                minLength={8}
+              />
               <button className="form-primary-action" disabled={busy}>
                 Приеми поканата
               </button>
             </form>
           )}
-          <FeedbackMessage feedback={feedback} />
+          {page === 'invitation' && invitationAccepted ? (
+            <div className="invitation-accepted">
+              <FeedbackMessage feedback={feedback} />
+              <button type="button" onClick={() => navigate('login')}>
+                Към вход
+              </button>
+            </div>
+          ) : (
+            <FeedbackMessage feedback={feedback} />
+          )}
         </div>
       </section>
     </main>
@@ -206,11 +273,19 @@ function FeedbackMessage({ feedback }: { feedback: Feedback | null }) {
   )
 }
 
-function Field(props: { name: string; label: string; type?: string; minLength?: number }) {
+function Field(props: {
+  name: string
+  label: string
+  type?: string
+  minLength?: number
+  requireTrimmedValue?: boolean
+}) {
+  const { name, label, type, minLength, requireTrimmedValue } = props
+
   const minimumPasswordLengthMessage = (value: string): string => {
     if (
-      props.type === 'password' &&
-      props.minLength === 8 &&
+      type === 'password' &&
+      minLength === 8 &&
       value.length > 0 &&
       Array.from(value).length < 8
     ) {
@@ -221,16 +296,19 @@ function Field(props: { name: string; label: string; type?: string; minLength?: 
 
   const validationMessage = (input: HTMLInputElement): string => {
     if (input.validity.valueMissing) {
-      if (props.type === 'email') return 'Моля, въведете имейл адрес.'
-      if (props.type === 'password') return 'Моля, въведете парола.'
+      if (type === 'email') return 'Моля, въведете имейл адрес.'
+      if (type === 'password') return 'Моля, въведете парола.'
       return 'Моля, попълнете това поле.'
     }
-    if (input.validity.typeMismatch && props.type === 'email') {
+    if (input.validity.typeMismatch && type === 'email') {
       return 'Моля, въведете валиден имейл адрес.'
     }
+    if (requireTrimmedValue && input.value.trim() === '') {
+      return 'Моля, попълнете това поле.'
+    }
     if (
-      props.type === 'password' &&
-      props.minLength === 8 &&
+      type === 'password' &&
+      minLength === 8 &&
       (input.validity.tooShort || Array.from(input.value).length < 8)
     ) {
       return 'Паролата трябва да бъде поне 8 знака.'
@@ -240,16 +318,27 @@ function Field(props: { name: string; label: string; type?: string; minLength?: 
 
   return (
     <label>
-      {props.label}
+      {label}
       <input
+        name={name}
+        type={type}
+        minLength={minLength}
         required
-        {...props}
         onInvalid={(event) => {
+          if (event.currentTarget.validity.customError) return
           event.currentTarget.setCustomValidity('')
           event.currentTarget.setCustomValidity(validationMessage(event.currentTarget))
         }}
         onInput={(event) => {
           event.currentTarget.setCustomValidity('')
+          if (
+            requireTrimmedValue &&
+            event.currentTarget.value !== '' &&
+            event.currentTarget.value.trim() === ''
+          ) {
+            event.currentTarget.setCustomValidity('Моля, попълнете това поле.')
+            return
+          }
           event.currentTarget.setCustomValidity(
             minimumPasswordLengthMessage(event.currentTarget.value),
           )
@@ -278,7 +367,7 @@ function AuthenticatedApplication({
 }: AuthenticatedApplicationProps) {
   const initialRoute = readAuthenticatedRoute()
   const [route, setRoute] = useState<AuthenticatedRoute>(
-    initialRoute.kind === 'platform-businesses' && !session.platformAdmin
+    isPlatformRoute(initialRoute) && !session.platformAdmin
       ? PROFILE_ROUTE
       : initialRoute,
   )
@@ -293,7 +382,7 @@ function AuthenticatedApplication({
   useEffect(() => {
     const synchronizeRoute = () => {
       const nextRoute = readAuthenticatedRoute()
-      if (nextRoute.kind === 'platform-businesses' && !session.platformAdmin) {
+      if (isPlatformRoute(nextRoute) && !session.platformAdmin) {
         replaceRoute(PROFILE_ROUTE)
         setRoute(PROFILE_ROUTE)
         return
@@ -301,10 +390,8 @@ function AuthenticatedApplication({
       setRoute(nextRoute)
     }
 
-    const approvedHash =
-      window.location.hash === '#/profile' ||
-      window.location.hash === '#/platform/businesses'
-    if (!approvedHash || (initialRoute.kind === 'platform-businesses' && !session.platformAdmin)) {
+    const approvedHash = routeHrefMatchesCurrentLocation(initialRoute)
+    if (!approvedHash || (isPlatformRoute(initialRoute) && !session.platformAdmin)) {
       replaceRoute(PROFILE_ROUTE)
     }
 
@@ -312,7 +399,7 @@ function AuthenticatedApplication({
   }, [initialRoute.kind, session.platformAdmin])
 
   const navigate = (nextRoute: AuthenticatedRoute) => {
-    if (nextRoute.kind === 'platform-businesses' && !session.platformAdmin) return
+    if (isPlatformRoute(nextRoute) && !session.platformAdmin) return
     pushRoute(nextRoute)
     setRoute(nextRoute)
     setFeedback(null)
@@ -366,11 +453,35 @@ function AuthenticatedApplication({
           setFeedback={setFeedback}
           action={action}
         />
+      ) : route.kind === 'platform-businesses' ? (
+        <BusinessList
+          onAuthenticationRequired={authenticationRequired}
+          onCreate={() => navigate(PLATFORM_BUSINESS_NEW_ROUTE)}
+          onOpen={(businessId) =>
+            navigate({ kind: 'platform-business-detail', businessId })
+          }
+        />
+      ) : route.kind === 'platform-business-new' ? (
+        <BusinessCreate
+          onAuthenticationRequired={authenticationRequired}
+          onCancel={() => navigate(PLATFORM_BUSINESSES_ROUTE)}
+          onCreated={(businessId) =>
+            navigate({ kind: 'platform-business-detail', businessId })
+          }
+        />
       ) : (
-        <BusinessList onAuthenticationRequired={authenticationRequired} />
+        <BusinessDetail
+          businessId={route.businessId}
+          onAuthenticationRequired={authenticationRequired}
+          onBack={() => navigate(PLATFORM_BUSINESSES_ROUTE)}
+        />
       )}
     </PlatformAdminShell>
   )
+}
+
+function routeHrefMatchesCurrentLocation(route: AuthenticatedRoute): boolean {
+  return window.location.hash === routeHref(route).slice(1)
 }
 
 type ProfileProps = {

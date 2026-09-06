@@ -68,13 +68,15 @@ public class InvitationService {
                 .filter(invitation -> !invitation.consumed()
                         && !invitation.invalidated()
                         && now.isBefore(invitation.expiresAt()))
-                .orElseThrow(() -> new IllegalArgumentException("Invalid invitation"));
+                .orElseThrow(InvalidInvitation::new);
         var existing = store.userByEmail(row.email());
-        if (existing.isPresent()
-                && (!existing.get().active()
-                        || existing.get().locked()
-                        || !passwords.matches(password, existing.get().passwordHash()))) {
-            throw new IllegalArgumentException("Invalid invitation");
+        if (existing.isPresent()) {
+            if (!existing.get().active() || existing.get().locked()) {
+                throw new InvalidInvitation();
+            }
+            if (!passwords.matches(password, existing.get().passwordHash())) {
+                throw new InvitationCredentialMismatch();
+            }
         }
         UUID userId = existing.map(user -> user.id())
                 .orElseGet(() -> store.createUser(

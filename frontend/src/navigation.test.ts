@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   PROFILE_ROUTE,
+  PLATFORM_BUSINESS_NEW_ROUTE,
   PLATFORM_BUSINESSES_ROUTE,
   pushRoute,
   readAuthenticatedRoute,
@@ -29,12 +30,23 @@ describe('application navigation', () => {
       PLATFORM_BUSINESSES_ROUTE,
     )
     expect(readAuthenticatedRoute('#/profile')).toEqual(PROFILE_ROUTE)
+    expect(readAuthenticatedRoute('#/platform/businesses/new')).toEqual(
+      PLATFORM_BUSINESS_NEW_ROUTE,
+    )
+    expect(readAuthenticatedRoute('#/platform/businesses/business-a')).toEqual({
+      kind: 'platform-business-detail',
+      businessId: 'business-a',
+    })
     expect(readAuthenticatedRoute('#/unknown')).toEqual(PROFILE_ROUTE)
   })
 
   it('builds and applies application-owned hash routes', () => {
     expect(routeHref(PROFILE_ROUTE)).toBe('/#/profile')
     expect(routeHref(PLATFORM_BUSINESSES_ROUTE)).toBe('/#/platform/businesses')
+    expect(routeHref(PLATFORM_BUSINESS_NEW_ROUTE)).toBe('/#/platform/businesses/new')
+    expect(
+      routeHref({ kind: 'platform-business-detail', businessId: 'business/a' }),
+    ).toBe('/#/platform/businesses/business%2Fa')
 
     pushRoute(PLATFORM_BUSINESSES_ROUTE)
     expect(window.location.hash).toBe('#/platform/businesses')

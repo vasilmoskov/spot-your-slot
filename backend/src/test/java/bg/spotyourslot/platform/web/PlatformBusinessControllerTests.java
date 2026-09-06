@@ -46,7 +46,8 @@ class PlatformBusinessControllerTests {
             UUID.fromString("00000000-0000-0000-0000-000000000055");
     private static final Instant NOW = Instant.parse("2026-08-14T12:00:00Z");
 
-    @Mock PlatformBusinessService service;
+    @Mock
+    PlatformBusinessService service;
 
     private PlatformBusinessController controller;
     private MockMvc mvc;
@@ -103,7 +104,11 @@ class PlatformBusinessControllerTests {
                 .andExpect(jsonPath("$.status").value("DRAFT"))
                 .andExpect(jsonPath("$.timezone").value(details.timezone()))
                 .andExpect(jsonPath("$.description").value(details.description()))
-                .andExpect(jsonPath("$.address").value(details.address()))
+                .andExpect(jsonPath("$.city").value(details.city()))
+                .andExpect(jsonPath("$.postalCode").value(details.postalCode()))
+                .andExpect(jsonPath("$.street").value(details.street()))
+                .andExpect(jsonPath("$.streetNumber").value(details.streetNumber()))
+                .andExpect(jsonPath("$.addressDetails").value(details.addressDetails()))
                 .andExpect(jsonPath("$.phone").value(details.phone()))
                 .andExpect(jsonPath("$.contactEmail").value(details.contactEmail()))
                 .andExpect(jsonPath("$.version").value(details.version()))
@@ -123,7 +128,11 @@ class PlatformBusinessControllerTests {
                                   "displayName": "New Business",
                                   "businessType": "OTHER",
                                   "description": "Description",
-                                  "address": "Address",
+                                  "city": "Sofia",
+                                  "postalCode": "1000",
+                                  "street": "Example",
+                                  "streetNumber": "1",
+                                  "addressDetails": "Entrance A",
                                   "phone": "+359 2 000 0000",
                                   "contactEmail": "contact@example.invalid"
                                 }
@@ -286,7 +295,11 @@ class PlatformBusinessControllerTests {
                 BusinessStatus.DRAFT,
                 "Europe/Sofia",
                 "Description",
-                "Address",
+                "Sofia",
+                "1000",
+                "Example",
+                "1",
+                "Entrance A",
                 "+359 2 000 0000",
                 "contact@example.invalid",
                 0,

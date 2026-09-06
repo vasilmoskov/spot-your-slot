@@ -1,6 +1,6 @@
 # SpotYourSlot — Platform-admin Onboarding Frontend
 
-Status: Pending
+Status: Completed
 GitHub subissue: #6 — Build platform-admin onboarding interface
 Parent issue: #4 — Create platform admin tools and onboard businesses
 
@@ -55,6 +55,12 @@ missing product decision, unexpected dependency, or required scope expansion.
 - Invitation success text may say only that the invitation request was
   accepted. Never claim delivery, invitation acceptance, Membership creation,
   or active-owner readiness.
+- Invitation acceptance asks for required first name, last name, password, and
+  local password confirmation. It sends the trimmed names as the existing
+  combined `displayName` and never sends confirmation. A new normalized email
+  creates a User with that name; an existing active, unlocked User must supply
+  the current password, retains the existing display name, and may receive a
+  Membership for another Business. The UI must not reveal which case applies.
 - Do not persist authentication tokens, session identifiers, CSRF tokens, or
   other authentication secrets in local storage, session storage, IndexedDB,
   or frontend diagnostic state. Preserve the existing approved invitation and
@@ -84,8 +90,9 @@ automated checks.
 
 Progress: A1 is implemented, manually reviewed, and human-approved. A2 is
 implemented, manually reviewed with the disposable 55-Business environment,
-and human-approved. Slice A is complete. This does not complete issue #6 or this
-task; Slices B–D remain pending, and the overall task status remains `Pending`.
+and human-approved. Slice A is complete. That checkpoint did not by itself
+complete issue #6; the overall task status remains `Pending` until the final
+Slice D browser review and human approval.
 
 Slice A is the first implementation of the permanent
 `docs/ui-design-guidelines.md`. Apply its product-wide tokens, typography,
@@ -100,8 +107,9 @@ layout conventions. Do not invent a separate visual specification in this task.
 - Never show platform navigation solely because a user has a
   `BUSINESS_OWNER`, `MANAGER`, or `STAFF` Membership.
 - Render a responsive Business list containing only approved presentation
-  metadata: display name, raw slug presented as “Уеб адрес”, BusinessType
-  presented as “Дейност”, and translated status. The typed response retains
+  metadata: display name, raw slug presented as “Идентификатор в уеб адреса”,
+  BusinessType presented as “Дейност”, and translated status. The typed response
+  retains
   `updatedAt`, `timezone`, `version`, `createdAt`, and its other authoritative
   application data for later operations and detail, audit, or support views,
   but these fields are intentionally omitted from list presentation as a UX and
@@ -207,16 +215,22 @@ approval before any Slice B work.
 
 ## Slice B — create, view, and edit Businesses
 
+Progress: Implemented, manually reviewed as part of the final combined
+rendered-browser checkpoint, and human-approved.
+
 ### User-visible behavior
 
 - Add a Bulgarian “Нов бизнес” flow for slug, display name, BusinessType,
-  optional creation timezone, description, address, phone, and contact email.
-- Explain that omitted creation timezone defaults to `Europe/Sofia`.
-- After HTTP 201, show the created Business detail with status `DRAFT` and
-  version 0.
+  description, structured optional Bulgarian address (city, postal code,
+  street, street number, and additional details), phone, and contact email.
+- Omit timezone from the UI; creation relies on the backend `Europe/Sofia`
+  default and editing preserves the authoritative stored timezone.
+- After HTTP 201, show the created Business detail with status `DRAFT` without
+  displaying technical version metadata.
 - Show only approved Business detail metadata.
-- Allow editing only the approved profile fields. Prepopulate the form and send
-  the current `expectedVersion`; never allow the client to select status,
+- Start with read-only profile details and expose explicit “Редактирай”,
+  “Запази промените”, and “Отказ” actions. Prepopulate edit mode and send the
+  current internal `expectedVersion`; never allow the client to select status,
   replace persisted version, or supply creation/update timestamps.
 - Present safe Bulgarian validation and slug-conflict feedback. A concurrency
   conflict must offer a clear reload action and must not silently overwrite.
@@ -230,14 +244,15 @@ approval before any Slice B work.
 - Apply useful HTML/client validation without duplicating or replacing
   Business-owned backend validation.
 - Keep owner invitation email out of the Business form and state.
-- Keep returned version/status authoritative and refresh displayed state after
-  successful mutations.
+- Keep returned version/status authoritative in application state and refresh
+  displayed state after successful mutations; version is not presentation
+  content.
 
 ### Focused tests
 
 - exact create and update requests;
-- 201 navigation and DRAFT/version-0 rendering;
-- all approved BusinessType options and creation-time timezone behavior;
+- 201 navigation and DRAFT rendering without visible version metadata;
+- all approved BusinessType options and backend-defaulted timezone behavior;
 - approved detail metadata and editable-field boundary;
 - inability to submit status, replacement version, or timestamps;
 - required fields, documented length boundaries, and optional fields;
@@ -257,11 +272,15 @@ After Slice B checks pass, repeat the exact Slice A local startup procedure.
 Open `http://localhost:5173/#/platform/businesses`, then review list → create →
 detail → edit at approximately 360 px and desktop widths. Use keyboard-only
 operation, submit representative valid and invalid Bulgarian content, confirm
-the Business remains DRAFT/version 0 after creation, and review safe conflict
+the Business remains DRAFT after creation, and review safe conflict
 recovery. Stop services with the exact Slice A shutdown procedure. Stop for
 human review and wait for UX feedback and explicit approval before Slice C.
 
 ## Slice C — lifecycle actions and owner invitation
+
+Progress: Implemented, manually reviewed as part of the final combined
+rendered-browser checkpoint, and human-approved. The invitation flows were
+manually verified.
 
 ### User-visible behavior
 
@@ -280,6 +299,9 @@ human review and wait for UX feedback and explicit approval before Slice C.
   confirmation.
 - After HTTP 202, state only that the invitation request was accepted. Do not
   claim delivery, acceptance, Membership creation, or readiness.
+- Treat the successful empty HTTP 202 body as success rather than attempting to
+  decode JSON. The earlier false invitation failure was caused by the shared
+  request helper parsing that empty success body; it was not a backend rejection.
 - Keep confirmation, status, and error feedback accessible, keyboard-operable,
   responsive, and protected from duplicate submission.
 
@@ -297,7 +319,7 @@ human review and wait for UX feedback and explicit approval before Slice C.
 - status-specific action visibility;
 - confirmation and cancellation for all three lifecycle actions;
 - exact endpoints and expected-version payloads;
-- successful returned status/version updates;
+- successful returned status/internal-version updates;
 - missing-owner, invalid-lifecycle, and stale-version recovery;
 - separate contact and owner email behavior;
 - exact owner-invitation request and 202 success wording;
@@ -325,6 +347,10 @@ layouts. Stop services with the exact Slice A shutdown procedure. Stop for
 human review and wait for UX feedback and explicit approval before Slice D.
 
 ## Slice D — feedback, accessibility, verification, and documentation
+
+Progress: Completed. The corrected visual presentation and invitation flows
+were manually verified and human-approved. Issue #7 end-to-end verification is
+separate.
 
 ### Scope
 
@@ -373,7 +399,8 @@ for final human UX acceptance before marking this task complete.
    a routing dependency.
 4. PLATFORM_ADMIN can list Businesses with bounded pagination and approved
    metadata.
-5. PLATFORM_ADMIN can create a DRAFT/version-0 Business and view its details.
+5. PLATFORM_ADMIN can create a DRAFT Business and view its read-only details;
+   technical version remains internal for mutations.
 6. PLATFORM_ADMIN can edit only approved profile fields with `expectedVersion`.
 7. Concurrency, validation, slug conflict, authentication, and authorization
    failures produce safe actionable Bulgarian UI without internal detail.
@@ -392,16 +419,50 @@ for final human UX acceptance before marking this task complete.
 15. Each accepted slice is independently reviewed and committed; no slice is
     silently combined with later work.
 16. Formatting/readability and `git diff --check` pass.
-17. No backend, migration, dependency, public-booking, workforce, deployment,
-    issue #7, or later-phase change is introduced.
+17. No unapproved backend, migration, dependency, public-booking, workforce,
+    deployment, issue #7, or later-phase change is introduced.
 18. No credential, generated output, or unrelated file is committed.
+
+## Completion evidence
+
+The corrected issue #6 implementation was completed and human-approved on
+2026-09-06.
+Slice A was previously reviewed, committed, and human-approved. The remaining
+implementation adds typed create/detail routes, exact Business and owner-
+invitation API clients, create and profile-edit forms, authoritative
+`expectedVersion` handling, explicit conflict reload, status-specific confirmed
+lifecycle actions, and same-email invitation resend confirmation.
+
+Automated evidence:
+
+- `BusinessForm.test.tsx`, `BusinessCreate.test.tsx`, and
+  `BusinessDetail.test.tsx` cover
+  structured-address field boundaries, safe local feedback, DRAFT creation,
+  read-only/edit/cancel behavior, profile updates, conflict recovery, lifecycle
+  confirmations, returned status/internal-version updates,
+  owner/contact email separation, invitation wording, error focus, and
+  duplicate-submission protection;
+- `BusinessList.test.tsx`, `PlatformAdminShell.test.tsx`,
+  `navigation.test.ts`, and `App.test.tsx` cover platform-only navigation,
+  approved hash routes,
+  list/create/detail integration, pagination, request cancellation, identity
+  regressions, and absence of browser-persistence writes;
+- `api.test.ts` verifies exact list, create, retrieval, update, lifecycle, and
+  invitation requests through the credentialed CSRF-aware request helper;
+- complete-suite counts and build evidence are refreshed in the final handoff
+  after this correction.
+
+The corrected visual layout and invitation flows were manually verified in a
+live browser and human-approved. Automated tests and CSS inspection remain
+separate from that rendered visual evidence. Issue #7 retains the final full
+end-to-end Business onboarding and lifecycle verification.
 
 ## Explicit exclusions
 
-Unless separately proposed and approved, do not modify backend code, APIs,
-security, migrations, dependencies, lockfiles, CI, Compose, deployment, hosting,
-or production email. Do not add React Router, a component library, Playwright,
-or another dependency.
+Apart from the explicitly approved structured-address V4 correction, do not
+modify backend code, APIs, security, migrations, dependencies, lockfiles, CI,
+Compose, deployment, hosting, or production email. Do not add React Router, a
+component library, Playwright, or another dependency.
 
 Do not implement public Business pages, public booking, Services, StaffMembers,
 schedules, availability, Customers, Appointments, Business-user configuration,

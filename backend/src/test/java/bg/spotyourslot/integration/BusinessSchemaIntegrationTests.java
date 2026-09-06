@@ -7,12 +7,14 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.sql.DriverManager;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Stream;
+import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -31,11 +33,14 @@ class BusinessSchemaIntegrationTests extends PostgresIntegrationTest {
             "68cb25d6ccfd4e5aca12ec0b0199f13f3d0dd35418e45e1d7d2ef74a6832dc49";
     private static final String V2_SHA_256 =
             "c1b62d1fed08138a937f281d4e3952942cc0a5d5cbaf7ed4803dc030a60527f8";
+    private static final String V3_SHA_256 =
+            "655d22a52c06eb41996a75c100c1bfab853c907b9e0e076f128ba2ab8be674a2";
 
-    @Autowired JdbcClient jdbc;
+    @Autowired
+    JdbcClient jdbc;
 
     @Test
-    void flywayAppliesAllThreeMigrationsFromAnEmptyDatabase() {
+    void flywayAppliesAllFourMigrationsFromAnEmptyDatabase() {
         var versions = jdbc.sql("""
                         SELECT version
                         FROM flyway_schema_history
@@ -45,7 +50,7 @@ class BusinessSchemaIntegrationTests extends PostgresIntegrationTest {
                 .query(String.class)
                 .list();
 
-        assertThat(versions).containsExactly("1", "2", "3");
+        assertThat(versions).containsExactly("1", "2", "3", "4");
     }
 
     @Test
@@ -55,7 +60,9 @@ class BusinessSchemaIntegrationTests extends PostgresIntegrationTest {
                         FROM information_schema.columns
                         WHERE table_schema = 'public'
                           AND table_name = 'business'
-                          AND column_name IN ('description', 'address', 'phone', 'contact_email')
+                          AND column_name IN (
+                              'description', 'city', 'postal_code', 'street', 'street_number',
+                              'address_details', 'phone', 'contact_email')
                         ORDER BY column_name
                         """)
                 .query((resultSet, rowNumber) -> new ColumnMetadata(
@@ -66,10 +73,14 @@ class BusinessSchemaIntegrationTests extends PostgresIntegrationTest {
 
         assertThat(columns)
                 .containsExactly(
-                        new ColumnMetadata("address", 500, "YES"),
+                        new ColumnMetadata("address_details", 500, "YES"),
+                        new ColumnMetadata("city", 100, "YES"),
                         new ColumnMetadata("contact_email", 320, "YES"),
                         new ColumnMetadata("description", 2000, "YES"),
-                        new ColumnMetadata("phone", 50, "YES"));
+                        new ColumnMetadata("phone", 50, "YES"),
+                        new ColumnMetadata("postal_code", 20, "YES"),
+                        new ColumnMetadata("street", 200, "YES"),
+                        new ColumnMetadata("street_number", 50, "YES"));
     }
 
     @Test
@@ -77,20 +88,26 @@ class BusinessSchemaIntegrationTests extends PostgresIntegrationTest {
         UUID businessId = createBusiness();
 
         var profile = jdbc.sql("""
-                        SELECT description, address, phone, contact_email
+                        SELECT description, city, postal_code, street, street_number,
+                               address_details, phone, contact_email
                         FROM business
                         WHERE id = :id
                         """)
                 .param("id", businessId)
                 .query((resultSet, rowNumber) -> new BusinessProfile(
                         resultSet.getString("description"),
-                        resultSet.getString("address"),
+                        resultSet.getString("city"),
+                        resultSet.getString("postal_code"),
+                        resultSet.getString("street"),
+                        resultSet.getString("street_number"),
+                        resultSet.getString("address_details"),
                         resultSet.getString("phone"),
                         resultSet.getString("contact_email")))
                 .single();
 
         assertThat(profile)
-                .isEqualTo(new BusinessProfile(null, null, null, null));
+                .isEqualTo(new BusinessProfile(
+                        null, null, null, null, null, null, null, null));
     }
 
     @Test
@@ -100,27 +117,40 @@ class BusinessSchemaIntegrationTests extends PostgresIntegrationTest {
         jdbc.sql("""
                         UPDATE business
                         SET description = :description,
-                            address = :address,
+                            city = :city,
+                            postal_code = :postalCode,
+                            street = :street,
+                            street_number = :streetNumber,
+                            address_details = :addressDetails,
                             phone = :phone,
                             contact_email = :contactEmail
                         WHERE id = :id
                         """)
                 .param("description", "Малък бизнес за услуги с предварително записване.")
-                .param("address", "ул. Примерна 1, София")
+                .param("city", "София")
+                .param("postalCode", "1000")
+                .param("street", "Примерна")
+                .param("streetNumber", "1")
+                .param("addressDetails", "вход А, етаж 2")
                 .param("phone", "+359 2 000 0000")
                 .param("contactEmail", "contact@example.invalid")
                 .param("id", businessId)
                 .update();
 
         var profile = jdbc.sql("""
-                        SELECT description, address, phone, contact_email
+                        SELECT description, city, postal_code, street, street_number,
+                               address_details, phone, contact_email
                         FROM business
                         WHERE id = :id
                         """)
                 .param("id", businessId)
                 .query((resultSet, rowNumber) -> new BusinessProfile(
                         resultSet.getString("description"),
-                        resultSet.getString("address"),
+                        resultSet.getString("city"),
+                        resultSet.getString("postal_code"),
+                        resultSet.getString("street"),
+                        resultSet.getString("street_number"),
+                        resultSet.getString("address_details"),
                         resultSet.getString("phone"),
                         resultSet.getString("contact_email")))
                 .single();
@@ -128,9 +158,70 @@ class BusinessSchemaIntegrationTests extends PostgresIntegrationTest {
         assertThat(profile)
                 .isEqualTo(new BusinessProfile(
                         "Малък бизнес за услуги с предварително записване.",
-                        "ул. Примерна 1, София",
+                        "София",
+                        "1000",
+                        "Примерна",
+                        "1",
+                        "вход А, етаж 2",
                         "+359 2 000 0000",
                         "contact@example.invalid"));
+    }
+
+    @Test
+    void forwardMigrationPreservesLegacyAddressAsAdditionalDetails() throws Exception {
+        String schema = "v4_address_compatibility";
+        var dataSource = new org.postgresql.ds.PGSimpleDataSource();
+        dataSource.setURL(POSTGRES.getJdbcUrl());
+        dataSource.setUser(POSTGRES.getUsername());
+        dataSource.setPassword(POSTGRES.getPassword());
+        Flyway.configure()
+                .dataSource(dataSource)
+                .schemas(schema)
+                .defaultSchema(schema)
+                .target("3")
+                .load()
+                .migrate();
+
+        UUID id = UUID.randomUUID();
+        try (var connection = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                var statement = connection.prepareStatement("""
+                        INSERT INTO v4_address_compatibility.business(
+                            id,slug,display_name,business_type,status,timezone,address,
+                            created_at,updated_at)
+                        VALUES (?,?,'Legacy Business','OTHER','DRAFT','Europe/Sofia',?,now(),now())
+                        """)) {
+            statement.setObject(1, id);
+            statement.setString(2, "legacy-" + id);
+            statement.setString(3, "Legacy free-form address");
+            statement.executeUpdate();
+        }
+
+        Flyway.configure()
+                .dataSource(dataSource)
+                .schemas(schema)
+                .defaultSchema(schema)
+                .load()
+                .migrate();
+
+        try (var connection = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                var statement = connection.prepareStatement("""
+                        SELECT address_details, city, postal_code, street, street_number
+                        FROM v4_address_compatibility.business
+                        WHERE id = ?
+                        """)) {
+            statement.setObject(1, id);
+            try (var result = statement.executeQuery()) {
+                assertThat(result.next()).isTrue();
+                assertThat(result.getString("address_details"))
+                        .isEqualTo("Legacy free-form address");
+                assertThat(result.getString("city")).isNull();
+                assertThat(result.getString("postal_code")).isNull();
+                assertThat(result.getString("street")).isNull();
+                assertThat(result.getString("street_number")).isNull();
+            }
+        }
     }
 
     @ParameterizedTest
@@ -203,6 +294,8 @@ class BusinessSchemaIntegrationTests extends PostgresIntegrationTest {
                 .isEqualTo(V1_SHA_256);
         assertThat(resourceSha256("db/migration/V2__enforce_single_active_identity_tokens.sql"))
                 .isEqualTo(V2_SHA_256);
+        assertThat(resourceSha256("db/migration/V3__add_business_profile_fields.sql"))
+                .isEqualTo(V3_SHA_256);
     }
 
     private UUID createBusiness() {
@@ -251,7 +344,11 @@ class BusinessSchemaIntegrationTests extends PostgresIntegrationTest {
 
     private enum ProfileColumn {
         DESCRIPTION("description", 2000),
-        ADDRESS("address", 500),
+        CITY("city", 100),
+        POSTAL_CODE("postal_code", 20),
+        STREET("street", 200),
+        STREET_NUMBER("street_number", 50),
+        ADDRESS_DETAILS("address_details", 500),
         PHONE("phone", 50),
         CONTACT_EMAIL("contact_email", 320);
 
@@ -277,7 +374,11 @@ class BusinessSchemaIntegrationTests extends PostgresIntegrationTest {
 
     private record BusinessProfile(
             String description,
-            String address,
+            String city,
+            String postalCode,
+            String street,
+            String streetNumber,
+            String addressDetails,
             String phone,
             String contactEmail) {
     }

@@ -16,8 +16,8 @@
 - **app_user:** normalized unique email, password hash, active/locked state,
   password-change time, audit fields; no tenant role directly.
 - **business:** globally unique slug, `BusinessType`, generic profile/contact
-  fields, single address, timezone, booking/notice/cancellation settings,
-  status, currency, audit fields.
+  fields, one optional structured Bulgarian address, timezone,
+  booking/notice/cancellation settings, status, currency, audit fields.
 - **membership:** `user_id`, `business_id`, role (`BUSINESS_OWNER`, `MANAGER`,
   `STAFF`), active state; unique per user/Business.
 - **platform_role:** platform-level `PLATFORM_ADMIN`, avoiding a fake tenant.
@@ -37,7 +37,15 @@ invitation/reset issuance. Flyway `V3__add_business_profile_fields.sql` adds
 nullable `description` (2,000 characters), `address` (500), `phone` (50), and
 `contact_email` (320). PostgreSQL rejects non-null whitespace-only values and
 requires persisted contact email to be lowercase; application validation also
-normalizes and validates supplied contact email. V1 and V2 were not rewritten.
+normalizes and validates supplied contact email.
+
+Flyway `V4__structure_business_address.sql` renames the existing `address`
+column to `address_details`, preserving every prior value, and adds nullable
+`city` (100 characters), `postal_code` (20), `street` (200), and
+`street_number` (50). The renamed details column retains its 500-character and
+nonblank constraints; each new field also rejects non-null whitespace-only
+values. Country is currently fixed to Bulgaria in the product/UI and is not a
+stored selectable field. V1, V2, and V3 were not rewritten.
 
 Platform-created Businesses always persist as `DRAFT` with version 0. Profile
 and lifecycle mutations compare the supplied expected version atomically and

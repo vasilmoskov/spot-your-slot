@@ -26,6 +26,32 @@ describe('identity API client', () => {
     )
   })
 
+  it('uses the structured authentication title when the filter response has no detail', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({ code: 'AUTH_REQUIRED', title: 'Необходим е вход.' }),
+        { status: 401, headers: { 'Content-Type': 'application/problem+json' } },
+      ),
+    )
+
+    await expect(request('/api/platform/businesses')).rejects.toEqual(
+      new ApiError(401, 'AUTH_REQUIRED', 'Необходим е вход.'),
+    )
+  })
+
+  it('does not expose an unrecognized problem title', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ title: 'SQL internal failure' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/problem+json' },
+      }),
+    )
+
+    await expect(request('/api/example')).rejects.toEqual(
+      new ApiError(500, 'REQUEST_FAILED', 'Заявката не може да бъде изпълнена.'),
+    )
+  })
+
   it('uses a safe fallback for malformed and non-JSON errors', async () => {
     fetchMock.mockResolvedValue(new Response('<html>internal details</html>', { status: 500 }))
 
@@ -43,6 +69,53 @@ describe('identity API client', () => {
       'http://localhost:8080/api/example',
       expect.objectContaining({ credentials: 'include' }),
     )
+  })
+
+  it('accepts a successful empty response body without attempting JSON parsing', async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 202 }))
+
+    await expect(request('/api/example')).resolves.toBeUndefined()
+  })
+
+  it('accepts an HTTP 204 response without attempting JSON parsing', async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }))
+
+    await expect(request('/api/example')).resolves.toBeUndefined()
+  })
+
+  it('returns parsed JSON from a successful non-empty response', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ status: 'accepted' }), { status: 202 }),
+    )
+
+    await expect(request('/api/example')).resolves.toEqual({ status: 'accepted' })
+  })
+
+  it('uses a safe client error when a successful response is not valid JSON', async () => {
+    const malformedBody = '<html>private upstream diagnostic</html>'
+    fetchMock.mockResolvedValue(new Response(malformedBody, { status: 202 }))
+
+    const response = request('/api/example')
+
+    await expect(response).rejects.toEqual(
+      new ApiError(202, 'REQUEST_FAILED', 'Заявката не може да бъде изпълнена.'),
+    )
+    await expect(response).rejects.not.toThrow(malformedBody)
+    await expect(response).rejects.not.toThrow('Unexpected token')
+    await expect(response).rejects.not.toThrow('private upstream diagnostic')
+  })
+
+  it('keeps the Error message safe for identity feedback rendering', async () => {
+    fetchMock.mockResolvedValue(
+      new Response('<html>sensitive response fragment</html>', { status: 200 }),
+    )
+
+    const error = await request('/api/auth/session').catch((caught: unknown) => caught)
+
+    expect(error).toBeInstanceOf(ApiError)
+    expect((error as Error).message).toBe('Заявката не може да бъде изпълнена.')
+    expect((error as Error).message).not.toContain('Unexpected token')
+    expect((error as Error).message).not.toContain('sensitive response fragment')
   })
 
   it('keeps the CSRF token in memory and sends credentialed writes', async () => {

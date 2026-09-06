@@ -229,9 +229,10 @@ current page without a clear dismissal method.
 
 ### Business list
 
-Use a table on desktop and readable cards on mobile. Show display name, slug as
-“Уеб адрес” without constructing a full public URL, BusinessType as “Дейност”,
-translated status, and an explicit open action. Do not display timestamps,
+Use a table on desktop and readable cards on mobile. Show the display name as
+the normal accessible detail link, slug as “Идентификатор в уеб адреса” without
+constructing a full public URL, BusinessType as “Дейност”, and translated
+status. Do not display timestamps,
 timezone, IDs, version, or other technical metadata in the overview; returned
 metadata remains available for later application operations and detail, audit,
 or support views. Preserve backend ordering and bounded pagination. Do not
@@ -239,11 +240,15 @@ introduce speculative search, filters, or actions.
 
 ### Business detail
 
-The header shows the Business name, slug, translated status, and the relevant
-primary action. Use clear sections for basic information, owner invitation, and
-lifecycle. Prefer sections over multiple tabs for the MVP. Keep Business contact
-email distinct from owner invitation email, and show only lifecycle actions
-valid for the current status.
+The header shows the Business name, slug, and translated status. Details begin
+as read-only information and expose an explicit “Редактирай” action with
+save/cancel only in edit mode. Use accessible collapsible sections titled
+“Данни за бизнеса”, “Покана”, and “Активиране”; keep operation feedback inside
+its corresponding section and reopen that section for an active error. Keep
+Business contact email distinct from owner invitation email, and show only
+lifecycle actions valid for the current status. The current UI hides timezone
+and technical version while retaining them in application state for correct
+updates.
 
 ## 13. Public/customer-facing UI boundary
 

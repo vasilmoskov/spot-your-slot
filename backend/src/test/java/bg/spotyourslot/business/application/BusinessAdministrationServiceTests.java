@@ -49,8 +49,11 @@ class BusinessAdministrationServiceTests {
             UUID.fromString("00000000-0000-0000-0000-000000000041");
     private static final Instant NOW = Instant.parse("2026-08-14T10:00:00Z");
 
-    @Mock BusinessStore store;
-    @Mock BusinessInputValidator validator;
+    @Mock
+    BusinessStore store;
+
+    @Mock
+    BusinessInputValidator validator;
 
     private BusinessAdministrationService service;
 
@@ -122,7 +125,11 @@ class BusinessAdministrationServiceTests {
         assertThat(creation.businessType()).isEqualTo(validated.businessType());
         assertThat(creation.timezone().value()).isEqualTo(validated.timezone());
         assertThat(creation.description()).isEqualTo(validated.description());
-        assertThat(creation.address()).isEqualTo(validated.address());
+        assertThat(creation.city()).isEqualTo(validated.city());
+        assertThat(creation.postalCode()).isEqualTo(validated.postalCode());
+        assertThat(creation.street()).isEqualTo(validated.street());
+        assertThat(creation.streetNumber()).isEqualTo(validated.streetNumber());
+        assertThat(creation.addressDetails()).isEqualTo(validated.addressDetails());
         assertThat(creation.phone()).isEqualTo(validated.phone());
         assertThat(creation.contactEmail()).isEqualTo(validated.contactEmail());
         assertThat(creation.createdAt()).isEqualTo(NOW);
@@ -174,7 +181,11 @@ class BusinessAdministrationServiceTests {
         assertThat(update.businessType()).isEqualTo(validated.businessType());
         assertThat(update.timezone().value()).isEqualTo(validated.timezone());
         assertThat(update.description()).isEqualTo(validated.description());
-        assertThat(update.address()).isEqualTo(validated.address());
+        assertThat(update.city()).isEqualTo(validated.city());
+        assertThat(update.postalCode()).isEqualTo(validated.postalCode());
+        assertThat(update.street()).isEqualTo(validated.street());
+        assertThat(update.streetNumber()).isEqualTo(validated.streetNumber());
+        assertThat(update.addressDetails()).isEqualTo(validated.addressDetails());
         assertThat(update.phone()).isEqualTo(validated.phone());
         assertThat(update.contactEmail()).isEqualTo(validated.contactEmail());
         assertThat(update.expectedVersion()).isEqualTo(4);
@@ -347,7 +358,11 @@ class BusinessAdministrationServiceTests {
                 BusinessType.OTHER,
                 "Europe/Sofia",
                 "Description",
-                "Address",
+                "Sofia",
+                "1000",
+                "Example",
+                "1",
+                "Entrance A",
                 "+359 2 000 0000",
                 "contact@example.invalid");
     }
@@ -360,7 +375,11 @@ class BusinessAdministrationServiceTests {
                 create.businessType(),
                 create.timezone(),
                 create.description(),
-                create.address(),
+                create.city(),
+                create.postalCode(),
+                create.street(),
+                create.streetNumber(),
+                create.addressDetails(),
                 create.phone(),
                 create.contactEmail(),
                 expectedVersion);
@@ -376,7 +395,11 @@ class BusinessAdministrationServiceTests {
                 status,
                 new BusinessTimezone("Europe/Sofia"),
                 "Stored description",
-                "Stored address",
+                "Sofia",
+                "1000",
+                "Stored street",
+                "1",
+                "Stored details",
                 "+359 2 111 1111",
                 "stored@example.invalid",
                 version,
@@ -392,7 +415,11 @@ class BusinessAdministrationServiceTests {
         assertThat(details.status()).isEqualTo(row.status());
         assertThat(details.timezone()).isEqualTo(row.timezone().value());
         assertThat(details.description()).isEqualTo(row.description());
-        assertThat(details.address()).isEqualTo(row.address());
+        assertThat(details.city()).isEqualTo(row.city());
+        assertThat(details.postalCode()).isEqualTo(row.postalCode());
+        assertThat(details.street()).isEqualTo(row.street());
+        assertThat(details.streetNumber()).isEqualTo(row.streetNumber());
+        assertThat(details.addressDetails()).isEqualTo(row.addressDetails());
         assertThat(details.phone()).isEqualTo(row.phone());
         assertThat(details.contactEmail()).isEqualTo(row.contactEmail());
         assertThat(details.version()).isEqualTo(row.version());

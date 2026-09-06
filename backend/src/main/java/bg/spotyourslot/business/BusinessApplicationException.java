@@ -22,7 +22,11 @@ public abstract sealed class BusinessApplicationException extends RuntimeExcepti
         BUSINESS_TYPE,
         TIMEZONE,
         DESCRIPTION,
-        ADDRESS,
+        CITY,
+        POSTAL_CODE,
+        STREET,
+        STREET_NUMBER,
+        ADDRESS_DETAILS,
         PHONE,
         CONTACT_EMAIL,
         EXPECTED_VERSION
