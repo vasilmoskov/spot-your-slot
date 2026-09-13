@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom/vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../identity/api'
 import {
   changeBusinessStatus,
@@ -75,6 +75,8 @@ beforeEach(() => {
   mockedInviteBusinessOwner.mockReset()
   mockedGetBusiness.mockResolvedValue(draftBusiness)
 })
+
+afterEach(() => vi.useRealTimers())
 
 describe('BusinessDetail', () => {
   it.each([
@@ -199,6 +201,10 @@ describe('BusinessDetail', () => {
       renderDetail()
 
       const actionButton = await screen.findByRole('button', { name: actionLabel })
+      expect(actionButton).toHaveClass(
+        status === 'ACTIVE' ? 'button--destructive' : 'button--primary',
+      )
+      expect(actionButton).not.toHaveClass('button--navigation')
       const lifecycleSection = section('Активиране')
       if (!lifecycleSection.open) {
         fireEvent.click(lifecycleSection.querySelector('summary')!)
@@ -219,7 +225,7 @@ describe('BusinessDetail', () => {
           'Бизнесът ще стане активен, ако има активен собственик.',
         )
       }
-      const confirm = dialog.querySelector('button:not(.secondary-button)') as HTMLButtonElement
+      const confirm = dialog.querySelector('button:not(.button--secondary)') as HTMLButtonElement
       expect(confirm).toHaveFocus()
       fireEvent.click(screen.getByRole('button', { name: 'Отказ' }))
       expect(mockedChangeBusinessStatus).not.toHaveBeenCalled()
@@ -227,7 +233,7 @@ describe('BusinessDetail', () => {
       fireEvent.click(screen.getByRole('button', { name: actionLabel }))
       const confirmation = screen.getByRole('alertdialog')
       const confirmedButton = confirmation.querySelector(
-        'button:not(.secondary-button)',
+        'button:not(.button--secondary)',
       ) as HTMLButtonElement
       fireEvent.click(confirmedButton)
 
@@ -239,10 +245,16 @@ describe('BusinessDetail', () => {
         ),
       )
       const feedback = await screen.findByRole('status')
+      expect(feedback).toHaveClass('lifecycle-feedback')
+      const feedbackLayout = feedback.closest('.feedback-action-layout') as HTMLElement
+      expect(feedbackLayout).toContainElement(feedback)
       const currentStatus = lifecycleSection.querySelector(
         '.section-introduction',
       )!
       const nextAction = screen.getByRole('button', { name: nextActionLabel })
+      expect(feedbackLayout).toContainElement(nextAction)
+      expect(nextAction.parentElement).toHaveClass('feedback-action-controls')
+      expect(feedback.nextElementSibling).toBe(nextAction.parentElement)
       expect(
         currentStatus.compareDocumentPosition(feedback) &
           Node.DOCUMENT_POSITION_FOLLOWING,
@@ -270,7 +282,7 @@ describe('BusinessDetail', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Изпращане…' }))
 
     expect(await screen.findByRole('status')).toHaveTextContent(
-      'Заявката за покана е приета.',
+      'Заявката за покана е изпратена.',
     )
     expect(mockedInviteBusinessOwner).toHaveBeenCalledOnce()
     expect(mockedInviteBusinessOwner).toHaveBeenCalledWith(
@@ -335,6 +347,11 @@ describe('BusinessDetail', () => {
     expect(alert).toHaveFocus()
     expect(alert.closest('details')).toHaveTextContent('Активиране')
     expect(lifecycleSection.open).toBe(true)
+    const feedbackLayout = alert.closest('.feedback-action-layout') as HTMLElement
+    const activate = screen.getByRole('button', { name: 'Активирай' })
+    expect(feedbackLayout).toContainElement(activate)
+    expect(activate.parentElement).toHaveClass('feedback-action-controls')
+    expect(alert.nextElementSibling).toBe(activate.parentElement)
     expect(document.body).not.toHaveTextContent(/готов|проверен/i)
   })
 
@@ -369,6 +386,57 @@ describe('BusinessDetail', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Зареди актуалните данни' }))
     await waitFor(() => expect(mockedGetBusiness).toHaveBeenCalledTimes(2))
     expect(mockedUpdateBusiness).toHaveBeenCalledOnce()
+  })
+
+  it.each(['success', 'error'] as const)('dismisses lifecycle %s feedback without removing the next action', async (kind) => {
+    if (kind === 'success') {
+      mockedChangeBusinessStatus.mockResolvedValue({ ...draftBusiness, status: 'ACTIVE', version: 5 })
+    } else {
+      mockedChangeBusinessStatus.mockRejectedValue(new ApiError(409, 'BUSINESS_MISSING_ACTIVE_OWNER', 'Няма собственик'))
+    }
+    renderDetail()
+    await screen.findByRole('heading', { name: 'Студио А' })
+    fireEvent.click(section('Активиране').querySelector('summary')!)
+    vi.useFakeTimers()
+    fireEvent.click(screen.getByRole('button', { name: 'Активирай' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Потвърди активирането' }))
+    await act(async () => { await Promise.resolve() })
+    const notice = screen.getByRole(kind === 'success' ? 'status' : 'alert')
+    const nextAction = screen.getByRole('button', { name: kind === 'success' ? 'Спри временно' : 'Активирай' })
+    expect(notice.closest('.feedback-action-layout')).toContainElement(nextAction)
+    expect(nextAction.closest('.feedback-action-controls')).not.toContainElement(notice)
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000) })
+    expect(notice).not.toBeInTheDocument()
+    expect(nextAction).toBeInTheDocument()
+  })
+
+  it('clears an invitation notice when the selected Business changes', async () => {
+    mockedInviteBusinessOwner.mockResolvedValue(undefined)
+    const onAuthenticationRequired = vi.fn()
+    const view = renderDetail(onAuthenticationRequired)
+    await screen.findByRole('heading', { name: 'Студио А' })
+    fireEvent.click(section('Покана').querySelector('summary')!)
+    fireEvent.change(screen.getByLabelText('Имейл на собственика'), {
+      target: { value: 'owner@example.invalid' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Изпрати покана' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Заявката за покана е изпратена.')
+    mockedGetBusiness.mockResolvedValue({ ...draftBusiness, id: 'business-b', displayName: 'Студио Б' })
+    view.rerender(<BusinessDetail businessId="business-b" onAuthenticationRequired={onAuthenticationRequired} onBack={vi.fn()} />)
+    await screen.findByRole('heading', { name: 'Студио Б' })
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
+  it('retains blocking load feedback and a separate retry row', async () => {
+    mockedGetBusiness.mockRejectedValue(new Error('network'))
+    renderDetail()
+    const notice = await screen.findByRole('alert')
+    vi.useFakeTimers()
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000) })
+    expect(notice).toBeInTheDocument()
+    const retry = screen.getByRole('button', { name: 'Зареди отново' })
+    expect(notice).not.toContainElement(retry)
+    expect(notice.closest('.feedback-action-layout')).toContainElement(retry)
   })
 
   it('handles authentication, not-found and recoverable load failures safely', async () => {

@@ -74,6 +74,12 @@ public class AuthenticationService {
     }
 
     @Transactional
+    public IdentityRecords.User updateDisplayName(UUID userId, String displayName) {
+        store.updateDisplayName(userId, displayName, clock.instant());
+        return store.userById(userId).orElseThrow();
+    }
+
+    @Transactional
     public void changePassword(
             UUID sessionId, UUID userId, String current, String replacement) {
         var user = store.userById(userId).orElseThrow();

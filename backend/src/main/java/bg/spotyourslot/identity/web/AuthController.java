@@ -15,6 +15,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -94,6 +95,14 @@ public class AuthController {
                 user.user(), store.businesses(user.user().id()), request.businessId());
     }
 
+    @PostMapping("/profile")
+    public SessionView updateProfile(
+            @Valid @RequestBody UpdateDisplayNameRequest request, AuthenticatedUser user) {
+        var updated = authentication.updateDisplayName(user.user().id(), request.displayName());
+        return SessionView.of(
+                updated, store.businesses(updated.id()), user.activeBusinessId());
+    }
+
     @PostMapping("/password/change")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void change(
@@ -156,6 +165,12 @@ public class AuthController {
     }
 
     public record BusinessRequest(UUID businessId) {
+    }
+
+    public record UpdateDisplayNameRequest(@NotBlank @Size(max = 200) String displayName) {
+        public UpdateDisplayNameRequest {
+            displayName = displayName == null ? null : displayName.trim();
+        }
     }
 
     public record ChangePasswordRequest(

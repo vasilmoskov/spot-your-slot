@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { ApiError, request, type Session } from './identity/api'
@@ -59,6 +59,7 @@ const businessDetails: BusinessDetails = {
   contactEmail: null,
 }
 const session: Session = {
+  email: 'ivan@example.invalid',
   displayName: 'Иван',
   platformAdmin: false,
   businesses: [
@@ -80,7 +81,10 @@ beforeEach(() => {
   mockedGetBusiness.mockResolvedValue(businessDetails)
 })
 
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => {
+  vi.useRealTimers()
+  vi.restoreAllMocks()
+})
 
 describe('identity application', () => {
   it('supports accessible login and does not write authentication data to browser storage', async () => {
@@ -100,11 +104,14 @@ describe('identity application', () => {
     expect(loginContent).toContainElement(screen.getByText('SpotYourSlot'))
     expect(loginContent).toContainElement(loginPassword.closest('form'))
     expect(screen.getByRole('button', { name: 'Вход' })).toHaveClass(
-      'form-primary-action',
+      'button--primary',
     )
-    expect(screen.getByRole('button', { name: 'Забравена парола' })).toHaveClass(
-      'form-secondary-action',
+    expect(screen.getByRole('link', { name: 'Забравена парола' })).toHaveClass(
+      'text-link',
     )
+    expect(screen.getByRole('link', { name: 'Забравена парола' }))
+      .toHaveAttribute('href', '/forgot-password')
+    expect(screen.queryByRole('button', { name: 'Забравена парола' })).not.toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Имейл'), {
       target: { value: 'owner@example.invalid' },
     })
@@ -122,7 +129,7 @@ describe('identity application', () => {
   it('shows the safe login failure', async () => {
     mockedRequest
       .mockRejectedValueOnce(new Error('Необходим е вход.'))
-      .mockRejectedValueOnce(new Error('Имейлът или паролата са невалидни.'))
+      .mockRejectedValueOnce(new ApiError(400, 'AUTH_FAILED', 'Имейлът или паролата са невалидни.'))
     render(<App />)
     fireEvent.change(screen.getByLabelText('Имейл'), {
       target: { value: 'owner@example.invalid' },
@@ -163,17 +170,17 @@ describe('identity application', () => {
     render(<App />)
     expect(screen.getByRole('heading', { name: 'Вход' })).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Забравена парола' }))
+    fireEvent.click(screen.getByRole('link', { name: 'Забравена парола' }))
     expect(
       screen.getByRole('heading', { name: 'Забравена парола?' }),
     ).toBeInTheDocument()
     expect(screen.getByText('Въведи имейла си, за да получиш инструкции.'))
       .toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Изпрати' })).toHaveClass(
-      'form-primary-action',
+      'button--primary',
     )
 
-    const back = screen.getByRole('button', { name: 'Обратно към вход' })
+    const back = screen.getByRole('link', { name: 'Обратно към вход' })
     const recoveryContent = screen
       .getByRole('heading', { name: 'Забравена парола?' })
       .closest('.compact-content')
@@ -182,7 +189,7 @@ describe('identity application', () => {
       screen.getByText('Въведи имейла си, за да получиш инструкции.'),
     )
     expect(recoveryContent).toContainElement(back.closest('form'))
-    expect(back).toHaveClass('form-secondary-action')
+    expect(back).toHaveClass('text-link')
     back.focus()
     expect(back).toHaveFocus()
     fireEvent.click(back)
@@ -197,7 +204,7 @@ describe('identity application', () => {
   it('submits forgot-password and shows the enumeration-safe response', async () => {
     mockedRequest.mockRejectedValueOnce(new Error('Необходим е вход.')).mockResolvedValueOnce(undefined)
     render(<App />)
-    fireEvent.click(screen.getByRole('button', { name: 'Забравена парола' }))
+    fireEvent.click(screen.getByRole('link', { name: 'Забравена парола' }))
     fireEvent.change(screen.getByLabelText('Имейл'), {
       target: { value: 'person@example.invalid' },
     })
@@ -237,7 +244,7 @@ describe('identity application', () => {
     expect(screen.queryByRole('button', { name: 'Приеми поканата' }))
       .not.toBeInTheDocument()
     expect(window.location.search).toContain('token=invite-token')
-    fireEvent.click(screen.getByRole('button', { name: 'Към вход' }))
+    fireEvent.click(screen.getByRole('link', { name: 'Към вход' }))
     expect(window.location.pathname).toBe('/')
     expect(window.location.search).toBe('')
     expect(screen.getByRole('heading', { name: 'Вход' })).toBeInTheDocument()
@@ -424,20 +431,29 @@ describe('identity application', () => {
   })
 
   it('keeps Business selection, successful password change and logout reachable', async () => {
+    const browserStorageWrite = vi.spyOn(Storage.prototype, 'setItem')
     mockedRequest.mockResolvedValue(session)
     render(<App />)
     const businessSelect = await screen.findByLabelText('Избери бизнес')
-    const profileContent = businessSelect.closest('.compact-content') as HTMLElement
-    const profileCard = profileContent.closest('.content-card') as HTMLElement
+    const profilePanel = businessSelect.closest('.profile-panel') as HTMLElement
+    const profileCard = profilePanel.closest('.content-card') as HTMLElement
     const platformContent = profileCard?.parentElement
     expect(platformContent).toHaveClass('platform-content')
     expect(platformContent?.children).toHaveLength(1)
     expect(platformContent?.firstElementChild).toBe(profileCard)
-    expect(profileCard).toContainElement(profileContent)
+    expect(profileCard).toHaveClass('profile-card')
+    expect(profileCard).toContainElement(profilePanel)
+    expect(profileCard.querySelector('details')).toBeNull()
     expect(screen.queryByRole('heading', { name: 'Настройки' })).not.toBeInTheDocument()
-    expect(profileContent).toContainElement(
-      screen.getByRole('heading', { name: 'Смяна на парола' }),
-    )
+    const personalNavigation = screen.getByRole('button', { name: 'Лични данни' })
+    const passwordNavigation = screen.getByRole('button', { name: 'Смяна на парола' })
+    expect(personalNavigation).toHaveAttribute('aria-pressed', 'true')
+    expect(passwordNavigation).toHaveAttribute('aria-pressed', 'false')
+    const personalDetails = screen.getByRole('heading', { name: 'Лични данни' })
+      .closest('.profile-panel') as HTMLElement
+    expect(personalDetails).toHaveTextContent('Иван')
+    expect(personalDetails).toHaveTextContent('ivan@example.invalid')
+    expect(screen.queryByLabelText('Текуща парола')).not.toBeInTheDocument()
     fireEvent.change(businessSelect, { target: { value: 'b' } })
     await waitFor(() =>
       expect(mockedRequest).toHaveBeenCalledWith(
@@ -446,6 +462,11 @@ describe('identity application', () => {
       ),
     )
 
+    fireEvent.click(passwordNavigation)
+    expect(personalNavigation).toHaveAttribute('aria-pressed', 'false')
+    expect(passwordNavigation).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByRole('heading', { name: 'Лични данни' })).not.toBeInTheDocument()
+    expect(screen.queryByText('ivan@example.invalid')).not.toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Текуща парола'), {
       target: { value: 'old secure passphrase' },
     })
@@ -455,7 +476,6 @@ describe('identity application', () => {
     fireEvent.change(screen.getByLabelText('Потвърди новата парола'), {
       target: { value: 'new secure passphrase' },
     })
-    expect(screen.getByRole('heading', { name: 'Смяна на парола' })).toBeInTheDocument()
     expect(screen.getByLabelText('Текуща парола')).not.toHaveAttribute('minlength')
     expect(screen.getByLabelText('Нова парола')).toHaveAttribute('minlength', '8')
     expect(screen.getByLabelText('Потвърди новата парола')).toBeRequired()
@@ -467,7 +487,7 @@ describe('identity application', () => {
       'type',
       'password',
     )
-    expect(profileContent).toContainElement(
+    expect(profilePanel).toContainElement(
       screen.getByRole('button', { name: 'Запази' }).closest('form'),
     )
     fireEvent.click(screen.getByRole('button', { name: 'Запази' }))
@@ -488,7 +508,8 @@ describe('identity application', () => {
       'Паролата е променена успешно.',
     )
     expect(screen.getByRole('status')).toHaveClass('status-success')
-    expect(profileContent).toContainElement(screen.getByRole('status'))
+    expect(screen.getByRole('status')).toHaveClass('status-message')
+    expect(profilePanel).toContainElement(screen.getByRole('status'))
     expect(screen.getByLabelText('Текуща парола')).toHaveValue('')
     expect(screen.getByLabelText('Нова парола')).toHaveValue('')
     expect(screen.getByLabelText('Потвърди новата парола')).toHaveValue('')
@@ -498,14 +519,192 @@ describe('identity application', () => {
       expect(mockedRequest).toHaveBeenCalledWith('/api/auth/logout', { method: 'POST' }),
     )
     expect(await screen.findByRole('heading', { name: 'Вход' })).toBeInTheDocument()
+    expect(browserStorageWrite).not.toHaveBeenCalled()
+  })
+
+  it('edits the display name, refreshes Profile and sidebar, and keeps email read-only', async () => {
+    const updatedSession = { ...session, displayName: 'Мария' }
+    const browserStorageWrite = vi.spyOn(Storage.prototype, 'setItem')
+    mockedRequest.mockResolvedValueOnce(session).mockResolvedValueOnce(updatedSession)
+    render(<App />)
+
+    await screen.findByRole('heading', { name: 'Профил' })
+    const edit = screen.getByRole('button', { name: 'Редактирай' })
+    expect(edit).toHaveClass('button', 'button--secondary')
+    expect(edit).not.toHaveClass('button--navigation')
+    expect(edit).not.toHaveClass('profile-navigation')
+    fireEvent.click(edit)
+    const displayName = screen.getByLabelText('Име')
+    expect(displayName).toHaveValue('Иван')
+    expect(screen.getByText('ivan@example.invalid')).toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: 'Имейл' })).not.toBeInTheDocument()
+    fireEvent.change(displayName, { target: { value: 'Мария' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Запази промените' }))
+
+    await waitFor(() =>
+      expect(mockedRequest).toHaveBeenCalledWith(
+        '/api/auth/profile',
+        expect.objectContaining({ body: JSON.stringify({ displayName: 'Мария' }) }),
+      ),
+    )
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Личните данни са запазени.',
+    )
+    expect(screen.getByRole('status')).toHaveClass('status-message')
+    expect(screen.queryByLabelText('Име')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Лични данни' }).closest('.profile-panel'))
+      .toHaveTextContent('Мария')
+    expect(document.querySelector('.sidebar-account')).toHaveTextContent('Мария')
+    expect(screen.getByText('ivan@example.invalid')).toBeInTheDocument()
+    expect(browserStorageWrite).not.toHaveBeenCalled()
+  })
+
+  it('clears Profile feedback when the selected section changes', async () => {
+    mockedRequest
+      .mockResolvedValueOnce(session)
+      .mockRejectedValueOnce(new ApiError(400, 'VALIDATION_ERROR', 'Проверете въведените данни.'))
+    render(<App />)
+
+    await screen.findByRole('heading', { name: 'Профил' })
+    fireEvent.click(screen.getByRole('button', { name: 'Редактирай' }))
+    fireEvent.change(screen.getByLabelText('Име'), { target: { value: 'Ново име' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Запази промените' }))
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Смяна на парола' }))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Смяна на парола' })).toBeInTheDocument()
+  })
+
+  it('automatically dismisses successful Profile feedback without browser storage', async () => {
+    const browserStorageWrite = vi.spyOn(Storage.prototype, 'setItem')
+    mockedRequest.mockResolvedValueOnce(session).mockResolvedValueOnce({
+      ...session,
+      displayName: 'Мария',
+    })
+    render(<App />)
+
+    await screen.findByRole('heading', { name: 'Профил' })
+    vi.useFakeTimers()
+    fireEvent.click(screen.getByRole('button', { name: 'Редактирай' }))
+    fireEvent.change(screen.getByLabelText('Име'), { target: { value: 'Мария' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Запази промените' }))
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Личните данни са запазени.',
+    )
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000)
+    })
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(browserStorageWrite).not.toHaveBeenCalled()
+    vi.useRealTimers()
+  })
+
+  it('dismisses a transient Profile request failure while retaining the entered name', async () => {
+    mockedRequest.mockResolvedValueOnce(session).mockRejectedValueOnce(new Error('Internal detail'))
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Профил' })
+    vi.useFakeTimers()
+    fireEvent.click(screen.getByRole('button', { name: 'Редактирай' }))
+    fireEvent.change(screen.getByLabelText('Име'), { target: { value: 'Мария' } })
+    screen.getByLabelText('Име').focus()
+    fireEvent.click(screen.getByRole('button', { name: 'Запази промените' }))
+    await act(async () => { await Promise.resolve() })
+    expect(screen.getByRole('alert')).toHaveTextContent('Възникна грешка. Опитайте отново.')
+    expect(screen.getByRole('alert')).toHaveFocus()
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000) })
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Име')).toHaveValue('Мария')
+    expect(screen.getByLabelText('Име')).toHaveFocus()
+  })
+
+  it('does not restore late Profile feedback after changing tabs', async () => {
+    let resolveUpdate!: (value: Session) => void
+    mockedRequest.mockResolvedValueOnce(session).mockImplementationOnce(() =>
+      new Promise<Session>((resolve) => { resolveUpdate = resolve }),
+    )
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Профил' })
+    fireEvent.click(screen.getByRole('button', { name: 'Редактирай' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Запази промените' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Смяна на парола' }))
+    await act(async () => resolveUpdate({ ...session, displayName: 'Мария' }))
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Смяна на парола' })).toHaveAttribute('aria-pressed', 'true')
+    expect(document.querySelector('.sidebar-account')).toHaveTextContent('Мария')
+  })
+
+  it('clears Profile feedback through browser route navigation', async () => {
+    mockedRequest.mockResolvedValueOnce({ ...session, platformAdmin: true })
+      .mockResolvedValueOnce({ ...session, platformAdmin: true, displayName: 'Мария' })
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Профил' })
+    fireEvent.click(screen.getByRole('button', { name: 'Редактирай' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Запази промените' }))
+    await screen.findByRole('status')
+    act(() => {
+      history.pushState({}, '', '/#/platform/businesses')
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    })
+    await screen.findByRole('heading', { name: 'Бизнеси' })
+    expect(screen.queryByText('Личните данни са запазени.')).not.toBeInTheDocument()
+  })
+
+  it('cancels display-name editing without a request or retained value', async () => {
+    mockedRequest.mockResolvedValue(session)
+    render(<App />)
+
+    await screen.findByRole('heading', { name: 'Профил' })
+    fireEvent.click(screen.getByRole('button', { name: 'Редактирай' }))
+    fireEvent.change(screen.getByLabelText('Име'), { target: { value: 'Незаписано име' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Отказ' }))
+
+    expect(mockedRequest).toHaveBeenCalledTimes(1)
+    expect(screen.queryByLabelText('Име')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Лични данни' }).closest('.profile-panel'))
+      .toHaveTextContent('Иван')
+  })
+
+  it('retains display-name editing and focuses safe feedback after a failed update', async () => {
+    const browserStorageWrite = vi.spyOn(Storage.prototype, 'setItem')
+    mockedRequest
+      .mockResolvedValueOnce(session)
+      .mockRejectedValueOnce(new ApiError(400, 'VALIDATION_ERROR', 'Проверете въведените данни.'))
+    render(<App />)
+
+    await screen.findByRole('heading', { name: 'Профил' })
+    fireEvent.click(screen.getByRole('button', { name: 'Редактирай' }))
+    const displayName = screen.getByLabelText('Име')
+    fireEvent.change(displayName, { target: { value: 'Ново име' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Запази промените' }))
+
+    const feedback = await screen.findByRole('alert')
+    expect(feedback).toHaveTextContent('Проверете въведените данни.')
+    expect(feedback).toHaveFocus()
+    vi.useFakeTimers()
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000) })
+    expect(feedback).toBeInTheDocument()
+    vi.useRealTimers()
+    expect(screen.getByLabelText('Име')).toHaveValue('Ново име')
+    expect(screen.getByRole('button', { name: 'Запази промените' })).toBeInTheDocument()
+    expect(browserStorageWrite).not.toHaveBeenCalled()
   })
 
   it('retains password fields and shows no false success after failure', async () => {
     mockedRequest
       .mockResolvedValueOnce(session)
-      .mockRejectedValueOnce(new Error('Текущата парола е невалидна.'))
+      .mockRejectedValueOnce(new ApiError(400, 'CURRENT_PASSWORD_INVALID', 'Текущата парола е невалидна.'))
     render(<App />)
 
+    const passwordNavigation = await screen.findByRole('button', {
+      name: 'Смяна на парола',
+    })
+    fireEvent.click(passwordNavigation)
     const currentPassword = await screen.findByLabelText('Текуща парола')
     const newPassword = screen.getByLabelText('Нова парола')
     const passwordConfirmation = screen.getByLabelText('Потвърди новата парола')
@@ -519,6 +718,7 @@ describe('identity application', () => {
     const error = await screen.findByRole('alert')
     expect(error).toHaveTextContent('Текущата парола е невалидна.')
     expect(error).toHaveClass('status-error')
+    expect(passwordNavigation).toHaveAttribute('aria-pressed', 'true')
     expect(currentPassword).toHaveValue('wrong current password')
     expect(newPassword).toHaveValue('new secure passphrase')
     expect(passwordConfirmation).toHaveValue('new secure passphrase')
@@ -532,6 +732,10 @@ describe('identity application', () => {
     mockedRequest.mockResolvedValueOnce(session)
     render(<App />)
 
+    const passwordNavigation = await screen.findByRole('button', {
+      name: 'Смяна на парола',
+    })
+    fireEvent.click(passwordNavigation)
     const currentPassword = await screen.findByLabelText('Текуща парола')
     const newPassword = screen.getByLabelText('Нова парола')
     const passwordConfirmation = screen.getByLabelText('Потвърди новата парола')
@@ -544,6 +748,7 @@ describe('identity application', () => {
       'Паролите не съвпадат.',
     )
     expect(screen.getByRole('alert')).toHaveClass('status-error')
+    expect(passwordNavigation).toHaveAttribute('aria-pressed', 'true')
     expect(currentPassword).toHaveValue('current passphrase')
     expect(newPassword).toHaveValue('new password')
     expect(passwordConfirmation).toHaveValue('different password')

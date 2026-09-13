@@ -1,4 +1,5 @@
 import { useState, type FormEvent, type InvalidEvent } from 'react'
+import { Button } from '../../ui/Button'
 import {
   type BusinessDetails,
   type BusinessType,
@@ -11,6 +12,7 @@ type BusinessFormProps = {
   business?: BusinessDetails
   busy: boolean
   submitLabel: string
+  onChange?: () => void
   onCancel?: () => void
   onSubmit: (input: CreateBusinessInput | UpdateBusinessInput) => void
 }
@@ -92,6 +94,7 @@ export function BusinessForm({
   busy,
   submitLabel,
   onCancel,
+  onChange,
   onSubmit,
 }: BusinessFormProps) {
   const [businessType, setBusinessType] = useState<BusinessType>(
@@ -132,7 +135,7 @@ export function BusinessForm({
   }
 
   return (
-    <form className="business-form" onSubmit={submit}>
+    <form onChange={onChange} className="business-form" onSubmit={submit}>
       <div className="business-information-columns">
         <div className="business-information-column">
           <TextField
@@ -225,18 +228,18 @@ export function BusinessForm({
         />
       </label>
       <div className="action-group">
-        <button className="form-primary-action" disabled={busy}>
+        <Button disabled={busy}>
           {busy ? 'Запазване…' : submitLabel}
-        </button>
+        </Button>
         {onCancel && (
-          <button
+          <Button
             type="button"
-            className="secondary-button"
+            variant="secondary"
             disabled={busy}
             onClick={onCancel}
           >
             Отказ
-          </button>
+          </Button>
         )}
       </div>
     </form>

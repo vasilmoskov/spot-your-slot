@@ -84,28 +84,43 @@ gradients, and decorative layering.
 
 ## 6. Buttons and interactive controls
 
-Define clear action hierarchy:
+Use the shared `Button` component and semantic variants; do not create page-specific
+color rules. All variants share typography, touch-friendly height, padding,
+radius, focus-visible outline, and transition:
 
-- primary actions use the brand/action treatment;
-- secondary actions are quieter but remain visibly interactive;
-- danger actions use danger color only for genuinely risky or destructive
-  operations.
+- Every non-destructive action uses a purple background and border with white
+  text by default; hover/active uses a white background with purple text and
+  border. `primary` and `secondary` retain their semantic names but share this
+  single CSS rule for login, create, edit, save, invitation, activation,
+  reactivation, and confirmation actions. Focus-visible preserves readable
+  colors and adds the established focus outline. Ordinary actions remain
+  intrinsic-width on desktop and mobile; do not add page-specific overrides.
+- `destructive`: red background and border with white text by default;
+  hover/active uses a white background with red text and border.
+- Password recovery and equivalent identity navigation, including return to login,
+  use semantic anchors with the shared `text-link` treatment: intrinsic width,
+  purple text, no button border or fill, darker purple/underline on hover, and
+  the established keyboard focus outline. Submission and workflow actions remain
+  buttons; do not convert them into tertiary links.
+- Disabled controls use the shared disabled palette, prevent activation, and do
+  not adopt enabled hover/active colors. Busy actions prevent duplicate requests.
+- `navigation` is the explicit full-width exception for equal Profile section
+  controls. Use restrained light-purple selection and purple text, never a
+  saturated block. Sidebar links remain semantic navigation links.
 
-Controls must be touch-friendly, keyboard-operable, and have a visible focus
-state. Hover may reinforce interaction but must never be the only way to reveal
-essential information or functionality. Disabled and busy controls must remain
-understandable and prevent duplicate submission. Do not render non-functional
-buttons or speculative controls for unimplemented features.
+Do not apply the non-destructive action colors to destructive or disabled controls,
+selected navigation/tab states, status badges, plain text links, or native
+disclosure/accordion controls. These retain their separate semantic treatments.
 
-Links look and behave like links. Buttons perform actions. Icon-only controls,
-if later justified, require an accessible name and must not depend on an icon
-library.
-
-Align primary and secondary actions consistently within their content region.
-Secondary text actions remain content-sized and visually quieter than primary
-actions while retaining clear text, background, hover, and focus contrast.
-Desktop form actions should normally remain content-sized; on narrow mobile
-layouts they may use the available width when that improves usability.
+Verify label/background contrast in default, hover, focus, active, selected, and
+disabled states (at least 4.5:1 for ordinary button text), plus visible keyboard
+focus. Color alone must not communicate meaning. Ordinary actions always use
+intrinsic width, `max-width: 100%`, and explicit flex/grid alignment; never grow or
+stretch on desktop or mobile. Adjacent actions wrap with the standard action-row
+gap. Full width requires a documented component exception, not a viewport-based
+override. Selectors target semantic component classes, never all descendant
+buttons, inputs, or status elements. Links navigate; buttons perform actions.
+Do not add non-functional or speculative controls.
 
 ## 7. Forms and validation
 
@@ -114,11 +129,10 @@ and optional information clearly, provide useful input hints, and keep fields in
 a logical keyboard order. Use suitable native input types and autocomplete
 attributes without weakening backend validation.
 
-Identity cards are compact and centered in the viewport. Compact Profile forms
-use the same compact card and internal geometry, centered within the available
-administrative content area beneath the page header. Wide, data-heavy
-administrative screens may use the full administrative content width. Within a
-compact card, center the complete compact content column and left-align its
+Identity cards are compact and centered in the viewport. Profile forms use the
+Profile card beneath the administrative page header and align with the shared
+administrative content edge. Wide, data-heavy administrative screens may use
+the full administrative content width. Within a compact card, left-align its
 headings, explanatory text, labels, inputs, primary and secondary actions,
 validation, and feedback. Fields use the full column width while actions remain
 content-sized. Do not center individual controls independently or constrain a
@@ -163,6 +177,24 @@ unrelated flow merely because the message is safe.
 - Warning states explain a recoverable risk or required attention.
 - Error states use safe natural Bulgarian text and an actionable recovery when
   one exists.
+
+Classify feedback before implementing it. Use the shared `useFeedback` hook for
+local action feedback instead of separate page timers:
+
+| Category | Examples | Lifetime |
+|---|---|---|
+| Transient action feedback | Saved/sent confirmation, request/network failure, failed activation | Auto-dismiss after 5 seconds; immediately clear on a new attempt, replacement, route/tab/entity/operation change |
+| Field/form validation | Required/invalid input, rejected credentials, duplicate slug | Retain until the relevant form is edited/reset or its context is left; no timer |
+| Loading/blocking failure | Page-load failure, unusable invitation link, stale version requiring reload | No timer; preserve retry/navigation/reload recovery |
+
+Clear feedback when its originating context changes, including browser navigation.
+Invalidate late responses from abandoned/replaced operations. Clean up timers on
+replacement and unmount. Never persist feedback or timer state in browser storage.
+Maintain accessible status/alert roles, live regions, deliberate error focus, and
+field associations. Keep notices compact with uniform padding, intrinsic width,
+`max-width: 100%`, `align-self: flex-start`, and grid start alignment. Text is
+left-aligned and safely wraps. Feedback and related controls always occupy separate
+rows with a standard gap; never place controls inside a notice or inline beside it.
 
 Never expose exception messages, SQL details, stack traces, security values, or
 other internal diagnostics. Do not claim email delivery, invitation acceptance,
@@ -219,6 +251,45 @@ controls must reproduce the expected keyboard and assistive-technology behavior.
 Use a left sidebar with the SpotYourSlot text wordmark, “Бизнеси” and “Профил”
 navigation, and the current user plus logout at the bottom. The adjacent area
 contains a clear page header and primary content region.
+
+### Shared layout and feedback
+
+- Primary page content, cards, forms, tables, and page actions share the same
+  left content edge unless a centered layout is explicitly required. Page-level
+  primary actions normally appear on the left near the content they affect.
+- Use the shared spacing scale between distinct components. Adjacent buttons
+  use the established action-row gap.
+- Ordinary action buttons use intrinsic content width and never stretch because
+  a parent uses grid or flex. Only explicitly documented controls, such as
+  compact navigation items, may fill their available width.
+- Feedback notices require intrinsic content width, `max-width: 100%`, and
+  `align-self: flex-start` inside stretching layouts. Render feedback and its
+  related controls in separate rows with the standard visible gap; they must
+  never be accidentally laid out inline.
+- Apply the three feedback categories and five-second transient lifetime in
+  section 8; validation and blocking errors do not auto-dismiss.
+  Feedback is scoped to its route, tab, entity, or operation and is cleared
+  when that context changes.
+- Form controls use consistent heights and box sizing; textareas may be taller.
+  Desktop forms and details use established balanced columns and collapse
+  predictably on mobile.
+- Active navigation uses the restrained application selected treatment, never a
+  saturated arbitrary block. Before changing UI, inspect this guide and the
+  nearest approved screen; do not create a parallel visual system. Selectors
+  target semantic component classes and never broadly style all descendant
+  buttons, inputs, or status elements.
+- Frontend tests verify structure and behavior. Every meaningful visual change
+  also requires explicit human desktop and mobile review; automated DOM tests
+  do not replace that review.
+
+### Frontend pre-completion checklist
+
+- Confirm left-edge alignment, component spacing, intrinsic button and notice
+  width, and separate feedback/action rows.
+- Audit every affected shared-component consumer on desktop and narrow/mobile
+  layouts: width, alignment, spacing, wrapping, responsive behavior, all button
+  interaction-state contrasts, keyboard focus, and stale-feedback lifecycle.
+- Record explicit human visual review separately from automated tests.
 
 ### Mobile
 

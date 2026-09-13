@@ -10,6 +10,8 @@
   --color-success-subtle: #ecfdf3;
   --color-warning: #d97706;
   --color-danger: #d92d20;
+  --color-disabled-text: #475467;
+  --color-disabled-background: #e4e7ec;
   --color-danger-subtle: #fef3f2;
   --color-border: #e4e7ec;
   --color-focus: #3538cd;
@@ -40,7 +42,7 @@ body {
   background: var(--color-page-background);
 }
 
-button,
+.button,
 input,
 select,
 textarea {
@@ -70,26 +72,90 @@ textarea {
   min-height: 8rem;
 }
 
-button {
-  border-color: var(--color-action-primary);
-  color: var(--color-surface);
-  background: var(--color-action-primary);
+.button {
+  width: fit-content;
+  max-width: 100%;
+  flex: 0 1 auto;
+  align-self: flex-start;
+  justify-self: start;
+  border-color: var(--button-border);
+  color: var(--button-text);
+  background: var(--button-background);
   font-weight: 700;
+  text-align: center;
+  overflow-wrap: anywhere;
   cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
 }
 
-button:hover:not(:disabled) {
-  border-color: var(--color-action-primary-hover);
-  background: var(--color-action-primary-hover);
+.button--primary,
+.button--secondary {
+  --button-border: var(--color-action-primary);
+  --button-text: var(--color-surface);
+  --button-background: var(--color-action-primary);
+  --button-hover-border: var(--color-action-primary);
+  --button-hover-text: var(--color-action-primary);
+  --button-hover-background: var(--color-surface);
 }
 
-button:disabled {
-  opacity: 0.6;
-  cursor: wait;
+.button--destructive {
+  --button-border: var(--color-danger);
+  --button-text: var(--color-surface);
+  --button-background: var(--color-danger);
+  --button-hover-border: var(--color-danger);
+  --button-hover-text: var(--color-danger);
+  --button-hover-background: var(--color-surface);
+}
+
+.text-link {
+  width: fit-content;
+  max-width: 100%;
+  justify-self: start;
+  align-self: flex-start;
+  color: var(--color-action-primary);
+  text-decoration: none;
+}
+
+.text-link:hover,
+.text-link:active {
+  color: var(--color-action-primary-hover);
+  text-decoration: underline;
+}
+
+.button--navigation {
+  --button-border: transparent;
+  --button-text: var(--color-text-secondary);
+  --button-background: transparent;
+  --button-hover-border: transparent;
+  --button-hover-text: var(--color-action-primary-hover);
+  --button-hover-background: var(--color-action-primary-subtle);
+  width: 100%;
+  justify-self: stretch;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.button--navigation[aria-pressed="true"] {
+  --button-text: var(--color-action-primary-hover);
+  --button-background: var(--color-action-primary-subtle);
+}
+
+.button:hover:not(:disabled),
+.button:active:not(:disabled) {
+  border-color: var(--button-hover-border);
+  color: var(--button-hover-text);
+  background: var(--button-hover-background);
+}
+
+.button:disabled {
+  border-color: var(--color-disabled-text);
+  color: var(--color-disabled-text);
+  background: var(--color-disabled-background);
+  cursor: not-allowed;
 }
 
 a:focus-visible,
-button:focus-visible,
+.button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
@@ -131,12 +197,6 @@ form {
   text-align: left;
 }
 
-.compact-content .form-primary-action,
-.compact-content .form-secondary-action {
-  width: auto;
-  justify-self: start;
-}
-
 label {
   display: grid;
   gap: var(--space-2);
@@ -174,11 +234,90 @@ label {
 }
 
 .status-message {
-  width: 100%;
-  margin: var(--space-5) 0 0;
-  padding: var(--space-4);
+  display: flex;
+  width: fit-content;
+  justify-self: start;
+  overflow-wrap: anywhere;
+  min-width: 0;
+  align-self: flex-start;
+  flex-direction: column;
+  align-items: flex-start;
+  max-width: 100%;
+  margin: 0;
+  padding: var(--space-2);
   border-radius: var(--radius-control);
   background: var(--color-action-primary-subtle);
+  line-height: 1.4;
+  text-align: left;
+}
+
+.status-message p {
+  margin: 0;
+}
+
+.feedback-action-layout {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.feedback-action-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.feedback-action-controls .confirmation-panel {
+  margin-top: 0;
+}
+
+.profile-layout {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.profile-card {
+  width: min(100%, 52rem);
+}
+
+.profile-navigation {
+  display: grid;
+  align-content: start;
+  gap: var(--space-2);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.profile-panel {
+  display: grid;
+  align-content: start;
+  gap: var(--space-4);
+  min-width: 0;
+  padding-top: var(--space-4);
+}
+
+.profile-panel h2 {
+  margin: 0;
+}
+
+.profile-personal-details {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.profile-personal-details dt {
+  color: var(--color-text-secondary);
+  font-weight: 600;
+}
+
+.profile-personal-details dd {
+  overflow-wrap: anywhere;
+  margin: var(--space-1) 0 0;
+}
+
+.profile-panel form {
+  margin: 0;
 }
 
 .status-error {
@@ -191,24 +330,6 @@ label {
   border: 1px solid var(--color-success);
   color: var(--color-success);
   background: var(--color-success-subtle);
-}
-
-.form-secondary-action,
-.secondary-button {
-  color: var(--color-action-primary);
-  background: var(--color-surface);
-}
-
-.form-secondary-action {
-  width: auto;
-  border-color: transparent;
-  text-decoration: underline;
-}
-
-.form-secondary-action:hover:not(:disabled) {
-  border-color: transparent;
-  color: var(--color-action-primary-hover);
-  background: var(--color-action-primary-subtle);
 }
 
 .platform-shell {
@@ -260,7 +381,7 @@ label {
   gap: var(--space-2);
 }
 
-.primary-navigation a {
+.navigation-link {
   min-height: 2.75rem;
   display: flex;
   align-items: center;
@@ -271,8 +392,8 @@ label {
   text-decoration: none;
 }
 
-.primary-navigation a:hover,
-.primary-navigation a[aria-current='page'] {
+.navigation-link:hover,
+.navigation-link[aria-current='page'] {
   color: var(--color-action-primary-hover);
   background: var(--color-action-primary-subtle);
 }
@@ -290,10 +411,6 @@ label {
 
 .platform-page-header {
   margin-bottom: var(--space-5);
-}
-
-.platform-content > .content-card {
-  margin-inline: auto;
 }
 
 .business-list-state,
@@ -319,11 +436,6 @@ label {
   flex-wrap: wrap;
   gap: var(--space-3);
   margin-bottom: var(--space-4);
-}
-
-.business-page-actions-end {
-  justify-content: flex-end;
-  margin-bottom: 0;
 }
 
 .business-name-cell a {
@@ -480,20 +592,6 @@ label {
   gap: var(--space-4);
 }
 
-.invitation-accepted .status-message {
-  margin-bottom: 0;
-}
-
-.danger-button {
-  border-color: var(--color-danger);
-  background: var(--color-danger);
-}
-
-.danger-button:hover:not(:disabled) {
-  border-color: var(--color-danger);
-  background: var(--color-danger);
-}
-
 .business-table-container {
   overflow-x: auto;
 }
@@ -595,10 +693,6 @@ label {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .business-pagination-actions button {
-    width: 100%;
-  }
-
   .business-table-container {
     padding: 0;
     border: 0;
@@ -653,14 +747,6 @@ label {
     font-weight: 700;
   }
 
-  .business-page-actions-end {
-    justify-content: stretch;
-  }
-
-  .business-page-actions-end button {
-    width: 100%;
-  }
-
   .business-detail-header {
     flex-direction: column;
   }
@@ -691,12 +777,6 @@ label {
   .sidebar-brand,
   .sidebar-account {
     display: grid;
-  }
-
-  form button,
-  .sidebar-account button {
-    width: auto;
-    justify-self: start;
   }
 
   .mobile-account {
@@ -737,7 +817,24 @@ label {
   }
 }
 
+@media (min-width: 64rem) {
+  .profile-layout {
+    grid-template-columns: 12rem minmax(0, 1fr);
+  }
+
+  .profile-navigation {
+    padding: 0 var(--space-4) 0 0;
+    border-right: 1px solid var(--color-border);
+    border-bottom: 0;
+  }
+
+  .profile-panel {
+    padding: 0 0 0 var(--space-5);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .button,
   .business-section summary::after {
     transition: none;
   }

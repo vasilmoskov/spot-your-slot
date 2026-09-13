@@ -177,6 +177,14 @@ public class IdentityStore {
                 .update();
     }
 
+    public void updateDisplayName(UUID userId, String displayName, Instant now) {
+        jdbc.sql("UPDATE app_user SET display_name=:displayName,updated_at=:now WHERE id=:id")
+                .param("displayName", displayName)
+                .param("now", db(now))
+                .param("id", userId)
+                .update();
+    }
+
     public void updateSessionCredentialVersion(UUID sessionId, long version) {
         jdbc.sql("UPDATE user_session SET credential_version=:version WHERE id=:id")
                 .param("version", version)

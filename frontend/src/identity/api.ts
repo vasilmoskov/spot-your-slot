@@ -79,6 +79,7 @@ export type Business = {
 }
 
 export type Session = {
+  email: string
   displayName: string
   platformAdmin: boolean
   businesses: Business[]

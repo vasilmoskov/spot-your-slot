@@ -1,4 +1,6 @@
-import { FormEvent, useCallback, useEffect, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useRef, useState, type RefObject } from 'react'
+import { useFeedback, errorCategory, type Feedback, type FeedbackAttempt } from './ui/useFeedback'
+import { Button } from './ui/Button'
 import { ApiError, request, type Session } from './identity/api'
 import {
   PROFILE_ROUTE,
@@ -20,7 +22,7 @@ import { BusinessCreate } from './platform/businesses/BusinessCreate'
 import { BusinessDetail } from './platform/businesses/BusinessDetail'
 
 const safeErrorDetail = (error: unknown): string =>
-  error instanceof Error ? error.message : 'Възникна грешка.'
+  error instanceof ApiError ? error.detail : 'Възникна грешка. Опитайте отново.'
 
 const invitationErrorDetail = (error: unknown): string =>
   error instanceof ApiError && error.code === 'INVITATION_INVALID'
@@ -29,15 +31,10 @@ const invitationErrorDetail = (error: unknown): string =>
       ? 'Паролата не съвпада със съществуващия профил за този имейл.'
       : safeErrorDetail(error)
 
-type Feedback = {
-  kind: 'error' | 'info' | 'success'
-  text: string
-}
-
 export function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [page, setPage] = useState<IdentityPage>(readIdentityPage())
-  const [feedback, setFeedback] = useState<Feedback | null>(null)
+  const { feedback, setFeedback, beginFeedback } = useFeedback(page)
   const [busy, setBusy] = useState(false)
   const [invitationAccepted, setInvitationAccepted] = useState(false)
 
@@ -54,7 +51,7 @@ export function App() {
           setInvitationAccepted(false)
         }
       }),
-    [],
+    [setFeedback],
   )
 
   const navigate = (next: IdentityPage) => {
@@ -88,7 +85,7 @@ export function App() {
       }
     }
     setBusy(true)
-    setFeedback(null)
+    const publish = beginFeedback()
     const data = bodyFactory
       ? bodyFactory(formData)
       : Object.fromEntries(formData)
@@ -97,6 +94,7 @@ export function App() {
         method: 'POST',
         body: JSON.stringify(data),
       })
+      if (!publish(null)) return
       if (path.endsWith('login')) setSession(result)
       if (path.endsWith('invitations/accept')) setInvitationAccepted(true)
       if (success) {
@@ -106,8 +104,9 @@ export function App() {
         })
       }
     } catch (error) {
-      setFeedback({
+      publish({
         kind: 'error',
+        category: errorCategory(error),
         text: path.endsWith('invitations/accept')
           ? invitationErrorDetail(error)
           : safeErrorDetail(error),
@@ -126,6 +125,7 @@ export function App() {
         setBusy={setBusy}
         feedback={feedback}
         setFeedback={setFeedback}
+        beginFeedback={beginFeedback}
       />
     )
   }
@@ -143,25 +143,29 @@ export function App() {
                 : 'Вход'}
           </h1>
           {page === 'login' && (
-            <form onSubmit={(event) => submit(event, '/api/auth/login', '')}>
+            <form onChange={() => setFeedback(null)} onSubmit={(event) => submit(event, '/api/auth/login', '')}>
               <Field name="email" label="Имейл" type="email" />
               <Field name="password" label="Парола" type="password" />
-              <button className="form-primary-action" disabled={busy}>
+              <Button disabled={busy}>
                 Вход
-              </button>
-              <button
-                className="form-secondary-action"
-                type="button"
-                onClick={() => navigate('forgot')}
+              </Button>
+              <a
+                className="text-link"
+                href="/forgot-password"
+                onClick={(event) => {
+                  event.preventDefault()
+                  navigate('forgot')
+                }}
               >
                 Забравена парола
-              </button>
+              </a>
             </form>
           )}
           {page === 'forgot' && (
             <>
               <p>Въведи имейла си, за да получиш инструкции.</p>
               <form
+                onChange={() => setFeedback(null)}
                 onSubmit={(event) =>
                   submit(
                     event,
@@ -171,21 +175,25 @@ export function App() {
                 }
               >
                 <Field name="email" label="Имейл" type="email" />
-                <button className="form-primary-action" disabled={busy}>
+                <Button disabled={busy}>
                   Изпрати
-                </button>
-                <button
-                  className="form-secondary-action"
-                  type="button"
-                  onClick={() => navigate('login')}
-                >
-                  Обратно към вход
-                </button>
+                </Button>
+                <a
+                className="text-link"
+                href="/"
+                onClick={(event) => {
+                  event.preventDefault()
+                  navigate('login')
+                }}
+              >
+                Обратно към вход
+              </a>
               </form>
             </>
           )}
           {page === 'reset' && (
             <form
+                onChange={() => setFeedback(null)}
               onSubmit={(event) =>
                 submit(event, '/api/auth/password/reset', 'Паролата е променена.')
               }
@@ -196,13 +204,14 @@ export function App() {
                 value={new URLSearchParams(location.search).get('token') ?? ''}
               />
               <Field name="password" label="Нова парола" type="password" minLength={8} />
-              <button className="form-primary-action" disabled={busy}>
+              <Button disabled={busy}>
                 Промени паролата
-              </button>
+              </Button>
             </form>
           )}
           {page === 'invitation' && !invitationAccepted && (
             <form
+                onChange={() => setFeedback(null)}
               onSubmit={(event) =>
                 submit(
                   event,
@@ -230,17 +239,24 @@ export function App() {
                 type="password"
                 minLength={8}
               />
-              <button className="form-primary-action" disabled={busy}>
+              <Button disabled={busy}>
                 Приеми поканата
-              </button>
+              </Button>
             </form>
           )}
           {page === 'invitation' && invitationAccepted ? (
             <div className="invitation-accepted">
               <FeedbackMessage feedback={feedback} />
-              <button type="button" onClick={() => navigate('login')}>
+              <a
+                className="text-link"
+                href="/"
+                onClick={(event) => {
+                  event.preventDefault()
+                  navigate('login')
+                }}
+              >
                 Към вход
-              </button>
+              </a>
             </div>
           ) : (
             <FeedbackMessage feedback={feedback} />
@@ -251,12 +267,23 @@ export function App() {
   )
 }
 
-function FeedbackMessage({ feedback }: { feedback: Feedback | null }) {
+function FeedbackMessage({
+  feedback,
+  errorRef,
+}: {
+  feedback: Feedback | null
+  errorRef?: RefObject<HTMLParagraphElement | null>
+}) {
   if (!feedback) return null
 
   if (feedback.kind === 'error') {
     return (
-      <p className="status-message status-error" role="alert">
+      <p
+        ref={errorRef}
+        className="status-message status-error"
+        role="alert"
+        tabIndex={-1}
+      >
         {feedback.text}
       </p>
     )
@@ -278,9 +305,19 @@ function Field(props: {
   label: string
   type?: string
   minLength?: number
+  maxLength?: number
+  defaultValue?: string
   requireTrimmedValue?: boolean
 }) {
-  const { name, label, type, minLength, requireTrimmedValue } = props
+  const {
+    name,
+    label,
+    type,
+    minLength,
+    maxLength,
+    defaultValue,
+    requireTrimmedValue,
+  } = props
 
   const minimumPasswordLengthMessage = (value: string): string => {
     if (
@@ -323,6 +360,8 @@ function Field(props: {
         name={name}
         type={type}
         minLength={minLength}
+        maxLength={maxLength}
+        defaultValue={defaultValue}
         required
         onInvalid={(event) => {
           if (event.currentTarget.validity.customError) return
@@ -355,6 +394,7 @@ type AuthenticatedApplicationProps = {
   setBusy: (busy: boolean) => void
   feedback: Feedback | null
   setFeedback: (feedback: Feedback | null) => void
+  beginFeedback: () => FeedbackAttempt
 }
 
 function AuthenticatedApplication({
@@ -364,6 +404,7 @@ function AuthenticatedApplication({
   setBusy,
   feedback,
   setFeedback,
+  beginFeedback,
 }: AuthenticatedApplicationProps) {
   const initialRoute = readAuthenticatedRoute()
   const [route, setRoute] = useState<AuthenticatedRoute>(
@@ -373,7 +414,7 @@ function AuthenticatedApplication({
   )
   const authenticationRequired = useCallback(
     (detail: string) => {
-      setFeedback({ kind: 'error', text: detail })
+      setFeedback({ kind: 'error', category: 'blocking', text: detail })
       setSession(null)
     },
     [setFeedback, setSession],
@@ -381,6 +422,7 @@ function AuthenticatedApplication({
 
   useEffect(() => {
     const synchronizeRoute = () => {
+      setFeedback(null)
       const nextRoute = readAuthenticatedRoute()
       if (isPlatformRoute(nextRoute) && !session.platformAdmin) {
         replaceRoute(PROFILE_ROUTE)
@@ -396,7 +438,11 @@ function AuthenticatedApplication({
     }
 
     return subscribeToNavigation(synchronizeRoute)
-  }, [initialRoute.kind, session.platformAdmin])
+  }, [initialRoute.kind, session.platformAdmin, setFeedback])
+
+  useEffect(() => {
+    setFeedback(null)
+  }, [session.activeBusinessId, setFeedback])
 
   const navigate = (nextRoute: AuthenticatedRoute) => {
     if (isPlatformRoute(nextRoute) && !session.platformAdmin) return
@@ -407,15 +453,16 @@ function AuthenticatedApplication({
 
   const action = async (path: string, body?: object) => {
     setBusy(true)
-    setFeedback(null)
+    const publish = beginFeedback()
     try {
       const options: RequestInit = { method: 'POST' }
       if (body) options.body = JSON.stringify(body)
       const value = await request<Session>(path, options)
       if (value) setSession(value)
+      if (!publish(null)) return false
       return true
     } catch (error) {
-      setFeedback({ kind: 'error', text: safeErrorDetail(error) })
+      publish({ kind: 'error', category: errorCategory(error), text: safeErrorDetail(error) })
       return false
     } finally {
       setBusy(false)
@@ -424,13 +471,14 @@ function AuthenticatedApplication({
 
   const logout = async () => {
     setBusy(true)
-    setFeedback(null)
+    const publish = beginFeedback()
     try {
       await request('/api/auth/logout', { method: 'POST' })
+      if (!publish(null)) return
       history.replaceState({}, '', '/')
       setSession(null)
     } catch (error) {
-      setFeedback({ kind: 'error', text: safeErrorDetail(error) })
+      publish({ kind: 'error', category: errorCategory(error), text: safeErrorDetail(error) })
     } finally {
       setBusy(false)
     }
@@ -445,6 +493,11 @@ function AuthenticatedApplication({
       onNavigate={navigate}
       onLogout={logout}
     >
+      {route.kind !== 'profile' && feedback && (
+        <div className="platform-content">
+          <FeedbackMessage feedback={feedback} />
+        </div>
+      )}
       {route.kind === 'profile' ? (
         <Profile
           session={session}
@@ -471,6 +524,7 @@ function AuthenticatedApplication({
         />
       ) : (
         <BusinessDetail
+          key={route.businessId}
           businessId={route.businessId}
           onAuthenticationRequired={authenticationRequired}
           onBack={() => navigate(PLATFORM_BUSINESSES_ROUTE)}
@@ -493,70 +547,203 @@ type ProfileProps = {
 }
 
 function Profile({ session, busy, feedback, setFeedback, action }: ProfileProps) {
+  const [section, setSection] = useState<'personal' | 'password'>('personal')
+  const [editingPersonal, setEditingPersonal] = useState(false)
+  const profileFeedback = useRef<HTMLParagraphElement>(null)
+  const personalSelected = section === 'personal'
+
+  useEffect(() => {
+    if (feedback?.kind === 'error') {
+      profileFeedback.current?.focus()
+    }
+  }, [editingPersonal, feedback, personalSelected])
+
+  const selectSection = (next: 'personal' | 'password') => {
+    setSection(next)
+    setEditingPersonal(false)
+    setFeedback(null)
+  }
+
   return (
     <div className="platform-content">
-      <section className="content-card" aria-label="Настройки на профила">
-        <div className="compact-content">
-          {session.businesses.length > 1 && (
-            <label>
-              Избери бизнес
-              <select
-                value={session.activeBusinessId ?? ''}
-                onChange={(event) =>
-                  action('/api/auth/business', { businessId: event.target.value })
-                }
-              >
-                <option value="" disabled>
-                  Изберете
-                </option>
-                {session.businesses.map((business) => (
-                  <option key={business.id} value={business.id}>
-                    {business.displayName} — {business.role}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          <form
-            onChange={() => setFeedback(null)}
-            onSubmit={async (event) => {
-              event.preventDefault()
-              setFeedback(null)
-              const data = Object.fromEntries(new FormData(event.currentTarget))
-              const currentPassword = String(data.currentPassword ?? '')
-              const newPassword = String(data.newPassword ?? '')
-              const passwordConfirmation = String(data.passwordConfirmation ?? '')
-              if (newPassword !== passwordConfirmation) {
-                setFeedback({
-                  kind: 'error',
-                  text: 'Паролите не съвпадат.',
-                })
-                return
-              }
-              const form = event.currentTarget
-              if (await action('/api/auth/password/change', { currentPassword, newPassword })) {
-                form.reset()
-                setFeedback({
-                  kind: 'success',
-                  text: 'Паролата е променена успешно.',
-                })
-              }
-            }}
-          >
-            <h2>Смяна на парола</h2>
-            <Field name="currentPassword" label="Текуща парола" type="password" />
-            <Field name="newPassword" label="Нова парола" type="password" minLength={8} />
-            <Field
-              name="passwordConfirmation"
-              label="Потвърди новата парола"
-              type="password"
-              minLength={8}
-            />
-            <button className="form-primary-action" disabled={busy}>
-              Запази
-            </button>
-          </form>
-          <FeedbackMessage feedback={feedback} />
+      <section className="content-card profile-card" aria-label="Настройки на профила">
+        <div className="profile-layout">
+          <nav className="profile-navigation" aria-label="Настройки на профила">
+            <Button
+              type="button"
+              variant="navigation"
+              aria-pressed={personalSelected}
+              onClick={() => selectSection('personal')}
+            >
+              Лични данни
+            </Button>
+            <Button
+              type="button"
+              variant="navigation"
+              aria-pressed={!personalSelected}
+              onClick={() => selectSection('password')}
+            >
+              Смяна на парола
+            </Button>
+          </nav>
+          <section className="profile-panel" aria-labelledby="profile-panel-heading">
+            {personalSelected ? (
+              <>
+                <h2 id="profile-panel-heading">Лични данни</h2>
+                {editingPersonal ? (
+                  <form
+                    onChange={() => setFeedback(null)}
+                    onSubmit={async (event) => {
+                      event.preventDefault()
+                      setFeedback(null)
+                      const displayName = String(
+                        new FormData(event.currentTarget).get('displayName') ?? '',
+                      )
+                      if (await action('/api/auth/profile', { displayName })) {
+                        setEditingPersonal(false)
+                        setFeedback({
+                          kind: 'success',
+                          text: 'Личните данни са запазени.',
+                        })
+                      }
+                    }}
+                  >
+                    <Field
+                      name="displayName"
+                      label="Име"
+                      defaultValue={session.displayName}
+                      maxLength={200}
+                    />
+                    <dl className="profile-personal-details">
+                      <div>
+                        <dt>Имейл</dt>
+                        <dd>{session.email}</dd>
+                      </div>
+                    </dl>
+                    <div className="action-group">
+                      <Button disabled={busy}>
+                        Запази промените
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        disabled={busy}
+                        onClick={() => {
+                          setEditingPersonal(false)
+                          setFeedback(null)
+                        }}
+                      >
+                        Отказ
+                      </Button>
+                    </div>
+                  </form>
+                ) : (
+                  <>
+                    <dl className="profile-personal-details">
+                      <div>
+                        <dt>Име</dt>
+                        <dd>{session.displayName}</dd>
+                      </div>
+                      <div>
+                        <dt>Имейл</dt>
+                        <dd>{session.email}</dd>
+                      </div>
+                    </dl>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => {
+                        setEditingPersonal(true)
+                        setFeedback(null)
+                      }}
+                    >
+                      Редактирай
+                    </Button>
+                  </>
+                )}
+                {session.businesses.length > 1 && (
+                  <label>
+                    Избери бизнес
+                    <select
+                      value={session.activeBusinessId ?? ''}
+                      onChange={(event) =>
+                        action('/api/auth/business', { businessId: event.target.value })
+                      }
+                    >
+                      <option value="" disabled>
+                        Изберете
+                      </option>
+                      {session.businesses.map((business) => (
+                        <option key={business.id} value={business.id}>
+                          {business.displayName} — {business.role}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                <FeedbackMessage feedback={feedback} errorRef={profileFeedback} />
+              </>
+            ) : (
+              <>
+                <h2 id="profile-panel-heading">Смяна на парола</h2>
+                <form
+                  onChange={() => setFeedback(null)}
+                  onSubmit={async (event) => {
+                    event.preventDefault()
+                    setFeedback(null)
+                    const data = Object.fromEntries(new FormData(event.currentTarget))
+                    const currentPassword = String(data.currentPassword ?? '')
+                    const newPassword = String(data.newPassword ?? '')
+                    const passwordConfirmation = String(data.passwordConfirmation ?? '')
+                    if (newPassword !== passwordConfirmation) {
+                      setSection('password')
+                      setFeedback({
+                        kind: 'error',
+                        category: 'validation',
+                        text: 'Паролите не съвпадат.',
+                      })
+                      return
+                    }
+                    const form = event.currentTarget
+                    if (
+                      await action('/api/auth/password/change', {
+                        currentPassword,
+                        newPassword,
+                      })
+                    ) {
+                      form.reset()
+                      setFeedback({
+                        kind: 'success',
+                        text: 'Паролата е променена успешно.',
+                      })
+                    }
+                  }}
+                >
+                  <Field
+                    name="currentPassword"
+                    label="Текуща парола"
+                    type="password"
+                  />
+                  <Field
+                    name="newPassword"
+                    label="Нова парола"
+                    type="password"
+                    minLength={8}
+                  />
+                  <Field
+                    name="passwordConfirmation"
+                    label="Потвърди новата парола"
+                    type="password"
+                    minLength={8}
+                  />
+                  <Button disabled={busy}>
+                    Запази
+                  </Button>
+                </form>
+                <FeedbackMessage feedback={feedback} errorRef={profileFeedback} />
+              </>
+            )}
+          </section>
         </div>
       </section>
     </div>

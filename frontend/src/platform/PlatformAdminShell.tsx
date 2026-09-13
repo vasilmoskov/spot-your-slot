@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { Button } from '../ui/Button'
 import {
   isPlatformRoute,
   PROFILE_ROUTE,
@@ -62,10 +63,11 @@ export function PlatformAdminShell({
     <div className="platform-shell">
       <header className="mobile-header">
         <span className="wordmark">SpotYourSlot</span>
-        <button
+        <Button
           ref={triggerRef}
           type="button"
-          className="secondary-button navigation-toggle"
+          variant="secondary"
+          className="navigation-toggle"
           aria-expanded={mobileNavigationOpen}
           aria-controls={navigationId}
           aria-label={mobileNavigationOpen ? 'Затвори навигацията' : 'Отвори навигацията'}
@@ -78,7 +80,7 @@ export function PlatformAdminShell({
           }}
         >
           Меню
-        </button>
+        </Button>
       </header>
 
       <aside className="platform-sidebar">
@@ -95,6 +97,7 @@ export function PlatformAdminShell({
         >
           {platformAdmin && (
             <a
+              className="navigation-link"
               ref={firstNavigationItemRef}
               href={routeHref(PLATFORM_BUSINESSES_ROUTE)}
               aria-current={isPlatformRoute(route) ? 'page' : undefined}
@@ -104,6 +107,7 @@ export function PlatformAdminShell({
             </a>
           )}
           <a
+              className="navigation-link"
             ref={platformAdmin ? undefined : firstNavigationItemRef}
             href={routeHref(PROFILE_ROUTE)}
             aria-current={route.kind === 'profile' ? 'page' : undefined}
@@ -113,21 +117,21 @@ export function PlatformAdminShell({
           </a>
           <div className="mobile-account">
             <span>{displayName}</span>
-            <button
+            <Button
               type="button"
-              className="secondary-button"
+              variant="secondary"
               disabled={busy}
               onClick={onLogout}
             >
               Изход
-            </button>
+            </Button>
           </div>
         </nav>
         <div className="sidebar-account">
           <span>{displayName}</span>
-          <button type="button" className="secondary-button" disabled={busy} onClick={onLogout}>
+          <Button type="button" variant="secondary" disabled={busy} onClick={onLogout}>
             Изход
-          </button>
+          </Button>
         </div>
       </aside>
 

@@ -162,6 +162,7 @@ State-changing calls require the `X-XSRF-TOKEN` returned by
 |---|---|
 | `POST /api/auth/login`, `POST /api/auth/logout` | Shared login and logout |
 | `GET /api/auth/session` | Current user and authorized Businesses |
+| `POST /api/auth/profile` | Update only the authenticated user’s display name and return the refreshed session |
 | `POST /api/auth/business` | Select an already-authorized Business |
 | `POST /api/auth/password/change` | Change password and revoke other sessions |
 | `POST /api/auth/password/forgot`, `POST /api/auth/password/reset` | Reset flow |

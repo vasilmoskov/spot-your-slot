@@ -7,6 +7,8 @@ import {
   type InvalidEvent,
   type RefObject,
 } from 'react'
+import { useFeedback, errorCategory, type Feedback } from '../../ui/useFeedback'
+import { Button } from '../../ui/Button'
 import {
   changeBusinessStatus,
   getBusiness,
@@ -31,12 +33,6 @@ type BusinessDetailProps = {
   businessId: string
   onAuthenticationRequired: (detail: string) => void
   onBack: () => void
-}
-
-type Feedback = {
-  kind: 'error' | 'success'
-  text: string
-  reload?: boolean
 }
 
 type LifecyclePresentation = {
@@ -90,9 +86,21 @@ export function BusinessDetail({
   const [business, setBusiness] = useState<BusinessDetails | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [profileFeedback, setProfileFeedback] = useState<Feedback | null>(null)
-  const [invitationFeedback, setInvitationFeedback] = useState<Feedback | null>(null)
-  const [lifecycleFeedback, setLifecycleFeedback] = useState<Feedback | null>(null)
+  const {
+    feedback: profileFeedback,
+    setFeedback: setProfileFeedback,
+    beginFeedback: beginProfileFeedback,
+  } = useFeedback(businessId)
+  const {
+    feedback: invitationFeedback,
+    setFeedback: setInvitationFeedback,
+    beginFeedback: beginInvitationFeedback,
+  } = useFeedback(businessId)
+  const {
+    feedback: lifecycleFeedback,
+    setFeedback: setLifecycleFeedback,
+    beginFeedback: beginLifecycleFeedback,
+  } = useFeedback(businessId)
   const [editing, setEditing] = useState(false)
   const [updating, setUpdating] = useState(false)
   const [lifecycleConfirmation, setLifecycleConfirmation] = useState(false)
@@ -148,7 +156,7 @@ export function BusinessDetail({
         setLoading(false)
       }
     }
-  }, [businessId, onAuthenticationRequired])
+  }, [businessId, onAuthenticationRequired, setProfileFeedback, setInvitationFeedback, setLifecycleFeedback])
 
   useEffect(() => {
     void load()
@@ -193,9 +201,10 @@ export function BusinessDetail({
     if (updateInProgress.current) return
     updateInProgress.current = true
     setUpdating(true)
-    setProfileFeedback(null)
+    const publish = beginProfileFeedback()
     try {
       const updated = await updateBusiness(businessId, input)
+      if (!publish(null)) return
       setBusiness(updated)
       setEditing(false)
       setProfileFeedback({ kind: 'success', text: 'Промените са запазени.' })
@@ -204,8 +213,9 @@ export function BusinessDetail({
         onAuthenticationRequired(caught.detail)
         return
       }
-      setProfileFeedback({
+      publish({
         kind: 'error',
+        category: errorCategory(caught),
         text: safeBusinessError(caught, 'Промените не могат да бъдат запазени.'),
         reload: isConcurrentUpdate(caught),
       })
@@ -219,7 +229,7 @@ export function BusinessDetail({
     if (!business || lifecycleInProgress.current) return
     lifecycleInProgress.current = true
     setLifecycleBusy(true)
-    setLifecycleFeedback(null)
+    const publish = beginLifecycleFeedback()
     const lifecycle = LIFECYCLE_PRESENTATION[business.status]
     try {
       const updated = await changeBusinessStatus(
@@ -227,6 +237,7 @@ export function BusinessDetail({
         lifecycle.action,
         business.version,
       )
+      if (!publish(null)) return
       setBusiness(updated)
       setLifecycleConfirmation(false)
       setLifecycleFeedback({ kind: 'success', text: lifecycle.successText })
@@ -236,8 +247,9 @@ export function BusinessDetail({
         return
       }
       setLifecycleConfirmation(false)
-      setLifecycleFeedback({
+      publish({
         kind: 'error',
+        category: errorCategory(caught),
         text: safeBusinessError(caught, 'Статусът не може да бъде променен.'),
         reload: isConcurrentUpdate(caught),
       })
@@ -251,14 +263,15 @@ export function BusinessDetail({
     if (invitationInProgress.current) return
     invitationInProgress.current = true
     setInvitationBusy(true)
-    setInvitationFeedback(null)
+    const publish = beginInvitationFeedback()
     try {
       await inviteBusinessOwner(businessId, email)
+      if (!publish(null)) return
       setLastInvitedEmail(email.toLowerCase())
       setResendEmail(null)
       setInvitationFeedback({
         kind: 'success',
-        text: 'Заявката за покана е приета.',
+        text: 'Заявката за покана е изпратена.',
       })
     } catch (caught) {
       if (isAuthenticationRequired(caught)) {
@@ -266,8 +279,9 @@ export function BusinessDetail({
         return
       }
       setResendEmail(null)
-      setInvitationFeedback({
+      publish({
         kind: 'error',
+        category: errorCategory(caught),
         text: safeBusinessError(caught, 'Заявката за покана не може да бъде изпратена.'),
       })
     } finally {
@@ -279,6 +293,7 @@ export function BusinessDetail({
   const submitInvitation = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (invitationInProgress.current) return
+    setInvitationFeedback(null)
     const data = new FormData(event.currentTarget)
     const email = String(data.get('ownerEmail') ?? '').trim()
     if (lastInvitedEmail === email.toLowerCase()) {
@@ -300,24 +315,26 @@ export function BusinessDetail({
   if (loadError || !business) {
     return (
       <div className="platform-content">
-        <div
-          ref={profileError}
-          className="status-message status-error"
-          role="alert"
-          tabIndex={-1}
-        >
-          <p>{loadError ?? 'Бизнесът не е намерен.'}</p>
+        <div className="feedback-action-layout">
+          <div
+            ref={profileError}
+            className="status-message status-error"
+            role="alert"
+            tabIndex={-1}
+          >
+            <p>{loadError ?? 'Бизнесът не е намерен.'}</p>
+          </div>
           <div className="action-group">
-            <button
+            <Button
               type="button"
-              className="secondary-button"
+              variant="secondary"
               onClick={() => void load()}
             >
               Зареди отново
-            </button>
-            <button type="button" className="secondary-button" onClick={onBack}>
+            </Button>
+            <Button type="button" variant="secondary" onClick={onBack}>
               Обратно към бизнесите
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -330,9 +347,9 @@ export function BusinessDetail({
   return (
     <div className="platform-content business-detail">
       <div className="business-page-actions">
-        <button type="button" className="secondary-button" onClick={onBack}>
+        <Button type="button" variant="secondary" onClick={onBack}>
           Обратно към бизнесите
-        </button>
+        </Button>
       </div>
 
       <header className="business-detail-header">
@@ -358,88 +375,91 @@ export function BusinessDetail({
           <span>Данни за бизнеса</span>
           <span className="section-summary">{business.displayName}</span>
         </summary>
-        {editing ? (
-          <BusinessForm
-            key={`${business.id}-${business.version}`}
-            business={business}
-            busy={updating}
-            submitLabel="Запази промените"
-            onCancel={() => {
-              setEditing(false)
-              setProfileFeedback(null)
-            }}
-            onSubmit={(input) => void update(input as UpdateBusinessInput)}
-          />
-        ) : (
-          <>
-            <div className="business-information-columns business-details-columns">
-              <dl className="business-details-list">
-                <div>
-                  <dt>Име на бизнеса</dt>
-                  <dd>{business.displayName}</dd>
-                </div>
-                <div>
-                  <dt>Идентификатор в уеб адреса</dt>
-                  <dd>{business.slug}</dd>
-                </div>
-                <div>
-                  <dt>Дейност</dt>
-                  <dd>{businessTypeLabel(business.businessType)}</dd>
-                </div>
-                <div>
-                  <dt>Телефон (по избор)</dt>
-                  <dd>{business.phone ?? 'Не е посочен'}</dd>
-                </div>
-                <div>
-                  <dt>Имейл за контакт (по избор)</dt>
-                  <dd>{business.contactEmail ?? 'Не е посочен'}</dd>
-                </div>
-              </dl>
-              <dl className="business-details-list">
-                <div>
-                  <dt>Улица (по избор)</dt>
-                  <dd>{business.street ?? 'Не е посочена'}</dd>
-                </div>
-                <div>
-                  <dt>Номер (по избор)</dt>
-                  <dd>{business.streetNumber ?? 'Не е посочен'}</dd>
-                </div>
-                <div>
-                  <dt>Пощенски код (по избор)</dt>
-                  <dd>{business.postalCode ?? 'Не е посочен'}</dd>
-                </div>
-                <div>
-                  <dt>Град (по избор)</dt>
-                  <dd>{business.city ?? 'Не е посочен'}</dd>
-                </div>
-                <div>
-                  <dt>Допълнителни указания (по избор)</dt>
-                  <dd>{business.addressDetails ?? 'Не са посочени'}</dd>
-                </div>
-              </dl>
-            </div>
-            <dl className="business-details-list business-description-details">
-              <div>
-                <dt>Описание (по избор)</dt>
-                <dd>{business.description ?? 'Няма описание'}</dd>
-              </div>
-            </dl>
-            <button
-              type="button"
-              onClick={() => {
-                setProfileOpen(true)
-                setEditing(true)
+        <div className="feedback-action-layout">
+          {editing ? (
+            <BusinessForm
+              key={`${business.id}-${business.version}`}
+              business={business}
+              busy={updating}
+              submitLabel="Запази промените"
+              onChange={() => {
+                if (!profileFeedback?.reload) setProfileFeedback(null)
               }}
-            >
-              Редактирай
-            </button>
-          </>
-        )}
-        <LocalFeedback
-          feedback={profileFeedback}
-          errorRef={profileError}
-          onReload={load}
-        />
+              onCancel={() => {
+                setEditing(false)
+                setProfileFeedback(null)
+              }}
+              onSubmit={(input) => void update(input as UpdateBusinessInput)}
+            />
+          ) : (
+            <>
+              <div className="business-information-columns business-details-columns">
+                <dl className="business-details-list">
+                  <div>
+                    <dt>Име на бизнеса</dt>
+                    <dd>{business.displayName}</dd>
+                  </div>
+                  <div>
+                    <dt>Идентификатор в уеб адреса</dt>
+                    <dd>{business.slug}</dd>
+                  </div>
+                  <div>
+                    <dt>Дейност</dt>
+                    <dd>{businessTypeLabel(business.businessType)}</dd>
+                  </div>
+                  <div>
+                    <dt>Телефон (по избор)</dt>
+                    <dd>{business.phone ?? 'Не е посочен'}</dd>
+                  </div>
+                  <div>
+                    <dt>Имейл за контакт (по избор)</dt>
+                    <dd>{business.contactEmail ?? 'Не е посочен'}</dd>
+                  </div>
+                </dl>
+                <dl className="business-details-list">
+                  <div>
+                    <dt>Улица (по избор)</dt>
+                    <dd>{business.street ?? 'Не е посочена'}</dd>
+                  </div>
+                  <div>
+                    <dt>Номер (по избор)</dt>
+                    <dd>{business.streetNumber ?? 'Не е посочен'}</dd>
+                  </div>
+                  <div>
+                    <dt>Пощенски код (по избор)</dt>
+                    <dd>{business.postalCode ?? 'Не е посочен'}</dd>
+                  </div>
+                  <div>
+                    <dt>Град (по избор)</dt>
+                    <dd>{business.city ?? 'Не е посочен'}</dd>
+                  </div>
+                  <div>
+                    <dt>Допълнителни указания (по избор)</dt>
+                    <dd>{business.addressDetails ?? 'Не са посочени'}</dd>
+                  </div>
+                </dl>
+              </div>
+              <dl className="business-details-list business-description-details">
+                <div>
+                  <dt>Описание (по избор)</dt>
+                  <dd>{business.description ?? 'Няма описание'}</dd>
+                </div>
+              </dl>
+              <Button
+                type="button"
+                onClick={() => {
+                  setProfileFeedback(null)
+                  setProfileOpen(true)
+                  setEditing(true)
+                }}
+              >
+                Редактирай
+              </Button>
+            </>
+          )}
+          <LocalFeedback feedback={profileFeedback} errorRef={profileError} />
+          <FeedbackReloadControl feedback={profileFeedback} onReload={load} />
+        </div>
       </details>
 
       {business.status === 'DRAFT' && (
@@ -453,60 +473,69 @@ export function BusinessDetail({
             <span>Покана</span>
             <span className="section-summary">Поканете собственик</span>
           </summary>
-          <form className="invitation-form" onSubmit={submitInvitation}>
-            <label>
-              Имейл на собственика
-              <input
-                name="ownerEmail"
-                type="email"
-                required
-                maxLength={320}
-                onInvalid={(event: InvalidEvent<HTMLInputElement>) => {
-                  event.currentTarget.setCustomValidity('')
-                  event.currentTarget.setCustomValidity(
-                    event.currentTarget.validity.valueMissing
-                      ? 'Моля, въведете имейл адрес.'
-                      : 'Моля, въведете валиден имейл адрес.',
-                  )
-                }}
-                onInput={(event) => event.currentTarget.setCustomValidity('')}
-              />
-            </label>
-            <button disabled={invitationBusy}>
-              {invitationBusy ? 'Изпращане…' : 'Изпрати покана'}
-            </button>
-          </form>
-          {resendEmail && (
-            <div
-              className="confirmation-panel"
-              role="alertdialog"
-              aria-labelledby="resend-confirmation-heading"
+          <div className="feedback-action-layout">
+            <form
+              className="invitation-form"
+              onChange={() => setInvitationFeedback(null)}
+              onSubmit={submitInvitation}
             >
-              <h4 id="resend-confirmation-heading">Изпращане на нова покана</h4>
-              <p>
-                Предишната активна покана за този имейл ще бъде заменена.
-              </p>
-              <div className="action-group">
-                <button
-                  ref={confirmationButton}
-                  type="button"
-                  disabled={invitationBusy}
-                  onClick={() => void sendInvitation(resendEmail)}
-                >
-                  Потвърди изпращането
-                </button>
-                <button
-                  type="button"
-                  className="secondary-button"
-                  disabled={invitationBusy}
-                  onClick={() => setResendEmail(null)}
-                >
-                  Отказ
-                </button>
+              <label>
+                Имейл на собственика
+                <input
+                  name="ownerEmail"
+                  type="email"
+                  required
+                  maxLength={320}
+                  onInvalid={(event: InvalidEvent<HTMLInputElement>) => {
+                    event.currentTarget.setCustomValidity('')
+                    event.currentTarget.setCustomValidity(
+                      event.currentTarget.validity.valueMissing
+                        ? 'Моля, въведете имейл адрес.'
+                        : 'Моля, въведете валиден имейл адрес.',
+                    )
+                  }}
+                  onInput={(event) => event.currentTarget.setCustomValidity('')}
+                />
+              </label>
+              <Button disabled={invitationBusy}>
+                {invitationBusy ? 'Изпращане…' : 'Изпрати покана'}
+              </Button>
+            </form>
+            {resendEmail && (
+              <div
+                className="confirmation-panel"
+                role="alertdialog"
+                aria-labelledby="resend-confirmation-heading"
+              >
+                <h4 id="resend-confirmation-heading">Изпращане на нова покана</h4>
+                <p>
+                  Предишната активна покана за този имейл ще бъде заменена.
+                </p>
+                <div className="action-group">
+                  <Button
+                    ref={confirmationButton}
+                    type="button"
+                    disabled={invitationBusy}
+                    onClick={() => void sendInvitation(resendEmail)}
+                  >
+                    Потвърди изпращането
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={invitationBusy}
+                    onClick={() => {
+                      setResendEmail(null)
+                      setInvitationFeedback(null)
+                    }}
+                  >
+                    Отказ
+                  </Button>
+                </div>
               </div>
-            </div>
-          )}
-          <LocalFeedback feedback={invitationFeedback} errorRef={invitationError} />
+            )}
+            <LocalFeedback feedback={invitationFeedback} errorRef={invitationError} />
+          </div>
         </details>
       )}
 
@@ -536,54 +565,63 @@ export function BusinessDetail({
             </ol>
           </>
         )}
-        <LocalFeedback
-          feedback={lifecycleFeedback}
-          errorRef={lifecycleError}
-          onReload={load}
-        />
-        {!lifecycleConfirmation && (
-          <button
-            type="button"
-            className={lifecycle.danger ? 'danger-button' : undefined}
-            onClick={() => {
-              setLifecycleOpen(true)
-              setLifecycleConfirmation(true)
-            }}
-          >
-            {lifecycle.actionLabel}
-          </button>
-        )}
-        {lifecycleConfirmation && (
-          <div
-            className="confirmation-panel"
-            role="alertdialog"
-            aria-labelledby="lifecycle-confirmation-heading"
-          >
-            <h4 id="lifecycle-confirmation-heading">
-              {lifecycle.confirmationHeading}
-            </h4>
-            <p>{lifecycle.confirmationText}</p>
-            <div className="action-group">
-              <button
-                ref={confirmationButton}
+        <div className="feedback-action-layout">
+          <LocalFeedback
+            feedback={lifecycleFeedback}
+            errorRef={lifecycleError}
+            className="lifecycle-feedback"
+          />
+          <div className="feedback-action-controls">
+            <FeedbackReloadControl feedback={lifecycleFeedback} onReload={load} />
+            {!lifecycleConfirmation && (
+              <Button
                 type="button"
-                className={lifecycle.danger ? 'danger-button' : undefined}
-                disabled={lifecycleBusy}
-                onClick={() => void changeStatus()}
+                variant={lifecycle.danger ? 'destructive' : 'primary'}
+                onClick={() => {
+                  setLifecycleFeedback(null)
+                  setLifecycleOpen(true)
+                  setLifecycleConfirmation(true)
+                }}
               >
-                {lifecycleBusy ? 'Запазване…' : lifecycle.confirmationLabel}
-              </button>
-              <button
-                type="button"
-                className="secondary-button"
-                disabled={lifecycleBusy}
-                onClick={() => setLifecycleConfirmation(false)}
+                {lifecycle.actionLabel}
+              </Button>
+            )}
+            {lifecycleConfirmation && (
+              <div
+                className="confirmation-panel"
+                role="alertdialog"
+                aria-labelledby="lifecycle-confirmation-heading"
               >
-                Отказ
-              </button>
-            </div>
+                <h4 id="lifecycle-confirmation-heading">
+                  {lifecycle.confirmationHeading}
+                </h4>
+                <p>{lifecycle.confirmationText}</p>
+                <div className="action-group">
+                  <Button
+                    ref={confirmationButton}
+                    type="button"
+                    variant={lifecycle.danger ? 'destructive' : 'primary'}
+                    disabled={lifecycleBusy}
+                    onClick={() => void changeStatus()}
+                  >
+                    {lifecycleBusy ? 'Запазване…' : lifecycle.confirmationLabel}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={lifecycleBusy}
+                    onClick={() => {
+                      setLifecycleConfirmation(false)
+                      setLifecycleFeedback(null)
+                    }}
+                  >
+                    Отказ
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </details>
     </div>
   )
@@ -592,34 +630,45 @@ export function BusinessDetail({
 function LocalFeedback({
   feedback,
   errorRef,
-  onReload,
+  className,
 }: {
   feedback: Feedback | null
   errorRef: RefObject<HTMLDivElement | null>
-  onReload?: () => Promise<void>
+  className?: string
 }) {
   if (!feedback) return null
 
   return (
     <div
       ref={feedback.kind === 'error' ? errorRef : undefined}
-      className={`status-message status-${feedback.kind}`}
+      className={
+        `status-message status-${feedback.kind}${className ? ` ${className}` : ''}`
+      }
       role={feedback.kind === 'error' ? 'alert' : 'status'}
       aria-live={feedback.kind === 'success' ? 'polite' : undefined}
       tabIndex={feedback.kind === 'error' ? -1 : undefined}
     >
       <p>{feedback.text}</p>
-      {feedback.reload && onReload && (
-        <div className="action-group">
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={() => void onReload()}
-          >
-            Зареди актуалните данни
-          </button>
-        </div>
-      )}
     </div>
+  )
+}
+
+function FeedbackReloadControl({
+  feedback,
+  onReload,
+}: {
+  feedback: Feedback | null
+  onReload: () => Promise<void>
+}) {
+  if (!feedback?.reload) return null
+
+  return (
+    <Button
+      type="button"
+      variant="secondary"
+      onClick={() => void onReload()}
+    >
+      Зареди актуалните данни
+    </Button>
   )
 }

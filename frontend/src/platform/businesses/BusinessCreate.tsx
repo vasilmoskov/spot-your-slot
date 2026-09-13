@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import { useFeedback, errorCategory } from '../../ui/useFeedback'
+import { Button } from '../../ui/Button'
 import { createBusiness, type CreateBusinessInput } from './api'
 import { BusinessForm } from './BusinessForm'
 import { isAuthenticationRequired, safeBusinessError } from './errors'
@@ -15,7 +17,7 @@ export function BusinessCreate({
   onCancel,
 }: BusinessCreateProps) {
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { feedback: error, setFeedback, beginFeedback } = useFeedback('business-create')
   const submitting = useRef(false)
   const errorMessage = useRef<HTMLParagraphElement>(null)
 
@@ -27,18 +29,20 @@ export function BusinessCreate({
     if (submitting.current) return
     submitting.current = true
     setBusy(true)
-    setError(null)
+    const publish = beginFeedback()
     try {
       const created = await createBusiness(input)
-      onCreated(created.id)
+      if (publish(null)) onCreated(created.id)
     } catch (caught) {
       if (isAuthenticationRequired(caught)) {
         onAuthenticationRequired(caught.detail)
         return
       }
-      setError(
-        safeBusinessError(caught, 'Бизнесът не може да бъде създаден.'),
-      )
+      publish({
+        kind: 'error',
+        category: errorCategory(caught),
+        text: safeBusinessError(caught, 'Бизнесът не може да бъде създаден.'),
+      })
     } finally {
       submitting.current = false
       setBusy(false)
@@ -48,9 +52,9 @@ export function BusinessCreate({
   return (
     <div className="platform-content">
       <div className="business-page-actions">
-        <button type="button" className="secondary-button" onClick={onCancel}>
+        <Button type="button" variant="secondary" onClick={onCancel}>
           Обратно към бизнесите
-        </button>
+        </Button>
       </div>
       <section
         className="business-section"
@@ -64,6 +68,7 @@ export function BusinessCreate({
         <BusinessForm
           busy={busy}
           submitLabel="Създай бизнес"
+          onChange={() => setFeedback(null)}
           onSubmit={(input) => void submit(input as CreateBusinessInput)}
         />
         {error && (
@@ -73,7 +78,7 @@ export function BusinessCreate({
             role="alert"
             tabIndex={-1}
           >
-            {error}
+            {error.text}
           </p>
         )}
       </section>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Button } from '../../ui/Button'
 import { ApiError } from '../../identity/api'
 import {
   PLATFORM_BUSINESS_NEW_ROUTE,
@@ -118,15 +119,19 @@ export function BusinessList({
   if (state.kind === 'error') {
     return (
       <div className="platform-content">
-        <div className="status-message status-error" role="alert">
-          <p>{GENERIC_ERROR}</p>
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={() => void load(state.page)}
-          >
-            Опитай отново
-          </button>
+        <div className="feedback-action-layout">
+          <div className="status-message status-error" role="alert">
+            <p>{GENERIC_ERROR}</p>
+          </div>
+          <div className="feedback-action-controls">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => void load(state.page)}
+            >
+              Опитай отново
+            </Button>
+          </div>
         </div>
       </div>
     )
@@ -135,10 +140,10 @@ export function BusinessList({
   return (
     <div className="platform-content">
       <div className="business-list-content">
-        <div className="business-page-actions business-page-actions-end">
-          <button type="button" onClick={onCreate}>
+        <div className="business-page-actions">
+          <Button type="button" onClick={onCreate}>
             Нов бизнес
-          </button>
+          </Button>
         </div>
         {state.page.businesses.length === 0 ? (
           <p className="business-list-state" aria-live="polite">
@@ -220,22 +225,22 @@ function BusinessPagination({ page, onPageRequested }: BusinessPaginationProps) 
         <span>Общо бизнеси: {page.totalElements}</span>
       </div>
       <div className="business-pagination-actions">
-        <button
+        <Button
           type="button"
-          className="secondary-button"
+          variant="secondary"
           disabled={previousDisabled}
           onClick={() => onPageRequested(page.page - 1)}
         >
           Предишна
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className="secondary-button"
+          variant="secondary"
           disabled={nextDisabled}
           onClick={() => onPageRequested(page.page + 1)}
         >
           Следваща
-        </button>
+        </Button>
       </div>
     </nav>
   )

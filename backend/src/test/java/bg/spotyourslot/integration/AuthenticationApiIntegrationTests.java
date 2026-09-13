@@ -87,6 +87,141 @@ class AuthenticationApiIntegrationTests extends PostgresIntegrationTest {
     }
 
     @Test
+    void authenticatedUserUpdatesOnlyTheirTrimmedDisplayNameAndKeepsSessionState()
+            throws Exception {
+        Cookie session = login();
+        selectBusiness(session, businessA).andExpect(status().isOk());
+        UUID otherUserId = createUser(
+                "other@example.invalid", "other correct horse battery staple", true, false,
+                OffsetDateTime.now(ZoneOffset.UTC));
+        String passwordHash = jdbc.sql("SELECT password_hash FROM app_user WHERE id=:id")
+                .param("id", userId)
+                .query(String.class)
+                .single();
+        Long credentialVersion = jdbc.sql("SELECT credential_version FROM app_user WHERE id=:id")
+                .param("id", userId)
+                .query(Long.class)
+                .single();
+
+        mvc.perform(post("/api/auth/profile")
+                        .with(csrf())
+                        .cookie(session)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "displayName": "  Обновен собственик  ",
+                                  "userId": "%s",
+                                  "email": "other@example.invalid"
+                                }
+                                """.formatted(otherUserId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.userId").value(userId.toString()))
+                .andExpect(jsonPath("$.displayName").value("Обновен собственик"))
+                .andExpect(jsonPath("$.email").value(EMAIL))
+                .andExpect(jsonPath("$.activeBusinessId").value(businessA.toString()))
+                .andExpect(jsonPath("$.businesses.length()").value(1))
+                .andExpect(jsonPath("$.businesses[0].id").value(businessA.toString()))
+                .andExpect(jsonPath("$.businesses[0].role").value("MANAGER"));
+
+        org.assertj.core.api.Assertions.assertThat(jdbc.sql("""
+                                SELECT display_name FROM app_user WHERE id=:id
+                                """)
+                        .param("id", userId)
+                        .query(String.class)
+                        .single())
+                .isEqualTo("Обновен собственик");
+        org.assertj.core.api.Assertions.assertThat(jdbc.sql("""
+                                SELECT display_name FROM app_user WHERE id=:id
+                                """)
+                        .param("id", otherUserId)
+                        .query(String.class)
+                        .single())
+                .isEqualTo("Test User");
+        assertThatStoredPasswordIsUnchanged(passwordHash);
+        org.assertj.core.api.Assertions.assertThat(jdbc.sql("""
+                                SELECT credential_version FROM app_user WHERE id=:id
+                                """)
+                        .param("id", userId)
+                        .query(Long.class)
+                        .single())
+                .isEqualTo(credentialVersion);
+        org.assertj.core.api.Assertions.assertThat(jdbc.sql("""
+                                SELECT active FROM app_user WHERE id=:id
+                                """)
+                        .param("id", userId)
+                        .query(Boolean.class)
+                        .single())
+                .isTrue();
+        org.assertj.core.api.Assertions.assertThat(jdbc.sql("""
+                                SELECT locked FROM app_user WHERE id=:id
+                                """)
+                        .param("id", userId)
+                        .query(Boolean.class)
+                        .single())
+                .isFalse();
+        org.assertj.core.api.Assertions.assertThat(jdbc.sql("""
+                                SELECT count(*) FROM membership
+                                WHERE user_id=:userId AND business_id=:businessId
+                                  AND role='MANAGER' AND active=true
+                                """)
+                        .param("userId", userId)
+                        .param("businessId", businessA)
+                        .query(Integer.class)
+                        .single())
+                .isEqualTo(1);
+        mvc.perform(get("/api/auth/session").cookie(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.displayName").value("Обновен собственик"))
+                .andExpect(jsonPath("$.activeBusinessId").value(businessA.toString()));
+    }
+
+    @Test
+    void profileUpdateRequiresAnAuthenticatedSessionAndCsrf() throws Exception {
+        mvc.perform(post("/api/auth/profile")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"displayName\":\"Обновено име\"}"))
+                .andExpect(status().isUnauthorized());
+
+        mvc.perform(post("/api/auth/profile")
+                        .cookie(login())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"displayName\":\"Обновено име\"}"))
+                .andExpect(status().isForbidden());
+
+        mvc.perform(post("/api/auth/profile")
+                        .with(csrf().useInvalidToken())
+                        .cookie(login())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"displayName\":\"Обновено име\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void profileUpdateRejectsBlankAndOverlongDisplayNames() throws Exception {
+        Cookie session = login();
+
+        mvc.perform(post("/api/auth/profile")
+                        .with(csrf())
+                        .cookie(session)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"displayName\":\"   \"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        mvc.perform(post("/api/auth/profile")
+                        .with(csrf())
+                        .cookie(session)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"displayName\":\"%s\"}".formatted("a".repeat(201))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+
+        mvc.perform(get("/api/auth/session").cookie(session))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.displayName").value("Test User"));
+    }
+
+    @Test
     void wrongCurrentPasswordPreservesPasswordAndEverySession() throws Exception {
         Cookie currentSession = login();
         Cookie otherSession = login();
