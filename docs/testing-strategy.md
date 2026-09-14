@@ -102,11 +102,11 @@ Memberships, Services, StaffMembers, schedules, Customers, and Appointments.
 Integration suites start isolated PostgreSQL and migrate from empty. Fixtures
 use fictional Bulgarian data and no production credentials/recipients.
 
-Planned CI runs backend static/unit/integration checks, frontend lint/type/unit/
-build, Playwright flows, and security scans. Before release: migrate a clean
-database, run the full suite, inspect production configuration, test approved
-backup restore, review security/privacy decisions, and perform a Bulgarian
-mobile smoke test.
+CI runs backend static/unit/integration checks, frontend lint/type/unit/build,
+and the implemented Playwright flows. Security scans remain planned. Before
+release: migrate a clean database, run the full suite, inspect production
+configuration, test approved backup restore, review security/privacy decisions,
+and perform a Bulgarian mobile smoke test.
 
 Phase 2 migrates PostgreSQL 18.4 Testcontainers from empty, verifies identity
 schema constraints for `BUSINESS_OWNER`, `MANAGER`, and `STAFF`, and runs Spring
@@ -135,5 +135,54 @@ owner-invitation flow. Identity tests cover new and existing User acceptance,
 replacement-token invalidation, and single use. API-client tests verify exact
 credentialed request paths and bodies through the shared CSRF-aware request
 helper, including successful empty HTTP 202 responses. These
-automated checks do not replace the task's final rendered-browser and human
-visual review or issue #7 end-to-end verification.
+checks complement the rendered-browser verification below and do not replace
+explicit human visual review.
+
+## Browser E2E for Business onboarding and lifecycle
+
+Issue #7 adds a Playwright layer above the existing MockMvc/PostgreSQL and
+Vitest/jsdom layers. MockMvc integration tests verify HTTP, security, persistence,
+and concurrency without a real browser. Vitest/jsdom tests verify React component
+behavior and accessible DOM structure without running Spring Boot. Playwright
+verifies the implemented journey through rendered React, the real Spring Boot
+HTTP boundary, and PostgreSQL migrated from empty by Flyway.
+
+The desktop journey signs in as the bootstrapped `PLATFORM_ADMIN`, creates and
+inspects a deterministic fictional DRAFT Business, proves activation is blocked
+before owner acceptance, sends and replaces the initial owner invitation, and
+retrieves the replacement only through the protected development mailbox. A
+separate signed-out browser context proves the replaced invitation is rejected.
+Another isolated context accepts the replacement, signs in as the owner, renders
+the owner Profile, and verifies the exact `BUSINESS_OWNER` association through
+that context's authenticated session response. The original administrator
+context then activates, suspends, and reactivates the Business, verifies each
+rendered status and feedback message, and finishes at ACTIVE. A fourth signed-out
+context proves the consumed invitation cannot be replayed.
+
+After that lifecycle, a Pixel 7 Chromium context performs a focused mobile smoke
+check. It verifies keyboard-operated responsive navigation, reaches the created
+Business through the list, observes its final ACTIVE state, confirms the critical
+lifecycle action remains usable, and checks for horizontal viewport overflow. It
+does not repeat or depend on a separately ordered lifecycle project.
+
+The runner uses the fixed Compose project `spotyourslot-e2e` and dedicated ports
+`55432`, `18080`, and `15173`. Each run removes any prior disposable E2E project,
+creates a fresh PostgreSQL volume, starts Spring Boot with the current Flyway
+migrations and a generated local administrator credential, starts Vite against
+that backend, runs serially, and removes the project and volume on exit. The data,
+recipient addresses, and Business values are deterministic and fictional; raw
+passwords and invitation URLs/tokens remain only in process memory.
+
+Playwright screenshots, traces, videos, HTML/blob reports, and copied error
+context are disabled. The reporter redacts generated credentials, invitation
+tokens, and cookie values from failure text. Tests remove invitation query strings
+from browser history after React consumes them, assert browser storage remains
+empty, never inspect cookie values, and do not attach mailbox payloads. Generated
+output paths are ignored and CI uploads no browser artifacts.
+
+Locally, install Chromium once from `frontend` with
+`./node_modules/.bin/playwright install chromium`, then run
+`./scripts/run-e2e.sh` from the repository root. CI waits for the backend and
+frontend verification jobs, installs locked npm dependencies plus pinned
+Playwright Chromium and Linux dependencies, runs the same script, and always
+performs validated cleanup of only the disposable E2E Compose project.

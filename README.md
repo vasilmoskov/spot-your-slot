@@ -190,8 +190,8 @@ Initial activation requires an active `BUSINESS_OWNER` Membership for the same
 Business. The implemented lifecycle is `DRAFT → ACTIVE`, `ACTIVE → SUSPENDED`,
 and `SUSPENDED → ACTIVE`; other transitions are rejected. The platform-admin UI
 provides the matching list, create, read-only detail/edit, owner-invitation, and
-confirmed lifecycle flows; corrected visual and invitation retesting remains
-pending.
+confirmed lifecycle flows. The browser verification below exercises the complete
+implemented onboarding and lifecycle journey.
 
 The development mailbox retains at most 50 links in memory and never logs,
 writes, or persists raw tokens. Sessions use an opaque `SPOTYOURSESSION` cookie
@@ -215,6 +215,43 @@ npm ci
 npm run lint
 npm run test
 npm run build
+```
+
+### Browser end-to-end verification
+
+Browser verification requires Java 25, Node.js `>=24.15.0 <25`, npm 11,
+Docker with Compose, and free local ports `55432`, `18080`, and `15173`. After
+`npm ci`, install the pinned Playwright Chromium browser once:
+
+```bash
+cd frontend
+./node_modules/.bin/playwright install chromium
+```
+
+Run the browser suite from the repository root:
+
+```bash
+./scripts/run-e2e.sh
+```
+
+For a visible local browser, pass Playwright's headed option:
+
+```bash
+./scripts/run-e2e.sh --headed
+```
+
+The runner creates only the validated `spotyourslot-e2e` Compose project. It
+uses PostgreSQL on port `55432`, Spring Boot on `18080`, and Vite on `15173`.
+Every run recreates the dedicated database volume, starts Spring Boot so Flyway
+applies the current V1–V4 migrations, generates local test credentials in
+memory, and removes the E2E containers, network, and volume on exit. It neither
+reuses nor removes the ordinary development Compose project or its volume.
+
+If a run is interrupted before its exit trap completes, use this exact cleanup
+command from the repository root:
+
+```bash
+docker compose --project-name spotyourslot-e2e --file compose.yaml down --volumes --remove-orphans
 ```
 
 ### Stop local services
@@ -245,6 +282,18 @@ the normal command because that destroys local data.
   HTTP development; production uses `true` and HTTPS.
 - **Unexpected logout:** check the two-hour idle and 12-hour absolute limits or
   whether credentials were changed/reset.
+- **E2E port conflict:** free ports `55432`, `18080`, and `15173`, or provide
+  distinct non-development values through `E2E_POSTGRES_PORT`,
+  `E2E_BACKEND_PORT`, and `E2E_FRONTEND_PORT`.
+- **E2E Docker startup failure:** confirm `docker info` and `docker compose
+  version` succeed and Docker has enough resources for PostgreSQL and Spring
+  Boot.
+- **Playwright browser missing:** from `frontend`, run
+  `./node_modules/.bin/playwright install chromium` after `npm ci`.
+- **Unsupported E2E Node version:** select Node.js `>=24.15.0 <25`; the frontend
+  package engine rejects other versions.
+- **Interrupted E2E run:** run only the explicit `spotyourslot-e2e` cleanup
+  command above. Do not add `--volumes` to the ordinary development cleanup.
 
 ## Current scope boundary
 

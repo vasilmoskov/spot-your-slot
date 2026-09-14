@@ -42,3 +42,40 @@ jobs:
       - name: Build frontend
         working-directory: frontend
         run: npm run build
+
+  e2e:
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24.19.0'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Install Playwright Chromium
+        working-directory: frontend
+        run: ./node_modules/.bin/playwright install --with-deps chromium
+      - name: Verify Business onboarding and lifecycle in the browser
+        run: ./scripts/run-e2e.sh
+      - name: Remove disposable E2E resources
+        if: always()
+        run: |
+          readonly project_name='spotyourslot-e2e'
+          if [[ "${project_name}" != 'spotyourslot-e2e' ]]; then
+            echo 'Refusing to clean an unexpected Compose project.' >&2
+            exit 1
+          fi
+          export POSTGRES_PASSWORD="$(openssl rand -hex 24)"
+          docker compose \
+            --project-name "${project_name}" \
+            --file compose.yaml \
+            down --volumes --remove-orphans
