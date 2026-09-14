@@ -241,7 +241,10 @@ Run the browser suite from the repository root:
 default 800 ms delay between Playwright browser actions, while
 `--slow=<milliseconds>` selects a delay from 0 to 10000 ms. The test continues
 automatically without manual interaction. CI remains headless with zero
-slow-motion delay.
+slow-motion delay. Slow motion does not increase Playwright test timeouts, so
+large values can cause otherwise valid tests to reach their existing timeout.
+The tested 800 ms default is intended for visual observation; prefer moderate
+values and reduce the delay if a local observation run times out.
 
 The runner creates only the validated `spotyourslot-e2e` Compose project. It
 uses PostgreSQL on port `55432`, Spring Boot on `18080`, and Vite on `15173`.

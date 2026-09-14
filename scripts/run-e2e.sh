@@ -54,6 +54,44 @@ fi
 export E2E_POSTGRES_PORT="${E2E_POSTGRES_PORT:-55432}"
 export E2E_BACKEND_PORT="${E2E_BACKEND_PORT:-18080}"
 export E2E_FRONTEND_PORT="${E2E_FRONTEND_PORT:-15173}"
+
+validate_isolation() {
+  local port
+  local numeric_port
+  local validated_ports=()
+
+  if [[ "${E2E_COMPOSE_PROJECT}" != "spotyourslot-e2e" ]]; then
+    echo "Refusing to operate on an unexpected Compose project." >&2
+    exit 1
+  fi
+  for port in "${E2E_POSTGRES_PORT}" "${E2E_BACKEND_PORT}" "${E2E_FRONTEND_PORT}"; do
+    if [[ ! "${port}" =~ ^0*([0-9]{1,5})$ ]]; then
+      echo "E2E ports must be numeric values between 1024 and 65535." >&2
+      exit 1
+    fi
+    numeric_port=$((10#${BASH_REMATCH[1]}))
+    if (( numeric_port < 1024 || numeric_port > 65535 )); then
+      echo "E2E ports must be numeric values between 1024 and 65535." >&2
+      exit 1
+    fi
+    case "${numeric_port}" in
+      5432|8080|5173)
+        echo "Refusing to use a normal development port for E2E." >&2
+        exit 1
+        ;;
+    esac
+    validated_ports+=("${numeric_port}")
+  done
+  if [[ "${validated_ports[0]}" == "${validated_ports[1]}" ||
+        "${validated_ports[0]}" == "${validated_ports[2]}" ||
+        "${validated_ports[1]}" == "${validated_ports[2]}" ]]; then
+    echo "E2E ports must be distinct." >&2
+    exit 1
+  fi
+}
+
+validate_isolation
+
 export E2E_POSTGRES_DB="spotyourslot_e2e"
 export E2E_POSTGRES_USER="spotyourslot_e2e"
 export E2E_POSTGRES_PASSWORD="${E2E_POSTGRES_PASSWORD:-$(openssl rand -hex 24)}"
@@ -62,30 +100,6 @@ export E2E_ADMIN_DISPLAY_NAME="E2E Platform Administrator"
 export E2E_ADMIN_PASSWORD="${E2E_ADMIN_PASSWORD:-$(openssl rand -hex 24)}"
 export E2E_OWNER_PASSWORD="${E2E_OWNER_PASSWORD:-$(openssl rand -hex 24)}"
 export PLAYWRIGHT_NO_COPY_PROMPT=1
-
-validate_isolation() {
-  if [[ "${E2E_COMPOSE_PROJECT}" != "spotyourslot-e2e" ]]; then
-    echo "Refusing to operate on an unexpected Compose project." >&2
-    exit 1
-  fi
-  for port in "${E2E_POSTGRES_PORT}" "${E2E_BACKEND_PORT}" "${E2E_FRONTEND_PORT}"; do
-    if [[ ! "${port}" =~ ^[0-9]+$ ]] || (( port < 1024 || port > 65535 )); then
-      echo "E2E ports must be numeric values between 1024 and 65535." >&2
-      exit 1
-    fi
-  done
-  if [[ "${E2E_POSTGRES_PORT}" == 5432 || "${E2E_BACKEND_PORT}" == 8080 ||
-        "${E2E_FRONTEND_PORT}" == 5173 ]]; then
-    echo "Refusing to use a normal development port for E2E." >&2
-    exit 1
-  fi
-  if [[ "${E2E_POSTGRES_PORT}" == "${E2E_BACKEND_PORT}" ||
-        "${E2E_POSTGRES_PORT}" == "${E2E_FRONTEND_PORT}" ||
-        "${E2E_BACKEND_PORT}" == "${E2E_FRONTEND_PORT}" ]]; then
-    echo "E2E ports must be distinct." >&2
-    exit 1
-  fi
-}
 
 compose_e2e() {
   docker compose \
@@ -105,7 +119,6 @@ cleanup() {
   exit "${exit_status}"
 }
 
-validate_isolation
 trap cleanup EXIT
 trap 'exit 130' INT TERM
 
