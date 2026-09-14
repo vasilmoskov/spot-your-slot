@@ -3,6 +3,53 @@ set -euo pipefail
 
 readonly E2E_COMPOSE_PROJECT="spotyourslot-e2e"
 readonly REPOSITORY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+readonly DEFAULT_SLOW_MO_MS=800
+
+headed=false
+slow_mode=false
+slow_mo_ms=0
+
+usage() {
+  echo "Usage: $0 [--headed] [--slow|--slow=<milliseconds>]" >&2
+}
+
+for argument in "$@"; do
+  case "${argument}" in
+    --headed)
+      headed=true
+      ;;
+    --slow)
+      slow_mode=true
+      slow_mo_ms="${DEFAULT_SLOW_MO_MS}"
+      ;;
+    --slow=*)
+      slow_mode=true
+      slow_mo_ms="${argument#--slow=}"
+      if [[ ! "${slow_mo_ms}" =~ ^0*([0-9]{1,5})$ ]] ||
+        (( 10#${BASH_REMATCH[1]} > 10000 )); then
+        echo "Slow motion must be an integer between 0 and 10000 milliseconds." >&2
+        usage
+        exit 1
+      fi
+      ;;
+    *)
+      echo "Unknown argument: ${argument}" >&2
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+if [[ "${slow_mode}" == true && "${headed}" != true ]]; then
+  echo "Slow mode requires --headed." >&2
+  usage
+  exit 1
+fi
+
+playwright_arguments=()
+if [[ "${headed}" == true ]]; then
+  playwright_arguments+=(--headed)
+fi
 
 export E2E_POSTGRES_PORT="${E2E_POSTGRES_PORT:-55432}"
 export E2E_BACKEND_PORT="${E2E_BACKEND_PORT:-18080}"
@@ -73,4 +120,5 @@ compose_e2e down --volumes --remove-orphans >/dev/null
 compose_e2e up --detach --wait postgres
 
 cd "${REPOSITORY_ROOT}/frontend"
-./node_modules/.bin/playwright test "$@"
+PLAYWRIGHT_SLOW_MO="${slow_mo_ms}" \
+  ./node_modules/.bin/playwright test "${playwright_arguments[@]}"

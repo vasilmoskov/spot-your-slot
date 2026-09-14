@@ -6,6 +6,24 @@ function requiredEnvironment(name: string): string {
   return value
 }
 
+function resolveSlowMo(): number {
+  const environmentValue = process.env.PLAYWRIGHT_SLOW_MO ?? '0'
+  const slowMo = Number(environmentValue)
+
+  if (
+    !/^\d+$/.test(environmentValue) ||
+    !Number.isFinite(slowMo) ||
+    !Number.isInteger(slowMo) ||
+    slowMo < 0 ||
+    slowMo > 10_000
+  ) {
+    throw new Error('PLAYWRIGHT_SLOW_MO must be an integer between 0 and 10000.')
+  }
+
+  return slowMo
+}
+
+const resolvedSlowMo = resolveSlowMo()
 const postgresPort = requiredEnvironment('E2E_POSTGRES_PORT')
 const backendPort = requiredEnvironment('E2E_BACKEND_PORT')
 const frontendPort = requiredEnvironment('E2E_FRONTEND_PORT')
@@ -24,6 +42,9 @@ export default defineConfig({
   use: {
     baseURL: frontendOrigin,
     browserName: 'chromium',
+    launchOptions: {
+      slowMo: resolvedSlowMo,
+    },
     viewport: { width: 1280, height: 800 },
     screenshot: 'off',
     trace: 'off',

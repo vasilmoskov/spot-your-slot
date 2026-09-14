@@ -232,13 +232,16 @@ Run the browser suite from the repository root:
 
 ```bash
 ./scripts/run-e2e.sh
-```
-
-For a visible local browser, pass Playwright's headed option:
-
-```bash
 ./scripts/run-e2e.sh --headed
+./scripts/run-e2e.sh --headed --slow
+./scripts/run-e2e.sh --headed --slow=1500
 ```
+
+`--headed` displays Chromium. For local visual observation, `--slow` adds the
+default 800 ms delay between Playwright browser actions, while
+`--slow=<milliseconds>` selects a delay from 0 to 10000 ms. The test continues
+automatically without manual interaction. CI remains headless with zero
+slow-motion delay.
 
 The runner creates only the validated `spotyourslot-e2e` Compose project. It
 uses PostgreSQL on port `55432`, Spring Boot on `18080`, and Vite on `15173`.
