@@ -14,7 +14,7 @@ class IdentitySchemaIntegrationTests extends PostgresIntegrationTest {
     @Autowired JdbcClient jdbc;
 
     @Test
-    void flywayCreatesOnlyPhaseTwoTables() {
+    void flywayPreservesPhaseTwoTablesAndExcludesUnimplementedDomainTables() {
         var tables = jdbc.sql("SELECT table_name FROM information_schema.tables WHERE table_schema='public' ORDER BY table_name")
                 .query(String.class)
                 .list();
@@ -28,7 +28,7 @@ class IdentitySchemaIntegrationTests extends PostgresIntegrationTest {
                         "user_session",
                         "owner_invitation",
                         "password_reset")
-                .doesNotContain("appointment", "customer", "service", "staff_member");
+                .doesNotContain("appointment", "customer", "staff_member");
     }
 
     @Test

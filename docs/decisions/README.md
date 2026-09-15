@@ -90,3 +90,4 @@ with the ADR's actual lifecycle status.
 | [ADR-0007](ADR-0007-use-optimistic-concurrency-for-business-mutations.md) | Use optimistic concurrency for Business mutations | Accepted | 2026-08-14 | 2026-08-25 | #3, #4, #5, #6, #8 |
 | [ADR-0008](ADR-0008-use-bounded-process-local-authentication-rate-limiting-for-the-mvp.md) | Use bounded process-local authentication rate limiting for the MVP | Accepted | 2026-08-14 | 2026-08-25 | #1, #3, #4, #6, #8 |
 | [ADR-0009](ADR-0009-test-persistence-and-concurrency-against-real-postgresql.md) | Test persistence and concurrency against real PostgreSQL | Accepted | 2026-08-12 | 2026-08-25 | #1, #2, #3, #4, #5, #6, #8 |
+| [ADR-0010](ADR-0010-use-optimistic-concurrency-for-service-mutations.md) | Use optimistic concurrency for Service mutations | Accepted | 2026-09-15 | 2026-09-15 | #10, #11 |
