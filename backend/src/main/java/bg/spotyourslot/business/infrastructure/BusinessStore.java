@@ -70,6 +70,21 @@ public class BusinessStore {
                 .optional();
     }
 
+    public Optional<BusinessRow> findByIdForShare(UUID businessId) {
+        return jdbc.sql("""
+                        SELECT id, slug, display_name, business_type, status, timezone,
+                               description, city, postal_code, street, street_number,
+                               address_details, phone, contact_email, version,
+                               created_at, updated_at
+                        FROM business
+                        WHERE id = :businessId
+                        FOR SHARE
+                        """)
+                .param("businessId", businessId)
+                .query(this::businessRow)
+                .optional();
+    }
+
     public BusinessRow create(NewBusinessRow business) {
         return jdbc.sql("""
                         INSERT INTO business(

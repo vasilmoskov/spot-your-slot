@@ -93,6 +93,39 @@ public class IdentityStore {
                 .isPresent();
     }
 
+    public boolean hasActiveOwnerMembership(UUID userId, UUID businessId) {
+        return jdbc.sql("""
+                        SELECT id
+                        FROM membership
+                        WHERE user_id = :userId
+                          AND business_id = :businessId
+                          AND role = 'BUSINESS_OWNER'
+                          AND active = true
+                        """)
+                .param("userId", userId)
+                .param("businessId", businessId)
+                .query(UUID.class)
+                .optional()
+                .isPresent();
+    }
+
+    public boolean lockActiveOwnerMembership(UUID userId, UUID businessId) {
+        return jdbc.sql("""
+                        SELECT id
+                        FROM membership
+                        WHERE user_id = :userId
+                          AND business_id = :businessId
+                          AND role = 'BUSINESS_OWNER'
+                          AND active = true
+                        FOR SHARE
+                        """)
+                .param("userId", userId)
+                .param("businessId", businessId)
+                .query(UUID.class)
+                .optional()
+                .isPresent();
+    }
+
     public void createSession(UUID id, String hash, User user, Instant now, Instant expires) {
         jdbc.sql("""
                 INSERT INTO user_session(id,token_hash,user_id,credential_version,created_at,last_activity_at,absolute_expires_at)

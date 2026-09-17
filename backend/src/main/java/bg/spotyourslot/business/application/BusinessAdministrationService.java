@@ -10,6 +10,9 @@ import bg.spotyourslot.business.BusinessRecords.BusinessPage;
 import bg.spotyourslot.business.BusinessRecords.BusinessSummary;
 import bg.spotyourslot.business.BusinessRecords.CreateBusinessCommand;
 import bg.spotyourslot.business.BusinessRecords.UpdateBusinessCommand;
+import bg.spotyourslot.business.BusinessLifecycleAccess;
+import bg.spotyourslot.business.BusinessLifecycleAccess.BusinessLifecycle;
+import bg.spotyourslot.business.BusinessLifecycleAccess.LifecycleStatus;
 import bg.spotyourslot.business.application.BusinessInputValidator.PageInput;
 import bg.spotyourslot.business.domain.BusinessSlug;
 import bg.spotyourslot.business.domain.BusinessStatus;
@@ -23,14 +26,17 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.IdentityHashMap;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-public class BusinessAdministrationService implements BusinessAdministration {
+public class BusinessAdministrationService
+        implements BusinessAdministration, BusinessLifecycleAccess {
     private static final String UNIQUE_VIOLATION_SQL_STATE = "23505";
 
     private final BusinessStore store;
@@ -60,6 +66,18 @@ public class BusinessAdministrationService implements BusinessAdministration {
     public BusinessDetails get(UUID businessId) {
         UUID validatedId = validator.validateBusinessId(businessId);
         return details(requireBusiness(validatedId));
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY, readOnly = true)
+    public Optional<BusinessLifecycle> findLifecycle(UUID businessId) {
+        return store.findById(businessId).map(this::lifecycle);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Optional<BusinessLifecycle> lockLifecycle(UUID businessId) {
+        return store.findByIdForShare(businessId).map(this::lifecycle);
     }
 
     @Override
@@ -246,5 +264,10 @@ public class BusinessAdministrationService implements BusinessAdministration {
                 row.version(),
                 row.createdAt(),
                 row.updatedAt());
+    }
+
+    private BusinessLifecycle lifecycle(BusinessRow row) {
+        return new BusinessLifecycle(
+                row.id(), LifecycleStatus.valueOf(row.status().name()));
     }
 }

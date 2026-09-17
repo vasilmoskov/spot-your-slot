@@ -1,14 +1,27 @@
 package bg.spotyourslot.identity.application;
 
+import bg.spotyourslot.identity.AuthenticatedBusinessContext;
 import bg.spotyourslot.identity.application.IdentityRecords.User;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 
-public record AuthenticatedUser(UUID sessionId, User user, UUID activeBusinessId) implements Authentication {
+public record AuthenticatedUser(UUID sessionId, User user, UUID activeBusinessId)
+        implements Authentication, AuthenticatedBusinessContext {
+    @Override
+    public UUID userId() {
+        return user.id();
+    }
+
+    @Override
+    public Optional<UUID> selectedBusinessId() {
+        return Optional.ofNullable(activeBusinessId);
+    }
+
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         return user.platformAdmin()
