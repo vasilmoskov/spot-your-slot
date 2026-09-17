@@ -12,13 +12,14 @@ Each Business has isolated data and one public page at
 it is not registered or configured by this task, and neither domain nor
 trademark availability has been legally verified.
 
-This repository contains the Phase 2 identity and tenancy foundation and the
-Phase 3 platform Business onboarding foundation: a Spring Boot backend, a
+This repository contains the identity and tenancy foundation, platform Business
+onboarding, and the Business Services backend: a Spring Boot backend, a
 Bulgarian React identity and platform-admin client, Flyway-managed PostgreSQL,
-local Docker Compose, and non-deploying CI. Platform administrators can list,
-create, inspect, edit, invite an initial owner for, activate, suspend, and
-reactivate Businesses. Services, StaffMembers, Customers, Appointments,
-booking, production email, and hosting are not implemented.
+local Docker Compose, and non-deploying CI. Platform administrators can manage
+the Business lifecycle, and active Business owners can administer Services
+through the authenticated API. The Business-owner Services UI, StaffMembers,
+Customers, Appointments, booking, production email, and hosting are not
+implemented.
 
 ## Product identity
 
@@ -51,6 +52,8 @@ expand the MVP.
 - [Testing strategy](docs/testing-strategy.md)
 - [UI design guidelines](docs/ui-design-guidelines.md)
 - [Implementation plan](docs/implementation-plan.md)
+- [Product roadmap](docs/product-roadmap.md)
+- [Business Services backend task](docs/tasks/04a-business-services-backend.md)
 - [Foundation task](docs/tasks/00-product-foundation.md)
 
 ## Selected toolchain
@@ -124,7 +127,7 @@ export POSTGRES_PASSWORD='the-value-from-your-local-env-file'
 ```
 
 Health is public at `http://localhost:8080/actuator/health`. Flyway applies the
-four current migrations on startup and Hibernate validates the schema.
+five current migrations on startup and Hibernate validates the schema.
 
 To create the first local `PLATFORM_ADMIN`, explicitly opt in for one startup:
 
@@ -193,6 +196,27 @@ provides the matching list, create, read-only detail/edit, owner-invitation, and
 confirmed lifecycle flows. The browser verification below exercises the complete
 implemented onboarding and lifecycle journey.
 
+### Business Services API
+
+The selected Business comes from the authenticated server-side session. An
+active `BUSINESS_OWNER` Membership for that Business is required; a
+`PLATFORM_ADMIN` role alone does not grant access. Writes require CSRF and
+update, deactivate, and reactivate requests carry `expectedVersion`.
+
+| Method and path | Purpose |
+|---|---|
+| `GET /api/business/services?page=0&size=50` | List active and inactive Services, with a maximum page size of 100 |
+| `GET /api/business/services/{serviceId}` | Retrieve one tenant-scoped Service |
+| `POST /api/business/services` | Create an active Service and return `201` with its `Location` |
+| `PUT /api/business/services/{serviceId}` | Update an active or inactive Service |
+| `POST /api/business/services/{serviceId}/deactivate` | Deactivate an active Service |
+| `POST /api/business/services/{serviceId}/reactivate` | Reactivate an inactive Service |
+
+Service requests and responses do not contain `businessId`. Lists are ordered
+by normalized name and then ID. DRAFT and ACTIVE Businesses permit reads and
+mutations; SUSPENDED Businesses remain readable but reject Service mutations.
+The Business-owner UI and its end-to-end configuration journey remain pending.
+
 The development mailbox retains at most 50 links in memory and never logs,
 writes, or persists raw tokens. Sessions use an opaque `SPOTYOURSESSION` cookie
 with `HttpOnly`, `SameSite=Lax`, path `/`, a 12-hour lifetime, and `Secure` in
@@ -249,7 +273,7 @@ values and reduce the delay if a local observation run times out.
 The runner creates only the validated `spotyourslot-e2e` Compose project. It
 uses PostgreSQL on port `55432`, Spring Boot on `18080`, and Vite on `15173`.
 Every run recreates the dedicated database volume, starts Spring Boot so Flyway
-applies the current V1–V4 migrations, generates local test credentials in
+applies the current V1–V5 migrations, generates local test credentials in
 memory, and removes the E2E containers, network, and volume on exit. It neither
 reuses nor removes the ordinary development Compose project or its volume.
 

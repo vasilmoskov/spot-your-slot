@@ -58,8 +58,26 @@ Business status is `DRAFT`, `ACTIVE`, or `SUSPENDED`. BusinessType is
 
 ## Catalog and workforce
 
-- **service:** `business_id`, name, description, price, duration minutes,
-  buffer minutes, active state, audit fields.
+Flyway `V5__add_business_services.sql` creates the implemented **service** table.
+Each row has an application-generated UUID, immutable `business_id`, canonical
+display name, database-generated normalized name, optional canonical
+description, duration from 1 through 480 minutes, nonnegative EUR
+`numeric(12,2)` price, active state, nonnegative optimistic version, and UTC
+creation/update timestamps. Application validation permits at most ten integer
+and two fractional price digits and rejects excess fractional digits instead of
+allowing PostgreSQL to round them.
+
+The normalized name applies Unicode NFKC, the approved whitespace collapse and
+trim, Unicode full case folding under `pg_unicode_fast`, and NFKC again. It is
+unique within a Business across active and inactive Services, so deactivation
+does not release a name. Service identity is also unique with its Business;
+the Business foreign key restricts deletion while Services exist. Services are
+versioned for update, deactivation, and reactivation and cannot be hard-deleted
+or transferred by the implemented application contract. V5 has no Service
+buffer or Staff-assignment column.
+
+The remaining workforce records are planned and are not created by V5:
+
 - **staff_member:** `business_id`, display name, active state, optional
   `membership_id`, stable creation time, audit fields.
 - **staff_member_service:** `business_id`, `staff_member_id`, `service_id`;

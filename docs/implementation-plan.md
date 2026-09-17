@@ -58,6 +58,10 @@ dependencies absent separate approval.
 
 ## Phase 4 — Business configuration and workforce
 
+- The Business Services backend slice in issue #11 is complete: V5, the
+  Business-scoped catalog model, canonical-first validation, persistence,
+  active-owner authorization, lifecycle and optimistic-concurrency
+  orchestration, the authenticated HTTP API, and PostgreSQL-backed verification.
 - Generic Business settings, Services, StaffMembers without mandatory accounts,
   qualifications, weekly intervals, breaks, time off, and overrides.
 - Enforce optional same-Business one-to-one StaffMember/Membership linkage with
@@ -67,6 +71,11 @@ dependencies absent separate approval.
   предпочитание”.
 - Exit: availability inputs can be configured for every BusinessType; role and
   tenant tests pass without industry branches.
+
+Completing issue #11 does not complete this phase or parent issue #10. The
+Business-owner Services UI, Staff management and Service assignments, schedules,
+availability inputs, and the end-to-end Business configuration journey remain
+pending.
 
 ## Phase 5 — availability engine
 

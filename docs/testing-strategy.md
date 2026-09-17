@@ -126,6 +126,37 @@ routes, the role matrix, safe errors, CSRF, exact-origin credentialed CORS with
 PUT, response privacy, and Phase 2 authentication regressions. Modulith tests
 verify `platform → business` and `platform → identity` without reverse edges.
 
+## Business Services backend verification
+
+Issue #11 uses the pinned PostgreSQL Testcontainer across all persistence and
+concurrency boundaries. Schema tests migrate V1 through V5 from empty and verify
+the exact Service columns, constraints, generated normalized-name expression,
+Unicode behavior, inactive-name reservation, restrictive Business ownership,
+and approved index inventory. Domain and persistence tests compare Java
+canonicalization with PostgreSQL, preserve exact accepted prices, enforce
+tenant-scoped deterministic pagination, classify only the approved name
+constraint, and coordinate version and normalized-name races without sleeps.
+
+Application tests exercise the published Business lifecycle and identity
+contracts through the Service administration entry point. They cover active
+owner access, every nonqualifying role or Membership state, platform
+administrator with and without a qualifying owner Membership, Business A/B
+isolation, DRAFT/ACTIVE/SUSPENDED behavior, authoritative row mapping, fixed
+Clock values, safe exceptions, and the Business-then-Membership shared-lock
+order. Separate-transaction tests prove one winner for same-version updates and
+prove suspension and Membership deactivation cannot be authorized from stale
+state.
+
+Controller and PostgreSQL-backed MockMvc tests cover all six authenticated
+Service routes, exact request/result mapping, canonical-first validation,
+pagination, CSRF for every mutation style, real session-selection behavior,
+role and tenant boundaries, lifecycle conflicts, stale versions, stable
+Bulgarian RFC 7807 responses, and generic sanitization of unexpected failures.
+They also verify that client payloads and responses cannot supply or expose
+Business identity. There is no Business-owner Services frontend component or
+browser E2E coverage yet; issues #14 and #15 remain responsible for that user
+journey.
+
 Phase 3 frontend component tests cover typed hash navigation, platform-only
 navigation visibility, responsive Business listing and pagination, request
 cancellation, structured-address creation and profile-edit payloads,

@@ -60,6 +60,13 @@ Users receive tenant roles only through explicit Business Membership. A user
 may hold Memberships in multiple Businesses; authorization is evaluated in the
 server-resolved Business context, never inferred from a client Business ID.
 
+The currently implemented Business Services backend is intentionally narrower:
+only an active `BUSINESS_OWNER` Membership for the selected Business grants
+Service administration. `MANAGER` Service authority remains a future product
+direction and is not currently implemented. A platform administrator who also
+has the qualifying owner Membership acts through that Membership; the platform
+role alone grants no Service access.
+
 A StaffMember may exist without an application account. Optionally, one
 StaffMember links to at most one Membership and one Membership to at most one
 StaffMember; both must belong to the same Business.
@@ -111,10 +118,14 @@ Customers may book; its default remains 30 days. It is independent of the daily
 and weekly administrative calendar views. Those views only change how Business
 users inspect and manage Appointments and never cap the booking horizon.
 
-A Service stores name, description, `BigDecimal` price, duration, buffer
-duration, active state, and qualified StaffMembers. Each StaffMember has a
-display name, active state, supported Services, weekly working intervals,
-breaks, one-time time off, and one-time working overrides.
+The implemented Service backend stores a canonical display name, optional
+canonical description, `BigDecimal` EUR price, duration, active state,
+optimistic version, and creation/update timestamps under immutable Business
+ownership. Service buffers and Staff qualifications remain future availability
+and workforce capabilities; they are not fields of the current Service record.
+Each future StaffMember has a display name, active state, supported Services,
+weekly working intervals, breaks, one-time time off, and one-time working
+overrides.
 
 ## Availability and assignment
 

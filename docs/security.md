@@ -70,6 +70,53 @@ and `BUSINESS_NOT_FOUND` (404, “Бизнесът не е намерен.”). 
 SQL details, constraint names, stack traces, and Membership data are never
 response content.
 
+### Business Services authorization
+
+The authenticated Business Services API derives the user and selected Business
+only from the server-managed security context. No Service path, query, request,
+or response field supplies authoritative `businessId`. Access requires an active
+`BUSINESS_OWNER` Membership for that exact user and selected Business.
+`PLATFORM_ADMIN` alone, `MANAGER`, `STAFF`, inactive Memberships, missing
+Memberships, and Memberships in another Business do not grant access. A user who
+is both `PLATFORM_ADMIN` and an active owner is authorized through the owner
+Membership. Future `MANAGER` Service access requires a separate approved design.
+
+A genuinely absent selection returns `ACTIVE_BUSINESS_REQUIRED`. The session
+filter also clears a selected Business that is no longer supported by a current
+active Membership, producing the same safe outcome before the controller runs.
+A retained selected context with a non-owner role reaches application
+authorization and returns `ACCESS_DENIED`; a selected Business that no longer
+exists is also denied without revealing additional tenant information. Missing
+and guessed cross-Business Service IDs both return `SERVICE_NOT_FOUND`.
+
+DRAFT and ACTIVE Businesses permit Service reads and mutations. SUSPENDED
+Businesses permit reads but reject create, update, deactivate, and reactivate.
+Reads use non-locking Business and Membership checks. Each mutation runs in one
+transaction and acquires shared locks in this order: Business lifecycle row,
+the exact user's Membership row, then the tenant-scoped optimistic Service
+mutation. The final mutation retains its Business, Service, expected-version,
+and applicable lifecycle predicates. No Service-row pessimistic lock replaces
+optimistic concurrency. Every POST and PUT Service request remains CSRF-protected.
+
+Service failures use this stable public contract:
+
+| Status | Code | Bulgarian public wording |
+|---:|---|---|
+| 400 | `VALIDATION_ERROR` | `Проверете въведените данни.` |
+| 401 | `AUTH_REQUIRED` | `Необходим е вход.` |
+| 403 | `ACTIVE_BUSINESS_REQUIRED` | `Изберете бизнес, за да продължите.` |
+| 403 | `ACCESS_DENIED` | `Нямате достъп до тази операция.` |
+| 404 | `SERVICE_NOT_FOUND` | `Услугата не е намерена.` |
+| 409 | `SERVICE_NAME_CONFLICT` | `Вече съществува услуга с това име.` |
+| 409 | `SERVICE_INVALID_LIFECYCLE` | `Промяната на състоянието на услугата не е разрешена.` |
+| 409 | `SERVICE_CONCURRENT_UPDATE` | `Услугата е променена. Обновете данните и опитайте отново.` |
+| 409 | `BUSINESS_SUSPENDED` | `Спрян бизнес може само да преглежда данните си.` |
+| 500 | `INTERNAL_ERROR` | `Възникна неочаквана грешка.` |
+
+These responses never contain SQL diagnostics, constraint names, stack traces,
+nested causes, credentials, session identifiers, Membership details, or private
+cross-Business information.
+
 Repositories require `business_id`; foreign/composite constraints validate
 common ownership. STAFF is restricted to the linked StaffMember’s schedule and
 Appointments. Cross-Business attempts return safe 404 where existence need not

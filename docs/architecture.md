@@ -33,8 +33,8 @@ All backend packages live below `bg.spotyourslot`.
 | `identity` | users, credentials, sessions, invitations, password reset, Memberships, roles |
 | `platform` | PLATFORM_ADMIN operations and Business lifecycle |
 | `business` | Business profile, BusinessType, slug, settings, status, tenant context |
-| `catalog` | Services, prices, durations, StaffMember qualifications |
-| `workforce` | StaffMembers, weekly hours, breaks, time off, overrides |
+| `catalog` | Business-owned Services, prices, durations, lifecycle, and versioned administration |
+| `workforce` | StaffMembers, Service qualifications, weekly hours, breaks, time off, overrides |
 | `scheduling` | timezone-aware availability and deterministic assignment |
 | `booking` | transactional Appointment lifecycle and conflicts |
 | `customer` | Business-scoped Customers and safe matching |
@@ -62,15 +62,18 @@ context adds complexity and would not replace application checks.
 ## APIs, time, and availability
 
 APIs expose generic Business, StaffMember, Service, Customer, Appointment, and
-Schedule terminology. DTOs use validation, pagination where needed, and RFC
-7807-style errors with stable code, safe Bulgarian message, status, field
-errors, timestamp, path, and correlation ID. OpenAPI is development-only.
+Schedule terminology. DTOs use validation and pagination where needed. Current
+RFC 7807 responses contain the standard status/title/detail fields as applicable
+and a stable `code`; they do not add field arrays, timestamps, paths, or
+correlation IDs. OpenAPI is development-only.
 
 Appointments persist `[start_at, occupied_until)` as UTC `timestamptz` values;
 the latter captures Service duration plus buffer. Weekly schedules use local
 weekday/time and the Business IANA timezone. Availability intersects working
 intervals/overrides, subtracts breaks/time off/blocking Appointments, and applies
 qualification, notice, window, and DST rules with an injected clock.
+Service buffers belong to this future availability work and are not persisted or
+configurable by the current Service backend.
 The booking window is a Business setting defining how many days ahead Customers
 may book, defaulting to 30 days. Daily and weekly administrative calendars are
 query/presentation views over Appointments; they do not constrain that horizon.
@@ -104,6 +107,21 @@ identity active-owner query; it does not access either module's infrastructure.
 Business owns validation, persistence, lifecycle rules, and atomic transitions.
 Identity owns Membership persistence and the active-owner query. There are no
 reverse dependencies or cycles.
+
+The implemented `catalog` module owns the Business-scoped Service model,
+canonicalization, validation, persistence, application orchestration, and HTTP
+adapter. It depends only on the published Business lifecycle contract and the
+published identity contracts for authenticated context and active-owner access;
+it does not use another module's repositories or persistence records. Service
+responses omit Business identity because tenant selection remains server-side.
+
+Service reads run in read-only transactions and use non-locking Business and
+Membership checks. Each mutation runs in one transaction and acquires shared
+locks in the order Business lifecycle row, exact user Membership row, then the
+tenant-scoped optimistic Service mutation. The final Service statement retains
+the expected-version predicate; no pessimistic Service-row lock replaces it.
+The authenticated API exposes list, detail, create, update, deactivate, and
+reactivate operations under `/api/business/services`.
 
 The platform Business API provides bounded deterministic listing, retrieval,
 DRAFT creation, profile update, initial activation, suspension, and

@@ -1,16 +1,16 @@
 # SpotYourSlot — Business Services Backend
 
-Status: In progress — Phase 1 complete, later phases pending review
+Status: Completed — 2026-09-17
 GitHub issue: #11 — Build Business services backend
-Parent issue: #10 — Build Business workspace and booking configuration
+Parent issue: #10 — Add business services, staff, and working schedules
 
 ## Task purpose
 
-Add Business-owned Service administration while preserving session-derived
-tenancy, the existing Business lifecycle, and the modular-monolith boundaries.
-Phase 1 establishes the reviewed database contract and its PostgreSQL 18.4
-proof. Java domain, persistence, authorization, application, and HTTP work must
-wait for a separate approval.
+Issue #11 adds the completed Business-owned Service backend while preserving
+session-derived tenancy, the existing Business lifecycle, and modular-monolith
+boundaries. Completion applies only to this backend sub-issue. Parent issue #10,
+the complete Services business capability, the Business-owner UI, and its
+end-to-end configuration journey remain open.
 
 ## Required reading
 
@@ -84,10 +84,10 @@ previous key. Reactivation therefore normally cannot encounter a name conflict.
 Descriptions use NFKC, remove the same approved boundary whitespace, preserve
 internal whitespace, and convert blank canonical values to null.
 
-Application canonicalization and validation must happen before persistence.
+Application canonicalization and validation happen before persistence.
 The database rejects noncanonical stored names and descriptions, while its
-generated key and unique constraint remain the final race arbiter. Later tests
-must compare Java canonicalization with the database expression over the full
+generated key and unique constraint remain the final race arbiter. Tests
+compare Java canonicalization with the database expression over the full
 whitespace set, NFKC expansion and contraction cases, case-folding cases, and
 supplementary characters.
 
@@ -147,10 +147,9 @@ and future composite references. The normalized-name unique constraint covers
 both active and inactive rows.
 
 PostgreSQL `numeric(12,2)` rounds direct SQL values with excess fractional
-digits before storage; for example, `12.345` becomes `12.35`. The later
-application validator must explicitly reject more than two fractional digits
-before persistence. The database still rejects negative stored values and
-numeric overflow.
+digits before storage; for example, `12.345` becomes `12.35`. The application
+validator explicitly rejects more than two fractional digits before persistence.
+The database still rejects negative stored values and numeric overflow.
 
 ## Lifecycle and Business state
 
@@ -174,7 +173,7 @@ Service state, version, or timestamp.
 ## Authorization and locking
 
 Every operation derives its Business solely from the authenticated session's
-currently selected active Business context. No request business ID may select
+currently selected Business context. No request business ID may select
 or redirect tenancy. Every query uses `(business_id, service_id)` where a
 Service ID is present, and a missing or cross-tenant Service returns the same
 tenant-safe 404.
@@ -185,11 +184,17 @@ role; a platform administrator who also has the qualifying Membership may act
 through it. `MANAGER`, `STAFF`, inactive Memberships, missing context,
 unauthenticated users, and Members of another Business are unauthorized.
 
-Mutations run in one transaction. Authorization locks the qualifying
-Membership and selected Business rows with the established shared-lock pattern
-before lifecycle validation and mutation. This prevents Membership revocation,
-Business suspension, or selected-context invalidation from racing past the
-authorization decision. Reads validate the same context and Membership without
+A genuinely absent selection produces `ACTIVE_BUSINESS_REQUIRED`. The session
+filter also clears a selection unsupported by a current active Membership before
+the controller runs. A retained selection with a non-owner Membership reaches
+the application boundary and produces `ACCESS_DENIED`; a selected Business that
+no longer exists is denied through the same safe access outcome.
+
+Mutations run in one transaction. Authorization first locks the selected
+Business lifecycle row and then the exact user's qualifying Membership row with
+the established shared-lock pattern before the optimistic Service mutation.
+This prevents Membership revocation or Business suspension from racing past the
+authorization decision. Reads validate the same Business and Membership without
 mutation locks.
 
 ## Optimistic concurrency
@@ -208,7 +213,7 @@ HTTP responses never expose SQL, driver text, or constraint names. ADR-0010
 records this Service-specific concurrency decision because ADR-0007 is limited
 to Business mutations.
 
-## Approved HTTP contract for a later phase
+## Implemented HTTP contract
 
 Base path: `/api/business/services`.
 
@@ -221,7 +226,7 @@ Base path: `/api/business/services`.
 | `POST /api/business/services/{serviceId}/deactivate` | expected-version record | `200` authoritative inactive Service |
 | `POST /api/business/services/{serviceId}/reactivate` | expected-version record | `200` authoritative active Service |
 
-The planned request records are:
+The implemented request records are:
 
 ```java
 record CreateServiceRequest(
@@ -239,15 +244,16 @@ record UpdateServiceRequest(
         Long expectedVersion) {
 }
 
-record ServiceVersionRequest(Long expectedVersion) {
+record ServiceLifecycleRequest(Long expectedVersion) {
 }
 ```
 
-Raw `@NotBlank` and `@Size` annotations are not authoritative for name or
-description. The HTTP layer passes raw strings to the application/domain
-canonicalizer, which then validates canonical blankness and Unicode code-point
-length. Basic null and type validation may reject structurally missing numeric
-or version values where it cannot conflict with canonical string validation.
+Raw `@NotBlank` and `@Size` annotations do not compete with name or description
+canonicalization. The HTTP layer passes raw values to the application validator,
+which canonicalizes first and then validates blankness, Unicode code-point
+length, duration, exact price representation, expected version, identifiers,
+and pagination. Malformed JSON, UUIDs, and query types use the same safe public
+validation response.
 
 The response omits `businessId` because tenancy is already selected by the
 session and the ID could encourage client-supplied tenant routing:
@@ -266,15 +272,14 @@ record ServiceResponse(
 }
 
 record ServicePageResponse(
-        List<ServiceResponse> content,
+        List<ServiceResponse> services,
         int page,
         int size,
-        long totalElements,
-        int totalPages) {
+        long totalElements) {
 }
 ```
 
-Later validation tests must cover leading and trailing approved Unicode
+Validation tests cover leading and trailing approved Unicode
 whitespace, repeated internal whitespace, blank-after-canonicalization values,
 NFKC expansion and contraction, supplementary characters represented by Java
 surrogate pairs, and canonical name limits 200/201 and description limits
@@ -283,61 +288,63 @@ compared directly.
 
 ## Error contract
 
-Use the current RFC 7807 `ProblemDetail` shape and stable code property without
-expanding the global format. Safe Bulgarian details must follow established
-wording exactly when implementation begins.
+The HTTP API uses the current RFC 7807 `ProblemDetail` shape and stable `code`
+property without expanding the global format. It returns these exact safe
+Bulgarian public values:
 
-| Condition | Status | Code | Safe Bulgarian detail |
+| Condition | Status | Code | Safe Bulgarian public wording |
 |---|---:|---|---|
-| malformed JSON, invalid UUID/query type | 400 | existing request code | existing global wording |
-| canonical/domain validation or bad page bounds | 400 | `VALIDATION_FAILED` | `Невалидни данни за услугата.` |
-| no authenticated session | 401 | existing authentication code | existing authentication wording |
-| absent selected active Business context | 409 | existing context code | existing active-Business wording |
-| authenticated but no qualifying active owner Membership | 403 | `BUSINESS_ACCESS_DENIED` | `Нямате достъп до услугите на този бизнес.` |
+| malformed JSON, invalid UUID/query type, canonical/domain validation, or bad page bounds | 400 | `VALIDATION_ERROR` | `Проверете въведените данни.` |
+| no authenticated session | 401 | `AUTH_REQUIRED` | `Необходим е вход.` |
+| absent selected Business context | 403 | `ACTIVE_BUSINESS_REQUIRED` | `Изберете бизнес, за да продължите.` |
+| authenticated but no qualifying active owner Membership | 403 | `ACCESS_DENIED` | `Нямате достъп до тази операция.` |
 | Service missing or belongs to another Business | 404 | `SERVICE_NOT_FOUND` | `Услугата не е намерена.` |
 | normalized name already reserved | 409 | `SERVICE_NAME_CONFLICT` | `Вече съществува услуга с това име.` |
-| repeated or otherwise invalid Service transition | 409 | `SERVICE_INVALID_LIFECYCLE` | `Промяната на състоянието на услугата не е позволена.` |
-| mutation while Business is suspended | 409 | `BUSINESS_SUSPENDED` | `Спрян бизнес не може да променя услуги.` |
+| repeated or otherwise invalid Service transition | 409 | `SERVICE_INVALID_LIFECYCLE` | `Промяната на състоянието на услугата не е разрешена.` |
+| mutation while Business is suspended | 409 | `BUSINESS_SUSPENDED` | `Спрян бизнес може само да преглежда данните си.` |
 | stale same-Service mutation | 409 | `SERVICE_CONCURRENT_UPDATE` | `Услугата е променена. Обновете данните и опитайте отново.` |
-| unexpected failure | 500 | existing internal code | existing global wording |
+| unexpected failure | 500 | `INTERNAL_ERROR` | `Възникна неочаквана грешка.` |
 
-## Implementation phases
+## Completed implementation phases
 
 ### Phase 1 — schema and decision record
 
-- add this task record and ADR-0010;
-- add immutable V5;
-- add focused PostgreSQL 18.4 schema, expression, constraint, uniqueness, and
+- added this task record and ADR-0010;
+- added immutable V5;
+- added focused PostgreSQL 18.4 schema, expression, constraint, uniqueness, and
   catalog tests;
-- update the existing schema test only to expect V5, permit `service`, and
+- updated the existing schema test only to expect V5, permit `service`, and
   preserve the V4 hash.
 
 ### Phase 2 — domain and persistence
 
-- add Service domain types, canonicalization, validation, commands, records,
+- added Service domain types, canonicalization, validation, commands, records,
   exceptions, and store;
-- implement tenant-safe reads, deterministic pagination, atomic versioned
+- implemented tenant-safe reads, deterministic pagination, atomic versioned
   mutations, and unique/SQL exception classification;
-- add domain and real-PostgreSQL persistence, isolation, race, and parity tests.
+- added domain and real-PostgreSQL persistence, isolation, race, and parity tests.
 
 ### Phase 3 — authorization and application
 
-- add active-owner selected-Business authorization and shared locking;
-- implement DRAFT/ACTIVE/SUSPENDED behavior and Service lifecycle orchestration;
-- add authorization, tenant-isolation, lifecycle, clock, and concurrent
+- added active-owner selected-Business authorization and shared locking;
+- implemented DRAFT/ACTIVE/SUSPENDED behavior and Service lifecycle orchestration;
+- added authorization, tenant-isolation, lifecycle, clock, and concurrent
   application integration tests.
 
-### Phase 4 — HTTP contract and documentation
+### Phase 4 — HTTP contract
 
-- add the approved controller, request/response records, and safe exception
+- added the approved controller, request/response records, and safe exception
   mapping under `/api/business/services`;
-- add API integration tests, including canonical validation parity;
-- update only permanent documents whose contracts became implemented;
-- run focused then full backend verification and perform a final scope review.
+- added API integration tests, including canonical validation parity;
+- ran focused then full backend verification and performed a scope review.
 
-Later-phase exact Java file names should be selected after Phase 1 review and a
-fresh inspection of the module patterns. No later-phase source was started in
-Phase 1.
+### Final phase — documentation and acceptance
+
+- synchronize the permanent Service/backend contracts with the committed code;
+- run the complete backend verification and final scope and migration-integrity
+  review;
+- leave issue #10, the complete Services capability, frontend work, and the
+  end-to-end configuration journey open.
 
 ## Phase 1 verification evidence
 
@@ -354,3 +361,26 @@ The approved Phase 1 scope extension updates the older Phase 2 table-inventory
 assertion in `IdentitySchemaIntegrationTests` to preserve the Phase 2 tables
 while excluding only domain tables that remain unimplemented. The complete
 backend verification passes with V5 present.
+
+## Phase 2–4 verification evidence
+
+`ServiceTextCanonicalizerTests`, `ServiceInputValidatorTests`,
+`ServiceStoreIntegrationTests`, and `ServiceSchemaIntegrationTests` cover the
+canonical, validation, V5, persistence, isolation, uniqueness, and concurrency
+contracts. `ServiceAdministrationServiceTests`,
+`ServiceAdministrationServiceIntegrationTests`, and
+`ServiceAuthorizationLockingIntegrationTests` cover selected-Business owner
+authorization, lifecycle behavior, mapping, safe outcome classification, and
+the Business-then-Membership lock order with coordinated PostgreSQL races.
+
+`BusinessServiceControllerTests`, `BusinessServiceExceptionHandlerTests`, and
+`BusinessServiceApiIntegrationTests` cover all six HTTP operations, the exact
+records and safe error contract, real authenticated-session selection, role and
+tenant isolation, CSRF, canonical-first validation, lifecycle and version
+conflicts, and diagnostic redaction. No Services frontend or browser E2E flow is
+part of issue #11.
+
+Final issue #11 backend verification evidence on 2026-09-17: `./mvnw verify`
+ran 602 tests with zero failures, errors, or skips. The included Spring Modulith
+module-boundary test passed. This is a dated completion result, not a permanent
+expected test count for future builds.
