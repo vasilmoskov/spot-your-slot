@@ -37,12 +37,14 @@ class BusinessSchemaIntegrationTests extends PostgresIntegrationTest {
             "655d22a52c06eb41996a75c100c1bfab853c907b9e0e076f128ba2ab8be674a2";
     private static final String V4_SHA_256 =
             "aa48255701e3ce6999073801ca0ed37e292b9ada545e3fe4a50221ada596cb98";
+    private static final String V5_SHA_256 =
+            "e2221627ed52ceb951881648d9738d213544ad4c8d79aa35e1e79c0896e958d3";
 
     @Autowired
     JdbcClient jdbc;
 
     @Test
-    void flywayAppliesAllFiveMigrationsFromAnEmptyDatabase() {
+    void flywayAppliesAllSixMigrationsFromAnEmptyDatabase() {
         var versions = jdbc.sql("""
                         SELECT version
                         FROM flyway_schema_history
@@ -52,7 +54,7 @@ class BusinessSchemaIntegrationTests extends PostgresIntegrationTest {
                 .query(String.class)
                 .list();
 
-        assertThat(versions).containsExactly("1", "2", "3", "4", "5");
+        assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6");
     }
 
     @Test
@@ -280,7 +282,6 @@ class BusinessSchemaIntegrationTests extends PostgresIntegrationTest {
 
         assertThat(tables)
                 .doesNotContain(
-                        "staff_member",
                         "customer",
                         "appointment",
                         "weekly_work_interval",
@@ -299,6 +300,8 @@ class BusinessSchemaIntegrationTests extends PostgresIntegrationTest {
                 .isEqualTo(V3_SHA_256);
         assertThat(resourceSha256("db/migration/V4__structure_business_address.sql"))
                 .isEqualTo(V4_SHA_256);
+        assertThat(resourceSha256("db/migration/V5__add_business_services.sql"))
+                .isEqualTo(V5_SHA_256);
     }
 
     private UUID createBusiness() {

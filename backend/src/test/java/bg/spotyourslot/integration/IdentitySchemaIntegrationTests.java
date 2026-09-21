@@ -28,7 +28,7 @@ class IdentitySchemaIntegrationTests extends PostgresIntegrationTest {
                         "user_session",
                         "owner_invitation",
                         "password_reset")
-                .doesNotContain("appointment", "customer", "staff_member");
+                .doesNotContain("appointment", "customer");
     }
 
     @Test
