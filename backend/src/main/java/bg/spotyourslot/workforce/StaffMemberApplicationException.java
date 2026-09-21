@@ -1,7 +1,12 @@
 package bg.spotyourslot.workforce;
 
 public abstract sealed class StaffMemberApplicationException extends RuntimeException
-        permits StaffMemberApplicationException.InvalidInput {
+        permits StaffMemberApplicationException.BusinessAccessDenied,
+                StaffMemberApplicationException.BusinessSuspended,
+                StaffMemberApplicationException.ConcurrentUpdate,
+                StaffMemberApplicationException.InvalidInput,
+                StaffMemberApplicationException.InvalidLifecycleTransition,
+                StaffMemberApplicationException.StaffMemberNotFound {
     private StaffMemberApplicationException(String safeMessage) {
         super(safeMessage);
     }
@@ -28,6 +33,37 @@ public abstract sealed class StaffMemberApplicationException extends RuntimeExce
 
         public InputField field() {
             return field;
+        }
+    }
+
+    public static final class BusinessAccessDenied extends StaffMemberApplicationException {
+        public BusinessAccessDenied() {
+            super("Business access to StaffMembers is denied");
+        }
+    }
+
+    public static final class StaffMemberNotFound extends StaffMemberApplicationException {
+        public StaffMemberNotFound() {
+            super("StaffMember was not found");
+        }
+    }
+
+    public static final class InvalidLifecycleTransition
+            extends StaffMemberApplicationException {
+        public InvalidLifecycleTransition() {
+            super("StaffMember lifecycle transition is not allowed");
+        }
+    }
+
+    public static final class ConcurrentUpdate extends StaffMemberApplicationException {
+        public ConcurrentUpdate() {
+            super("StaffMember was changed by another operation");
+        }
+    }
+
+    public static final class BusinessSuspended extends StaffMemberApplicationException {
+        public BusinessSuspended() {
+            super("Suspended Business cannot mutate StaffMembers");
         }
     }
 }
