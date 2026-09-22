@@ -14,6 +14,8 @@ import static org.mockito.Mockito.when;
 import bg.spotyourslot.business.BusinessLifecycleAccess;
 import bg.spotyourslot.business.BusinessLifecycleAccess.BusinessLifecycle;
 import bg.spotyourslot.business.BusinessLifecycleAccess.LifecycleStatus;
+import bg.spotyourslot.catalog.ServiceReferenceAccess;
+import bg.spotyourslot.catalog.ServiceReferenceAccess.ServiceReference;
 import bg.spotyourslot.identity.AuthenticatedBusinessContext;
 import bg.spotyourslot.identity.SelectedBusinessOwnerAccess;
 import bg.spotyourslot.identity.SelectedBusinessOwnerAccess.Authorization;
@@ -22,8 +24,11 @@ import bg.spotyourslot.workforce.StaffMemberApplicationException.BusinessAccessD
 import bg.spotyourslot.workforce.StaffMemberApplicationException.BusinessSuspended;
 import bg.spotyourslot.workforce.StaffMemberApplicationException.ConcurrentUpdate;
 import bg.spotyourslot.workforce.StaffMemberApplicationException.InvalidLifecycleTransition;
+import bg.spotyourslot.workforce.StaffMemberApplicationException.ServiceInactive;
+import bg.spotyourslot.workforce.StaffMemberApplicationException.ServiceNotFound;
 import bg.spotyourslot.workforce.StaffMemberApplicationException.StaffMemberNotFound;
 import bg.spotyourslot.workforce.StaffMemberRecords.CreateStaffMemberCommand;
+import bg.spotyourslot.workforce.StaffMemberRecords.ReplaceServiceAssignmentsCommand;
 import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberDetails;
 import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberVersionCommand;
 import bg.spotyourslot.workforce.StaffMemberRecords.UpdateStaffMemberCommand;
@@ -62,6 +67,7 @@ class StaffMemberAdministrationServiceTests {
     @Mock StaffMemberInputValidator validator;
     @Mock BusinessLifecycleAccess businesses;
     @Mock SelectedBusinessOwnerAccess owners;
+    @Mock ServiceReferenceAccess serviceReferences;
 
     private StaffMemberAdministrationService service;
     private AuthenticatedBusinessContext context;
@@ -73,6 +79,7 @@ class StaffMemberAdministrationServiceTests {
                 validator,
                 businesses,
                 owners,
+                serviceReferences,
                 Clock.fixed(NOW, ZoneOffset.UTC));
         context = new TestContext(USER_ID, BUSINESS_ID);
     }
@@ -314,6 +321,136 @@ class StaffMemberAdministrationServiceTests {
                 .hasMessage("StaffMember was changed by another operation");
         assertThat(new BusinessSuspended())
                 .hasMessage("Suspended Business cannot mutate StaffMembers");
+        assertThat(new ServiceNotFound()).hasMessage("Service was not found");
+        assertThat(new ServiceInactive())
+                .hasMessage("Inactive Service cannot be assigned to StaffMember");
+    }
+
+    @Test
+    void listsDeterministicSafeAssignmentSummaries() {
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+        StaffMemberRow current = row(STAFF_MEMBER_ID, false, 3, "Inactive member");
+        authorizeRead(LifecycleStatus.SUSPENDED);
+        when(validator.validateStaffMemberId(STAFF_MEMBER_ID)).thenReturn(STAFF_MEMBER_ID);
+        when(store.findByBusinessIdAndId(BUSINESS_ID, STAFF_MEMBER_ID))
+                .thenReturn(Optional.of(current));
+        when(store.listAssignedServiceIds(BUSINESS_ID, STAFF_MEMBER_ID))
+                .thenReturn(List.of(second, first));
+        when(serviceReferences.findReferences(BUSINESS_ID, List.of(second, first)))
+                .thenReturn(List.of(
+                        new ServiceReference(first, "А услуга", false),
+                        new ServiceReference(second, "Б услуга", true)));
+
+        var result = service.listServiceAssignments(context, STAFF_MEMBER_ID);
+
+        assertThat(result.staffMemberId()).isEqualTo(STAFF_MEMBER_ID);
+        assertThat(result.version()).isEqualTo(3);
+        assertThat(result.createdAt()).isEqualTo(current.createdAt());
+        assertThat(result.updatedAt()).isEqualTo(current.updatedAt());
+        assertThat(result.services()).extracting(summary -> summary.id())
+                .containsExactly(first, second);
+    }
+
+    @Test
+    void replacesAssignmentsForInactiveStaffAndValidatesOnlyAdditions() {
+        UUID retainedInactive = UUID.randomUUID();
+        UUID removedInactive = UUID.randomUUID();
+        UUID activeAddition = UUID.randomUUID();
+        StaffMemberRow current = row(STAFF_MEMBER_ID, false, 3, "Inactive member");
+        StaffMemberRow guarded = row(STAFF_MEMBER_ID, false, 4, "Inactive member");
+        var command = new ReplaceServiceAssignmentsCommand(
+                List.of(retainedInactive, activeAddition), 3L);
+        authorizeMutation(LifecycleStatus.ACTIVE);
+        when(validator.validateStaffMemberId(STAFF_MEMBER_ID)).thenReturn(STAFF_MEMBER_ID);
+        when(validator.validateAssignments(command)).thenReturn(command);
+        when(store.findByBusinessIdAndId(BUSINESS_ID, STAFF_MEMBER_ID))
+                .thenReturn(Optional.of(current));
+        when(store.advanceAssignmentVersion(BUSINESS_ID, STAFF_MEMBER_ID, 3, NOW))
+                .thenReturn(Optional.of(guarded));
+        when(store.listAssignedServiceIds(BUSINESS_ID, STAFF_MEMBER_ID))
+                .thenReturn(List.of(retainedInactive, removedInactive));
+        when(serviceReferences.lockReferences(BUSINESS_ID, List.of(activeAddition)))
+                .thenReturn(List.of(new ServiceReference(activeAddition, "Active", true)));
+        when(serviceReferences.findReferences(
+                        BUSINESS_ID, List.of(retainedInactive, activeAddition)))
+                .thenReturn(List.of(
+                        new ServiceReference(activeAddition, "Active", true),
+                        new ServiceReference(retainedInactive, "Inactive", false)));
+
+        var result = service.replaceServiceAssignments(
+                context, STAFF_MEMBER_ID, command);
+
+        assertThat(result.version()).isEqualTo(4);
+        assertThat(result.services()).extracting(summary -> summary.id())
+                .containsExactly(activeAddition, retainedInactive);
+        verify(store).reconcileServiceAssignments(
+                BUSINESS_ID,
+                STAFF_MEMBER_ID,
+                List.of(removedInactive),
+                List.of(activeAddition));
+        verifyMutationAuthorizationOrder();
+    }
+
+    @Test
+    void sameSetReplacementStillAdvancesVersionWithoutServiceActivityCheck() {
+        UUID inactive = UUID.randomUUID();
+        StaffMemberRow current = row(STAFF_MEMBER_ID, true, 3, "Member");
+        StaffMemberRow guarded = row(STAFF_MEMBER_ID, true, 4, "Member");
+        var command = new ReplaceServiceAssignmentsCommand(List.of(inactive), 3L);
+        authorizeMutation(LifecycleStatus.DRAFT);
+        when(validator.validateStaffMemberId(STAFF_MEMBER_ID)).thenReturn(STAFF_MEMBER_ID);
+        when(validator.validateAssignments(command)).thenReturn(command);
+        when(store.findByBusinessIdAndId(BUSINESS_ID, STAFF_MEMBER_ID))
+                .thenReturn(Optional.of(current));
+        when(store.advanceAssignmentVersion(BUSINESS_ID, STAFF_MEMBER_ID, 3, NOW))
+                .thenReturn(Optional.of(guarded));
+        when(store.listAssignedServiceIds(BUSINESS_ID, STAFF_MEMBER_ID))
+                .thenReturn(List.of(inactive));
+        when(serviceReferences.lockReferences(BUSINESS_ID, List.of()))
+                .thenReturn(List.of());
+        when(serviceReferences.findReferences(BUSINESS_ID, List.of(inactive)))
+                .thenReturn(List.of(new ServiceReference(inactive, "Inactive", false)));
+
+        assertThat(service.replaceServiceAssignments(context, STAFF_MEMBER_ID, command).version())
+                .isEqualTo(4);
+        verify(store).reconcileServiceAssignments(
+                BUSINESS_ID, STAFF_MEMBER_ID, List.of(), List.of());
+    }
+
+    @Test
+    void classifiesAssignmentMissingInactiveAndConcurrentOutcomes() {
+        UUID serviceId = UUID.randomUUID();
+        StaffMemberRow current = row(STAFF_MEMBER_ID, true, 3, "Member");
+        StaffMemberRow guarded = row(STAFF_MEMBER_ID, true, 4, "Member");
+        var command = new ReplaceServiceAssignmentsCommand(List.of(serviceId), 3L);
+        authorizeMutation(LifecycleStatus.ACTIVE);
+        when(validator.validateStaffMemberId(STAFF_MEMBER_ID)).thenReturn(STAFF_MEMBER_ID);
+        when(validator.validateAssignments(command)).thenReturn(command);
+        when(store.findByBusinessIdAndId(BUSINESS_ID, STAFF_MEMBER_ID))
+                .thenReturn(Optional.of(current));
+        when(store.advanceAssignmentVersion(BUSINESS_ID, STAFF_MEMBER_ID, 3, NOW))
+                .thenReturn(Optional.of(guarded));
+        when(store.listAssignedServiceIds(BUSINESS_ID, STAFF_MEMBER_ID)).thenReturn(List.of());
+        when(serviceReferences.lockReferences(BUSINESS_ID, List.of(serviceId)))
+                .thenReturn(List.of());
+
+        assertThatThrownBy(() -> service.replaceServiceAssignments(
+                        context, STAFF_MEMBER_ID, command))
+                .isInstanceOf(ServiceNotFound.class);
+        verify(store, never()).reconcileServiceAssignments(any(), any(), any(), any());
+
+        when(serviceReferences.lockReferences(BUSINESS_ID, List.of(serviceId)))
+                .thenReturn(List.of(new ServiceReference(serviceId, "Inactive", false)));
+        assertThatThrownBy(() -> service.replaceServiceAssignments(
+                        context, STAFF_MEMBER_ID, command))
+                .isInstanceOf(ServiceInactive.class);
+
+        when(store.advanceAssignmentVersion(BUSINESS_ID, STAFF_MEMBER_ID, 3, NOW))
+                .thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.replaceServiceAssignments(
+                        context, STAFF_MEMBER_ID, command))
+                .isInstanceOf(ConcurrentUpdate.class);
     }
 
     private void authorizeRead(LifecycleStatus status) {

@@ -13,16 +13,21 @@ import bg.spotyourslot.workforce.StaffMemberApplicationException.ConcurrentUpdat
 import bg.spotyourslot.workforce.StaffMemberApplicationException.InputField;
 import bg.spotyourslot.workforce.StaffMemberApplicationException.InvalidInput;
 import bg.spotyourslot.workforce.StaffMemberApplicationException.InvalidLifecycleTransition;
+import bg.spotyourslot.workforce.StaffMemberApplicationException.ServiceInactive;
+import bg.spotyourslot.workforce.StaffMemberApplicationException.ServiceNotFound;
 import bg.spotyourslot.workforce.StaffMemberApplicationException.StaffMemberNotFound;
 import bg.spotyourslot.workforce.StaffMemberRecords.CreateStaffMemberCommand;
+import bg.spotyourslot.workforce.StaffMemberRecords.ReplaceServiceAssignmentsCommand;
 import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberDetails;
 import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberVersionCommand;
 import bg.spotyourslot.workforce.StaffMemberRecords.UpdateStaffMemberCommand;
 import bg.spotyourslot.workforce.infrastructure.StaffMemberPersistenceException.UnexpectedFailure;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Stream;
@@ -334,6 +339,197 @@ class StaffMemberAdministrationServiceIntegrationTests extends PostgresIntegrati
         }
     }
 
+    @Test
+    void replacesZeroOneAndMultipleAssignmentsForActiveAndInactiveStaff() {
+        Fixture fixture = ownerFixture("ACTIVE", true, "BUSINESS_OWNER");
+        StaffMemberDetails staffMember = staffMembers.create(
+                fixture.context(), create("Assignments"));
+        UUID second = service(fixture.businessId(), "Б услуга", true);
+        UUID first = service(fixture.businessId(), "А услуга", true);
+        UUID third = service(fixture.businessId(), "В услуга", true);
+
+        var multiple = staffMembers.replaceServiceAssignments(
+                fixture.context(),
+                staffMember.id(),
+                assignments(List.of(second, first), staffMember.version()));
+        assertThat(multiple.version()).isEqualTo(1);
+        assertThat(multiple.staffMemberId()).isEqualTo(staffMember.id());
+        assertThat(multiple.createdAt()).isEqualTo(staffMember.createdAt());
+        assertThat(multiple.updatedAt()).isEqualTo(NOW);
+        assertThat(multiple.services()).extracting(summary -> summary.id())
+                .containsExactly(first, second);
+
+        setServiceActive(second, false);
+        var retainedInactive = staffMembers.replaceServiceAssignments(
+                fixture.context(),
+                staffMember.id(),
+                assignments(List.of(second, first), multiple.version()));
+        assertThat(retainedInactive.version()).isEqualTo(2);
+        assertThat(retainedInactive.services())
+                .anySatisfy(summary -> {
+                    assertThat(summary.id()).isEqualTo(second);
+                    assertThat(summary.active()).isFalse();
+                });
+
+        var removedInactive = staffMembers.replaceServiceAssignments(
+                fixture.context(),
+                staffMember.id(),
+                assignments(List.of(first), retainedInactive.version()));
+        assertThat(removedInactive.version()).isEqualTo(3);
+        assertThat(removedInactive.services()).extracting(summary -> summary.id())
+                .containsExactly(first);
+
+        assertThatThrownBy(() -> staffMembers.replaceServiceAssignments(
+                        fixture.context(),
+                        staffMember.id(),
+                        assignments(List.of(first, second), removedInactive.version())))
+                .isInstanceOf(ServiceInactive.class)
+                .hasMessage("Inactive Service cannot be assigned to StaffMember");
+        assertAssignmentState(staffMember.id(), 3, List.of(first));
+
+        StaffMemberDetails inactiveStaff = staffMembers.deactivate(
+                fixture.context(), staffMember.id(), version(3));
+        var inactiveReplacement = staffMembers.replaceServiceAssignments(
+                fixture.context(),
+                staffMember.id(),
+                assignments(List.of(first, third), inactiveStaff.version()));
+        assertThat(inactiveReplacement.version()).isEqualTo(5);
+        assertThat(staffMembers.get(fixture.context(), staffMember.id()).active()).isFalse();
+
+        var empty = staffMembers.replaceServiceAssignments(
+                fixture.context(),
+                staffMember.id(),
+                assignments(List.of(), inactiveReplacement.version()));
+        assertThat(empty.version()).isEqualTo(6);
+        assertThat(empty.services()).isEmpty();
+        assertThat(staffMembers.listServiceAssignments(
+                        fixture.context(), staffMember.id()))
+                .isEqualTo(empty);
+    }
+
+    @Test
+    void rejectedAssignmentReplacementRollsBackVersionAndRelationships() {
+        Fixture fixture = ownerFixture("ACTIVE", true, "BUSINESS_OWNER");
+        Fixture foreignFixture = ownerFixture("ACTIVE", true, "BUSINESS_OWNER");
+        StaffMemberDetails staffMember = staffMembers.create(
+                fixture.context(), create("Protected assignments"));
+        UUID assigned = service(fixture.businessId(), "Assigned", true);
+        UUID foreign = service(foreignFixture.businessId(), "Foreign", true);
+        var initial = staffMembers.replaceServiceAssignments(
+                fixture.context(),
+                staffMember.id(),
+                assignments(List.of(assigned), staffMember.version()));
+
+        assertThatThrownBy(() -> staffMembers.replaceServiceAssignments(
+                        fixture.context(),
+                        staffMember.id(),
+                        assignments(List.of(assigned, foreign), initial.version())))
+                .isInstanceOf(ServiceNotFound.class)
+                .hasMessage("Service was not found");
+        assertAssignmentState(staffMember.id(), initial.version(), List.of(assigned));
+
+        assertThatThrownBy(() -> staffMembers.replaceServiceAssignments(
+                        fixture.context(),
+                        staffMember.id(),
+                        assignments(List.of(assigned, UUID.randomUUID()), initial.version())))
+                .isInstanceOf(ServiceNotFound.class);
+        assertAssignmentState(staffMember.id(), initial.version(), List.of(assigned));
+
+        assertThatThrownBy(() -> staffMembers.replaceServiceAssignments(
+                        fixture.context(),
+                        staffMember.id(),
+                        assignments(List.of(assigned, assigned), initial.version())))
+                .isInstanceOfSatisfying(InvalidInput.class,
+                        failure -> assertThat(failure.field()).isEqualTo(InputField.SERVICE_IDS));
+        assertAssignmentState(staffMember.id(), initial.version(), List.of(assigned));
+
+        assertThatThrownBy(() -> staffMembers.replaceServiceAssignments(
+                        foreignFixture.context(),
+                        staffMember.id(),
+                        assignments(List.of(), initial.version())))
+                .isInstanceOf(StaffMemberNotFound.class);
+        assertThatThrownBy(() -> staffMembers.listServiceAssignments(
+                        foreignFixture.context(), staffMember.id()))
+                .isInstanceOf(StaffMemberNotFound.class);
+        assertAssignmentState(staffMember.id(), initial.version(), List.of(assigned));
+    }
+
+    @Test
+    void assignmentOperationsPreserveAuthorizationAndSuspendedReadOnlyBehavior() {
+        Fixture owner = ownerFixture("ACTIVE", true, "BUSINESS_OWNER");
+        StaffMemberDetails staffMember = staffMembers.create(
+                owner.context(), create("Lifecycle protected"));
+        UUID serviceId = service(owner.businessId(), "Allowed", true);
+        var assigned = staffMembers.replaceServiceAssignments(
+                owner.context(),
+                staffMember.id(),
+                assignments(List.of(serviceId), staffMember.version()));
+        setBusinessStatus(owner.businessId(), "SUSPENDED");
+
+        assertThat(staffMembers.listServiceAssignments(owner.context(), staffMember.id()))
+                .isEqualTo(assigned);
+        assertThatThrownBy(() -> staffMembers.replaceServiceAssignments(
+                        owner.context(),
+                        staffMember.id(),
+                        assignments(List.of(), assigned.version())))
+                .isInstanceOf(BusinessSuspended.class);
+        assertAssignmentState(staffMember.id(), assigned.version(), List.of(serviceId));
+
+        Fixture manager = ownerFixture("ACTIVE", true, "MANAGER");
+        StaffMemberDetails managerBusinessStaff = insertStaffMember(manager.businessId());
+        assertThatThrownBy(() -> staffMembers.listServiceAssignments(
+                        manager.context(), managerBusinessStaff.id()))
+                .isInstanceOf(BusinessAccessDenied.class);
+        assertThatThrownBy(() -> staffMembers.replaceServiceAssignments(
+                        manager.context(),
+                        managerBusinessStaff.id(),
+                        assignments(List.of(), managerBusinessStaff.version())))
+                .isInstanceOf(BusinessAccessDenied.class);
+    }
+
+    @Test
+    void assignmentPersistenceFailureRollsBackVersionAndRelationships() {
+        Fixture fixture = ownerFixture("ACTIVE", true, "BUSINESS_OWNER");
+        StaffMemberDetails staffMember = staffMembers.create(
+                fixture.context(), create("Persistence rollback"));
+        UUID retained = service(fixture.businessId(), "Retained", true);
+        UUID rejected = service(fixture.businessId(), "Rejected", true);
+        var initial = staffMembers.replaceServiceAssignments(
+                fixture.context(),
+                staffMember.id(),
+                assignments(List.of(retained), staffMember.version()));
+        jdbc.sql("""
+                        CREATE FUNCTION phase4_reject_assignment() RETURNS trigger
+                        LANGUAGE plpgsql AS $$
+                        BEGIN
+                            RAISE EXCEPTION 'phase4 private failure' USING ERRCODE = 'XX000';
+                        END
+                        $$
+                        """)
+                .update();
+        jdbc.sql("""
+                        CREATE TRIGGER phase4_reject_assignment_trigger
+                        BEFORE INSERT ON staff_member_service
+                        FOR EACH ROW EXECUTE FUNCTION phase4_reject_assignment()
+                        """)
+                .update();
+
+        try {
+            assertThatThrownBy(() -> staffMembers.replaceServiceAssignments(
+                            fixture.context(),
+                            staffMember.id(),
+                            assignments(List.of(rejected), initial.version())))
+                    .isInstanceOf(UnexpectedFailure.class)
+                    .hasMessage("StaffMember persistence operation failed")
+                    .hasCauseInstanceOf(Exception.class);
+            assertAssignmentState(staffMember.id(), initial.version(), List.of(retained));
+        } finally {
+            jdbc.sql("DROP TRIGGER phase4_reject_assignment_trigger ON staff_member_service")
+                    .update();
+            jdbc.sql("DROP FUNCTION phase4_reject_assignment()").update();
+        }
+    }
+
     private static Stream<Arguments> deniedMemberships() {
         return Stream.of(
                 Arguments.of("BUSINESS_OWNER", false),
@@ -391,6 +587,68 @@ class StaffMemberAdministrationServiceIntegrationTests extends PostgresIntegrati
                 .param("now", databaseNow())
                 .update();
         return id;
+    }
+
+    private UUID service(UUID businessId, String name, boolean active) {
+        UUID id = UUID.randomUUID();
+        jdbc.sql("""
+                        INSERT INTO service(
+                            id,business_id,name,description,duration_minutes,price,
+                            active,version,created_at,updated_at)
+                        VALUES (
+                            :id,:businessId,:name,NULL,30,:price,:active,0,:now,:now)
+                        """)
+                .param("id", id)
+                .param("businessId", businessId)
+                .param("name", name)
+                .param("price", new BigDecimal("20.00"))
+                .param("active", active)
+                .param("now", databaseNow())
+                .update();
+        return id;
+    }
+
+    private void setServiceActive(UUID serviceId, boolean active) {
+        jdbc.sql("""
+                        UPDATE service
+                        SET active=:active, version=version+1, updated_at=:now
+                        WHERE id=:id
+                        """)
+                .param("active", active)
+                .param("now", databaseNow())
+                .param("id", serviceId)
+                .update();
+    }
+
+    private StaffMemberDetails insertStaffMember(UUID businessId) {
+        UUID id = UUID.randomUUID();
+        jdbc.sql("""
+                        INSERT INTO staff_member(
+                            id,business_id,display_name,active,version,created_at,updated_at)
+                        VALUES (:id,:businessId,'Inserted',true,0,:now,:now)
+                        """)
+                .param("id", id)
+                .param("businessId", businessId)
+                .param("now", databaseNow())
+                .update();
+        return new StaffMemberDetails(
+                id, "Inserted", null, null, true, 0, NOW, NOW);
+    }
+
+    private void assertAssignmentState(
+            UUID staffMemberId, long version, java.util.List<UUID> serviceIds) {
+        assertThat(jdbc.sql("SELECT version FROM staff_member WHERE id=:id")
+                        .param("id", staffMemberId)
+                        .query(Long.class)
+                        .single())
+                .isEqualTo(version);
+        assertThat(jdbc.sql("""
+                        SELECT service_id FROM staff_member_service
+                        WHERE staff_member_id=:staffMemberId ORDER BY service_id
+                        """)
+                .param("staffMemberId", staffMemberId)
+                .query(UUID.class)
+                .list()).containsExactlyInAnyOrderElementsOf(serviceIds);
     }
 
     private UUID user() {
@@ -490,6 +748,11 @@ class StaffMemberAdministrationServiceIntegrationTests extends PostgresIntegrati
 
     private static StaffMemberVersionCommand version(long version) {
         return new StaffMemberVersionCommand(version);
+    }
+
+    private static ReplaceServiceAssignmentsCommand assignments(
+            java.util.List<UUID> serviceIds, long version) {
+        return new ReplaceServiceAssignmentsCommand(serviceIds, version);
     }
 
     @FunctionalInterface

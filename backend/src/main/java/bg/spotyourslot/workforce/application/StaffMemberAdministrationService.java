@@ -3,6 +3,8 @@ package bg.spotyourslot.workforce.application;
 import bg.spotyourslot.business.BusinessLifecycleAccess;
 import bg.spotyourslot.business.BusinessLifecycleAccess.BusinessLifecycle;
 import bg.spotyourslot.business.BusinessLifecycleAccess.LifecycleStatus;
+import bg.spotyourslot.catalog.ServiceReferenceAccess;
+import bg.spotyourslot.catalog.ServiceReferenceAccess.ServiceReference;
 import bg.spotyourslot.identity.AuthenticatedBusinessContext;
 import bg.spotyourslot.identity.SelectedBusinessOwnerAccess;
 import bg.spotyourslot.identity.SelectedBusinessOwnerAccess.Authorization;
@@ -12,8 +14,13 @@ import bg.spotyourslot.workforce.StaffMemberApplicationException.BusinessAccessD
 import bg.spotyourslot.workforce.StaffMemberApplicationException.BusinessSuspended;
 import bg.spotyourslot.workforce.StaffMemberApplicationException.ConcurrentUpdate;
 import bg.spotyourslot.workforce.StaffMemberApplicationException.InvalidLifecycleTransition;
+import bg.spotyourslot.workforce.StaffMemberApplicationException.ServiceInactive;
+import bg.spotyourslot.workforce.StaffMemberApplicationException.ServiceNotFound;
 import bg.spotyourslot.workforce.StaffMemberApplicationException.StaffMemberNotFound;
+import bg.spotyourslot.workforce.StaffMemberRecords.AssignedServiceSummary;
 import bg.spotyourslot.workforce.StaffMemberRecords.CreateStaffMemberCommand;
+import bg.spotyourslot.workforce.StaffMemberRecords.ReplaceServiceAssignmentsCommand;
+import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberAssignments;
 import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberDetails;
 import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberPage;
 import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberVersionCommand;
@@ -25,9 +32,13 @@ import bg.spotyourslot.workforce.infrastructure.StaffMemberRow;
 import bg.spotyourslot.workforce.infrastructure.StaffMemberStore;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -36,6 +47,7 @@ public class StaffMemberAdministrationService implements StaffMemberAdministrati
     private final StaffMemberInputValidator validator;
     private final BusinessLifecycleAccess businesses;
     private final SelectedBusinessOwnerAccess owners;
+    private final ServiceReferenceAccess serviceReferences;
     private final Clock clock;
 
     public StaffMemberAdministrationService(
@@ -43,11 +55,13 @@ public class StaffMemberAdministrationService implements StaffMemberAdministrati
             StaffMemberInputValidator validator,
             BusinessLifecycleAccess businesses,
             SelectedBusinessOwnerAccess owners,
+            ServiceReferenceAccess serviceReferences,
             Clock clock) {
         this.store = store;
         this.validator = validator;
         this.businesses = businesses;
         this.owners = owners;
+        this.serviceReferences = serviceReferences;
         this.clock = clock;
     }
 
@@ -134,6 +148,66 @@ public class StaffMemberAdministrationService implements StaffMemberAdministrati
             UUID staffMemberId,
             StaffMemberVersionCommand command) {
         return transition(context, staffMemberId, command, false);
+    }
+
+    @Override
+    @Transactional(isolation = Isolation.REPEATABLE_READ, readOnly = true)
+    public StaffMemberAssignments listServiceAssignments(
+            AuthenticatedBusinessContext context, UUID staffMemberId) {
+        BusinessSelection selection = authorizeRead(context);
+        UUID validatedStaffMemberId = validator.validateStaffMemberId(staffMemberId);
+        StaffMemberRow staffMember = requireStaffMember(
+                selection.businessId(), validatedStaffMemberId);
+        List<UUID> assignedIds = store.listAssignedServiceIds(
+                selection.businessId(), validatedStaffMemberId);
+        List<ServiceReference> references = serviceReferences.findReferences(
+                selection.businessId(), assignedIds);
+        requireExactReferences(assignedIds, references);
+        return assignments(staffMember, references);
+    }
+
+    @Override
+    @Transactional
+    public StaffMemberAssignments replaceServiceAssignments(
+            AuthenticatedBusinessContext context,
+            UUID staffMemberId,
+            ReplaceServiceAssignmentsCommand command) {
+        BusinessSelection selection = authorizeMutation(context);
+        UUID validatedStaffMemberId = validator.validateStaffMemberId(staffMemberId);
+        ReplaceServiceAssignmentsCommand validated = validator.validateAssignments(command);
+        StaffMemberRow current = requireStaffMember(
+                selection.businessId(), validatedStaffMemberId);
+        requireCurrentVersion(current, validated.expectedVersion());
+
+        StaffMemberRow guarded = store.advanceAssignmentVersion(
+                        selection.businessId(),
+                        validatedStaffMemberId,
+                        validated.expectedVersion(),
+                        clock.instant())
+                .orElseThrow(ConcurrentUpdate::new);
+        Set<UUID> currentIds = new HashSet<>(store.listAssignedServiceIds(
+                selection.businessId(), validatedStaffMemberId));
+        Set<UUID> desiredIds = new HashSet<>(validated.serviceIds());
+        List<UUID> additions = validated.serviceIds().stream()
+                .filter(serviceId -> !currentIds.contains(serviceId))
+                .toList();
+        List<UUID> removals = currentIds.stream()
+                .filter(serviceId -> !desiredIds.contains(serviceId))
+                .toList();
+
+        List<ServiceReference> lockedAdditions = serviceReferences.lockReferences(
+                selection.businessId(), additions);
+        requireExactReferences(additions, lockedAdditions);
+        if (lockedAdditions.stream().anyMatch(reference -> !reference.active())) {
+            throw new ServiceInactive();
+        }
+
+        store.reconcileServiceAssignments(
+                selection.businessId(), validatedStaffMemberId, removals, additions);
+        List<ServiceReference> references = serviceReferences.findReferences(
+                selection.businessId(), validated.serviceIds());
+        requireExactReferences(validated.serviceIds(), references);
+        return assignments(guarded, references);
     }
 
     private StaffMemberDetails transition(
@@ -223,6 +297,30 @@ public class StaffMemberAdministrationService implements StaffMemberAdministrati
                 row.version(),
                 row.createdAt(),
                 row.updatedAt());
+    }
+
+    private StaffMemberAssignments assignments(
+            StaffMemberRow row, List<ServiceReference> references) {
+        return new StaffMemberAssignments(
+                row.id(),
+                row.version(),
+                row.createdAt(),
+                row.updatedAt(),
+                references.stream()
+                        .map(reference -> new AssignedServiceSummary(
+                                reference.id(), reference.name(), reference.active()))
+                        .toList());
+    }
+
+    private void requireExactReferences(
+            List<UUID> requestedIds, List<ServiceReference> references) {
+        Set<UUID> requested = new HashSet<>(requestedIds);
+        Set<UUID> resolved = references.stream()
+                .map(ServiceReference::id)
+                .collect(java.util.stream.Collectors.toSet());
+        if (!resolved.equals(requested)) {
+            throw new ServiceNotFound();
+        }
     }
 
     private record BusinessSelection(UUID userId, UUID businessId) {

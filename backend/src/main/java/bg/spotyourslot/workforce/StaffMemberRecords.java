@@ -1,6 +1,8 @@
 package bg.spotyourslot.workforce;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
@@ -43,5 +45,28 @@ public final class StaffMemberRecords {
     }
 
     public record StaffMemberVersionCommand(Long expectedVersion) {
+    }
+
+    public record AssignedServiceSummary(UUID id, String name, boolean active) {
+    }
+
+    public record StaffMemberAssignments(
+            UUID staffMemberId,
+            long version,
+            Instant createdAt,
+            Instant updatedAt,
+            List<AssignedServiceSummary> services) {
+        public StaffMemberAssignments {
+            services = List.copyOf(services);
+        }
+    }
+
+    public record ReplaceServiceAssignmentsCommand(
+            List<UUID> serviceIds, Long expectedVersion) {
+        public ReplaceServiceAssignmentsCommand {
+            if (serviceIds != null) {
+                serviceIds = Collections.unmodifiableList(new ArrayList<>(serviceIds));
+            }
+        }
     }
 }

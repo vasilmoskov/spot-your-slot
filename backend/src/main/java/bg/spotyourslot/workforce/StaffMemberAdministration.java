@@ -2,6 +2,8 @@ package bg.spotyourslot.workforce;
 
 import bg.spotyourslot.identity.AuthenticatedBusinessContext;
 import bg.spotyourslot.workforce.StaffMemberRecords.CreateStaffMemberCommand;
+import bg.spotyourslot.workforce.StaffMemberRecords.ReplaceServiceAssignmentsCommand;
+import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberAssignments;
 import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberDetails;
 import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberPage;
 import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberVersionCommand;
@@ -31,4 +33,12 @@ public interface StaffMemberAdministration {
             AuthenticatedBusinessContext context,
             UUID staffMemberId,
             StaffMemberVersionCommand command);
+
+    StaffMemberAssignments listServiceAssignments(
+            AuthenticatedBusinessContext context, UUID staffMemberId);
+
+    StaffMemberAssignments replaceServiceAssignments(
+            AuthenticatedBusinessContext context,
+            UUID staffMemberId,
+            ReplaceServiceAssignmentsCommand command);
 }

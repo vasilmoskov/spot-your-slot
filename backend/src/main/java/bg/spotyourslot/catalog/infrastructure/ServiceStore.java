@@ -7,6 +7,7 @@ import java.sql.SQLException;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -81,6 +82,45 @@ public class ServiceStore {
                 .param("serviceId", serviceId)
                 .query(this::serviceRow)
                 .optional());
+    }
+
+    public List<ServiceRow> findReferences(
+            UUID businessId, Collection<UUID> serviceIds) {
+        if (serviceIds.isEmpty()) {
+            return List.of();
+        }
+        return execute(() -> jdbc.sql("""
+                        SELECT id, business_id, name, description, duration_minutes, price,
+                               active, version, created_at, updated_at
+                        FROM service
+                        WHERE business_id = :businessId
+                          AND id IN (:serviceIds)
+                        ORDER BY normalized_name ASC, id ASC
+                        """)
+                .param("businessId", businessId)
+                .param("serviceIds", serviceIds)
+                .query(this::serviceRow)
+                .list());
+    }
+
+    public List<ServiceRow> lockReferences(
+            UUID businessId, Collection<UUID> serviceIds) {
+        if (serviceIds.isEmpty()) {
+            return List.of();
+        }
+        return execute(() -> jdbc.sql("""
+                        SELECT id, business_id, name, description, duration_minutes, price,
+                               active, version, created_at, updated_at
+                        FROM service
+                        WHERE business_id = :businessId
+                          AND id IN (:serviceIds)
+                        ORDER BY id ASC
+                        FOR SHARE
+                        """)
+                .param("businessId", businessId)
+                .param("serviceIds", serviceIds)
+                .query(this::serviceRow)
+                .list());
     }
 
     public ServiceRow create(NewServiceRow service) {

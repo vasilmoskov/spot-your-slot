@@ -5,7 +5,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import bg.spotyourslot.workforce.StaffMemberApplicationException.InputField;
 import bg.spotyourslot.workforce.StaffMemberApplicationException.InvalidInput;
+import bg.spotyourslot.workforce.StaffMemberRecords.AssignedServiceSummary;
 import bg.spotyourslot.workforce.StaffMemberRecords.CreateStaffMemberCommand;
+import bg.spotyourslot.workforce.StaffMemberRecords.ReplaceServiceAssignmentsCommand;
+import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberAssignments;
 import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberDetails;
 import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberPage;
 import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberVersionCommand;
@@ -14,6 +17,7 @@ import jakarta.validation.Validation;
 import jakarta.validation.ValidatorFactory;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterAll;
@@ -182,6 +186,60 @@ class StaffMemberInputValidatorTests {
         assertThat(page.staffMembers()).containsExactly(details());
         assertThatThrownBy(() -> page.staffMembers().clear())
                 .isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    @Test
+    void validatesAssignmentIdsVersionAndDefensiveCopies() {
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+        var mutable = new ArrayList<>(List.of(first, second));
+        var command = new ReplaceServiceAssignmentsCommand(mutable, 0L);
+        mutable.clear();
+
+        assertThat(VALIDATOR.validateAssignments(command))
+                .isEqualTo(new ReplaceServiceAssignmentsCommand(List.of(first, second), 0L));
+        assertThatThrownBy(() -> command.serviceIds().clear())
+                .isInstanceOf(UnsupportedOperationException.class);
+        assertThat(VALIDATOR.validateAssignments(
+                        new ReplaceServiceAssignmentsCommand(List.of(), 4L))
+                .serviceIds()).isEmpty();
+    }
+
+    @Test
+    void rejectsInvalidAssignmentCommandsAndDuplicateIds() {
+        UUID serviceId = UUID.randomUUID();
+        assertInvalid(InputField.COMMAND, () -> VALIDATOR.validateAssignments(null));
+        assertInvalid(InputField.SERVICE_IDS, () -> VALIDATOR.validateAssignments(
+                new ReplaceServiceAssignmentsCommand(null, 0L)));
+        assertInvalid(InputField.SERVICE_IDS, () -> VALIDATOR.validateAssignments(
+                new ReplaceServiceAssignmentsCommand(
+                        java.util.Arrays.asList(serviceId, null), 0L)));
+        assertInvalid(InputField.SERVICE_IDS, () -> VALIDATOR.validateAssignments(
+                new ReplaceServiceAssignmentsCommand(List.of(serviceId, serviceId), 0L)));
+        assertInvalid(InputField.EXPECTED_VERSION, () -> VALIDATOR.validateAssignments(
+                new ReplaceServiceAssignmentsCommand(List.of(serviceId), null)));
+        assertInvalid(InputField.EXPECTED_VERSION, () -> VALIDATOR.validateAssignments(
+                new ReplaceServiceAssignmentsCommand(List.of(serviceId), -1L)));
+    }
+
+    @Test
+    void assignmentResultsDefensivelyCopySafeSummaries() {
+        UUID serviceId = UUID.randomUUID();
+        var mutable = new ArrayList<>(List.of(
+                new AssignedServiceSummary(serviceId, "Услуга", true)));
+        Instant timestamp = Instant.parse("2026-09-22T10:00:00Z");
+
+        var assignments = new StaffMemberAssignments(
+                UUID.randomUUID(), 2, timestamp, timestamp, mutable);
+        mutable.clear();
+
+        assertThat(assignments.services())
+                .containsExactly(new AssignedServiceSummary(serviceId, "Услуга", true));
+        assertThatThrownBy(() -> assignments.services().clear())
+                .isInstanceOf(UnsupportedOperationException.class);
+        assertThat(StaffMemberAssignments.class.getRecordComponents())
+                .extracting(component -> component.getName())
+                .doesNotContain("businessId", "membershipId", "userId");
     }
 
     private static void assertInvalid(InputField field, Runnable operation) {

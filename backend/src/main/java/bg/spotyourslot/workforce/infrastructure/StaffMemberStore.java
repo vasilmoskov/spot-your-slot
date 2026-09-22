@@ -6,6 +6,7 @@ import java.sql.SQLException;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -137,6 +138,75 @@ public class StaffMemberStore {
             Instant updatedAt) {
         return transition(
                 businessId, staffMemberId, expectedVersion, false, true, updatedAt);
+    }
+
+    public List<UUID> listAssignedServiceIds(UUID businessId, UUID staffMemberId) {
+        return execute(() -> jdbc.sql("""
+                        SELECT service_id
+                        FROM staff_member_service
+                        WHERE business_id = :businessId
+                          AND staff_member_id = :staffMemberId
+                        ORDER BY service_id ASC
+                        """)
+                .param("businessId", businessId)
+                .param("staffMemberId", staffMemberId)
+                .query(UUID.class)
+                .list());
+    }
+
+    public Optional<StaffMemberRow> advanceAssignmentVersion(
+            UUID businessId,
+            UUID staffMemberId,
+            long expectedVersion,
+            Instant updatedAt) {
+        return execute(() -> jdbc.sql("""
+                        UPDATE staff_member
+                        SET version = version + 1,
+                            updated_at = :updatedAt
+                        WHERE business_id = :businessId
+                          AND id = :staffMemberId
+                          AND version = :expectedVersion
+                        RETURNING
+                        """ + RETURNING_COLUMNS)
+                .param("updatedAt", databaseTime(updatedAt))
+                .param("businessId", businessId)
+                .param("staffMemberId", staffMemberId)
+                .param("expectedVersion", expectedVersion)
+                .query(this::staffMemberRow)
+                .optional());
+    }
+
+    public void reconcileServiceAssignments(
+            UUID businessId,
+            UUID staffMemberId,
+            Collection<UUID> removals,
+            Collection<UUID> additions) {
+        execute(() -> {
+            for (UUID serviceId : removals) {
+                jdbc.sql("""
+                                DELETE FROM staff_member_service
+                                WHERE business_id = :businessId
+                                  AND staff_member_id = :staffMemberId
+                                  AND service_id = :serviceId
+                                """)
+                        .param("businessId", businessId)
+                        .param("staffMemberId", staffMemberId)
+                        .param("serviceId", serviceId)
+                        .update();
+            }
+            for (UUID serviceId : additions) {
+                jdbc.sql("""
+                                INSERT INTO staff_member_service(
+                                    business_id, staff_member_id, service_id)
+                                VALUES (:businessId, :staffMemberId, :serviceId)
+                                """)
+                        .param("businessId", businessId)
+                        .param("staffMemberId", staffMemberId)
+                        .param("serviceId", serviceId)
+                        .update();
+            }
+            return null;
+        });
     }
 
     private Optional<StaffMemberRow> transition(

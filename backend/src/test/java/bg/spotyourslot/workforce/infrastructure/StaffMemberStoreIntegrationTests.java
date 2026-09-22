@@ -6,6 +6,7 @@ import bg.spotyourslot.integration.PostgresIntegrationTest;
 import bg.spotyourslot.workforce.StaffMemberRecords.CreateStaffMemberCommand;
 import bg.spotyourslot.workforce.application.StaffMemberInputValidator;
 import bg.spotyourslot.workforce.infrastructure.StaffMemberPersistenceException.UnexpectedFailure;
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -374,6 +375,63 @@ class StaffMemberStoreIntegrationTests extends PostgresIntegrationTest {
         }
     }
 
+    @Test
+    void assignmentGuardAndReconciliationUseTenantVersionWithoutActivityPredicate() {
+        UUID businessId = createBusiness();
+        StaffMemberRow active = store.create(newStaff(
+                businessId, "Assignments", null, null, CREATED_AT));
+        StaffMemberRow inactive = store.deactivate(
+                        businessId, active.id(), 0, UPDATED_AT)
+                .orElseThrow();
+        UUID first = createService(businessId, "First", true);
+        UUID second = createService(businessId, "Second", false);
+
+        store.reconcileServiceAssignments(
+                businessId, inactive.id(), List.of(), List.of(first, second));
+        assertThat(store.listAssignedServiceIds(businessId, inactive.id()))
+                .containsExactlyInAnyOrder(first, second);
+
+        Instant replacementTime = UPDATED_AT.plusSeconds(1);
+        StaffMemberRow guarded = store.advanceAssignmentVersion(
+                        businessId, inactive.id(), 1, replacementTime)
+                .orElseThrow();
+        store.reconcileServiceAssignments(
+                businessId, inactive.id(), List.of(first), List.of());
+
+        assertThat(guarded.active()).isFalse();
+        assertThat(guarded.version()).isEqualTo(2);
+        assertThat(guarded.updatedAt()).isEqualTo(replacementTime);
+        assertThat(guarded.id()).isEqualTo(active.id());
+        assertThat(guarded.businessId()).isEqualTo(businessId);
+        assertThat(guarded.createdAt()).isEqualTo(active.createdAt());
+        assertThat(store.listAssignedServiceIds(businessId, inactive.id()))
+                .containsExactly(second);
+        assertThat(store.advanceAssignmentVersion(
+                        businessId, inactive.id(), 1, replacementTime.plusSeconds(1)))
+                .isEmpty();
+    }
+
+    @Test
+    void assignmentPersistenceRejectsCrossBusinessEndpointsAndSanitizesFailure() {
+        UUID firstBusiness = createBusiness();
+        UUID secondBusiness = createBusiness();
+        StaffMemberRow staffMember = store.create(newStaff(
+                firstBusiness, "Tenant protected", null, null, CREATED_AT));
+        UUID foreignService = createService(secondBusiness, "Foreign", true);
+
+        UnexpectedFailure failure = org.junit.jupiter.api.Assertions.assertThrows(
+                UnexpectedFailure.class,
+                () -> store.reconcileServiceAssignments(
+                        firstBusiness,
+                        staffMember.id(),
+                        List.of(),
+                        List.of(foreignService)));
+
+        assertSafeUnexpectedFailure(failure, "staff_member_service_service_fk");
+        assertThat(store.listAssignedServiceIds(firstBusiness, staffMember.id())).isEmpty();
+        assertThat(store.listAssignedServiceIds(secondBusiness, staffMember.id())).isEmpty();
+    }
+
     private UUID createBusiness() {
         UUID id = UUID.randomUUID();
         OffsetDateTime now = OffsetDateTime.ofInstant(CREATED_AT, ZoneOffset.UTC);
@@ -387,6 +445,26 @@ class StaffMemberStoreIntegrationTests extends PostgresIntegrationTest {
                         """)
                 .param("id", id)
                 .param("slug", "staff-store-" + id)
+                .param("now", now)
+                .update();
+        return id;
+    }
+
+    private UUID createService(UUID businessId, String name, boolean active) {
+        UUID id = UUID.randomUUID();
+        OffsetDateTime now = OffsetDateTime.ofInstant(CREATED_AT, ZoneOffset.UTC);
+        jdbc.sql("""
+                        INSERT INTO service(
+                            id,business_id,name,description,duration_minutes,price,
+                            active,version,created_at,updated_at)
+                        VALUES (
+                            :id,:businessId,:name,NULL,30,:price,:active,0,:now,:now)
+                        """)
+                .param("id", id)
+                .param("businessId", businessId)
+                .param("name", name)
+                .param("price", new BigDecimal("20.00"))
+                .param("active", active)
                 .param("now", now)
                 .update();
         return id;

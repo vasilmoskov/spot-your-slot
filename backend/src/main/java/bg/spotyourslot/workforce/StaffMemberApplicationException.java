@@ -6,6 +6,8 @@ public abstract sealed class StaffMemberApplicationException extends RuntimeExce
                 StaffMemberApplicationException.ConcurrentUpdate,
                 StaffMemberApplicationException.InvalidInput,
                 StaffMemberApplicationException.InvalidLifecycleTransition,
+                StaffMemberApplicationException.ServiceInactive,
+                StaffMemberApplicationException.ServiceNotFound,
                 StaffMemberApplicationException.StaffMemberNotFound {
     private StaffMemberApplicationException(String safeMessage) {
         super(safeMessage);
@@ -20,6 +22,7 @@ public abstract sealed class StaffMemberApplicationException extends RuntimeExce
         DISPLAY_NAME,
         CONTACT_EMAIL,
         CONTACT_PHONE,
+        SERVICE_IDS,
         EXPECTED_VERSION
     }
 
@@ -64,6 +67,18 @@ public abstract sealed class StaffMemberApplicationException extends RuntimeExce
     public static final class BusinessSuspended extends StaffMemberApplicationException {
         public BusinessSuspended() {
             super("Suspended Business cannot mutate StaffMembers");
+        }
+    }
+
+    public static final class ServiceNotFound extends StaffMemberApplicationException {
+        public ServiceNotFound() {
+            super("Service was not found");
+        }
+    }
+
+    public static final class ServiceInactive extends StaffMemberApplicationException {
+        public ServiceInactive() {
+            super("Inactive Service cannot be assigned to StaffMember");
         }
     }
 }

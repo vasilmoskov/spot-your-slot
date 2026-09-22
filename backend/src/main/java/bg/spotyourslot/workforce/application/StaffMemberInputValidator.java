@@ -3,11 +3,14 @@ package bg.spotyourslot.workforce.application;
 import bg.spotyourslot.workforce.StaffMemberApplicationException.InputField;
 import bg.spotyourslot.workforce.StaffMemberApplicationException.InvalidInput;
 import bg.spotyourslot.workforce.StaffMemberRecords.CreateStaffMemberCommand;
+import bg.spotyourslot.workforce.StaffMemberRecords.ReplaceServiceAssignmentsCommand;
 import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberVersionCommand;
 import bg.spotyourslot.workforce.StaffMemberRecords.UpdateStaffMemberCommand;
 import bg.spotyourslot.workforce.domain.StaffMemberTextCanonicalizer;
 import jakarta.validation.Validator;
 import jakarta.validation.constraints.Email;
+import java.util.HashSet;
+import java.util.List;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
@@ -81,6 +84,21 @@ public class StaffMemberInputValidator {
             throw new InvalidInput(InputField.COMMAND);
         }
         return expectedVersion(command.expectedVersion());
+    }
+
+    public ReplaceServiceAssignmentsCommand validateAssignments(
+            ReplaceServiceAssignmentsCommand command) {
+        if (command == null) {
+            throw new InvalidInput(InputField.COMMAND);
+        }
+        List<UUID> serviceIds = command.serviceIds();
+        if (serviceIds == null
+                || serviceIds.stream().anyMatch(java.util.Objects::isNull)
+                || new HashSet<>(serviceIds).size() != serviceIds.size()) {
+            throw new InvalidInput(InputField.SERVICE_IDS);
+        }
+        return new ReplaceServiceAssignmentsCommand(
+                serviceIds, expectedVersion(command.expectedVersion()));
     }
 
     private String displayName(String value) {
