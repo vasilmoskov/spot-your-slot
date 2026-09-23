@@ -21,18 +21,31 @@
 
 - Read the applicable task in `docs/tasks/` and the permanent documentation
   before implementation. Permanent documentation remains authoritative even
-  when a task file or prompt is intentionally brief.
+  when a task file or prompt is intentionally brief. Perform full repository
+  orientation once at the start of an issue; for later phases, start from the
+  current task document, applicable ADRs, recent relevant commits, and the
+  affected working tree, and expand further only to resolve a real ambiguity.
 - Work in small, independently reviewable phases from
   `docs/implementation-plan.md`. When an approved task contains multiple
   substantial concerns, propose a short ordered sequence, complete and verify
   one step, and only then begin the next.
-- Obtain explicit approval before persistent changes, dependency changes,
-  generated files, external writes, Git mutations, or state-changing checks.
+- Approval before implementation scales with risk level (see
+  Risk-based workflow): Strict work requires read-only inspection, a concrete
+  plan, and explicit approval before persistent changes; Standard work may
+  combine bounded inspection and implementation when the task document and
+  approved scope are already precise; Fast work may combine inspection,
+  editing, and verification in one run. Dependency changes, generated
+  repository files, external writes other than the post-verification
+  sanitized review archive required by the active agent instructions, and
+  Git mutations always require explicit approval regardless of risk level.
+  Creating that review archive never authorizes staging, committing,
+  pushing, branch changes, or GitHub mutations.
 - Inspect existing code and tests before proposing a change. Keep changes
   focused and preserve unrelated user work.
 - Do not expand into a later phase or adjacent concern for convenience. If work
-  reveals a conflict, missing decision, unexpected dependency, or necessary
-  scope expansion, stop and request approval.
+  reveals a conflict, missing decision, unexpected dependency, necessary scope
+  expansion, a destructive action, or unexpected repository state, stop and
+  request approval regardless of risk level.
 - Follow the ADR process in `docs/decisions/README.md` and review significant
   decisions at the end of each substantial issue or phase.
 - Never commit credentials, production tokens, or personal data. Do not log
@@ -54,6 +67,23 @@
   booking window is 30 days. Daily and weekly administrative calendar views are
   display modes only and never limit how far ahead booking is possible.
 - Normal business operations never physically delete appointments.
+
+## Risk-based workflow
+
+Use the lightest workflow that still gives credible evidence, scaled to the
+change's risk level; when a change spans categories, use the highest
+applicable level.
+
+- **Fast** — documentation-only changes, isolated test changes, and low-risk
+  local refactoring.
+- **Standard** — ordinary domain, application, persistence, and internal
+  adapter work.
+- **Strict** — migrations, authentication, authorization, tenant isolation,
+  transaction boundaries, concurrency, locking, cross-module contracts, and
+  public API contracts.
+
+Explicit phase-approval requirements in task documents remain authoritative
+over the default risk level.
 
 ## Code quality and formatting
 
@@ -92,7 +122,16 @@
 
 ## Verification and handoff
 
-- Run the narrowest relevant checks first, then justified broader checks.
+- Run the narrowest relevant checks first, then justified broader checks,
+  scaled to risk level: Fast work normally uses relevant text/static checks
+  and skips unrelated backend or frontend suites; Standard work uses focused
+  tests plus one complete verification once the implementation is stable;
+  Strict work adds the relevant real-database, security, module-boundary,
+  race, migration, or contract verification. Do not repeatedly run the
+  complete suite during normal iteration; rerun the affected focused tests
+  and complete verification when a correction changes production behavior,
+  transaction semantics, security, concurrency, or schema behavior. Do not
+  rerun tests solely for archive creation or validation.
 - Use real PostgreSQL through Testcontainers for persistence, concurrency, and
   tenant-isolation behavior.
 - Map every acceptance criterion to a concrete test or explicitly documented
