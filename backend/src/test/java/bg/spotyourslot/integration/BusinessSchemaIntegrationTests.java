@@ -39,12 +39,14 @@ class BusinessSchemaIntegrationTests extends PostgresIntegrationTest {
             "aa48255701e3ce6999073801ca0ed37e292b9ada545e3fe4a50221ada596cb98";
     private static final String V5_SHA_256 =
             "e2221627ed52ceb951881648d9738d213544ad4c8d79aa35e1e79c0896e958d3";
+    private static final String V6_SHA_256 =
+            "73e89120c0163d6ea79ee28f0d59ae02c055df85066234a3688f525ada16ff1b";
 
     @Autowired
     JdbcClient jdbc;
 
     @Test
-    void flywayAppliesAllSixMigrationsFromAnEmptyDatabase() {
+    void flywayAppliesAllSevenMigrationsFromAnEmptyDatabase() {
         var versions = jdbc.sql("""
                         SELECT version
                         FROM flyway_schema_history
@@ -54,7 +56,7 @@ class BusinessSchemaIntegrationTests extends PostgresIntegrationTest {
                 .query(String.class)
                 .list();
 
-        assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6");
+        assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7");
     }
 
     @Test
@@ -270,7 +272,7 @@ class BusinessSchemaIntegrationTests extends PostgresIntegrationTest {
     }
 
     @Test
-    void migrationIntroducesNoLaterPhaseTables() {
+    void migrationAddsRecurringSchedulesButNoLaterPhaseTables() {
         var tables = jdbc.sql("""
                         SELECT table_name
                         FROM information_schema.tables
@@ -281,6 +283,7 @@ class BusinessSchemaIntegrationTests extends PostgresIntegrationTest {
                 .list();
 
         assertThat(tables)
+                .contains("staff_working_schedule", "staff_working_period")
                 .doesNotContain(
                         "customer",
                         "appointment",
@@ -302,6 +305,9 @@ class BusinessSchemaIntegrationTests extends PostgresIntegrationTest {
                 .isEqualTo(V4_SHA_256);
         assertThat(resourceSha256("db/migration/V5__add_business_services.sql"))
                 .isEqualTo(V5_SHA_256);
+        assertThat(resourceSha256(
+                        "db/migration/V6__add_staff_members_and_service_assignments.sql"))
+                .isEqualTo(V6_SHA_256);
     }
 
     private UUID createBusiness() {

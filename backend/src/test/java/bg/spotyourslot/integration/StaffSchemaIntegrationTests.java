@@ -309,7 +309,7 @@ class StaffSchemaIntegrationTests extends PostgresIntegrationTest {
     }
 
     @Test
-    void phaseOneAddsNoMembershipLinkOrLaterWorkforceTables() {
+    void recurringSchedulesAddNoMembershipLinkOrLaterWorkforceTables() {
         assertThat(columns("staff_member"))
                 .extracting(ColumnMetadata::name)
                 .doesNotContain("membership_id");
@@ -324,7 +324,11 @@ class StaffSchemaIntegrationTests extends PostgresIntegrationTest {
                 .list();
 
         assertThat(tables)
-                .contains("staff_member", "staff_member_service")
+                .contains(
+                        "staff_member",
+                        "staff_member_service",
+                        "staff_working_schedule",
+                        "staff_working_period")
                 .doesNotContain(
                         "weekly_work_interval",
                         "schedule_break",
