@@ -117,6 +117,58 @@ These responses never contain SQL diagnostics, constraint names, stack traces,
 nested causes, credentials, session identifiers, Membership details, or private
 cross-Business information.
 
+### Business StaffMember authorization
+
+Every `/api/business/staff-members` operation receives the user and selected
+Business from the server-managed authenticated context. No path, query, request,
+or response field provides a Business, user, Membership, role, or other
+authorization identity. Access requires an active `BUSINESS_OWNER` Membership
+for that exact user and Business. `PLATFORM_ADMIN` alone, `MANAGER`, `STAFF`,
+inactive or missing Memberships, and foreign Memberships are denied. Missing and
+cross-Business StaffMember or Service identifiers have the same safe not-found
+behavior.
+
+DRAFT and ACTIVE Businesses allow StaffMember and assignment reads and
+mutations. SUSPENDED Businesses remain readable and reject every mutation.
+Active and inactive StaffMembers remain administratively configurable: profile
+editing and assignment replacement do not require an active StaffMember.
+Deactivation preserves existing Service assignments. Only a Service newly added
+to the desired assignment set must be active; an already assigned inactive
+Service may be retained or removed.
+
+Assignment replacement acquires shared locks on the Business lifecycle row and
+the exact owner's Membership row, then executes the conditional StaffMember
+`UPDATE` that performs the expected-version guard and takes PostgreSQL's
+row-level write lock. Catalog next locks only added Service rows with
+`FOR SHARE` in deterministic UUID order before the assignment relationships are
+reconciled in the same transaction. Complete desired-set reconciliation and the
+single StaffMember version increment are atomic. Assignment reads use
+repeatable-read isolation so the aggregate version, timestamps, and ordered
+Service summaries come from one consistent snapshot. Every POST and PUT remains
+CSRF-protected.
+
+StaffMember failures use this stable public contract:
+
+| Status | Code | Bulgarian public wording |
+|---:|---|---|
+| 400 | `VALIDATION_ERROR` | `Проверете въведените данни.` |
+| 401 | `AUTH_REQUIRED` | `Необходим е вход.` |
+| 403 | `ACTIVE_BUSINESS_REQUIRED` | `Изберете бизнес, за да продължите.` |
+| 403 | `ACCESS_DENIED` | `Нямате достъп до тази операция.` |
+| 404 | `STAFF_MEMBER_NOT_FOUND` | `Членът на екипа не е намерен.` |
+| 404 | `SERVICE_NOT_FOUND` | `Услугата не е намерена.` |
+| 409 | `STAFF_MEMBER_INVALID_LIFECYCLE` | `Промяната на състоянието на члена на екипа не е разрешена.` |
+| 409 | `STAFF_MEMBER_CONCURRENT_UPDATE` | `Данните за члена на екипа са променени. Обновете данните и опитайте отново.` |
+| 409 | `SERVICE_INACTIVE` | `Неактивна услуга не може да бъде добавена към член на екипа.` |
+| 409 | `BUSINESS_SUSPENDED` | `Спрян бизнес може само да преглежда данните си.` |
+| 500 | `INTERNAL_ERROR` | `Възникна неочаквана грешка.` |
+
+There is no inactive-StaffMember public error. Validation, persistence, Catalog
+reference, and unexpected technical failures never expose rejected personal
+input, UUIDs, tenant identity, SQL or driver diagnostics, constraints, causes,
+stack traces, Membership details, or cross-Business existence. Unexpected
+failures retain the shared sanitized `INTERNAL_ERROR` response.
+
 Repositories require `business_id`; foreign/composite constraints validate
 common ownership. STAFF is restricted to the linked StaffMember’s schedule and
 Appointments. Cross-Business attempts return safe 404 where existence need not

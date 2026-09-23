@@ -62,6 +62,11 @@ dependencies absent separate approval.
   Business-scoped catalog model, canonical-first validation, persistence,
   active-owner authorization, lifecycle and optimistic-concurrency
   orchestration, the authenticated HTTP API, and PostgreSQL-backed verification.
+- The StaffMember and Service-assignment backend slice in issue #12 is complete:
+  V6, the Business-scoped Workforce model, active and inactive StaffMember
+  administration, complete-set assignments, shared aggregate versioning,
+  owner-only authorization, the authenticated eight-route HTTP API, and
+  PostgreSQL-backed concurrency and rollback verification.
 - Generic Business settings, Services, StaffMembers without mandatory accounts,
   qualifications, weekly intervals, breaks, time off, and overrides.
 - Enforce optional same-Business one-to-one StaffMember/Membership linkage with
@@ -72,10 +77,11 @@ dependencies absent separate approval.
 - Exit: availability inputs can be configured for every BusinessType; role and
   tenant tests pass without industry branches.
 
-Completing issue #11 does not complete this phase or parent issue #10. The
-Business-owner Services UI, Staff management and Service assignments, schedules,
-availability inputs, and the end-to-end Business configuration journey remain
-pending.
+Completing issues #11 and #12 does not complete this phase or parent issue #10.
+Recurring working schedules remain with issue #13. The Business-owner Services,
+StaffMember, assignment, and schedule interface remains with issue #14, and the
+complete browser journey remains with issue #15. Availability inputs beyond
+these backend slices also remain pending.
 
 ## Phase 5 — availability engine
 

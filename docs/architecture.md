@@ -123,6 +123,41 @@ the expected-version predicate; no pessimistic Service-row lock replaces it.
 The authenticated API exposes list, detail, create, update, deactivate, and
 reactivate operations under `/api/business/services`.
 
+The implemented `workforce` module owns the Business-scoped StaffMember model,
+canonicalization, validation, persistence, application orchestration, Service
+assignments, and HTTP adapter. Its published `StaffMemberAdministration`
+contract accepts the server-derived authenticated Business context and exposes
+no repository or persistence record. Workforce depends on the published
+Business lifecycle and identity owner-access contracts and on Catalog's narrow
+published `ServiceReferenceAccess`; Catalog has no reverse dependency on
+Workforce.
+
+Workforce reads use non-locking Business and Membership authorization.
+Assignment listing runs at repeatable-read isolation and resolves the
+StaffMember aggregate, relationship IDs, and ordered Catalog summaries as one
+consistent snapshot. Assignment replacement acquires shared locks on the
+Business lifecycle row and exact user Membership row, then executes the
+conditional StaffMember `UPDATE` that performs the expected-version guard and
+takes PostgreSQL's row-level write lock. Catalog next locks only added Service
+rows using `FOR SHARE` in deterministic UUID order before Workforce reconciles
+the relationships. The version guard and relationship reconciliation run in one
+transaction, so validation or persistence failure rolls both back.
+
+Profile update, deactivation, reactivation, and complete desired-set assignment
+replacement share one StaffMember aggregate version. Every successful mutation,
+including same-set replacement, increments that version once. StaffMember
+activity is not an authorization or version predicate: active and inactive
+StaffMembers remain administratively configurable. Only added Services must be
+active; retained or removed existing assignments are permitted regardless of
+current Service activity. Endpoint deactivation preserves assignments.
+
+The authenticated Workforce API exposes list, detail, create, update,
+deactivate, reactivate, assignment listing, and complete assignment replacement
+under `/api/business/staff-members`. HTTP requests and responses omit Business,
+user, Membership, credential, role, session, normalized, and persistence state.
+Working schedules, StaffMember account linkage, availability, and booking remain
+outside the implemented Workforce slice.
+
 The platform Business API provides bounded deterministic listing, retrieval,
 DRAFT creation, profile update, initial activation, suspension, and
 reactivation. Mutations carry `expectedVersion`; PostgreSQL compare-and-update

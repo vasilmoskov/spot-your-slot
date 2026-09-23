@@ -1,15 +1,17 @@
 # SpotYourSlot — Staff Management and Service Assignments Backend
 
-Status: In Progress
+Status: Completed — 2026-09-23
 GitHub issue: #12 — Build staff management and service assignments backend
 Parent issue: #10 — Add business services, staff, and working schedules
 Depends on: #11 — Build Business services backend
 
 ## Task purpose
 
-Issue #12 adds Business-owned StaffMembers and their supported-Service
-assignments. It provides the backend data required by later working schedules,
-availability, and booking without implementing those later capabilities.
+Issue #12 adds the completed backend for Business-owned StaffMembers and their
+supported-Service assignments. This completion covers the backend only. Parent
+issue #10 remains open; issue #14's Business-owner interface and issue #15's
+browser verification remain deferred, as do working schedules, availability,
+and booking.
 
 A StaffMember is an operational Business record. It does not require an
 application user, credentials, Membership, or invitation. The approved future
@@ -150,8 +152,8 @@ index supports `(business_id, service_id, staff_member_id)` lookup.
 
 The database deliberately has no constraint coupling either endpoint's active
 state to an assignment row. Inactive StaffMembers and inactive Services may
-retain assignments. The future application layer validates only Service
-additions and does so transactionally.
+retain assignments. The application layer validates only Service additions and
+does so transactionally.
 
 No `membership_id`, schedule, availability, Appointment, or booking column or
 table is part of V6.
@@ -173,8 +175,8 @@ allow reads and reject every mutation. Mutation transactions lock the Business
 lifecycle row and exact qualifying Membership row with the established shared
 lock order before changing workforce data.
 
-Assignment replacement will conditionally update the StaffMember using
-`business_id`, ID, and `expectedVersion`. It must not include `active = true`.
+Assignment replacement conditionally updates the StaffMember using
+`business_id`, ID, and `expectedVersion`. It does not include `active = true`.
 After that guard, Service additions are resolved and locked through a narrow
 published Catalog contract in deterministic UUID order. The Catalog contract
 exposes immutable Service references and never exposes repositories or
@@ -205,7 +207,7 @@ version produce exactly one success. The other returns a safe concurrent-update
 conflict. Database relationship uniqueness remains a separate final safeguard.
 ADR-0011 records this aggregate concurrency decision.
 
-## Planned HTTP contract
+## Implemented HTTP contract
 
 Base path: `/api/business/staff-members`.
 
@@ -226,7 +228,7 @@ summaries in Catalog normalized-name and ID order. HTTP records expose no
 Business, account, credential, Membership, or internal persistence information.
 All POST and PUT requests remain CSRF-protected.
 
-## Planned error contract
+## Implemented error contract
 
 | Status | Code | Safe Bulgarian public wording |
 |---:|---|---|
@@ -249,7 +251,7 @@ traces, internal identifiers, Membership details, or cross-Business existence.
 
 ## Testing responsibilities
 
-Tests will cover:
+Tests cover:
 
 - workforce-owned Unicode canonicalization and code-point bounds;
 - email and permissive formatted-phone validation;
@@ -275,7 +277,7 @@ Tests will cover:
 PostgreSQL-specific behavior and every concurrency claim use the pinned real
 PostgreSQL Testcontainer.
 
-## Implementation phases
+## Completed implementation phases
 
 ### Phase 1 — schema, task contract, and ADR
 
@@ -320,7 +322,7 @@ PostgreSQL Testcontainer.
 
 Each phase requires separate review and approval before persistent changes.
 
-## Phase 1 verification evidence required
+## Phase 1 verification evidence
 
 Phase 1 must prove against PostgreSQL 18.4 that:
 
@@ -332,5 +334,20 @@ Phase 1 must prove against PostgreSQL 18.4 that:
 - duplicate relationships are rejected;
 - StaffMember and Service deletion are restrictive while assigned;
 - inactive StaffMembers and inactive Services retain assignment rows;
-- no database constraint applies future application-only activity rules; and
+- no database constraint applies application-owned activity rules; and
 - schedules, availability, Appointments, booking, and Membership linkage remain absent.
+
+## Final verification evidence
+
+Final issue #12 backend verification on 2026-09-23 used PostgreSQL 18.4:
+`./mvnw --batch-mode verify` ran 802 tests with zero failures, errors, or
+skips. The complete build applied and validated all six Flyway migrations and
+included the passing Spring Modulith `ModuleBoundaryTests`, so no separate
+boundary-test invocation was necessary.
+
+The unaffected frontend verification also passed on 2026-09-23. `npm ci`
+installed the committed lockfile, `npm run lint` completed successfully,
+`npm run test` ran 126 tests across 12 files with no failures, and
+`npm run build` produced the production bundle. Browser E2E was intentionally
+not run for this documentation-only phase; issue #15 remains responsible for
+the Staff configuration browser journey.

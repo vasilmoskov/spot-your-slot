@@ -60,16 +60,19 @@ Users receive tenant roles only through explicit Business Membership. A user
 may hold Memberships in multiple Businesses; authorization is evaluated in the
 server-resolved Business context, never inferred from a client Business ID.
 
-The currently implemented Business Services backend is intentionally narrower:
-only an active `BUSINESS_OWNER` Membership for the selected Business grants
-Service administration. `MANAGER` Service authority remains a future product
-direction and is not currently implemented. A platform administrator who also
-has the qualifying owner Membership acts through that Membership; the platform
-role alone grants no Service access.
+The currently implemented Business Services and StaffMember backends are
+intentionally narrower: only an active `BUSINESS_OWNER` Membership for the
+selected Business grants Service, StaffMember, and Service-assignment
+administration. `MANAGER` authority remains a future product direction and is
+not currently implemented. A platform administrator who also has the qualifying
+owner Membership acts through that Membership; the platform role alone grants
+no private Business configuration access.
 
-A StaffMember may exist without an application account. Optionally, one
-StaffMember links to at most one Membership and one Membership to at most one
-StaffMember; both must belong to the same Business.
+A StaffMember exists independently of an application account. The implemented
+schema has no StaffMember-to-user or Membership link, credentials, invitation,
+role, or session state. A future approved capability may add an optional
+same-Business one-to-one StaffMember/Membership link without changing the
+operational StaffMember identity.
 
 ## Onboarding and lifecycle
 
@@ -121,11 +124,23 @@ users inspect and manage Appointments and never cap the booking horizon.
 The implemented Service backend stores a canonical display name, optional
 canonical description, `BigDecimal` EUR price, duration, active state,
 optimistic version, and creation/update timestamps under immutable Business
-ownership. Service buffers and Staff qualifications remain future availability
-and workforce capabilities; they are not fields of the current Service record.
-Each future StaffMember has a display name, active state, supported Services,
-weekly working intervals, breaks, one-time time off, and one-time working
-overrides.
+ownership. Service buffers remain future availability behavior and are not
+fields of the current Service record.
+
+The implemented Workforce backend stores Business-scoped StaffMembers with a
+canonical display name, optional canonical contact email and phone, active
+state, one optimistic aggregate version, and creation/update timestamps. New
+StaffMembers are active. Active and inactive StaffMembers remain visible and
+administratively configurable: their profile may be edited and their complete
+desired Service-assignment set may be replaced. Deactivation preserves profile
+data and assignments, and there is no hard-delete operation.
+
+Only active Services may be added to an assignment set. An already assigned
+inactive Service may be retained or removed; after removal it cannot be restored
+until reactivated. Service deactivation preserves existing assignment rows.
+Each successful complete-set replacement, including a same-set replacement,
+increments the shared StaffMember version once. Weekly working intervals,
+breaks, time off, and working overrides remain future capabilities.
 
 ## Availability and assignment
 

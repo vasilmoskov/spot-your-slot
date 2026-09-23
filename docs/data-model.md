@@ -76,20 +76,34 @@ versioned for update, deactivation, and reactivation and cannot be hard-deleted
 or transferred by the implemented application contract. V5 has no Service
 buffer or Staff-assignment column.
 
-The remaining workforce records are planned and are not created by V5:
+Flyway `V6__add_staff_members_and_service_assignments.sql` creates the
+implemented **staff_member** and **staff_member_service** tables.
 
-- **staff_member:** `business_id`, display name, active state, optional
-  `membership_id`, stable creation time, audit fields.
-- **staff_member_service:** `business_id`, `staff_member_id`, `service_id`;
-  unique staff-member/service qualification.
-- **weekly_work_interval**, **schedule_break**, **time_off**, and
-  **working_override:** all use `business_id` and `staff_member_id` plus their
-  weekday/local-time/date/type fields.
+Each StaffMember has an application-generated UUID, immutable `business_id`,
+canonical display name, generated normalized display name for ordering,
+optional canonical contact email and phone, active state, nonnegative aggregate
+version, and UTC creation/update timestamps. New rows are active at version 0.
+Display names and contact values need not be unique. StaffMembers are ordered
+within a Business by normalized display name and ID.
 
-The optional StaffMember/Membership link is one-to-one in both directions. A
-unique constraint covers `staff_member.membership_id`; composite ownership
-constraints require both rows to share `business_id`. A StaffMember without a
-Membership/application user is valid.
+`staff_member_service` contains only `business_id`, `staff_member_id`, and
+`service_id`. Its complete triple is the primary key. Composite restrictive
+foreign keys require the StaffMember and Service to belong to that Business,
+prevent duplicate relationships, and preserve assignments when either endpoint
+is inactive. There is deliberately no database constraint coupling an
+assignment to either endpoint's active state.
+
+Profile update, lifecycle transition, and complete desired-set assignment
+replacement share the StaffMember aggregate version. Each successful operation
+increments it exactly once, including a same-set assignment replacement.
+Assignment replacement validates active state only for Service additions;
+already assigned inactive Services may be retained or removed. Removed
+assignment history is not stored.
+
+V6 has no StaffMember-to-user or Membership link. A future approved capability
+may add an optional same-Business one-to-one link. The planned
+**weekly_work_interval**, **schedule_break**, **time_off**, and
+**working_override** records are not created by V6.
 
 ## Customers and Appointments
 

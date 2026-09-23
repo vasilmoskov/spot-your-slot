@@ -13,13 +13,14 @@ it is not registered or configured by this task, and neither domain nor
 trademark availability has been legally verified.
 
 This repository contains the identity and tenancy foundation, platform Business
-onboarding, and the Business Services backend: a Spring Boot backend, a
-Bulgarian React identity and platform-admin client, Flyway-managed PostgreSQL,
-local Docker Compose, and non-deploying CI. Platform administrators can manage
-the Business lifecycle, and active Business owners can administer Services
-through the authenticated API. The Business-owner Services UI, StaffMembers,
-Customers, Appointments, booking, production email, and hosting are not
-implemented.
+onboarding, and the Business Services and StaffMember backends: a Spring Boot
+backend, a Bulgarian React identity and platform-admin client, Flyway-managed
+PostgreSQL, local Docker Compose, and non-deploying CI. Platform administrators
+can manage the Business lifecycle, and active Business owners can administer
+Services, StaffMembers, and StaffMember-to-Service assignments through
+authenticated APIs. The Business-owner configuration interface, working
+schedules, Customers, Appointments, booking, production email, and hosting are
+not implemented.
 
 ## Product identity
 
@@ -54,6 +55,7 @@ expand the MVP.
 - [Implementation plan](docs/implementation-plan.md)
 - [Product roadmap](docs/product-roadmap.md)
 - [Business Services backend task](docs/tasks/04a-business-services-backend.md)
+- [Staff management backend task](docs/tasks/04b-staff-management-and-service-assignments-backend.md)
 - [Foundation task](docs/tasks/00-product-foundation.md)
 
 ## Selected toolchain
@@ -127,7 +129,7 @@ export POSTGRES_PASSWORD='the-value-from-your-local-env-file'
 ```
 
 Health is public at `http://localhost:8080/actuator/health`. Flyway applies the
-five current migrations on startup and Hibernate validates the schema.
+six current migrations on startup and Hibernate validates the schema.
 
 To create the first local `PLATFORM_ADMIN`, explicitly opt in for one startup:
 
@@ -216,6 +218,40 @@ Service requests and responses do not contain `businessId`. Lists are ordered
 by normalized name and then ID. DRAFT and ACTIVE Businesses permit reads and
 mutations; SUSPENDED Businesses remain readable but reject Service mutations.
 The Business-owner UI and its end-to-end configuration journey remain pending.
+
+### Business StaffMember API
+
+The selected Business and user identity come only from the authenticated
+server-side session. Access requires an active `BUSINESS_OWNER` Membership for
+that Business; `PLATFORM_ADMIN` alone, `MANAGER`, `STAFF`, inactive or missing
+Memberships, and Memberships from another Business do not grant access. Writes
+require CSRF, and every update, lifecycle transition, and assignment replacement
+uses the StaffMember's `expectedVersion`.
+
+| Method and path | Purpose |
+|---|---|
+| `GET /api/business/staff-members?page=0&size=50` | List active and inactive StaffMembers, with a maximum page size of 100 |
+| `GET /api/business/staff-members/{staffMemberId}` | Retrieve one tenant-scoped StaffMember |
+| `POST /api/business/staff-members` | Create an active StaffMember and return `201` with its `Location` |
+| `PUT /api/business/staff-members/{staffMemberId}` | Update an active or inactive StaffMember profile |
+| `POST /api/business/staff-members/{staffMemberId}/deactivate` | Deactivate an active StaffMember |
+| `POST /api/business/staff-members/{staffMemberId}/reactivate` | Reactivate an inactive StaffMember |
+| `GET /api/business/staff-members/{staffMemberId}/service-assignments` | List safe ordered assigned-Service summaries |
+| `PUT /api/business/staff-members/{staffMemberId}/service-assignments` | Replace the complete assigned-Service set atomically |
+
+StaffMember profile and assignment administration remains available while the
+StaffMember is inactive. Deactivating a StaffMember or Service preserves its
+existing assignments. Replacement accepts active Services as additions;
+already assigned inactive Services may be retained or removed, but a removed
+inactive Service cannot be restored until reactivated. Every successful
+replacement, including the same desired set, increments the shared StaffMember
+aggregate version exactly once.
+
+Requests and responses expose no Business, user, Membership, role, credential,
+session, normalized, SQL, or persistence fields. DRAFT and ACTIVE Businesses
+permit reads and mutations. SUSPENDED Businesses remain readable and reject
+mutations with the safe public error contract. The Business-owner interface and
+its browser end-to-end verification remain deferred to issues #14 and #15.
 
 The development mailbox retains at most 50 links in memory and never logs,
 writes, or persists raw tokens. Sessions use an opaque `SPOTYOURSESSION` cookie

@@ -157,6 +157,42 @@ Business identity. There is no Business-owner Services frontend component or
 browser E2E coverage yet; issues #14 and #15 remain responsible for that user
 journey.
 
+## StaffMember and Service-assignment backend verification
+
+Issue #12 extends the pinned PostgreSQL 18.4 Testcontainer schema through V6.
+Schema and persistence tests verify canonical StaffMember fields, generated
+ordering values, duplicate display names and contacts, default activity and
+version, deterministic tenant pagination, composite ownership, restrictive
+foreign keys, assignment uniqueness, exact indexes, and the absence of account
+linkage or later schedule tables. V1 through V5 remain unchanged.
+
+Application tests exercise the published Workforce administration boundary
+against the Business lifecycle, identity owner-access, and Catalog Service-
+reference contracts. They cover active and inactive StaffMember profile and
+assignment administration, complete desired-set replacement, same-set version
+increments, preservation across endpoint deactivation, active-Service checks
+only for additions, retained and removed inactive Services, missing and foreign
+references, DRAFT/ACTIVE mutations, SUSPENDED reads, and owner-only tenant
+authorization.
+
+Coordinated PostgreSQL tests use independent transactions and no sleeps to
+prove the Business → Membership → StaffMember version guard → added-Service
+lock order. Catalog locks additions with `FOR SHARE` in deterministic UUID
+order. The tests cover competing StaffMember mutations, Service deactivation
+against assignment addition, same-version assignment races, and rollback of the
+version and relationships after validation or persistence failure. Assignment
+listing runs at repeatable-read isolation and is tested as a consistent
+aggregate snapshot with authoritative version and timestamps.
+
+Controller, exception-handler, and PostgreSQL-backed MockMvc tests cover all
+eight authenticated StaffMember routes, session-derived context, pagination,
+request/response mapping, CSRF on every POST and PUT, role and tenant isolation,
+lifecycle and optimistic conflicts, exact Bulgarian RFC 7807 errors, privacy,
+and sanitized generic 500 behavior. Requests and responses cannot supply or
+expose Business, user, Membership, credential, role, session, normalized, SQL,
+or persistence data. Issues #14 and #15 still own the Business-owner interface
+and browser journey; issue #12 adds no frontend or browser E2E coverage.
+
 Phase 3 frontend component tests cover typed hash navigation, platform-only
 navigation visibility, responsive Business listing and pagination, request
 cancellation, structured-address creation and profile-edit payloads,
