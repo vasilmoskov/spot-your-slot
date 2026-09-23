@@ -34,10 +34,12 @@ import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberVersionCommand;
 import bg.spotyourslot.workforce.StaffMemberRecords.UpdateStaffMemberCommand;
 import bg.spotyourslot.workforce.application.StaffMemberInputValidator.PageInput;
 import bg.spotyourslot.workforce.infrastructure.NewStaffMemberRow;
+import bg.spotyourslot.workforce.infrastructure.NewStaffWorkingScheduleRow;
 import bg.spotyourslot.workforce.infrastructure.StaffMemberPersistenceException.UnexpectedFailure;
 import bg.spotyourslot.workforce.infrastructure.StaffMemberProfileUpdateRow;
 import bg.spotyourslot.workforce.infrastructure.StaffMemberRow;
 import bg.spotyourslot.workforce.infrastructure.StaffMemberStore;
+import bg.spotyourslot.workforce.infrastructure.StaffWorkingScheduleStore;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -64,6 +66,7 @@ class StaffMemberAdministrationServiceTests {
     private static final Instant NOW = Instant.parse("2026-09-22T08:00:00Z");
 
     @Mock StaffMemberStore store;
+    @Mock StaffWorkingScheduleStore scheduleStore;
     @Mock StaffMemberInputValidator validator;
     @Mock BusinessLifecycleAccess businesses;
     @Mock SelectedBusinessOwnerAccess owners;
@@ -76,6 +79,7 @@ class StaffMemberAdministrationServiceTests {
     void setUp() {
         service = new StaffMemberAdministrationService(
                 store,
+                scheduleStore,
                 validator,
                 businesses,
                 owners,
@@ -92,7 +96,7 @@ class StaffMemberAdministrationServiceTests {
         assertThatThrownBy(() -> service.list(new TestContext(null, BUSINESS_ID), 0, 20))
                 .isInstanceOf(AuthenticationCredentialsNotFoundException.class)
                 .hasMessage("Authentication is required");
-        verifyNoInteractions(store, validator, businesses, owners);
+        verifyNoInteractions(store, scheduleStore, validator, businesses, owners);
     }
 
     @Test
@@ -172,6 +176,12 @@ class StaffMemberAdministrationServiceTests {
         assertThat(captor.getValue().contactEmail()).isEqualTo("private@example.invalid");
         assertThat(captor.getValue().contactPhone()).isEqualTo("+359 123");
         assertThat(captor.getValue().createdAt()).isEqualTo(NOW);
+
+        var scheduleCaptor = ArgumentCaptor.forClass(NewStaffWorkingScheduleRow.class);
+        verify(scheduleStore).create(scheduleCaptor.capture());
+        assertThat(scheduleCaptor.getValue().businessId()).isEqualTo(BUSINESS_ID);
+        assertThat(scheduleCaptor.getValue().staffMemberId()).isEqualTo(stored.id());
+        assertThat(scheduleCaptor.getValue().createdAt()).isEqualTo(NOW);
         verifyMutationAuthorizationOrder();
     }
 
@@ -186,7 +196,7 @@ class StaffMemberAdministrationServiceTests {
                 .hasMessage("Suspended Business cannot mutate StaffMembers");
         verifyMutationAuthorizationOrder();
         verify(validator, never()).validateCreate(any());
-        verifyNoInteractions(store);
+        verifyNoInteractions(store, scheduleStore);
     }
 
     @Test
@@ -200,7 +210,7 @@ class StaffMemberAdministrationServiceTests {
                         "Private Name", "private@example.invalid", "+359123456")))
                 .isInstanceOf(BusinessAccessDenied.class);
         verify(validator, never()).validateCreate(any());
-        verifyNoInteractions(store);
+        verifyNoInteractions(store, scheduleStore);
     }
 
     @Test

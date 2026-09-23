@@ -22,6 +22,9 @@ import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberDetails;
 import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberVersionCommand;
 import bg.spotyourslot.workforce.StaffMemberRecords.UpdateStaffMemberCommand;
 import bg.spotyourslot.workforce.infrastructure.StaffMemberPersistenceException.UnexpectedFailure;
+import bg.spotyourslot.workforce.infrastructure.StaffWorkingSchedulePersistenceException;
+import bg.spotyourslot.workforce.infrastructure.StaffWorkingScheduleRow;
+import bg.spotyourslot.workforce.infrastructure.StaffWorkingScheduleStore;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -53,6 +56,7 @@ class StaffMemberAdministrationServiceIntegrationTests extends PostgresIntegrati
     private static final Instant NOW = Instant.parse("2026-09-22T08:00:00Z");
 
     @Autowired StaffMemberAdministration staffMembers;
+    @Autowired StaffWorkingScheduleStore schedules;
     @Autowired JdbcClient jdbc;
 
     @Test
@@ -96,6 +100,91 @@ class StaffMemberAdministrationServiceIntegrationTests extends PostgresIntegrati
         assertThat(staffMembers.get(fixture.context(), created.id())).isEqualTo(active);
         assertThat(staffMembers.list(fixture.context(), 0, 20).staffMembers())
                 .containsExactly(active);
+    }
+
+    @Test
+    void createInsertsEmptyVersionZeroWorkingScheduleInTheSameTransaction() {
+        Fixture fixture = ownerFixture("ACTIVE", true, "BUSINESS_OWNER");
+
+        StaffMemberDetails created = staffMembers.create(fixture.context(), create("Ана"));
+
+        StaffWorkingScheduleRow schedule = schedules
+                .findByBusinessIdAndStaffMemberId(fixture.businessId(), created.id())
+                .orElseThrow();
+        assertThat(schedule.version()).isZero();
+        assertThat(schedule.createdAt()).isEqualTo(created.createdAt());
+        assertThat(schedule.updatedAt()).isEqualTo(created.createdAt());
+        assertThat(schedules.findPeriods(fixture.businessId(), created.id())).isEmpty();
+    }
+
+    @Test
+    void scheduleInsertFailureRollsBackTheStaffMemberInsertInTheSameTransaction() {
+        Fixture fixture = ownerFixture("ACTIVE", true, "BUSINESS_OWNER");
+
+        installFailingScheduleInsertTrigger();
+        try {
+            assertThatThrownBy(() -> staffMembers.create(fixture.context(), create("Роло")))
+                    .isInstanceOfSatisfying(
+                            StaffWorkingSchedulePersistenceException.UnexpectedFailure.class,
+                            failure -> {
+                                assertThat(failure).hasMessage(
+                                        "Working schedule persistence operation failed");
+                                assertThat(failure.getMessage())
+                                        .doesNotContain("deterministic test failure")
+                                        .doesNotContain("test_fail_staff_working_schedule_insert")
+                                        .doesNotContain("org.postgresql")
+                                        .doesNotContain("SQL");
+                            });
+        } finally {
+            dropFailingScheduleInsertTrigger();
+        }
+
+        assertThat(staffMembers.list(fixture.context(), 0, 20).staffMembers()).isEmpty();
+        assertThat(countStaffMembers(fixture.businessId())).isZero();
+        assertThat(countSchedules(fixture.businessId())).isZero();
+    }
+
+    private void installFailingScheduleInsertTrigger() {
+        jdbc.sql("""
+                        CREATE OR REPLACE FUNCTION test_fail_staff_working_schedule_insert()
+                        RETURNS trigger AS $$
+                        BEGIN
+                            RAISE EXCEPTION 'deterministic test failure';
+                        END;
+                        $$ LANGUAGE plpgsql
+                        """)
+                .update();
+        jdbc.sql("""
+                        CREATE TRIGGER test_fail_staff_working_schedule_insert_trigger
+                        BEFORE INSERT ON staff_working_schedule
+                        FOR EACH ROW EXECUTE FUNCTION test_fail_staff_working_schedule_insert()
+                        """)
+                .update();
+    }
+
+    private void dropFailingScheduleInsertTrigger() {
+        jdbc.sql("""
+                        DROP TRIGGER IF EXISTS test_fail_staff_working_schedule_insert_trigger
+                        ON staff_working_schedule
+                        """)
+                .update();
+        jdbc.sql("DROP FUNCTION IF EXISTS test_fail_staff_working_schedule_insert()")
+                .update();
+    }
+
+    private long countStaffMembers(UUID businessId) {
+        return jdbc.sql("SELECT count(*) FROM staff_member WHERE business_id = :businessId")
+                .param("businessId", businessId)
+                .query(Long.class)
+                .single();
+    }
+
+    private long countSchedules(UUID businessId) {
+        return jdbc.sql(
+                        "SELECT count(*) FROM staff_working_schedule WHERE business_id = :businessId")
+                .param("businessId", businessId)
+                .query(Long.class)
+                .single();
     }
 
     @Test

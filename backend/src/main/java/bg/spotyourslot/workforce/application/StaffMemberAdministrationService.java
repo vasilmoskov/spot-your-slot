@@ -27,9 +27,11 @@ import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberVersionCommand;
 import bg.spotyourslot.workforce.StaffMemberRecords.UpdateStaffMemberCommand;
 import bg.spotyourslot.workforce.application.StaffMemberInputValidator.PageInput;
 import bg.spotyourslot.workforce.infrastructure.NewStaffMemberRow;
+import bg.spotyourslot.workforce.infrastructure.NewStaffWorkingScheduleRow;
 import bg.spotyourslot.workforce.infrastructure.StaffMemberProfileUpdateRow;
 import bg.spotyourslot.workforce.infrastructure.StaffMemberRow;
 import bg.spotyourslot.workforce.infrastructure.StaffMemberStore;
+import bg.spotyourslot.workforce.infrastructure.StaffWorkingScheduleStore;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.HashSet;
@@ -44,6 +46,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class StaffMemberAdministrationService implements StaffMemberAdministration {
     private final StaffMemberStore store;
+    private final StaffWorkingScheduleStore scheduleStore;
     private final StaffMemberInputValidator validator;
     private final BusinessLifecycleAccess businesses;
     private final SelectedBusinessOwnerAccess owners;
@@ -52,12 +55,14 @@ public class StaffMemberAdministrationService implements StaffMemberAdministrati
 
     public StaffMemberAdministrationService(
             StaffMemberStore store,
+            StaffWorkingScheduleStore scheduleStore,
             StaffMemberInputValidator validator,
             BusinessLifecycleAccess businesses,
             SelectedBusinessOwnerAccess owners,
             ServiceReferenceAccess serviceReferences,
             Clock clock) {
         this.store = store;
+        this.scheduleStore = scheduleStore;
         this.validator = validator;
         this.businesses = businesses;
         this.owners = owners;
@@ -106,7 +111,10 @@ public class StaffMemberAdministrationService implements StaffMemberAdministrati
                 validated.contactEmail(),
                 validated.contactPhone(),
                 now);
-        return details(store.create(creation));
+        StaffMemberRow created = store.create(creation);
+        scheduleStore.create(new NewStaffWorkingScheduleRow(
+                selection.businessId(), created.id(), now));
+        return details(created);
     }
 
     @Override
