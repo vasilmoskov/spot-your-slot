@@ -13,14 +13,15 @@ it is not registered or configured by this task, and neither domain nor
 trademark availability has been legally verified.
 
 This repository contains the identity and tenancy foundation, platform Business
-onboarding, and the Business Services and StaffMember backends: a Spring Boot
-backend, a Bulgarian React identity and platform-admin client, Flyway-managed
-PostgreSQL, local Docker Compose, and non-deploying CI. Platform administrators
-can manage the Business lifecycle, and active Business owners can administer
-Services, StaffMembers, and StaffMember-to-Service assignments through
-authenticated APIs. The Business-owner configuration interface, working
-schedules, Customers, Appointments, booking, production email, and hosting are
-not implemented.
+onboarding, and the Business Services, StaffMember, and StaffMember
+working-schedule backends: a Spring Boot backend, a Bulgarian React identity
+and platform-admin client, Flyway-managed PostgreSQL, local Docker Compose, and
+non-deploying CI. Platform administrators can manage the Business lifecycle,
+and active Business owners can administer Services, StaffMembers,
+StaffMember-to-Service assignments, and each StaffMember's recurring weekly
+working schedule through authenticated APIs. The Business-owner configuration
+interface, schedule exceptions/time off, Customers, Appointments, booking,
+production email, and hosting are not implemented.
 
 ## Product identity
 
@@ -56,6 +57,7 @@ expand the MVP.
 - [Product roadmap](docs/product-roadmap.md)
 - [Business Services backend task](docs/tasks/04a-business-services-backend.md)
 - [Staff management backend task](docs/tasks/04b-staff-management-and-service-assignments-backend.md)
+- [Recurring staff working schedules backend task](docs/tasks/04c-recurring-staff-working-schedules-backend.md)
 - [Foundation task](docs/tasks/00-product-foundation.md)
 
 ## Selected toolchain
@@ -252,6 +254,37 @@ session, normalized, SQL, or persistence fields. DRAFT and ACTIVE Businesses
 permit reads and mutations. SUSPENDED Businesses remain readable and reject
 mutations with the safe public error contract. The Business-owner interface and
 its browser end-to-end verification remain deferred to issues #14 and #15.
+
+### Business StaffMember working-schedule API
+
+The selected Business and user identity come only from the authenticated
+server-side session. Access requires an active `BUSINESS_OWNER` Membership for
+that Business; `PLATFORM_ADMIN` alone, `MANAGER`, `STAFF`, inactive or missing
+Memberships, and foreign Memberships do not grant access. The PUT request
+carries only `expectedVersion` and the complete desired period list; it never
+supplies Business identity or timezone.
+
+| Method and path | Purpose |
+|---|---|
+| `GET /api/business/staff-members/{staffMemberId}/working-schedule` | Retrieve a StaffMember's recurring weekly schedule |
+| `PUT /api/business/staff-members/{staffMemberId}/working-schedule` | Atomically replace the complete desired week |
+
+Each StaffMember owns exactly one independent schedule aggregate with its own
+optimistic version, separate from the StaffMember aggregate version. Periods
+use `MONDAY` through `SUNDAY` and canonical `HH:mm` times with one-minute
+precision from `00:00` through `23:59`; PostgreSQL's special `24:00:00` value
+and non-canonical lexical forms are rejected. Periods on one weekday cannot
+overlap, but adjacent half-open periods are valid, and a request may contain
+at most 100 periods. Responses order periods by weekday, then start time, then
+end time, and also expose the live authoritative Business timezone.
+
+DRAFT and ACTIVE Businesses permit reads and mutations; SUSPENDED Businesses
+remain readable and reject mutations. Active and inactive StaffMembers retain
+readable schedules, but only an active StaffMember may receive a mutation.
+Deactivation and Business suspension preserve all schedule data. Requests and
+responses expose no Business, user, Membership, role, credential, session,
+normalized, SQL, or persistence fields. Schedule exceptions, time off, breaks,
+working overrides, and availability calculation remain future work.
 
 The development mailbox retains at most 50 links in memory and never logs,
 writes, or persists raw tokens. Sessions use an opaque `SPOTYOURSESSION` cookie

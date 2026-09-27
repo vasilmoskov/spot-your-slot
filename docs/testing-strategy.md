@@ -205,6 +205,56 @@ helper, including successful empty HTTP 202 responses. These
 checks complement the rendered-browser verification below and do not replace
 explicit human visual review.
 
+## Recurring StaffMember working-schedule backend verification
+
+Issue #13 extends the pinned PostgreSQL 18.4 Testcontainer schema through V7.
+`WorkingScheduleSchemaIntegrationTests` migrates V1 through V7 from empty,
+proves a schema held at V6 upgrades through V7 with all StaffMembers
+backfilled at version 0 using StaffMember-derived timestamps, verifies split
+and multiple-weekday periods persist in deterministic query order, and asserts
+exact generated minute bounds, the latest representable `23:59` boundary,
+rejection of `24:00` in any boundary position, adjacency, duplicates, partial
+overlap, containment, equality, overnight periods, sub-minute values, invalid
+weekdays, composite ownership, restrictive deletion, the installed
+`btree_gist` extension and operator classes, and the approved column,
+constraint, and index inventory. It confirms V7 introduces only the two new
+recurring-schedule tables.
+
+Domain and persistence tests (`StaffWorkingScheduleInputValidatorTests`,
+`StaffWorkingScheduleServiceIntegrationTests`,
+`StaffWorkingScheduleStoreIntegrationTests`) cover canonical-time and
+one-minute-precision validation, duplicate/overlap/range/100-period-cap
+rejection, atomic complete replacement, and independent schedule-version
+increments including identical replacements.
+
+Application tests (`StaffWorkingScheduleAdministrationServiceTests`,
+`StaffWorkingScheduleAdministrationServiceIntegrationTests`) exercise the
+published Workforce schedule-administration boundary against the Business
+lifecycle and identity owner-access contracts: active owner access, every
+nonqualifying role or Membership state, Business A/B isolation,
+DRAFT/ACTIVE/SUSPENDED behavior, active and inactive StaffMember read/mutation
+behavior, and safe exception mapping.
+
+`StaffWorkingScheduleLockingIntegrationTests` coordinates independent
+PostgreSQL transactions without sleeps to prove the Business → Membership →
+StaffMember lock order, that same-version replacement races produce exactly
+one winner and never a mixed period set, and that a schedule replacement and a
+StaffMember deactivation race safely in either interleaving while preserving
+data.
+
+Controller and PostgreSQL-backed MockMvc tests
+(`BusinessStaffWorkingScheduleControllerTests`,
+`BusinessStaffWorkingScheduleApiIntegrationTests`) cover the GET and PUT
+routes, session-derived context, canonical `HH:mm` request/response mapping
+including rejection of the lenient `24:00` lexical wraparound, CSRF on PUT,
+role and tenant isolation, lifecycle and optimistic conflicts, exact Bulgarian
+RFC 7807 errors, and sanitized generic failures. Requests and responses cannot
+supply or expose Business, user, Membership, role, session, or persistence
+data. `ModuleBoundaryTests` continues to verify the complete module graph,
+including `workforce`, remains acyclic. Issue #13 adds no frontend or browser
+E2E coverage; exceptions, time off, breaks, overrides, and availability remain
+future work.
+
 ## Browser E2E for Business onboarding and lifecycle
 
 Issue #7 adds a Playwright layer above the existing MockMvc/PostgreSQL and

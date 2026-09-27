@@ -101,9 +101,39 @@ already assigned inactive Services may be retained or removed. Removed
 assignment history is not stored.
 
 V6 has no StaffMember-to-user or Membership link. A future approved capability
-may add an optional same-Business one-to-one link. The planned
-**weekly_work_interval**, **schedule_break**, **time_off**, and
-**working_override** records are not created by V6.
+may add an optional same-Business one-to-one link.
+
+Flyway `V7__add_recurring_staff_working_schedules.sql` creates the implemented
+**staff_working_schedule** and **staff_working_period** tables. `V7` installs
+PostgreSQL's supplied trusted `btree_gist` extension.
+
+`staff_working_schedule` uses `(business_id, staff_member_id)` as its primary
+key with a restrictive composite foreign key to `staff_member`. It stores a
+nonnegative `bigint version` starting at 0 and UTC `created_at`/`updated_at`.
+`V7` backfills one row per existing StaffMember at version 0, using the
+StaffMember's creation instant for both timestamps; StaffMember creation
+inserts the new empty schedule in the same transaction.
+
+`staff_working_period` stores the same `(business_id, staff_member_id)`
+ownership, ISO `weekday` (`1`–`7`), local `start_time`/`end_time` as
+`time without time zone`, and a generated `int4range` (`minute_range`)
+converting each time to minutes after midnight with canonical `[start,end)`
+bounds. The primary key is the complete row, rejecting exact duplicates. A
+restrictive composite foreign key targets `staff_working_schedule`. Checks
+enforce the weekday range, minute precision (rejecting seconds/sub-minute
+values), rejection of PostgreSQL's special `24:00:00` value, and `start_time <
+end_time`. A GiST exclusion constraint (`business_id WITH =, staff_member_id
+WITH =, weekday WITH =, minute_range WITH &&`) rejects overlapping ranges only
+within the same Business, StaffMember, and weekday; half-open bounds permit
+adjacency. A request may contain at most 100 periods; this is an application
+contract enforced alongside the database invariants.
+
+The schedule version is independent of the StaffMember aggregate version.
+Every accepted complete replacement — deleting existing periods and inserting
+the validated desired set in one transaction — increments the schedule
+version and `updated_at` exactly once, including an identical replacement.
+Exceptions, holidays, leave, time off, working overrides, and breaks remain
+outside `V7`.
 
 ## Customers and Appointments
 

@@ -155,8 +155,36 @@ The authenticated Workforce API exposes list, detail, create, update,
 deactivate, reactivate, assignment listing, and complete assignment replacement
 under `/api/business/staff-members`. HTTP requests and responses omit Business,
 user, Membership, credential, role, session, normalized, and persistence state.
-Working schedules, StaffMember account linkage, availability, and booking remain
-outside the implemented Workforce slice.
+StaffMember account linkage, availability, and booking remain outside the
+implemented Workforce slice.
+
+The implemented recurring StaffMember working-schedule slice adds one
+independent `staff_working_schedule` aggregate per StaffMember under the same
+Business, with zero or more child `staff_working_period` rows. `V7` backfills
+an empty version-0 schedule for every existing StaffMember, and StaffMember
+creation inserts the new empty schedule inside the same transaction. The
+schedule version is independent of the StaffMember aggregate version; every
+accepted complete replacement, including an identical one, increments it
+exactly once. Periods use ISO weekday and local `HH:mm` clock values with
+one-minute precision from `00:00` through `23:59`; PostgreSQL's special
+`24:00:00` value is rejected, and a generated `int4range` plus a `btree_gist`
+multicolumn exclusion constraint reject overlaps scoped to Business,
+StaffMember, and weekday while permitting half-open adjacency.
+
+Schedule reads use a repeatable-read transaction so aggregate metadata and
+ordered periods come from one consistent snapshot; non-locking Business and
+Membership checks authorize an active `BUSINESS_OWNER` Membership. Complete
+replacement locks, in order, the Business lifecycle row, the exact owner
+Membership row, then the StaffMember row to stabilize its active state, before
+the conditional expected-version schedule update and complete child-period
+replacement in the same transaction. Only an active StaffMember may receive a
+mutation; deactivation and Business suspension preserve all schedule data. The
+authenticated API exposes `GET`/`PUT`
+`/api/business/staff-members/{staffMemberId}/working-schedule`; the PUT request
+carries only `expectedVersion` and the complete desired period list, and the
+response carries StaffMember ID, live Business timezone, ordered periods,
+independent schedule version, and timestamps. Exceptions, time off, breaks,
+overrides, and availability remain outside this slice.
 
 The platform Business API provides bounded deterministic listing, retrieval,
 DRAFT creation, profile update, initial activation, suspension, and

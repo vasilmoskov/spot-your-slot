@@ -65,8 +65,8 @@ to different weekdays conflict.
 
 Use one `staff_working_schedule` aggregate for every StaffMember. V7 backfills
 an empty version-0 schedule for existing StaffMembers using the owning
-StaffMember's creation instant for both schedule timestamps. Phase 2 will make
-future StaffMember creation insert its empty schedule in the same transaction.
+StaffMember's creation instant for both schedule timestamps. Future StaffMember
+creation inserts its empty schedule in the same transaction.
 
 Use a nonnegative independent `bigint version`, starting at `0`. Complete
 replacement requires a nonnegative `expectedVersion`. Every accepted
@@ -87,9 +87,8 @@ persistence failure rolls back both the version advance and period replacement.
 
 Persist weekdays as ISO values `1` through `7` and local start/end values as
 `time without time zone`. Do not persist the Business timezone in schedule
-tables. The later HTTP contract will expose weekdays as `MONDAY` through
-`SUNDAY`, times as canonical `HH:mm`, and the live authoritative Business
-timezone.
+tables. The HTTP contract exposes weekdays as `MONDAY` through `SUNDAY`, times
+as canonical `HH:mm`, and the live authoritative Business timezone.
 
 Reject PostgreSQL's special `24:00:00` time value. `23:59` is the latest
 representable boundary; it does not stand for the remainder of the final minute

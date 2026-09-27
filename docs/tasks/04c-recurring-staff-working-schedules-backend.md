@@ -1,6 +1,6 @@
 # SpotYourSlot — Recurring Staff Working Schedules Backend
 
-Status: In progress — Phase 1
+Status: Completed — Phases 1 through 5
 GitHub issue: #13 — Build recurring staff working schedules backend
 Parent issue: #10 — Add business services, staff, and working schedules
 Depends on: #11 — Business services backend; #12 — Staff management and
@@ -19,7 +19,7 @@ authoritative Business timezone.
 
 ## Approved scope
 
-An authorized Business owner will be able to:
+An authorized Business owner can:
 
 - retrieve a StaffMember's recurring weekly schedule;
 - atomically replace the complete desired week;
@@ -28,16 +28,16 @@ An authorized Business owner will be able to:
 - clear one weekday by omitting its periods; and
 - clear the complete week with an empty desired set.
 
-The authenticated endpoint contract will be:
+The authenticated endpoint contract is:
 
 - `GET /api/business/staff-members/{staffMemberId}/working-schedule`; and
 - `PUT /api/business/staff-members/{staffMemberId}/working-schedule`.
 
-The later PUT request contains only `expectedVersion` and the complete desired
-period list. It does not accept Business identity or timezone. The later
-response exposes StaffMember ID, authoritative Business timezone, ordered
-periods, independent schedule version, creation time, and update time. It does
-not expose Business, user, Membership, role, session, normalized, or persistence
+The PUT request contains only `expectedVersion` and the complete desired
+period list. It does not accept Business identity or timezone. The response
+exposes StaffMember ID, authoritative Business timezone, ordered periods,
+independent schedule version, creation time, and update time. It does not
+expose Business, user, Membership, role, session, normalized, or persistence
 state.
 
 ## Explicit exclusions
@@ -67,8 +67,8 @@ same immutable Business. The aggregate has:
 
 V7 creates an empty version-0 aggregate for every existing StaffMember.
 Backfilled creation and update timestamps both use the StaffMember creation
-instant. Phase 2 will make future StaffMember creation insert its empty schedule
-inside the StaffMember creation transaction.
+instant. `StaffMemberAdministrationService.create` inserts the new
+StaffMember's empty schedule inside the same StaffMember creation transaction.
 
 The schedule version is independent of the StaffMember aggregate version.
 StaffMember profile, lifecycle, and Service-assignment changes do not increment
@@ -83,7 +83,7 @@ Each period contains:
 - local start time; and
 - local end time.
 
-The later HTTP API uses `MONDAY` through `SUNDAY` and canonical `HH:mm` times.
+The HTTP API uses `MONDAY` through `SUNDAY` and canonical `HH:mm` times.
 Accepted local clock values have one-minute precision from `00:00` through
 `23:59`. PostgreSQL stores `time without time zone`; the Business timezone is
 authoritative and is not duplicated in schedule tables.
@@ -128,7 +128,7 @@ V7 explicitly installs PostgreSQL's supplied trusted `btree_gist` extension.
 It provides the UUID and `smallint` equality operator classes required beside
 the built-in `int4range` overlap operator in the multicolumn GiST exclusion.
 
-Phase 1 tests must prove on pinned PostgreSQL 18.4:
+Phase 1 tests prove on pinned PostgreSQL 18.4:
 
 - V1 through V7 migrate from empty;
 - a schema held at V6 upgrades through V7 with all StaffMembers backfilled;
@@ -148,13 +148,17 @@ Phase 1 tests must prove on pinned PostgreSQL 18.4:
 - no exception, time-off, break, override, availability, booking, Customer,
   Appointment, or account-linkage table or column is introduced.
 
-## Authorization and lifecycle contract for later phases
+## Authorization and lifecycle contract
 
 Every operation derives user and selected Business from the authenticated
 server-side context. Access requires an active `BUSINESS_OWNER` Membership for
-that exact user and Business. `PLATFORM_ADMIN` alone, `MANAGER`, `STAFF`,
-inactive or missing Memberships, and foreign Memberships do not authorize this
-issue.
+that exact user and Business. An absent, inactive, or foreign Membership for
+the selected Business is rejected by authenticated-context resolution as
+`ACTIVE_BUSINESS_REQUIRED`, the same established outcome the session filter
+produces before the controller runs. An active Membership for the selected
+Business that lacks `BUSINESS_OWNER` authority — `MANAGER` or `STAFF` — is
+rejected by application authorization as `ACCESS_DENIED`. `PLATFORM_ADMIN`
+alone does not bypass either requirement.
 
 DRAFT and ACTIVE Businesses allow schedule reads and mutations. SUSPENDED
 Businesses allow reads and reject mutations. Active and inactive StaffMembers
@@ -164,7 +168,7 @@ mutation. Deactivation and Business suspension preserve all schedule data.
 Missing and cross-Business StaffMember identifiers use the same safe not-found
 outcome. Requests and responses never carry authoritative Business identity.
 
-## Concurrency and locking contract for later phases
+## Concurrency and locking contract
 
 Complete replacement uses `expectedVersion`. The transaction acquires locks in
 this order:
@@ -188,10 +192,10 @@ claims require deterministic separate-transaction tests without sleeps.
 ADR-0012 records the durable aggregate, replacement, overlap, and lock-order
 decision.
 
-## Safe error contract for later phases
+## Safe error contract
 
-The later API retains the shared RFC 7807 shape and Bulgarian public details.
-Expected codes are:
+The API retains the shared RFC 7807 shape and Bulgarian public details.
+Implemented codes are:
 
 | Status | Code |
 |---:|---|
@@ -209,9 +213,9 @@ Responses must not expose SQL, constraint names, driver text, stack traces,
 rejected personal input, internal identifiers, Membership details, or tenant
 existence.
 
-## Approved implementation phases
+## Implementation phases
 
-### Phase 1 — contract, ADR, and PostgreSQL schema
+### Phase 1 — contract, ADR, and PostgreSQL schema (completed)
 
 - add this task record and ADR-0012;
 - add immutable V7 and backfill existing StaffMembers;
@@ -219,14 +223,14 @@ existence.
   tests; and
 - update only older schema inventory assertions affected by the new tables.
 
-### Phase 2 — validation and persistence
+### Phase 2 — validation and persistence (completed)
 
 - add schedule records and validation;
 - add Business-scoped schedule persistence and atomic replacement primitives;
 - create an empty schedule during future StaffMember creation; and
 - add focused unit and PostgreSQL persistence tests.
 
-### Phase 3 — authorization, lifecycle, and concurrency
+### Phase 3 — authorization, lifecycle, and concurrency (completed)
 
 - add narrow published Business schedule-context and Workforce administration
   contracts;
@@ -234,24 +238,81 @@ existence.
 - implement the approved lock order and complete-set transaction; and
 - add deterministic PostgreSQL authorization, lifecycle, and race coverage.
 
-### Phase 4 — authenticated HTTP API
+### Phase 4 — authenticated HTTP API (completed)
 
 - add GET and PUT endpoints under the StaffMember path;
 - add exact request/response records and safe error mapping; and
 - add controller and PostgreSQL-backed MockMvc coverage.
 
-### Phase 5 — documentation and acceptance
+### Phase 5 — documentation and acceptance (completed)
 
 - synchronize only the necessary permanent backend documentation;
 - run complete backend verification; and
 - review acceptance criteria, migrations, boundaries, public errors, and final
   scope.
 
-Each phase requires separate explicit approval before persistent changes.
+Each phase required separate explicit approval before persistent changes.
 
-## Phase 1 verification
+## Final acceptance evidence
 
-Phase 1 must run the focused schema suite first and then complete backend
-verification. The final review confirms exactly seven changed files, V1 through
-V6 byte-for-byte integrity, V7 as the only new migration, no staged files,
-generated artifacts, secrets, later-phase schema, or unrelated changes.
+Every acceptance area from issue #13 is satisfied by the committed
+implementation:
+
+1. exactly one `staff_working_schedule` row per StaffMember, primary keyed on
+   `(business_id, staff_member_id)`;
+2. V7 backfills one empty version-0 schedule per existing StaffMember, and
+   `StaffMemberAdministrationService.create` inserts the new StaffMember's
+   empty schedule inside the same creation transaction;
+3. every schedule read and mutation derives Business from the authenticated
+   `BUSINESS_OWNER` Membership; composite restrictive foreign keys tie periods
+   to `(business_id, staff_member_id)`;
+4. one-minute precision and strict canonical `HH:mm` values from `00:00`
+   through `23:59` are enforced by `StrictCanonicalLocalTimeDeserializer`, the
+   input validator, and the V7 minute-precision and clock-time-range checks;
+5. `StaffWorkingScheduleInputValidator` rejects duplicate periods,
+   `WorkingPeriodOverlapValidator` rejects overlaps, the 100-period cap is
+   enforced, and the V7 GiST exclusion and primary key repeat both guarantees
+   in PostgreSQL;
+6. `StaffWorkingScheduleStore.findPeriods` orders by weekday, start time, then
+   end time;
+7. the schedule version is independent of the StaffMember aggregate version;
+8. `StaffWorkingScheduleService.replace` advances the version and replaces all
+   periods in one transaction, rolling back together on any failure;
+9. `StaffWorkingScheduleAdministrationService` requires an active
+   `BUSINESS_OWNER` Membership for the exact Business;
+10. DRAFT and ACTIVE Businesses permit reads and mutations; SUSPENDED permits
+    reads and rejects mutations with `BUSINESS_SUSPENDED`;
+11. inactive StaffMembers retain readable schedules; only an active
+    StaffMember may receive a mutation, enforced by `StaffMemberInactive`;
+12. the mutation transaction locks the Business lifecycle row, the exact owner
+    Membership row, then the StaffMember row, before the conditional schedule
+    version update and complete period replacement, verified by
+    `StaffWorkingScheduleLockingIntegrationTests`;
+13. same-version replacement races and StaffMember-deactivation races are
+    covered deterministically without sleeps in the same test class;
+14. `BusinessStaffWorkingScheduleController` exposes the exact GET and PUT
+    routes under `/api/business/staff-members/{staffMemberId}/working-schedule`;
+15. `BusinessStaffWorkingScheduleExceptionHandler` maps every API-reachable
+    schedule application failure to the safe RFC 7807 contract below without
+    exposing SQL, stack traces, or Membership details.
+    `StaffWorkingScheduleNotFound` is intentionally not part of this public
+    mapping: the administration flow always requires and loads the
+    StaffMember first, and every StaffMember owns an auto-provisioned
+    schedule, so that exception is not reachable through the authenticated
+    API;
+16. `ModuleBoundaryTests` verifies the complete module graph, including
+    `workforce`, remains acyclic;
+17. no exception, time-off, break, override, availability, booking, Customer,
+    or Appointment table, column, or endpoint was introduced.
+
+## Final verification
+
+Phases 1–4 gathered the focused schema, persistence, application, locking, and
+controller evidence described throughout this record. Phase 5 is
+documentation-only and did not rerun those focused suites; its exact evidence
+is `./mvnw --batch-mode verify` (919 tests, 0 failures, 0 errors) and
+`git diff --check` (no whitespace errors), plus a git blob-hash comparison
+proving V1 through V7 remain byte-for-byte unchanged against the starting
+commit, with V7 remaining the only new migration. No production, test,
+configuration, dependency, or generated file changed during Phase 5; only
+Markdown documentation was edited.

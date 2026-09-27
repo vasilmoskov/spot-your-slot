@@ -77,11 +77,19 @@ dependencies absent separate approval.
 - Exit: availability inputs can be configured for every BusinessType; role and
   tenant tests pass without industry branches.
 
-Completing issues #11 and #12 does not complete this phase or parent issue #10.
-Recurring working schedules remain with issue #13. The Business-owner Services,
-StaffMember, assignment, and schedule interface remains with issue #14, and the
-complete browser journey remains with issue #15. Availability inputs beyond
-these backend slices also remain pending.
+- The recurring StaffMember working-schedule backend slice in issue #13 is
+  complete: V7, the independent versioned schedule aggregate, canonical
+  `HH:mm`/one-minute-precision validation, atomic complete replacement,
+  owner-only authorization and lifecycle enforcement, the approved
+  Business/Membership/StaffMember lock order with deterministic race
+  coverage, the authenticated GET/PUT HTTP API, and PostgreSQL-backed
+  verification.
+
+Completing issues #11, #12, and #13 does not complete this phase or parent
+issue #10. The Business-owner Services, StaffMember, assignment, and schedule
+interface remains with issue #14, and the complete browser journey remains
+with issue #15. Exceptions, time off, breaks, working overrides, and
+availability inputs beyond these backend slices also remain pending.
 
 ## Phase 5 — availability engine
 

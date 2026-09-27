@@ -169,6 +169,64 @@ input, UUIDs, tenant identity, SQL or driver diagnostics, constraints, causes,
 stack traces, Membership details, or cross-Business existence. Unexpected
 failures retain the shared sanitized `INTERNAL_ERROR` response.
 
+### Business StaffMember working-schedule authorization
+
+Every `/api/business/staff-members/{staffMemberId}/working-schedule` operation
+derives the user and selected Business only from the authenticated
+server-managed context; no path, query, request, or response field carries
+Business, user, Membership, role, or session identity. Access requires an
+active `BUSINESS_OWNER` Membership for that exact user and Business. An
+absent, inactive, or foreign Membership for the selected Business is rejected
+by authenticated-context resolution as `ACTIVE_BUSINESS_REQUIRED`, the same
+established outcome the session filter produces before the controller runs.
+An active Membership for the selected Business that lacks `BUSINESS_OWNER`
+authority — `MANAGER` or `STAFF` — is rejected by application authorization as
+`ACCESS_DENIED`. `PLATFORM_ADMIN` alone does not bypass either requirement.
+Missing and cross-Business StaffMember identifiers share the same safe
+`STAFF_MEMBER_NOT_FOUND` outcome.
+
+DRAFT and ACTIVE Businesses permit reads and mutations. SUSPENDED Businesses
+remain readable and reject mutations with `BUSINESS_SUSPENDED`. Active and
+inactive StaffMembers retain readable schedules; only an active StaffMember
+may receive a mutation, enforced by `STAFF_MEMBER_INACTIVE`. Deactivation and
+Business suspension preserve all schedule data.
+
+Complete replacement uses `expectedVersion`, independent of the StaffMember
+aggregate version. The mutation transaction locks, in order, the Business
+lifecycle row, the exact owner Membership row, then the StaffMember row to
+stabilize its active state, before the conditional schedule version update and
+complete child-period replacement in the same transaction. Any validation,
+version, ownership, or persistence failure rolls back the version and periods
+together; concurrent same-version replacements produce one accepted schedule
+and one safe `WORKING_SCHEDULE_CONCURRENT_UPDATE` conflict. Reads use a
+repeatable-read transaction so aggregate metadata and ordered periods come
+from one consistent snapshot. Every PUT remains CSRF-protected.
+
+Accepted local clock values have one-minute precision from `00:00` through
+`23:59`, in strict canonical `HH:mm` lexical form; PostgreSQL's special
+`24:00:00` value and any lenient wraparound are rejected before reaching
+application validation. Periods on one weekday cannot overlap; adjacent
+half-open periods are valid. A request may contain at most 100 periods.
+
+Working-schedule failures use this stable public contract:
+
+| Status | Code | Bulgarian public wording |
+|---:|---|---|
+| 400 | `VALIDATION_ERROR` | `Проверете въведените данни.` |
+| 401 | `AUTH_REQUIRED` | `Необходим е вход.` |
+| 403 | `ACTIVE_BUSINESS_REQUIRED` | `Изберете бизнес, за да продължите.` |
+| 403 | `ACCESS_DENIED` | `Нямате достъп до тази операция.` |
+| 404 | `STAFF_MEMBER_NOT_FOUND` | `Членът на екипа не е намерен.` |
+| 409 | `STAFF_MEMBER_INACTIVE` | `Неактивен член на екипа не може да получи работен график.` |
+| 409 | `WORKING_SCHEDULE_CONCURRENT_UPDATE` | `Работният график е променен от друга операция. Обновете данните и опитайте отново.` |
+| 409 | `BUSINESS_SUSPENDED` | `Спрян бизнес може само да преглежда данните си.` |
+| 500 | `INTERNAL_ERROR` | `Възникна неочаквана грешка.` |
+
+These responses never expose SQL diagnostics, constraint names, stack traces,
+rejected personal input, internal identifiers, Membership details, or tenant
+existence. Exceptions, holidays, leave, time off, working overrides, and
+breaks remain outside this contract.
+
 Repositories require `business_id`; foreign/composite constraints validate
 common ownership. STAFF is restricted to the linked StaffMember’s schedule and
 Appointments. Cross-Business attempts return safe 404 where existence need not

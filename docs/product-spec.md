@@ -139,8 +139,16 @@ Only active Services may be added to an assignment set. An already assigned
 inactive Service may be retained or removed; after removal it cannot be restored
 until reactivated. Service deactivation preserves existing assignment rows.
 Each successful complete-set replacement, including a same-set replacement,
-increments the shared StaffMember version once. Weekly working intervals,
-breaks, time off, and working overrides remain future capabilities.
+increments the shared StaffMember version once.
+
+Each StaffMember also owns one independent recurring weekly working-schedule
+aggregate: zero or more weekday periods with local `HH:mm` start/end times at
+one-minute precision, an independent optimistic version, and atomic complete
+replacement of the desired week. An authorized Business owner retrieves and
+replaces this schedule through its own authenticated endpoint; the schedule
+version is separate from the StaffMember version, and inactive StaffMembers
+keep a readable but non-mutable schedule. Breaks, time off, and working
+overrides remain future capabilities.
 
 ## Availability and assignment
 
