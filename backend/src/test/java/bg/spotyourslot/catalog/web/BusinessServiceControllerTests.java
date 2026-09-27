@@ -82,8 +82,8 @@ class BusinessServiceControllerTests {
 
     @Test
     void listUsesDefaultsAndMapsTheApprovedPage() throws Exception {
-        when(services.list(context, 0, 50))
-                .thenReturn(new ServicePage(List.of(details()), 0, 50, 1));
+        when(services.list(context, 0, 10, null, null))
+                .thenReturn(new ServicePage(List.of(details()), 0, 10, 1));
 
         mvc.perform(get("/api/business/services"))
                 .andExpect(status().isOk())
@@ -92,9 +92,25 @@ class BusinessServiceControllerTests {
                 .andExpect(jsonPath("$.services[0].price").value(25.50))
                 .andExpect(jsonPath("$.services[0].businessId").doesNotExist())
                 .andExpect(jsonPath("$.page").value(0))
-                .andExpect(jsonPath("$.size").value(50))
+                .andExpect(jsonPath("$.size").value(10))
                 .andExpect(jsonPath("$.totalElements").value(1));
-        verify(services).list(context, 0, 50);
+        verify(services).list(context, 0, 10, null, null);
+    }
+
+    @Test
+    void listPassesThroughExplicitSortAndDirection() throws Exception {
+        when(services.list(context, 1, 25, "price", "desc"))
+                .thenReturn(new ServicePage(List.of(details()), 1, 25, 30));
+
+        mvc.perform(get("/api/business/services")
+                        .param("page", "1")
+                        .param("size", "25")
+                        .param("sort", "price")
+                        .param("direction", "desc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.page").value(1))
+                .andExpect(jsonPath("$.size").value(25));
+        verify(services).list(context, 1, 25, "price", "desc");
     }
 
     @Test

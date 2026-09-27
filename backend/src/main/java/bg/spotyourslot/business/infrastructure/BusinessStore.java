@@ -1,5 +1,6 @@
 package bg.spotyourslot.business.infrastructure;
 
+import bg.spotyourslot.business.BusinessRecords.BusinessSortField;
 import bg.spotyourslot.business.domain.BusinessSlug;
 import bg.spotyourslot.business.domain.BusinessStatus;
 import bg.spotyourslot.business.domain.BusinessTimezone;
@@ -17,7 +18,20 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public class BusinessStore {
-    public static final int MAX_PAGE_SIZE = 100;
+    public static final int MAX_PAGE_SIZE = 50;
+
+    /**
+     * Documented semantic lifecycle order for the STATUS sort field: ascending reads as the
+     * lifecycle progression DRAFT, then ACTIVE, then SUSPENDED (descending reverses it), rather
+     * than relying on enum declaration or alphabetical order.
+     */
+    private static final String STATUS_RANK_EXPRESSION = """
+            CASE status
+                WHEN 'DRAFT' THEN 0
+                WHEN 'ACTIVE' THEN 1
+                WHEN 'SUSPENDED' THEN 2
+            END
+            """;
 
     private static final String RETURNING_COLUMNS = """
             id, slug, display_name, business_type, status, timezone,
@@ -31,7 +45,8 @@ public class BusinessStore {
         this.jdbc = jdbc;
     }
 
-    public List<BusinessRow> list(int page, int size) {
+    public List<BusinessRow> list(
+            int page, int size, BusinessSortField sort, boolean ascending) {
         validatePage(page, size);
         long offset = Math.multiplyExact((long) page, size);
 
@@ -41,13 +56,31 @@ public class BusinessStore {
                                address_details, phone, contact_email, version,
                                created_at, updated_at
                         FROM business
-                        ORDER BY created_at DESC, id DESC
+                        ORDER BY %s
                         LIMIT :size OFFSET :offset
-                        """)
+                        """.formatted(orderClause(sort, ascending)))
                 .param("size", size)
                 .param("offset", offset)
                 .query(this::businessRow)
                 .list();
+    }
+
+    /**
+     * The primary criterion's direction follows {@code ascending} literally, except for
+     * {@code STATUS}, whose rank already encodes the documented ascending lifecycle order (see
+     * {@link #STATUS_RANK_EXPRESSION}). Tie-breakers stay fixed ascending regardless of direction
+     * so ordering remains deterministic.
+     */
+    private String orderClause(BusinessSortField sort, boolean ascending) {
+        String direction = ascending ? "ASC" : "DESC";
+        return switch (sort) {
+            case DISPLAY_NAME -> "lower(display_name) " + direction + ", id ASC";
+            case SLUG -> "slug " + direction + ", id ASC";
+            case BUSINESS_TYPE ->
+                    "business_type " + direction + ", lower(display_name) ASC, id ASC";
+            case STATUS -> "(" + STATUS_RANK_EXPRESSION + ") " + direction
+                    + ", lower(display_name) ASC, id ASC";
+        };
     }
 
     public long count() {

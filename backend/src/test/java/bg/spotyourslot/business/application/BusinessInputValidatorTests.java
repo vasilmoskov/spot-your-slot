@@ -9,6 +9,7 @@ import bg.spotyourslot.business.BusinessApplicationException.InputField;
 import bg.spotyourslot.business.BusinessApplicationException.InvalidInput;
 import bg.spotyourslot.business.BusinessRecords;
 import bg.spotyourslot.business.BusinessRecords.BusinessPage;
+import bg.spotyourslot.business.BusinessRecords.BusinessSortField;
 import bg.spotyourslot.business.BusinessRecords.BusinessSummary;
 import bg.spotyourslot.business.BusinessRecords.CreateBusinessCommand;
 import bg.spotyourslot.business.BusinessRecords.UpdateBusinessCommand;
@@ -278,6 +279,38 @@ class BusinessInputValidatorTests {
         assertInvalid(field, () -> VALIDATOR.validatePage(page, size));
     }
 
+    @ParameterizedTest
+    @ValueSource(ints = {10, 25, 50})
+    void acceptsOnlyTheApprovedPageSizes(int size) {
+        assertThat(VALIDATOR.validatePage(0, size))
+                .isEqualTo(new BusinessInputValidator.PageInput(0, size));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {1, 7, 20, 37, 49, 51})
+    void rejectsEveryPageSizeOutsideTheApprovedAllowlist(int size) {
+        assertInvalid(InputField.SIZE, () -> VALIDATOR.validatePage(0, size));
+    }
+
+    @Test
+    void validatesSortAndDirection() {
+        assertThat(VALIDATOR.validateSort(null)).isEqualTo(BusinessSortField.DISPLAY_NAME);
+        assertThat(VALIDATOR.validateSort("displayName"))
+                .isEqualTo(BusinessSortField.DISPLAY_NAME);
+        assertThat(VALIDATOR.validateSort("slug")).isEqualTo(BusinessSortField.SLUG);
+        assertThat(VALIDATOR.validateSort("businessType"))
+                .isEqualTo(BusinessSortField.BUSINESS_TYPE);
+        assertThat(VALIDATOR.validateSort("status")).isEqualTo(BusinessSortField.STATUS);
+        assertInvalid(InputField.SORT, () -> VALIDATOR.validateSort("unknown"));
+        assertInvalid(InputField.SORT, () -> VALIDATOR.validateSort("DISPLAY_NAME"));
+
+        assertThat(VALIDATOR.validateAscending(null)).isTrue();
+        assertThat(VALIDATOR.validateAscending("asc")).isTrue();
+        assertThat(VALIDATOR.validateAscending("desc")).isFalse();
+        assertInvalid(InputField.DIRECTION, () -> VALIDATOR.validateAscending("ASC"));
+        assertInvalid(InputField.DIRECTION, () -> VALIDATOR.validateAscending("sideways"));
+    }
+
     @Test
     void rejectsNullApplicationCommandsSafely() {
         assertInvalid(InputField.COMMAND, () -> VALIDATOR.validateCreate(null));
@@ -315,6 +348,7 @@ class BusinessInputValidatorTests {
                                         Stream.of(method.getGenericReturnType()),
                                         Stream.of(method.getGenericParameterTypes()))),
                         Stream.of(BusinessRecords.class.getDeclaredClasses())
+                                .filter(Class::isRecord)
                                 .flatMap(type -> Stream.of(type.getRecordComponents())
                                         .flatMap(Stream::of)
                                         .map(component -> component.getGenericType())))
@@ -526,7 +560,7 @@ class BusinessInputValidatorTests {
     }
 
     private static Stream<Arguments> validPages() {
-        return Stream.of(Arguments.of(0, 1), Arguments.of(0, 100), Arguments.of(10, 50));
+        return Stream.of(Arguments.of(0, 10), Arguments.of(0, 50), Arguments.of(10, 25));
     }
 
     private static Stream<Arguments> invalidPages() {
@@ -534,7 +568,7 @@ class BusinessInputValidatorTests {
                 Arguments.of(-1, 50, InputField.PAGE),
                 Arguments.of(0, 0, InputField.SIZE),
                 Arguments.of(0, -1, InputField.SIZE),
-                Arguments.of(0, 101, InputField.SIZE));
+                Arguments.of(0, 51, InputField.SIZE));
     }
 
     private enum OptionalField {

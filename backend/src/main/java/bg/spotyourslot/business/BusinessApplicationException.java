@@ -17,6 +17,8 @@ public abstract sealed class BusinessApplicationException extends RuntimeExcepti
         BUSINESS_ID,
         PAGE,
         SIZE,
+        SORT,
+        DIRECTION,
         SLUG,
         DISPLAY_NAME,
         BUSINESS_TYPE,

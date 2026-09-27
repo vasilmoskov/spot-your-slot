@@ -65,29 +65,31 @@ class PlatformBusinessControllerTests {
     @Test
     void listUsesDefaultPaginationAndMapsApprovedSummaryFields() throws Exception {
         var summary = summary();
-        when(service.list(0, 50)).thenReturn(new BusinessPage(List.of(summary), 0, 50, 1));
+        when(service.list(0, 10, null, null))
+                .thenReturn(new BusinessPage(List.of(summary), 0, 10, 1));
 
         mvc.perform(get("/api/platform/businesses"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.page").value(0))
-                .andExpect(jsonPath("$.size").value(50))
+                .andExpect(jsonPath("$.size").value(10))
                 .andExpect(jsonPath("$.totalElements").value(1))
                 .andExpect(jsonPath("$.businesses[0].id").value(BUSINESS_ID.toString()))
                 .andExpect(jsonPath("$.businesses[0].businessType").value("BEAUTY_STUDIO"))
                 .andExpect(jsonPath("$.businesses[0].status").value("DRAFT"))
                 .andExpect(jsonPath("$.businesses[0].description").doesNotExist());
-        verify(service).list(0, 50);
+        verify(service).list(0, 10, null, null);
     }
 
     @Test
     void listDelegatesExplicitPagination() {
-        when(service.list(2, 25)).thenReturn(new BusinessPage(List.of(), 2, 25, 0));
+        when(service.list(2, 25, "slug", "desc"))
+                .thenReturn(new BusinessPage(List.of(), 2, 25, 0));
 
-        var response = controller.list(2, 25);
+        var response = controller.list(2, 25, "slug", "desc");
 
         assertThat(response.page()).isEqualTo(2);
         assertThat(response.size()).isEqualTo(25);
-        verify(service).list(2, 25);
+        verify(service).list(2, 25, "slug", "desc");
     }
 
     @Test

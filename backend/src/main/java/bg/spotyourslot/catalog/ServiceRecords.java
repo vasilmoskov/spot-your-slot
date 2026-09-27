@@ -9,6 +9,13 @@ public final class ServiceRecords {
     private ServiceRecords() {
     }
 
+    public enum ServiceSortField {
+        NAME,
+        DURATION,
+        PRICE,
+        STATUS
+    }
+
     public record ServiceDetails(
             UUID id,
             String name,

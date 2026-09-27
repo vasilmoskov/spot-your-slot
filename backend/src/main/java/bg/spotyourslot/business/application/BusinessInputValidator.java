@@ -2,6 +2,7 @@ package bg.spotyourslot.business.application;
 
 import bg.spotyourslot.business.BusinessApplicationException.InputField;
 import bg.spotyourslot.business.BusinessApplicationException.InvalidInput;
+import bg.spotyourslot.business.BusinessRecords.BusinessSortField;
 import bg.spotyourslot.business.BusinessRecords.CreateBusinessCommand;
 import bg.spotyourslot.business.BusinessRecords.UpdateBusinessCommand;
 import bg.spotyourslot.business.domain.BusinessSlug;
@@ -11,12 +12,14 @@ import jakarta.validation.Validator;
 import jakarta.validation.constraints.Email;
 import java.text.Normalizer;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
 
 @Component
 public class BusinessInputValidator {
-    static final int MAX_PAGE_SIZE = 100;
+    static final int MAX_PAGE_SIZE = 50;
+    static final Set<Integer> ALLOWED_PAGE_SIZES = Set.of(10, 25, 50);
     static final int DISPLAY_NAME_MAX_LENGTH = 200;
     static final int DESCRIPTION_MAX_LENGTH = 2_000;
     static final int CITY_MAX_LENGTH = 100;
@@ -37,10 +40,34 @@ public class BusinessInputValidator {
         if (page < 0) {
             throw new InvalidInput(InputField.PAGE);
         }
-        if (size < 1 || size > MAX_PAGE_SIZE) {
+        if (!ALLOWED_PAGE_SIZES.contains(size)) {
             throw new InvalidInput(InputField.SIZE);
         }
         return new PageInput(page, size);
+    }
+
+    public BusinessSortField validateSort(String sort) {
+        if (sort == null) {
+            return BusinessSortField.DISPLAY_NAME;
+        }
+        return switch (sort) {
+            case "displayName" -> BusinessSortField.DISPLAY_NAME;
+            case "slug" -> BusinessSortField.SLUG;
+            case "businessType" -> BusinessSortField.BUSINESS_TYPE;
+            case "status" -> BusinessSortField.STATUS;
+            default -> throw new InvalidInput(InputField.SORT);
+        };
+    }
+
+    public boolean validateAscending(String direction) {
+        if (direction == null) {
+            return true;
+        }
+        return switch (direction) {
+            case "asc" -> true;
+            case "desc" -> false;
+            default -> throw new InvalidInput(InputField.DIRECTION);
+        };
     }
 
     public UUID validateBusinessId(UUID businessId) {

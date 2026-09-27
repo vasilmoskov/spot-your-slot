@@ -140,9 +140,9 @@ class PlatformBusinessServiceTests {
     @Test
     void listDelegatesWithoutOwnerReadiness() {
         var page = new BusinessPage(List.of(), 0, 20, 0);
-        when(businesses.list(0, 20)).thenReturn(page);
+        when(businesses.list(0, 20, null, null)).thenReturn(page);
 
-        assertThat(service.list(0, 20)).isSameAs(page);
+        assertThat(service.list(0, 20, null, null)).isSameAs(page);
         verifyNoInteractions(activeOwners);
     }
 

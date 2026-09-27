@@ -839,7 +839,13 @@ describe('identity application', () => {
     expect(await screen.findByText('Студио А')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Бизнеси' })).toHaveAttribute('aria-current', 'page')
     expect(mockedRequest).toHaveBeenCalledTimes(1)
-    expect(mockedListBusinesses).toHaveBeenCalledWith(0, 50, expect.any(AbortSignal))
+    expect(mockedListBusinesses).toHaveBeenCalledWith(
+      0,
+      10,
+      'displayName',
+      'asc',
+      expect.any(AbortSignal),
+    )
 
     await act(async () => {
       history.pushState({}, '', '/#/profile')
@@ -1044,7 +1050,9 @@ describe('identity application', () => {
     render(<App />)
 
     expect(await screen.findByRole('heading', { name: 'Услуги' })).toBeInTheDocument()
-    expect(window.location.hash).toBe('#/business/services')
+    expect(window.location.hash).toBe(
+      '#/business/services?page=0&size=10&sort=name&direction=asc',
+    )
     expect(screen.getByRole('link', { name: 'Услуги' })).toBeInTheDocument()
     expect(screen.getAllByText('Бизнес А').length).toBeGreaterThan(0)
     expect(await screen.findByText('Все още няма създадени услуги.')).toBeInTheDocument()
@@ -1188,6 +1196,186 @@ describe('Business-scoped state invalidation on context switch', () => {
 
     expect(screen.queryByText('Обезценени данни от бизнес А')).not.toBeInTheDocument()
     expect(screen.getByText('Услуга на бизнес Б')).toBeInTheDocument()
+  })
+
+  it('resets page to 0 but preserves size/sort/direction when the active Business changes', async () => {
+    history.replaceState(
+      {},
+      '',
+      '/#/business/services?page=2&size=25&sort=price&direction=desc',
+    )
+    mockedListServices.mockResolvedValue({
+      services: [],
+      page: 2,
+      size: 25,
+      totalElements: 60,
+    })
+
+    const { rerender } = render(<Harness session={businessA} />)
+    await waitFor(() =>
+      expect(mockedListServices).toHaveBeenLastCalledWith(
+        2,
+        25,
+        'price',
+        'desc',
+        expect.any(AbortSignal),
+      ),
+    )
+
+    mockedListServices.mockResolvedValue({
+      services: [],
+      page: 0,
+      size: 25,
+      totalElements: 3,
+    })
+
+    rerender(<Harness session={businessB} />)
+
+    await waitFor(() =>
+      expect(mockedListServices).toHaveBeenLastCalledWith(
+        0,
+        25,
+        'price',
+        'desc',
+        expect.any(AbortSignal),
+      ),
+    )
+    expect(window.location.hash).toBe(
+      '#/business/services?page=0&size=25&sort=price&direction=desc',
+    )
+  })
+})
+
+describe('table sort/pagination URL state', () => {
+  it('clicking a sortable header updates the URL and Back restores the previous configuration', async () => {
+    mockedRequest.mockResolvedValue(session)
+    mockedListServices.mockResolvedValue({
+      services: [testService],
+      page: 0,
+      size: 10,
+      totalElements: 1,
+    })
+    render(<App />)
+
+    await screen.findByRole('heading', { name: 'Услуги' })
+    await screen.findByText('Подстригване')
+    expect(window.location.hash).toBe(
+      '#/business/services?page=0&size=10&sort=name&direction=asc',
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Цена' }))
+    await waitFor(() =>
+      expect(window.location.hash).toBe(
+        '#/business/services?page=0&size=10&sort=price&direction=asc',
+      ),
+    )
+
+    await act(async () => {
+      history.back()
+      await Promise.resolve()
+    })
+    await waitFor(() =>
+      expect(window.location.hash).toBe(
+        '#/business/services?page=0&size=10&sort=name&direction=asc',
+      ),
+    )
+  })
+
+  it('normalizes an invalid list query in the URL to canonical defaults on load', async () => {
+    history.replaceState({}, '', '/#/business/services?page=-5&size=999&sort=bogus&direction=up')
+    mockedRequest.mockResolvedValue(session)
+    mockedListServices.mockResolvedValue(emptyServicePage)
+
+    render(<App />)
+
+    await screen.findByRole('heading', { name: 'Услуги' })
+    await waitFor(() =>
+      expect(window.location.hash).toBe(
+        '#/business/services?page=0&size=10&sort=name&direction=asc',
+      ),
+    )
+  })
+
+  it('replaces (not pushes) history when Services recovers from an out-of-range page', async () => {
+    history.replaceState({}, '', '/#/business/services?page=5&size=10&sort=name&direction=asc')
+    mockedRequest.mockResolvedValue(session)
+    mockedListServices.mockResolvedValueOnce({ services: [], page: 5, size: 10, totalElements: 11 })
+    mockedListServices.mockResolvedValue({
+      services: [testService],
+      page: 1,
+      size: 10,
+      totalElements: 11,
+    })
+    const pushSpy = vi.spyOn(window.history, 'pushState')
+    const replaceSpy = vi.spyOn(window.history, 'replaceState')
+
+    render(<App />)
+
+    await screen.findByRole('heading', { name: 'Услуги' })
+    await waitFor(() =>
+      expect(window.location.hash).toBe(
+        '#/business/services?page=1&size=10&sort=name&direction=asc',
+      ),
+    )
+    expect(pushSpy).not.toHaveBeenCalled()
+    expect(replaceSpy).toHaveBeenCalledWith(
+      {},
+      '',
+      '/#/business/services?page=1&size=10&sort=name&direction=asc',
+    )
+
+    replaceSpy.mockClear()
+    fireEvent.click(screen.getByRole('button', { name: 'Цена' }))
+    await waitFor(() =>
+      expect(window.location.hash).toBe(
+        '#/business/services?page=0&size=10&sort=price&direction=asc',
+      ),
+    )
+    expect(pushSpy).toHaveBeenCalledWith(
+      {},
+      '',
+      '/#/business/services?page=0&size=10&sort=price&direction=asc',
+    )
+    expect(replaceSpy).not.toHaveBeenCalled()
+
+    pushSpy.mockRestore()
+    replaceSpy.mockRestore()
+  })
+
+  it('replaces (not pushes) history when Platform Businesses recovers from an out-of-range page', async () => {
+    history.replaceState(
+      {},
+      '',
+      '/#/platform/businesses?page=5&size=10&sort=displayName&direction=asc',
+    )
+    mockedRequest.mockResolvedValue({ ...session, platformAdmin: true })
+    mockedListBusinesses.mockResolvedValueOnce({
+      businesses: [],
+      page: 5,
+      size: 10,
+      totalElements: 11,
+    })
+    mockedListBusinesses.mockResolvedValue({ ...businessPage, page: 1, totalElements: 11 })
+    const pushSpy = vi.spyOn(window.history, 'pushState')
+    const replaceSpy = vi.spyOn(window.history, 'replaceState')
+
+    render(<App />)
+
+    await screen.findByRole('heading', { name: 'Бизнеси' })
+    await waitFor(() =>
+      expect(window.location.hash).toBe(
+        '#/platform/businesses?page=1&size=10&sort=displayName&direction=asc',
+      ),
+    )
+    expect(pushSpy).not.toHaveBeenCalled()
+    expect(replaceSpy).toHaveBeenCalledWith(
+      {},
+      '',
+      '/#/platform/businesses?page=1&size=10&sort=displayName&direction=asc',
+    )
+
+    pushSpy.mockRestore()
+    replaceSpy.mockRestore()
   })
 })
 

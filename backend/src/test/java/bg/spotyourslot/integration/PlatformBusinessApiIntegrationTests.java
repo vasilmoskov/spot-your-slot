@@ -117,8 +117,15 @@ class PlatformBusinessApiIntegrationTests extends PostgresIntegrationTest {
         mvc.perform(get("/api/platform/businesses").cookie(adminSession))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.page").value(0))
-                .andExpect(jsonPath("$.size").value(50))
+                .andExpect(jsonPath("$.size").value(10))
                 .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.businesses[0].id").value(businessId.toString()));
+
+        mvc.perform(get("/api/platform/businesses")
+                        .cookie(adminSession)
+                        .param("sort", "slug")
+                        .param("direction", "desc"))
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.businesses[0].id").value(businessId.toString()));
 
         mvc.perform(get("/api/platform/businesses/{businessId}", businessId)
@@ -142,6 +149,16 @@ class PlatformBusinessApiIntegrationTests extends PostgresIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.slug").value("updated-api-business"))
                 .andExpect(jsonPath("$.version").value(1));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {10, 25, 50})
+    void listingAcceptsEveryApprovedPageSize(int size) throws Exception {
+        mvc.perform(get("/api/platform/businesses")
+                        .cookie(adminSession)
+                        .param("size", String.valueOf(size)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.size").value(size));
     }
 
     @Test
@@ -270,6 +287,21 @@ class PlatformBusinessApiIntegrationTests extends PostgresIntegrationTest {
         assertValidationError(mvc.perform(get("/api/platform/businesses")
                 .cookie(adminSession)
                 .param("page", "-1")));
+        assertValidationError(mvc.perform(get("/api/platform/businesses")
+                .cookie(adminSession)
+                .param("size", "1")));
+        assertValidationError(mvc.perform(get("/api/platform/businesses")
+                .cookie(adminSession)
+                .param("size", "7")));
+        assertValidationError(mvc.perform(get("/api/platform/businesses")
+                .cookie(adminSession)
+                .param("size", "51")));
+        assertValidationError(mvc.perform(get("/api/platform/businesses")
+                .cookie(adminSession)
+                .param("sort", "unknown")));
+        assertValidationError(mvc.perform(get("/api/platform/businesses")
+                .cookie(adminSession)
+                .param("direction", "sideways")));
 
         UUID businessId = createBusinessThroughApi("invalid-version-business");
         assertValidationError(mvc.perform(post(

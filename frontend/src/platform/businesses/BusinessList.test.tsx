@@ -1,8 +1,9 @@
 import '@testing-library/jest-dom/vitest'
-import { StrictMode } from 'react'
+import { StrictMode, useState } from 'react'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../identity/api'
+import { BUSINESSES_DEFAULT_LIST, type ListQueryState } from '../../navigation'
 import { listBusinesses, type BusinessPage } from './api'
 import { BusinessList } from './BusinessList'
 
@@ -38,8 +39,20 @@ const populatedPage: BusinessPage = {
     },
   ],
   page: 0,
-  size: 50,
+  size: 10,
   totalElements: 1,
+}
+
+type StatefulProps = {
+  onAuthenticationRequired: (detail: string) => void
+  onCreate?: () => void
+  onOpen?: (businessId: string) => void
+  initialList?: ListQueryState
+}
+
+function StatefulBusinessList({ initialList = BUSINESSES_DEFAULT_LIST, ...props }: StatefulProps) {
+  const [list, setList] = useState(initialList)
+  return <BusinessList list={list} onListChange={setList} {...props} />
 }
 
 beforeEach(() => {
@@ -47,13 +60,13 @@ beforeEach(() => {
 })
 
 describe('BusinessList', () => {
-  it('loads page zero with size 50 and renders approved summary metadata once', async () => {
+  it('loads page zero with size 10 and renders approved summary metadata once', async () => {
     mockedListBusinesses.mockResolvedValue(populatedPage)
     const onCreate = vi.fn()
     const onOpen = vi.fn()
 
     render(
-      <BusinessList
+      <StatefulBusinessList
         onAuthenticationRequired={vi.fn()}
         onCreate={onCreate}
         onOpen={onOpen}
@@ -65,17 +78,19 @@ describe('BusinessList', () => {
       .toBeInTheDocument()
     expect(mockedListBusinesses).toHaveBeenCalledWith(
       0,
-      50,
+      10,
+      'displayName',
+      'asc',
       expect.any(AbortSignal),
     )
     expect(screen.getAllByText('Студио А')).toHaveLength(1)
     expect(
       screen.getAllByRole('columnheader').map((heading) => heading.textContent),
     ).toEqual([
-      'Име',
-      'Идентификатор в уеб адреса',
-      'Дейност',
-      'Статус',
+      'Име▲▼',
+      'Идентификатор в уеб адреса▲▼',
+      'Дейност▲▼',
+      'Статус▲▼',
     ])
     expect(
       Array.from(document.querySelectorAll('tbody td')).map((cell) =>
@@ -106,8 +121,8 @@ describe('BusinessList', () => {
     expect(screen.queryByText('business-a')).not.toBeInTheDocument()
     expect(screen.queryByText('3')).not.toBeInTheDocument()
     expect(screen.queryByText('01.08.2026')).not.toBeInTheDocument()
-    expect(screen.getByText('Страница 1')).toBeInTheDocument()
-    expect(screen.getByText('Общо бизнеси: 1')).toBeInTheDocument()
+    expect(screen.getByText('1–1 от 1 бизнеса')).toBeInTheDocument()
+    expect(screen.getByText('Страница 1 от 1')).toBeInTheDocument()
     expect(
       screen.getByRole('navigation', { name: 'Странициране на бизнесите' }),
     ).toBeInTheDocument()
@@ -136,7 +151,7 @@ describe('BusinessList', () => {
       ],
     })
 
-    render(<BusinessList onAuthenticationRequired={vi.fn()} />)
+    render(<StatefulBusinessList onAuthenticationRequired={vi.fn()} />)
 
     expect(await screen.findByText('Бръснарница')).toBeInTheDocument()
     expect(await screen.findByText('Предстои активиране')).toHaveClass(
@@ -149,16 +164,16 @@ describe('BusinessList', () => {
     mockedListBusinesses.mockResolvedValue({
       businesses: [],
       page: 0,
-      size: 50,
+      size: 10,
       totalElements: 0,
     })
 
-    render(<BusinessList onAuthenticationRequired={vi.fn()} />)
+    render(<StatefulBusinessList onAuthenticationRequired={vi.fn()} />)
 
     expect(await screen.findByText('Все още няма създадени бизнеси.'))
       .toBeInTheDocument()
-    expect(screen.getByText('Страница 1')).toBeInTheDocument()
-    expect(screen.getByText('Общо бизнеси: 0')).toBeInTheDocument()
+    expect(screen.getByText('0–0 от 0 бизнеса')).toBeInTheDocument()
+    expect(screen.getByText('Страница 1 от 1')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Предишна' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Следваща' })).toBeDisabled()
   })
@@ -166,12 +181,12 @@ describe('BusinessList', () => {
   it('requests exact next and previous pages while clearing stale rows', async () => {
     mockedListBusinesses.mockResolvedValueOnce({
       ...populatedPage,
-      totalElements: 101,
+      totalElements: 21,
     })
     const nextRequest = deferred<BusinessPage>()
     mockedListBusinesses.mockImplementationOnce(() => nextRequest.promise)
 
-    render(<BusinessList onAuthenticationRequired={vi.fn()} />)
+    render(<StatefulBusinessList onAuthenticationRequired={vi.fn()} />)
 
     const next = await screen.findByRole('button', { name: 'Следваща' })
     const previous = screen.getByRole('button', { name: 'Предишна' })
@@ -179,13 +194,14 @@ describe('BusinessList', () => {
     expect(next).toBeEnabled()
 
     fireEvent.click(next)
-    fireEvent.click(next)
     expect(screen.getByText('Зареждане на бизнесите…')).toBeInTheDocument()
     expect(screen.queryByText('Студио А')).not.toBeInTheDocument()
     expect(mockedListBusinesses).toHaveBeenCalledTimes(2)
     expect(mockedListBusinesses).toHaveBeenLastCalledWith(
       1,
-      50,
+      10,
+      'displayName',
+      'asc',
       expect.any(AbortSignal),
     )
 
@@ -193,22 +209,23 @@ describe('BusinessList', () => {
       ...populatedPage,
       businesses: [{ ...populatedPage.businesses[0]!, displayName: 'Студио Б' }],
       page: 1,
-      totalElements: 101,
+      totalElements: 21,
     })
     expect(await screen.findByText('Студио Б')).toBeInTheDocument()
-    expect(screen.getByText('Страница 2')).toBeInTheDocument()
-    expect(screen.getByText('Общо бизнеси: 101')).toBeInTheDocument()
+    expect(screen.getByText('Страница 2 от 3')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Предишна' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Следваща' })).toBeEnabled()
 
     mockedListBusinesses.mockResolvedValueOnce({
       ...populatedPage,
-      totalElements: 101,
+      totalElements: 21,
     })
     fireEvent.click(screen.getByRole('button', { name: 'Предишна' }))
     expect(mockedListBusinesses).toHaveBeenLastCalledWith(
       0,
-      50,
+      10,
+      'displayName',
+      'asc',
       expect.any(AbortSignal),
     )
     expect(await screen.findByText('Студио А')).toBeInTheDocument()
@@ -218,33 +235,50 @@ describe('BusinessList', () => {
     mockedListBusinesses.mockResolvedValue({
       ...populatedPage,
       page: 2,
-      size: 50,
-      totalElements: 101,
+      size: 10,
+      totalElements: 21,
     })
 
-    render(<BusinessList onAuthenticationRequired={vi.fn()} />)
+    render(
+      <StatefulBusinessList
+        onAuthenticationRequired={vi.fn()}
+        initialList={{ page: 2, size: 10, sort: 'displayName', direction: 'asc' }}
+      />,
+    )
 
-    expect(await screen.findByText('Страница 3')).toBeInTheDocument()
+    expect(await screen.findByText('Страница 3 от 3')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Предишна' })).toBeEnabled()
     expect(screen.getByRole('button', { name: 'Следваща' })).toBeDisabled()
   })
 
-  it('allows only Previous from an empty out-of-range page', async () => {
-    mockedListBusinesses.mockResolvedValue({
+  it('recovers to the last valid page when the current page becomes empty after data shrinks', async () => {
+    mockedListBusinesses.mockResolvedValueOnce({
       businesses: [],
       page: 2,
-      size: 50,
-      totalElements: 51,
+      size: 10,
+      totalElements: 11,
+    })
+    mockedListBusinesses.mockResolvedValueOnce({
+      ...populatedPage,
+      page: 1,
+      totalElements: 11,
     })
 
-    render(<BusinessList onAuthenticationRequired={vi.fn()} />)
+    render(
+      <StatefulBusinessList
+        onAuthenticationRequired={vi.fn()}
+        initialList={{ page: 2, size: 10, sort: 'displayName', direction: 'asc' }}
+      />,
+    )
 
-    expect(await screen.findByText('Няма бизнеси на тази страница.'))
-      .toBeInTheDocument()
-    expect(screen.getByText('Страница 3')).toBeInTheDocument()
-    expect(screen.getByText('Общо бизнеси: 51')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Предишна' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Следваща' })).toBeDisabled()
+    expect(await screen.findByText('Студио А')).toBeInTheDocument()
+    expect(mockedListBusinesses).toHaveBeenLastCalledWith(
+      1,
+      10,
+      'displayName',
+      'asc',
+      expect.any(AbortSignal),
+    )
   })
 
   it('notifies App of a stale authenticated session on 401', async () => {
@@ -253,7 +287,7 @@ describe('BusinessList', () => {
       new ApiError(401, 'AUTH_REQUIRED', 'Необходим е вход.'),
     )
 
-    render(<BusinessList onAuthenticationRequired={onAuthenticationRequired} />)
+    render(<StatefulBusinessList onAuthenticationRequired={onAuthenticationRequired} />)
 
     await waitFor(() => expect(onAuthenticationRequired).toHaveBeenCalledWith('Необходим е вход.'))
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
@@ -264,7 +298,7 @@ describe('BusinessList', () => {
       new ApiError(403, 'ACCESS_DENIED', 'Нямате достъп до тази операция.'),
     )
 
-    render(<BusinessList onAuthenticationRequired={vi.fn()} />)
+    render(<StatefulBusinessList onAuthenticationRequired={vi.fn()} />)
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Нямате достъп до тази операция.',
@@ -280,7 +314,7 @@ describe('BusinessList', () => {
         }),
     )
 
-    render(<BusinessList onAuthenticationRequired={vi.fn()} />)
+    render(<StatefulBusinessList onAuthenticationRequired={vi.fn()} />)
     expect(mockedListBusinesses).toHaveBeenCalledTimes(1)
     rejectFirstRequest?.(new Error('SQL select secret_table'))
     const retry = await screen.findByRole('button', { name: 'Опитай отново' })
@@ -305,10 +339,10 @@ describe('BusinessList', () => {
 
   it('retries the page that failed', async () => {
     mockedListBusinesses
-      .mockResolvedValueOnce({ ...populatedPage, totalElements: 51 })
+      .mockResolvedValueOnce({ ...populatedPage, totalElements: 11 })
       .mockRejectedValueOnce(new Error('temporary failure'))
 
-    render(<BusinessList onAuthenticationRequired={vi.fn()} />)
+    render(<StatefulBusinessList onAuthenticationRequired={vi.fn()} />)
 
     fireEvent.click(await screen.findByRole('button', { name: 'Следваща' }))
     const retry = await screen.findByRole('button', { name: 'Опитай отново' })
@@ -316,17 +350,19 @@ describe('BusinessList', () => {
       ...populatedPage,
       businesses: [{ ...populatedPage.businesses[0]!, displayName: 'Втора страница' }],
       page: 1,
-      totalElements: 51,
+      totalElements: 11,
     })
     fireEvent.click(retry)
 
     expect(mockedListBusinesses).toHaveBeenLastCalledWith(
       1,
-      50,
+      10,
+      'displayName',
+      'asc',
       expect.any(AbortSignal),
     )
     expect(await screen.findByText('Втора страница')).toBeInTheDocument()
-    expect(screen.getByText('Страница 2')).toBeInTheDocument()
+    expect(screen.getByText('Страница 2 от 2')).toBeInTheDocument()
   })
 
   it('does not let an obsolete response replace newer list state', async () => {
@@ -347,9 +383,19 @@ describe('BusinessList', () => {
       )
 
     const { rerender } = render(
-      <BusinessList onAuthenticationRequired={vi.fn()} />,
+      <BusinessList
+        list={BUSINESSES_DEFAULT_LIST}
+        onListChange={vi.fn()}
+        onAuthenticationRequired={vi.fn()}
+      />,
     )
-    rerender(<BusinessList onAuthenticationRequired={vi.fn()} />)
+    rerender(
+      <BusinessList
+        list={BUSINESSES_DEFAULT_LIST}
+        onListChange={vi.fn()}
+        onAuthenticationRequired={vi.fn()}
+      />,
+    )
 
     const currentPage: BusinessPage = {
       ...populatedPage,
@@ -365,86 +411,28 @@ describe('BusinessList', () => {
     })
   })
 
-  it('replaces an active page load without losing the requested page', async () => {
-    mockedListBusinesses.mockResolvedValueOnce({
-      ...populatedPage,
-      totalElements: 51,
-    })
-    const obsoleteRequest = deferred<BusinessPage>()
-    const currentRequest = deferred<BusinessPage>()
-    const pageSignals: AbortSignal[] = []
-    mockedListBusinesses
-      .mockImplementationOnce((_page, _size, signal) => {
-        pageSignals.push(signal!)
-        return obsoleteRequest.promise
-      })
-      .mockImplementationOnce((_page, _size, signal) => {
-        pageSignals.push(signal!)
-        return currentRequest.promise
-      })
-    const onAuthenticationRequired = vi.fn()
-    const { rerender } = render(
-      <BusinessList onAuthenticationRequired={onAuthenticationRequired} />,
-    )
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Следваща' }))
-    rerender(<BusinessList onAuthenticationRequired={vi.fn()} />)
-
-    expect(mockedListBusinesses).toHaveBeenNthCalledWith(
-      2,
-      1,
-      50,
-      pageSignals[0],
-    )
-    expect(mockedListBusinesses).toHaveBeenNthCalledWith(
-      3,
-      1,
-      50,
-      pageSignals[1],
-    )
-    expect(pageSignals[0]).toHaveProperty('aborted', true)
-    expect(pageSignals[1]).toHaveProperty('aborted', false)
-
-    currentRequest.resolve({
-      ...populatedPage,
-      businesses: [{ ...populatedPage.businesses[0]!, displayName: 'Текуща страница' }],
-      page: 1,
-      totalElements: 51,
-    })
-    expect(await screen.findByText('Текуща страница')).toBeInTheDocument()
-    expect(screen.getByText('Страница 2')).toBeInTheDocument()
-
-    obsoleteRequest.resolve({
-      ...populatedPage,
-      businesses: [{ ...populatedPage.businesses[0]!, displayName: 'Остаряла страница' }],
-      page: 1,
-      totalElements: 51,
-    })
-    await waitFor(() => {
-      expect(screen.getByText('Текуща страница')).toBeInTheDocument()
-      expect(screen.queryByText('Остаряла страница')).not.toBeInTheDocument()
-      expect(onAuthenticationRequired).not.toHaveBeenCalled()
-    })
-  })
-
   it('allows only the active StrictMode request to render data', async () => {
     const replayedRequest = deferred<BusinessPage>()
     const activeRequest = deferred<BusinessPage>()
     const signals: AbortSignal[] = []
     const onAuthenticationRequired = vi.fn()
     mockedListBusinesses
-      .mockImplementationOnce((_page, _size, signal) => {
+      .mockImplementationOnce((_page, _size, _sort, _direction, signal) => {
         signals.push(signal!)
         return replayedRequest.promise
       })
-      .mockImplementationOnce((_page, _size, signal) => {
+      .mockImplementationOnce((_page, _size, _sort, _direction, signal) => {
         signals.push(signal!)
         return activeRequest.promise
       })
 
     render(
       <StrictMode>
-        <BusinessList onAuthenticationRequired={onAuthenticationRequired} />
+        <BusinessList
+          list={BUSINESSES_DEFAULT_LIST}
+          onListChange={vi.fn()}
+          onAuthenticationRequired={onAuthenticationRequired}
+        />
       </StrictMode>,
     )
 
@@ -474,18 +462,22 @@ describe('BusinessList', () => {
     const signals: AbortSignal[] = []
     const onAuthenticationRequired = vi.fn()
     mockedListBusinesses
-      .mockImplementationOnce((_page, _size, signal) => {
+      .mockImplementationOnce((_page, _size, _sort, _direction, signal) => {
         signals.push(signal!)
         return replayedRequest.promise
       })
-      .mockImplementationOnce((_page, _size, signal) => {
+      .mockImplementationOnce((_page, _size, _sort, _direction, signal) => {
         signals.push(signal!)
         return activeRequest.promise
       })
 
     render(
       <StrictMode>
-        <BusinessList onAuthenticationRequired={onAuthenticationRequired} />
+        <BusinessList
+          list={BUSINESSES_DEFAULT_LIST}
+          onListChange={vi.fn()}
+          onAuthenticationRequired={onAuthenticationRequired}
+        />
       </StrictMode>,
     )
 
@@ -502,5 +494,152 @@ describe('BusinessList', () => {
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
       expect(onAuthenticationRequired).not.toHaveBeenCalled()
     })
+  })
+
+  it('clicking a sortable header requests that field ascending and resets to page 0', async () => {
+    mockedListBusinesses.mockResolvedValue(populatedPage)
+    render(
+      <StatefulBusinessList
+        onAuthenticationRequired={vi.fn()}
+        initialList={{ page: 1, size: 10, sort: 'displayName', direction: 'asc' }}
+      />,
+    )
+    await screen.findByText('Студио А')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Дейност' }))
+
+    await waitFor(() =>
+      expect(mockedListBusinesses).toHaveBeenLastCalledWith(
+        0,
+        10,
+        'businessType',
+        'asc',
+        expect.any(AbortSignal),
+      ),
+    )
+  })
+
+  it('clicking the active header a second time reverses direction', async () => {
+    mockedListBusinesses.mockResolvedValue(populatedPage)
+    render(
+      <StatefulBusinessList
+        onAuthenticationRequired={vi.fn()}
+        initialList={{ page: 0, size: 10, sort: 'slug', direction: 'asc' }}
+      />,
+    )
+    await screen.findByText('Студио А')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Идентификатор в уеб адреса' }))
+
+    await waitFor(() =>
+      expect(mockedListBusinesses).toHaveBeenLastCalledWith(
+        0,
+        10,
+        'slug',
+        'desc',
+        expect.any(AbortSignal),
+      ),
+    )
+  })
+
+  it('exposes aria-sort only on the active column header', async () => {
+    mockedListBusinesses.mockResolvedValue(populatedPage)
+    render(
+      <StatefulBusinessList
+        onAuthenticationRequired={vi.fn()}
+        initialList={{ page: 0, size: 10, sort: 'status', direction: 'desc' }}
+      />,
+    )
+    await screen.findByText('Студио А')
+
+    expect(screen.getByRole('columnheader', { name: 'Статус' }))
+      .toHaveAttribute('aria-sort', 'descending')
+    expect(screen.getByRole('columnheader', { name: 'Име' })).toHaveAttribute('aria-sort', 'none')
+  })
+
+  it('shows both direction arrows on every sortable header, with only the active one emphasized', async () => {
+    mockedListBusinesses.mockResolvedValue(populatedPage)
+    render(
+      <StatefulBusinessList
+        onAuthenticationRequired={vi.fn()}
+        initialList={{ page: 0, size: 10, sort: 'status', direction: 'desc' }}
+      />,
+    )
+    await screen.findByText('Студио А')
+
+    const headers = screen.getAllByRole('columnheader')
+    expect(headers).toHaveLength(4)
+    for (const header of headers) {
+      expect(header.querySelectorAll('.sort-arrow')).toHaveLength(2)
+    }
+
+    const statusHeader = screen.getByRole('columnheader', { name: 'Статус' })
+    const nameHeader = screen.getByRole('columnheader', { name: 'Име' })
+    expect(statusHeader).toHaveClass('is-active')
+    expect(nameHeader).not.toHaveClass('is-active')
+    expect(statusHeader.querySelectorAll('.sort-arrow.is-active')).toHaveLength(1)
+    expect(statusHeader.querySelector('.sort-arrow.is-active')).toHaveTextContent('▼')
+    expect(nameHeader.querySelectorAll('.sort-arrow.is-active')).toHaveLength(0)
+  })
+
+  it('renders exactly one page-size selector, placed inside the pagination region', async () => {
+    mockedListBusinesses.mockResolvedValue(populatedPage)
+    render(<StatefulBusinessList onAuthenticationRequired={vi.fn()} />)
+    await screen.findByText('Студио А')
+
+    const selectors = screen.getAllByLabelText('Резултати на страница')
+    expect(selectors).toHaveLength(1)
+    const pagination = screen.getByRole('navigation', { name: 'Странициране на бизнесите' })
+    expect(pagination).toContainElement(selectors[0]!)
+  })
+
+  it('changing the page size selector resets to page 0', async () => {
+    mockedListBusinesses.mockResolvedValue(populatedPage)
+    render(
+      <StatefulBusinessList
+        onAuthenticationRequired={vi.fn()}
+        initialList={{ page: 1, size: 10, sort: 'displayName', direction: 'asc' }}
+      />,
+    )
+    await screen.findByText('Студио А')
+
+    fireEvent.change(screen.getByLabelText('Резултати на страница'), {
+      target: { value: '50' },
+    })
+
+    await waitFor(() =>
+      expect(mockedListBusinesses).toHaveBeenLastCalledWith(
+        0,
+        50,
+        'displayName',
+        'asc',
+        expect.any(AbortSignal),
+      ),
+    )
+  })
+
+  it('the responsive sort control exposes the same sort/direction state', async () => {
+    mockedListBusinesses.mockResolvedValue(populatedPage)
+    render(
+      <StatefulBusinessList
+        onAuthenticationRequired={vi.fn()}
+        initialList={{ page: 1, size: 10, sort: 'displayName', direction: 'asc' }}
+      />,
+    )
+    await screen.findByText('Студио А')
+
+    fireEvent.change(screen.getByLabelText('Подреди по'), {
+      target: { value: 'status:desc' },
+    })
+
+    await waitFor(() =>
+      expect(mockedListBusinesses).toHaveBeenLastCalledWith(
+        0,
+        10,
+        'status',
+        'desc',
+        expect.any(AbortSignal),
+      ),
+    )
   })
 })

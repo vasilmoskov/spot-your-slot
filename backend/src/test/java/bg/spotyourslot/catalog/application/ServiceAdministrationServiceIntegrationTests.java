@@ -75,7 +75,7 @@ class ServiceAdministrationServiceIntegrationTests extends PostgresIntegrationTe
         assertThat(active.active()).isTrue();
         assertThat(active.version()).isEqualTo(3);
         assertThat(services.get(fixture.context(), created.id())).isEqualTo(active);
-        assertThat(services.list(fixture.context(), 0, 20).services())
+        assertThat(services.list(fixture.context(), 0, 10, null, null).services())
                 .containsExactly(active);
     }
 
@@ -94,7 +94,7 @@ class ServiceAdministrationServiceIntegrationTests extends PostgresIntegrationTe
                         second.context(), foreign.id(), version(foreign.version())))
                 .isInstanceOf(ServiceNotFound.class);
         assertThat(services.get(first.context(), foreign.id())).isEqualTo(foreign);
-        assertThat(services.list(second.context(), 0, 20).services()).isEmpty();
+        assertThat(services.list(second.context(), 0, 10, null, null).services()).isEmpty();
 
         ServiceDetails inactive = services.deactivate(
                 first.context(), foreign.id(), version(foreign.version()));
@@ -113,7 +113,7 @@ class ServiceAdministrationServiceIntegrationTests extends PostgresIntegrationTe
             String role, boolean active) {
         Fixture fixture = ownerFixture("ACTIVE", active, role);
 
-        assertThatThrownBy(() -> services.list(fixture.context(), 0, 20))
+        assertThatThrownBy(() -> services.list(fixture.context(), 0, 10, null, null))
                 .isInstanceOf(BusinessAccessDenied.class)
                 .hasMessage("Business access to Services is denied");
         assertThatThrownBy(() -> services.create(fixture.context(), create("Denied")))
@@ -127,7 +127,7 @@ class ServiceAdministrationServiceIntegrationTests extends PostgresIntegrationTe
         grantPlatformAdmin(userId);
         var context = new TestContext(userId, businessId);
 
-        assertThatThrownBy(() -> services.list(context, 0, 20))
+        assertThatThrownBy(() -> services.list(context, 0, 10, null, null))
                 .isInstanceOf(BusinessAccessDenied.class)
                 .hasMessage("Business access to Services is denied");
         assertThatThrownBy(() -> services.create(context, create("Denied")))
@@ -141,9 +141,9 @@ class ServiceAdministrationServiceIntegrationTests extends PostgresIntegrationTe
         var withoutMembership = new TestContext(userId, businessId);
         var missingBusiness = new TestContext(userId, UUID.randomUUID());
 
-        assertThatThrownBy(() -> services.list(withoutMembership, 0, 20))
+        assertThatThrownBy(() -> services.list(withoutMembership, 0, 10, null, null))
                 .isInstanceOf(BusinessAccessDenied.class);
-        assertThatThrownBy(() -> services.list(missingBusiness, 0, 20))
+        assertThatThrownBy(() -> services.list(missingBusiness, 0, 10, null, null))
                 .isInstanceOf(BusinessAccessDenied.class);
     }
 
@@ -155,7 +155,7 @@ class ServiceAdministrationServiceIntegrationTests extends PostgresIntegrationTe
         membership(membershipBusiness, userId, "BUSINESS_OWNER", true);
         var crossBusinessContext = new TestContext(userId, selectedBusiness);
 
-        assertThatThrownBy(() -> services.list(crossBusinessContext, 0, 20))
+        assertThatThrownBy(() -> services.list(crossBusinessContext, 0, 10, null, null))
                 .isInstanceOf(BusinessAccessDenied.class);
         assertThatThrownBy(() -> services.create(crossBusinessContext, create("Denied")))
                 .isInstanceOf(BusinessAccessDenied.class);
@@ -165,9 +165,9 @@ class ServiceAdministrationServiceIntegrationTests extends PostgresIntegrationTe
     void keepsAuthenticationAndMissingSelectionOutcomesDistinct() {
         UUID userId = user();
 
-        assertThatThrownBy(() -> services.list(null, 0, 20))
+        assertThatThrownBy(() -> services.list(null, 0, 10, null, null))
                 .isInstanceOf(AuthenticationCredentialsNotFoundException.class);
-        assertThatThrownBy(() -> services.list(new TestContext(userId, null), 0, 20))
+        assertThatThrownBy(() -> services.list(new TestContext(userId, null), 0, 10, null, null))
                 .isInstanceOf(SelectedBusinessRequired.class);
     }
 
@@ -179,7 +179,7 @@ class ServiceAdministrationServiceIntegrationTests extends PostgresIntegrationTe
         ServiceDetails created = services.create(fixture.context(), create(status + " service"));
 
         assertThat(services.get(fixture.context(), created.id())).isEqualTo(created);
-        assertThat(services.list(fixture.context(), 0, 20).services())
+        assertThat(services.list(fixture.context(), 0, 10, null, null).services())
                 .containsExactly(created);
     }
 
@@ -190,7 +190,7 @@ class ServiceAdministrationServiceIntegrationTests extends PostgresIntegrationTe
         setBusinessStatus(fixture.businessId(), "SUSPENDED");
 
         assertThat(services.get(fixture.context(), original.id())).isEqualTo(original);
-        assertThat(services.list(fixture.context(), 0, 20).services())
+        assertThat(services.list(fixture.context(), 0, 10, null, null).services())
                 .containsExactly(original);
         assertThatThrownBy(() -> services.create(fixture.context(), create("New")))
                 .isInstanceOf(BusinessSuspended.class);
@@ -221,23 +221,40 @@ class ServiceAdministrationServiceIntegrationTests extends PostgresIntegrationTe
         ServiceDetails inactive = services.deactivate(
                 fixture.context(), beta.id(), version(beta.version()));
 
-        var first = services.list(fixture.context(), 0, 1);
-        var second = services.list(fixture.context(), 1, 1);
+        var page = services.list(fixture.context(), 0, 10, null, null);
 
         assertThat(inactive.name()).isEqualTo("BeTa service");
         assertThat(inactive.description()).isEqualTo("First line\r\nSecond line");
         assertThat(inactive.price()).isEqualByComparingTo("25.50");
         assertThat(databasePrice(inactive.id()).scale()).isEqualTo(2);
-        assertThat(first.totalElements()).isEqualTo(2);
-        assertThat(second.totalElements()).isEqualTo(2);
-        assertThat(first.services()).containsExactly(alpha);
-        assertThat(second.services()).containsExactly(inactive);
-        assertThat(services.list(fixture.context(), 0, 20).services())
+        assertThat(page.totalElements()).isEqualTo(2);
+        assertThat(page.services()).containsExactly(alpha, inactive);
+        assertThat(page.services())
                 .extracting(ServiceDetails::active)
                 .containsExactly(true, false);
         assertThat(ServiceDetails.class.getRecordComponents())
                 .extracting(component -> component.getName())
                 .doesNotContain("businessId");
+    }
+
+    @Test
+    void sortAndDirectionAreAppliedThroughTheApplicationLayerAndScopedPerTenant() {
+        Fixture fixture = ownerFixture("ACTIVE", true, "BUSINESS_OWNER");
+        Fixture other = ownerFixture("ACTIVE", true, "BUSINESS_OWNER");
+        ServiceDetails cheap = services.create(fixture.context(), new CreateServiceCommand(
+                "Cheap", null, 30, new BigDecimal("10.00")));
+        ServiceDetails pricey = services.create(fixture.context(), new CreateServiceCommand(
+                "Pricey", null, 30, new BigDecimal("20.00")));
+        services.create(other.context(), new CreateServiceCommand(
+                "Foreign", null, 30, new BigDecimal("1.00")));
+
+        var ascending = services.list(fixture.context(), 0, 10, "price", "asc");
+        var descending = services.list(fixture.context(), 0, 10, "price", "desc");
+
+        assertThat(ascending.services()).extracting(ServiceDetails::id)
+                .containsExactly(cheap.id(), pricey.id());
+        assertThat(descending.services()).extracting(ServiceDetails::id)
+                .containsExactly(pricey.id(), cheap.id());
     }
 
     @ParameterizedTest
@@ -348,9 +365,15 @@ class ServiceAdministrationServiceIntegrationTests extends PostgresIntegrationTe
                         service.create(context, new CreateServiceCommand(
                                 "Valid", null, 30, new BigDecimal("1.001")))),
                 Arguments.of("PAGE", (InvalidCall) (service, context, id) ->
-                        service.list(context, -1, 20)),
+                        service.list(context, -1, 10, null, null)),
                 Arguments.of("SIZE", (InvalidCall) (service, context, id) ->
-                        service.list(context, 0, 0)),
+                        service.list(context, 0, 0, null, null)),
+                Arguments.of("SIZE", (InvalidCall) (service, context, id) ->
+                        service.list(context, 0, 51, null, null)),
+                Arguments.of("SORT", (InvalidCall) (service, context, id) ->
+                        service.list(context, 0, 10, "unknown", null)),
+                Arguments.of("DIRECTION", (InvalidCall) (service, context, id) ->
+                        service.list(context, 0, 10, null, "sideways")),
                 Arguments.of("SERVICE_ID", (InvalidCall) (service, context, id) ->
                         service.get(context, null)),
                 Arguments.of("EXPECTED_VERSION", (InvalidCall) (service, context, id) ->

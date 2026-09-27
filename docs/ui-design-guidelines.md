@@ -306,8 +306,9 @@ constructing a full public URL, BusinessType as “Дейност”, and transl
 status. Do not display timestamps,
 timezone, IDs, version, or other technical metadata in the overview; returned
 metadata remains available for later application operations and detail, audit,
-or support views. Preserve backend ordering and bounded pagination. Do not
-introduce speculative search, filters, or actions.
+or support views. Follow the shared paginated-table standard in section 15 for
+sorting, page size, and URL state. Do not introduce speculative search, filters,
+or actions beyond the approved sortable columns.
 
 ### Business detail
 
@@ -332,7 +333,104 @@ The exact composition of public pages and booking steps will be approved in
 their own future task. This guide does not authorize public booking work or
 expand the MVP.
 
-## 14. Manual visual review process
+## 15. Paginated tables
+
+Every user-facing paginated table — the Business-owner Services table, the
+Platform-admin Businesses table, and any later table — follows this shared
+standard rather than a page-specific pagination design:
+
+- Sorting and pagination are resolved server-side; never sort only the
+  currently loaded page on the client.
+- Default page size is 10. The user-selectable sizes are exactly 10, 25, and
+  50; the backend rejects every other value with the standard safe
+  validation response, not merely values above 50 (for example 1, 7, 20, and
+  37 are all rejected, not only values past the maximum).
+- Changing the sort field, changing sort direction, or changing the page size
+  returns to page 0. Ordinary Previous/Next navigation changes only the page.
+- Every backend ordering is deterministic: a documented, explicit
+  allowlist maps a sort field to database columns, and a stable final
+  tie-breaker (typically case-insensitive name, then id) makes ties
+  reproducible. A status column uses a documented semantic lifecycle order,
+  never accidental enum or alphabetical order.
+- Desktop sortable column headers are one semantic, keyboard-operable button
+  per header cell with an accessible name. Every sortable column always shows
+  both direction arrows (`▲▼`); inactive columns show both in a neutral,
+  muted style. The active column is visually distinguishable through a
+  restrained active treatment (stronger header text plus a subtle background
+  or accent) and, within it, only the arrow matching the current direction is
+  emphasized. Color is never the only signal. The active column exposes
+  `aria-sort` (`ascending`/`descending`); inactive columns use
+  `aria-sort="none"`. Clicking the active column toggles direction; clicking
+  a different column selects it ascending and resets page to 0. Non-sortable
+  decorative header space is never made interactive.
+- At the breakpoint where a table becomes cards, its column headers stop
+  being a practical interaction surface, so a compact, labeled responsive
+  sort control (a single combined field-and-direction select) replaces them.
+  It exposes the same sort choices as the desktop headers and never
+  duplicates or conflicts with that state.
+- Table state (page, size, sort field, direction) is represented in the URL
+  wherever the current router supports it, using canonical query parameters
+  such as `?page=0&size=10&sort=name&direction=asc`. Refresh and browser
+  Back/Forward restore the exact prior configuration. Missing values use the
+  documented defaults; invalid or unsupported values normalize safely to
+  those defaults rather than erroring.
+- Every explicit user interaction (sorting a column, changing the responsive
+  sort control, changing page size, Previous/Next) creates a restorable
+  history entry (a push). Automatic canonicalization or recovery — normalizing
+  an invalid URL on load, resetting page on a Business switch, or recovering
+  from an out-of-range page — replaces the current history entry instead, so
+  the corrected state is never followed by a Back-navigation trap that
+  returns to the invalid/obsolete one.
+- Switching the active Business resets a Business-scoped table's page to 0
+  while preserving its size, sort, and direction, and never renders a
+  response that belongs to the previous Business.
+- An empty result caused by a page beyond the data (including after the
+  underlying data shrinks) recovers to the last valid page, or page 0 when
+  there is no valid page, using the smallest coherent correction.
+- The page-size selector lives in the pagination region beside Previous/Next,
+  not duplicated above the table. The preferred desktop order in that region
+  is: result range / current page summary, page-size selector, then
+  Previous/Next. On mobile and at 200% zoom the pagination region wraps or
+  stacks cleanly without introducing horizontal scrolling.
+- Show a results summary (for example “1–10 от 24 услуги”, “Страница 1 от
+  3”) using the correct noun for the entity being listed.
+
+## 16. Authenticated mutable forms
+
+Every authenticated, user-editable form (profile, Business profile, Service
+create/edit, and later forms) uses the shared `UnsavedChangesGuardProvider`/
+`useGuardedFormState` mechanism rather than a page-specific confirmation:
+
+- Dirty detection compares actual current values against the loaded/saved
+  values, not merely "has an input been touched."
+- A successful asynchronous save clears the dirty state before navigating
+  away; a failed save preserves the entered (safe, non-secret) input and
+  keeps the guard active.
+- Only the first pending guarded navigation is authoritative: a repeated
+  guarded action (Back/Forward, another link, a second logout) while a
+  confirmation is already showing is dropped, never silently replacing the
+  original request.
+- The confirmation dialog's safe action (“Продължи редактирането”) receives
+  initial focus; the destructive action (“Откажи промените”) is never the
+  default focus.
+- The browser's `beforeunload` prompt is armed only while the form is dirty.
+
+## 17. Identity and page hierarchy
+
+- The signed-in user's own profile identity (name, email) and the active
+  Business identity are distinct concepts and must never be conflated in a
+  heading, label, or summary.
+- The active Business name shown in navigation and page headers always comes
+  from the active-Business session context, never from a form draft or
+  fixture value.
+- Page eyebrows (the small label above a page heading, such as “УПРАВЛЕНИЕ НА
+  БИЗНЕСА”) use stable, product-defined copy. Never derive an eyebrow from
+  test/fixture data or from the entity being displayed.
+- Avoid duplicated headings and duplicated summary content: a page heading,
+  section heading, and any status/summary line should each add distinct
+  information rather than repeating the same fact in adjacent elements.
+
+## 18. Manual visual review process
 
 Include a manual visual checkpoint as soon as meaningful UI is available. The
 task must provide exact local startup, fixture, URL, viewport, interaction, and

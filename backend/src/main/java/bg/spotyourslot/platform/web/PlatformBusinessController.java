@@ -8,8 +8,6 @@ import bg.spotyourslot.platform.web.PlatformBusinessHttpRecords.CreateBusinessRe
 import bg.spotyourslot.platform.web.PlatformBusinessHttpRecords.LifecycleRequest;
 import bg.spotyourslot.platform.web.PlatformBusinessHttpRecords.UpdateBusinessRequest;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
 import java.net.URI;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
@@ -35,9 +33,11 @@ public class PlatformBusinessController {
 
     @GetMapping
     public BusinessPageResponse list(
-            @RequestParam(defaultValue = "0") @Min(0) int page,
-            @RequestParam(defaultValue = "50") @Min(1) @Max(100) int size) {
-        return BusinessPageResponse.from(businesses.list(page, size));
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String direction) {
+        return BusinessPageResponse.from(businesses.list(page, size, sort, direction));
     }
 
     @GetMapping("/{businessId}")

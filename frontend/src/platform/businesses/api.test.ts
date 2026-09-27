@@ -18,25 +18,25 @@ beforeEach(() => {
 })
 
 describe('Business API client', () => {
-  it('requests the approved initial bounded page', async () => {
-    mockedRequest.mockResolvedValue({ businesses: [], page: 0, size: 50, totalElements: 0 })
+  it('requests the approved initial bounded page using the default sort and direction', async () => {
+    mockedRequest.mockResolvedValue({ businesses: [], page: 0, size: 10, totalElements: 0 })
 
     await listBusinesses()
 
     expect(mockedRequest).toHaveBeenCalledWith(
-      '/api/platform/businesses?page=0&size=50',
+      '/api/platform/businesses?page=0&size=10&sort=displayName&direction=asc',
       {},
     )
   })
 
-  it('passes an explicit bounded page, size and cancellation signal', async () => {
+  it('passes an explicit sort field, direction, page, size and cancellation signal', async () => {
     mockedRequest.mockResolvedValue({ businesses: [], page: 2, size: 25, totalElements: 0 })
     const controller = new AbortController()
 
-    await listBusinesses(2, 25, controller.signal)
+    await listBusinesses(2, 25, 'slug', 'desc', controller.signal)
 
     expect(mockedRequest).toHaveBeenCalledWith(
-      '/api/platform/businesses?page=2&size=25',
+      '/api/platform/businesses?page=2&size=25&sort=slug&direction=desc',
       { signal: controller.signal },
     )
   })

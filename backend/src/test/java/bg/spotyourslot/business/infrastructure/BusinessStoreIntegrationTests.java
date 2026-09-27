@@ -3,6 +3,7 @@ package bg.spotyourslot.business.infrastructure;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import bg.spotyourslot.business.BusinessRecords.BusinessSortField;
 import bg.spotyourslot.business.domain.BusinessSlug;
 import bg.spotyourslot.business.domain.BusinessStatus;
 import bg.spotyourslot.business.domain.BusinessTimezone;
@@ -91,7 +92,7 @@ class BusinessStoreIntegrationTests extends PostgresIntegrationTest {
     }
 
     @Test
-    void listsDeterministicallyByCreationTimeThenIdDescending() {
+    void listsByDisplayNameAscendingThenIdAsTheDefault() {
         UUID oldestId = UUID.fromString("00000000-0000-0000-0000-000000000000");
         UUID lowerId = UUID.fromString("00000000-0000-0000-0000-000000000001");
         UUID higherId = UUID.fromString("00000000-0000-0000-0000-000000000002");
@@ -99,9 +100,64 @@ class BusinessStoreIntegrationTests extends PostgresIntegrationTest {
         store.create(newBusiness(lowerId, "same-time-lower", CREATED_AT.plusSeconds(1)));
         store.create(newBusiness(higherId, "same-time-higher", CREATED_AT.plusSeconds(1)));
 
-        assertThat(store.list(0, 10))
+        assertThat(store.list(0, 10, BusinessSortField.DISPLAY_NAME, true))
                 .extracting(row -> row.slug().value())
-                .containsExactly("same-time-higher", "same-time-lower", "older");
+                .containsExactly("older", "same-time-higher", "same-time-lower");
+        assertThat(store.list(0, 10, BusinessSortField.DISPLAY_NAME, false))
+                .extracting(row -> row.slug().value())
+                .containsExactly("same-time-lower", "same-time-higher", "older");
+    }
+
+    @Test
+    void slugSortOrdersAscendingAndDescending() {
+        store.create(newBusiness("zulu", CREATED_AT));
+        store.create(newBusiness("alpha", CREATED_AT));
+
+        assertThat(store.list(0, 10, BusinessSortField.SLUG, true))
+                .extracting(row -> row.slug().value())
+                .containsExactly("alpha", "zulu");
+        assertThat(store.list(0, 10, BusinessSortField.SLUG, false))
+                .extracting(row -> row.slug().value())
+                .containsExactly("zulu", "alpha");
+    }
+
+    @Test
+    void businessTypeSortOrdersByTypeThenDisplayName() {
+        insertBusinessWithType("barbershop-a", BusinessType.BARBERSHOP);
+        insertBusinessWithType("hair-salon-a", BusinessType.HAIR_SALON);
+
+        assertThat(store.list(0, 10, BusinessSortField.BUSINESS_TYPE, true))
+                .extracting(row -> row.businessType())
+                .containsExactly(BusinessType.BARBERSHOP, BusinessType.HAIR_SALON);
+        assertThat(store.list(0, 10, BusinessSortField.BUSINESS_TYPE, false))
+                .extracting(row -> row.businessType())
+                .containsExactly(BusinessType.HAIR_SALON, BusinessType.BARBERSHOP);
+    }
+
+    @Test
+    void statusSortUsesDocumentedLifecycleOrderNotAlphabeticalOrEnumOrder() {
+        UUID draftId = insertBusinessWithStatus("status-draft", BusinessStatus.DRAFT);
+        UUID activeId = insertBusinessWithStatus("status-active", BusinessStatus.ACTIVE);
+        UUID suspendedId = insertBusinessWithStatus("status-suspended", BusinessStatus.SUSPENDED);
+
+        assertThat(store.list(0, 10, BusinessSortField.STATUS, true))
+                .extracting(row -> row.id())
+                .containsExactly(draftId, activeId, suspendedId);
+        assertThat(store.list(0, 10, BusinessSortField.STATUS, false))
+                .extracting(row -> row.id())
+                .containsExactly(suspendedId, activeId, draftId);
+    }
+
+    @Test
+    void tieBreaksIdenticalDisplayNamesById() {
+        UUID lowerId = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        UUID higherId = UUID.fromString("00000000-0000-0000-0000-000000000002");
+        store.create(sameDisplayName(higherId, "tie-higher", CREATED_AT));
+        store.create(sameDisplayName(lowerId, "tie-lower", CREATED_AT));
+
+        assertThat(store.list(0, 10, BusinessSortField.DISPLAY_NAME, true))
+                .extracting(row -> row.id())
+                .containsExactly(lowerId, higherId);
     }
 
     @Test
@@ -110,22 +166,23 @@ class BusinessStoreIntegrationTests extends PostgresIntegrationTest {
             store.create(newBusiness("page-" + index, CREATED_AT.plusSeconds(index)));
         }
 
-        var firstPage = store.list(0, 2);
-        var secondPage = store.list(1, 2);
-        var thirdPage = store.list(2, 2);
+        var firstPage = store.list(0, 2, BusinessSortField.DISPLAY_NAME, true);
+        var secondPage = store.list(1, 2, BusinessSortField.DISPLAY_NAME, true);
+        var thirdPage = store.list(2, 2, BusinessSortField.DISPLAY_NAME, true);
 
         assertThat(firstPage).extracting(row -> row.slug().value())
-                .containsExactly("page-4", "page-3");
+                .containsExactly("page-0", "page-1");
         assertThat(secondPage).extracting(row -> row.slug().value())
-                .containsExactly("page-2", "page-1");
+                .containsExactly("page-2", "page-3");
         assertThat(thirdPage).extracting(row -> row.slug().value())
-                .containsExactly("page-0");
+                .containsExactly("page-4");
     }
 
     @ParameterizedTest
     @MethodSource("invalidPages")
     void rejectsInvalidPaginationBeforeExecutingSql(int page, int size) {
-        assertThatThrownBy(() -> store.list(page, size))
+        assertThatThrownBy(
+                        () -> store.list(page, size, BusinessSortField.DISPLAY_NAME, true))
                 .isInstanceOf(InvalidDataAccessApiUsageException.class)
                 .hasRootCauseInstanceOf(IllegalArgumentException.class);
     }
@@ -315,6 +372,60 @@ class BusinessStoreIntegrationTests extends PostgresIntegrationTest {
 
     private NewBusinessRow newBusiness(String slug, Instant createdAt) {
         return newBusiness(UUID.randomUUID(), slug, createdAt);
+    }
+
+    private void insertBusinessWithType(String slug, BusinessType businessType) {
+        jdbc.sql("""
+                        INSERT INTO business(
+                            id, slug, display_name, business_type, status, timezone,
+                            version, created_at, updated_at)
+                        VALUES (
+                            :id, :slug, :displayName, :businessType, 'DRAFT', 'Europe/Sofia',
+                            0, :createdAt, :createdAt)
+                        """)
+                .param("id", UUID.randomUUID())
+                .param("slug", slug)
+                .param("displayName", "Business " + slug)
+                .param("businessType", businessType.name())
+                .param("createdAt", CREATED_AT.atOffset(java.time.ZoneOffset.UTC))
+                .update();
+    }
+
+    private UUID insertBusinessWithStatus(String slug, BusinessStatus status) {
+        UUID id = UUID.randomUUID();
+        jdbc.sql("""
+                        INSERT INTO business(
+                            id, slug, display_name, business_type, status, timezone,
+                            version, created_at, updated_at)
+                        VALUES (
+                            :id, :slug, :displayName, 'OTHER', :status, 'Europe/Sofia',
+                            0, :createdAt, :createdAt)
+                        """)
+                .param("id", id)
+                .param("slug", slug)
+                .param("displayName", "Business " + slug)
+                .param("status", status.name())
+                .param("createdAt", CREATED_AT.atOffset(java.time.ZoneOffset.UTC))
+                .update();
+        return id;
+    }
+
+    private NewBusinessRow sameDisplayName(UUID id, String slug, Instant createdAt) {
+        return new NewBusinessRow(
+                id,
+                new BusinessSlug(slug),
+                "Same display name",
+                BusinessType.OTHER,
+                BusinessTimezone.defaultTimezone(),
+                "Description " + slug,
+                "Sofia",
+                "1000",
+                "Example",
+                "1",
+                "Address " + slug,
+                "+359 2 000 0000",
+                slug + "@example.invalid",
+                createdAt);
     }
 
     private NewBusinessRow newBusiness(UUID id, String slug, Instant createdAt) {

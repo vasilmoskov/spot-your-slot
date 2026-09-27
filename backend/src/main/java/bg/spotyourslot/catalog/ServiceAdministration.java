@@ -9,7 +9,12 @@ import bg.spotyourslot.identity.AuthenticatedBusinessContext;
 import java.util.UUID;
 
 public interface ServiceAdministration {
-    ServicePage list(AuthenticatedBusinessContext context, int page, int size);
+    ServicePage list(
+            AuthenticatedBusinessContext context,
+            int page,
+            int size,
+            String sort,
+            String direction);
 
     ServiceDetails get(AuthenticatedBusinessContext context, UUID serviceId);
 

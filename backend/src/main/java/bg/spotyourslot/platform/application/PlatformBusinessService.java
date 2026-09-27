@@ -27,8 +27,8 @@ public class PlatformBusinessService {
     }
 
     @Transactional(readOnly = true)
-    public BusinessPage list(int page, int size) {
-        return businesses.list(page, size);
+    public BusinessPage list(int page, int size, String sort, String direction) {
+        return businesses.list(page, size, sort, direction);
     }
 
     @Transactional(readOnly = true)

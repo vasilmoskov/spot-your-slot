@@ -3,16 +3,19 @@ package bg.spotyourslot.catalog.application;
 import bg.spotyourslot.catalog.ServiceApplicationException.InputField;
 import bg.spotyourslot.catalog.ServiceApplicationException.InvalidInput;
 import bg.spotyourslot.catalog.ServiceRecords.CreateServiceCommand;
+import bg.spotyourslot.catalog.ServiceRecords.ServiceSortField;
 import bg.spotyourslot.catalog.ServiceRecords.ServiceVersionCommand;
 import bg.spotyourslot.catalog.ServiceRecords.UpdateServiceCommand;
 import bg.spotyourslot.catalog.domain.ServiceTextCanonicalizer;
 import java.math.BigDecimal;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
 
 @Component
 public class ServiceInputValidator {
-    public static final int MAX_PAGE_SIZE = 100;
+    public static final int MAX_PAGE_SIZE = 50;
+    public static final Set<Integer> ALLOWED_PAGE_SIZES = Set.of(10, 25, 50);
     static final int NAME_MAX_LENGTH = 200;
     static final int DESCRIPTION_MAX_LENGTH = 2_000;
     static final int MIN_DURATION_MINUTES = 1;
@@ -24,10 +27,34 @@ public class ServiceInputValidator {
         if (page < 0) {
             throw new InvalidInput(InputField.PAGE);
         }
-        if (size < 1 || size > MAX_PAGE_SIZE) {
+        if (!ALLOWED_PAGE_SIZES.contains(size)) {
             throw new InvalidInput(InputField.SIZE);
         }
         return new PageInput(page, size);
+    }
+
+    public ServiceSortField validateSort(String sort) {
+        if (sort == null) {
+            return ServiceSortField.NAME;
+        }
+        return switch (sort) {
+            case "name" -> ServiceSortField.NAME;
+            case "duration" -> ServiceSortField.DURATION;
+            case "price" -> ServiceSortField.PRICE;
+            case "status" -> ServiceSortField.STATUS;
+            default -> throw new InvalidInput(InputField.SORT);
+        };
+    }
+
+    public boolean validateAscending(String direction) {
+        if (direction == null) {
+            return true;
+        }
+        return switch (direction) {
+            case "asc" -> true;
+            case "desc" -> false;
+            default -> throw new InvalidInput(InputField.DIRECTION);
+        };
     }
 
     public UUID validateBusinessId(UUID businessId) {

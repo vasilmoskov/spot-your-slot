@@ -4,9 +4,11 @@ import {
   BUSINESS_SERVICE_NEW_ROUTE,
   BUSINESS_SERVICES_ROUTE,
   BUSINESS_STAFF_ROUTE,
+  BUSINESSES_DEFAULT_LIST,
   PROFILE_ROUTE,
   PLATFORM_BUSINESS_NEW_ROUTE,
   PLATFORM_BUSINESSES_ROUTE,
+  SERVICES_DEFAULT_LIST,
   isBusinessOwnerRoute,
   isPlatformRoute,
   pushRoute,
@@ -58,12 +60,16 @@ describe('application navigation', () => {
 
   it('builds and applies application-owned hash routes', () => {
     expect(routeHref(PROFILE_ROUTE)).toBe('/#/profile')
-    expect(routeHref(PLATFORM_BUSINESSES_ROUTE)).toBe('/#/platform/businesses')
+    expect(routeHref(PLATFORM_BUSINESSES_ROUTE)).toBe(
+      '/#/platform/businesses?page=0&size=10&sort=displayName&direction=asc',
+    )
     expect(routeHref(PLATFORM_BUSINESS_NEW_ROUTE)).toBe('/#/platform/businesses/new')
     expect(
       routeHref({ kind: 'platform-business-detail', businessId: 'business/a' }),
     ).toBe('/#/platform/businesses/business%2Fa')
-    expect(routeHref(BUSINESS_SERVICES_ROUTE)).toBe('/#/business/services')
+    expect(routeHref(BUSINESS_SERVICES_ROUTE)).toBe(
+      '/#/business/services?page=0&size=10&sort=name&direction=asc',
+    )
     expect(routeHref(BUSINESS_SERVICE_NEW_ROUTE)).toBe('/#/business/services/new')
     expect(
       routeHref({ kind: 'business-service-detail', serviceId: 'service/a' }),
@@ -72,10 +78,49 @@ describe('application navigation', () => {
     expect(routeHref(BUSINESS_SCHEDULE_ROUTE)).toBe('/#/business/schedule')
 
     pushRoute(PLATFORM_BUSINESSES_ROUTE)
-    expect(window.location.hash).toBe('#/platform/businesses')
+    expect(window.location.hash).toBe(
+      '#/platform/businesses?page=0&size=10&sort=displayName&direction=asc',
+    )
 
     replaceRoute(PROFILE_ROUTE)
     expect(window.location.hash).toBe('#/profile')
+  })
+
+  it('canonicalizes explicit list query state in the URL', () => {
+    const servicesRoute = {
+      kind: 'business-services' as const,
+      list: { page: 2, size: 25 as const, sort: 'price', direction: 'desc' as const },
+    }
+    expect(routeHref(servicesRoute)).toBe(
+      '/#/business/services?page=2&size=25&sort=price&direction=desc',
+    )
+    expect(readAuthenticatedRoute('#/business/services?page=2&size=25&sort=price&direction=desc'))
+      .toEqual(servicesRoute)
+
+    const businessesRoute = {
+      kind: 'platform-businesses' as const,
+      list: { page: 1, size: 50 as const, sort: 'status', direction: 'desc' as const },
+    }
+    expect(routeHref(businessesRoute)).toBe(
+      '/#/platform/businesses?page=1&size=50&sort=status&direction=desc',
+    )
+    expect(
+      readAuthenticatedRoute('#/platform/businesses?page=1&size=50&sort=status&direction=desc'),
+    ).toEqual(businessesRoute)
+  })
+
+  it('normalizes invalid or unsupported list query values to canonical defaults', () => {
+    expect(readAuthenticatedRoute('#/business/services?page=-1&size=999&sort=bogus&direction=up'))
+      .toEqual({ kind: 'business-services', list: SERVICES_DEFAULT_LIST })
+    expect(readAuthenticatedRoute('#/business/services?page=abc&size=10'))
+      .toEqual({ kind: 'business-services', list: SERVICES_DEFAULT_LIST })
+    expect(
+      readAuthenticatedRoute('#/platform/businesses?sort=displayName&direction=DESC'),
+    ).toEqual({ kind: 'platform-businesses', list: BUSINESSES_DEFAULT_LIST })
+    expect(readAuthenticatedRoute('#/business/services?sort=businessType')).toEqual({
+      kind: 'business-services',
+      list: SERVICES_DEFAULT_LIST,
+    })
   })
 
   it('classifies platform and business-owner routes distinctly from Profile', () => {

@@ -75,14 +75,19 @@ export type LifecycleAction = 'activate' | 'suspend' | 'reactivate'
 
 export function listBusinesses(
   page = 0,
-  size = 50,
+  size = 10,
+  sort = 'displayName',
+  direction: 'asc' | 'desc' = 'asc',
   signal?: AbortSignal,
 ): Promise<BusinessPage> {
   const options: RequestInit = signal ? { signal } : {}
-  return request<BusinessPage>(
-    `/api/platform/businesses?page=${page}&size=${size}`,
-    options,
-  )
+  const params = new URLSearchParams({
+    page: String(page),
+    size: String(size),
+    sort,
+    direction,
+  })
+  return request<BusinessPage>(`/api/platform/businesses?${params.toString()}`, options)
 }
 
 export function getBusiness(

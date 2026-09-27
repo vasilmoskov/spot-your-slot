@@ -17,6 +17,7 @@ import bg.spotyourslot.business.BusinessApplicationException.InputField;
 import bg.spotyourslot.business.BusinessApplicationException.InvalidInput;
 import bg.spotyourslot.business.BusinessApplicationException.InvalidLifecycleTransition;
 import bg.spotyourslot.business.BusinessRecords.BusinessDetails;
+import bg.spotyourslot.business.BusinessRecords.BusinessSortField;
 import bg.spotyourslot.business.BusinessRecords.CreateBusinessCommand;
 import bg.spotyourslot.business.BusinessRecords.UpdateBusinessCommand;
 import bg.spotyourslot.business.application.BusinessInputValidator.PageInput;
@@ -67,10 +68,12 @@ class BusinessAdministrationServiceTests {
     void listsValidatedPageAndMapsEverySummaryField() {
         BusinessRow row = row(BusinessStatus.ACTIVE, 3, NOW.minusSeconds(60), NOW);
         when(validator.validatePage(2, 10)).thenReturn(new PageInput(2, 10));
-        when(store.list(2, 10)).thenReturn(List.of(row));
+        when(validator.validateSort(null)).thenReturn(BusinessSortField.DISPLAY_NAME);
+        when(validator.validateAscending(null)).thenReturn(true);
+        when(store.list(2, 10, BusinessSortField.DISPLAY_NAME, true)).thenReturn(List.of(row));
         when(store.count()).thenReturn(21L);
 
-        var page = service.list(2, 10);
+        var page = service.list(2, 10, null, null);
 
         assertThat(page.page()).isEqualTo(2);
         assertThat(page.size()).isEqualTo(10);

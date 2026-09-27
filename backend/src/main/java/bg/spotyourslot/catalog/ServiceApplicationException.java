@@ -18,6 +18,8 @@ public abstract sealed class ServiceApplicationException extends RuntimeExceptio
         SERVICE_ID,
         PAGE,
         SIZE,
+        SORT,
+        DIRECTION,
         NAME,
         DESCRIPTION,
         DURATION_MINUTES,

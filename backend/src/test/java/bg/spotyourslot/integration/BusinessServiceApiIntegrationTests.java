@@ -116,7 +116,7 @@ class BusinessServiceApiIntegrationTests extends PostgresIntegrationTest {
     }
 
     @Test
-    void listingIncludesActiveAndInactiveServicesWithDeterministicPagination()
+    void listingIncludesActiveAndInactiveServicesInDeterministicOrder()
             throws Exception {
         Actor owner = actor("ACTIVE", "BUSINESS_OWNER", true, false, true);
         UUID beta = insertService(owner.businessId(), "Beta", false, 2);
@@ -127,19 +127,51 @@ class BusinessServiceApiIntegrationTests extends PostgresIntegrationTest {
         mvc.perform(get("/api/business/services")
                         .cookie(owner.session())
                         .param("page", "0")
-                        .param("size", "2"))
+                        .param("size", "10"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.services[0].id").value(alphaFirst.toString()))
                 .andExpect(jsonPath("$.services[1].id").value(alphaSecond.toString()))
+                .andExpect(jsonPath("$.services[2].id").value(beta.toString()))
+                .andExpect(jsonPath("$.services[2].active").value(false))
                 .andExpect(jsonPath("$.totalElements").value(3));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {10, 25, 50})
+    void listingAcceptsEveryApprovedPageSize(int size) throws Exception {
+        Actor owner = actor("ACTIVE", "BUSINESS_OWNER", true, false, true);
+
+        mvc.perform(get("/api/business/services")
+                        .cookie(owner.session())
+                        .param("size", String.valueOf(size)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.size").value(size));
+    }
+
+    @Test
+    void listingPaginatesDeterministicallyAtTheApprovedPageSize() throws Exception {
+        Actor owner = actor("ACTIVE", "BUSINESS_OWNER", true, false, true);
+        for (int index = 0; index < 11; index++) {
+            insertService(owner.businessId(), String.format("Service %02d", index), true, 0);
+        }
+
+        mvc.perform(get("/api/business/services")
+                        .cookie(owner.session())
+                        .param("page", "0")
+                        .param("size", "10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.services.length()").value(10))
+                .andExpect(jsonPath("$.services[0].name").value("Service 00"))
+                .andExpect(jsonPath("$.services[9].name").value("Service 09"))
+                .andExpect(jsonPath("$.totalElements").value(11));
         mvc.perform(get("/api/business/services")
                         .cookie(owner.session())
                         .param("page", "1")
-                        .param("size", "2"))
+                        .param("size", "10"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.services[0].id").value(beta.toString()))
-                .andExpect(jsonPath("$.services[0].active").value(false))
-                .andExpect(jsonPath("$.totalElements").value(3));
+                .andExpect(jsonPath("$.services.length()").value(1))
+                .andExpect(jsonPath("$.services[0].name").value("Service 10"))
+                .andExpect(jsonPath("$.totalElements").value(11));
     }
 
     @Test
@@ -400,7 +432,11 @@ class BusinessServiceApiIntegrationTests extends PostgresIntegrationTest {
                 Arguments.of("", "LIFECYCLE", "{\"expectedVersion\":-1}"),
                 Arguments.of("/api/business/services?page=-1", "GET", ""),
                 Arguments.of("/api/business/services?size=0", "GET", ""),
-                Arguments.of("/api/business/services?size=101", "GET", ""));
+                Arguments.of("/api/business/services?size=1", "GET", ""),
+                Arguments.of("/api/business/services?size=7", "GET", ""),
+                Arguments.of("/api/business/services?size=51", "GET", ""),
+                Arguments.of("/api/business/services?sort=unknown", "GET", ""),
+                Arguments.of("/api/business/services?direction=sideways", "GET", ""));
     }
 
     private Actor actor(

@@ -21,6 +21,7 @@ import bg.spotyourslot.catalog.ServiceApplicationException.InvalidLifecycleTrans
 import bg.spotyourslot.catalog.ServiceApplicationException.ServiceNameConflict;
 import bg.spotyourslot.catalog.ServiceApplicationException.ServiceNotFound;
 import bg.spotyourslot.catalog.ServiceRecords.CreateServiceCommand;
+import bg.spotyourslot.catalog.ServiceRecords.ServiceSortField;
 import bg.spotyourslot.catalog.ServiceRecords.ServiceVersionCommand;
 import bg.spotyourslot.catalog.ServiceRecords.UpdateServiceCommand;
 import bg.spotyourslot.catalog.application.ServiceInputValidator.PageInput;
@@ -81,7 +82,7 @@ class ServiceAdministrationServiceTests {
 
     @Test
     void requiresAuthenticationBeforeUsingCollaborators() {
-        assertThatThrownBy(() -> service.list(null, 0, 20))
+        assertThatThrownBy(() -> service.list(null, 0, 20, null, null))
                 .isInstanceOf(AuthenticationCredentialsNotFoundException.class)
                 .hasMessage("Authentication is required");
         verifyNoInteractions(store, validator, businesses, owners);
@@ -91,12 +92,12 @@ class ServiceAdministrationServiceTests {
     void distinguishesMissingSelectionFromDeniedBusinessAccess() {
         var noSelection = new TestContext(USER_ID, null);
 
-        assertThatThrownBy(() -> service.list(noSelection, 0, 20))
+        assertThatThrownBy(() -> service.list(noSelection, 0, 20, null, null))
                 .isInstanceOf(SelectedBusinessRequired.class);
 
         when(validator.validateBusinessId(BUSINESS_ID)).thenReturn(BUSINESS_ID);
         when(businesses.findLifecycle(BUSINESS_ID)).thenReturn(Optional.empty());
-        assertThatThrownBy(() -> service.list(context, 0, 20))
+        assertThatThrownBy(() -> service.list(context, 0, 20, null, null))
                 .isInstanceOf(BusinessAccessDenied.class);
         verifyNoInteractions(owners);
     }
@@ -106,10 +107,13 @@ class ServiceAdministrationServiceTests {
         ServiceRow row = row(true, 4, NOW.minusSeconds(60), NOW);
         authorizeRead();
         when(validator.validatePage(1, 10)).thenReturn(new PageInput(1, 10));
-        when(store.list(BUSINESS_ID, 1, 10)).thenReturn(List.of(row));
+        when(validator.validateSort(null)).thenReturn(ServiceSortField.NAME);
+        when(validator.validateAscending(null)).thenReturn(true);
+        when(store.list(BUSINESS_ID, 1, 10, ServiceSortField.NAME, true))
+                .thenReturn(List.of(row));
         when(store.count(BUSINESS_ID)).thenReturn(11L);
 
-        var result = service.list(context, 1, 10);
+        var result = service.list(context, 1, 10, null, null);
 
         assertThat(result.page()).isEqualTo(1);
         assertThat(result.size()).isEqualTo(10);

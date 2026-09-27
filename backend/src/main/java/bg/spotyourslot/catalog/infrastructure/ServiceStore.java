@@ -1,5 +1,6 @@
 package bg.spotyourslot.catalog.infrastructure;
 
+import bg.spotyourslot.catalog.ServiceRecords.ServiceSortField;
 import bg.spotyourslot.catalog.infrastructure.ServicePersistenceException.NameConflict;
 import bg.spotyourslot.catalog.infrastructure.ServicePersistenceException.UnexpectedFailure;
 import java.sql.ResultSet;
@@ -23,7 +24,7 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public class ServiceStore {
-    public static final int MAX_PAGE_SIZE = 100;
+    public static final int MAX_PAGE_SIZE = 50;
 
     private static final String UNIQUE_VIOLATION_SQL_STATE = "23505";
     private static final String NAME_CONSTRAINT = "service_business_normalized_name_unique";
@@ -40,7 +41,8 @@ public class ServiceStore {
         this.jdbc = jdbc;
     }
 
-    public List<ServiceRow> list(UUID businessId, int page, int size) {
+    public List<ServiceRow> list(
+            UUID businessId, int page, int size, ServiceSortField sort, boolean ascending) {
         validatePage(page, size);
         long offset = Math.multiplyExact((long) page, size);
 
@@ -49,14 +51,31 @@ public class ServiceStore {
                                active, version, created_at, updated_at
                         FROM service
                         WHERE business_id = :businessId
-                        ORDER BY normalized_name ASC, id ASC
+                        ORDER BY %s
                         LIMIT :size OFFSET :offset
-                        """)
+                        """.formatted(orderClause(sort, ascending)))
                 .param("businessId", businessId)
                 .param("size", size)
                 .param("offset", offset)
                 .query(this::serviceRow)
                 .list());
+    }
+
+    /**
+     * The primary criterion's direction follows {@code ascending} literally, except for
+     * {@code STATUS}: ascending is documented as active-first (ACTIVE before INACTIVE), which is
+     * {@code active DESC}. Tie-breakers stay fixed ascending regardless of direction so ordering
+     * remains deterministic.
+     */
+    private String orderClause(ServiceSortField sort, boolean ascending) {
+        String direction = ascending ? "ASC" : "DESC";
+        return switch (sort) {
+            case NAME -> "normalized_name " + direction + ", id ASC";
+            case DURATION -> "duration_minutes " + direction + ", normalized_name ASC, id ASC";
+            case PRICE -> "price " + direction + ", normalized_name ASC, id ASC";
+            case STATUS -> "active " + (ascending ? "DESC" : "ASC")
+                    + ", normalized_name ASC, id ASC";
+        };
     }
 
     public long count(UUID businessId) {

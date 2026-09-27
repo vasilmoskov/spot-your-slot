@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import bg.spotyourslot.catalog.ServiceRecords.CreateServiceCommand;
+import bg.spotyourslot.catalog.ServiceRecords.ServiceSortField;
 import bg.spotyourslot.catalog.application.ServiceInputValidator;
 import bg.spotyourslot.catalog.infrastructure.ServicePersistenceException.NameConflict;
 import bg.spotyourslot.catalog.infrastructure.ServicePersistenceException.UnexpectedFailure;
@@ -99,7 +100,7 @@ class ServiceStoreIntegrationTests extends PostgresIntegrationTest {
                 .orElseThrow();
         store.create(newService(secondBusiness, "Чужда", CREATED_AT));
 
-        assertThat(store.list(firstBusiness, 0, 50))
+        assertThat(store.list(firstBusiness, 0, 50, ServiceSortField.NAME, true))
                 .containsExactlyInAnyOrder(active, inactive);
         assertThat(store.count(firstBusiness)).isEqualTo(2);
         assertThat(store.count(secondBusiness)).isEqualTo(1);
@@ -114,15 +115,76 @@ class ServiceStoreIntegrationTests extends PostgresIntegrationTest {
         store.create(newService(businessId, "delta", CREATED_AT));
         store.create(newService(businessId, "epsilon", CREATED_AT));
 
-        List<ServiceRow> first = store.list(businessId, 0, 2);
-        List<ServiceRow> second = store.list(businessId, 1, 2);
-        List<ServiceRow> third = store.list(businessId, 2, 2);
+        List<ServiceRow> first = store.list(businessId, 0, 2, ServiceSortField.NAME, true);
+        List<ServiceRow> second = store.list(businessId, 1, 2, ServiceSortField.NAME, true);
+        List<ServiceRow> third = store.list(businessId, 2, 2, ServiceSortField.NAME, true);
 
         assertThat(first).extracting(ServiceRow::name).containsExactly("Alpha", "beta");
         assertThat(second).extracting(ServiceRow::name).containsExactly("delta", "epsilon");
         assertThat(third).extracting(ServiceRow::name).containsExactly("gamma");
-        assertThat(store.list(businessId, 0, 10))
+        assertThat(store.list(businessId, 0, 10, ServiceSortField.NAME, true))
                 .containsExactlyElementsOf(concatenate(first, second, third));
+    }
+
+    @Test
+    void nameSortDirectionReversesWithoutAffectingTieBreakers() {
+        UUID businessId = createBusiness();
+        store.create(newService(businessId, "beta", CREATED_AT));
+        store.create(newService(businessId, "Alpha", CREATED_AT));
+
+        assertThat(store.list(businessId, 0, 10, ServiceSortField.NAME, false))
+                .extracting(ServiceRow::name)
+                .containsExactly("beta", "Alpha");
+    }
+
+    @Test
+    void durationSortOrdersByDurationThenNameThenId() {
+        UUID businessId = createBusiness();
+        ServiceRow first = store.create(newServiceWithDuration(businessId, "Second", 30, CREATED_AT));
+        ServiceRow second = store.create(newServiceWithDuration(businessId, "First", 30, CREATED_AT));
+        ServiceRow third = store.create(newServiceWithDuration(businessId, "Third", 60, CREATED_AT));
+
+        assertThat(store.list(businessId, 0, 10, ServiceSortField.DURATION, true))
+                .extracting(ServiceRow::id)
+                .containsExactly(second.id(), first.id(), third.id());
+        assertThat(store.list(businessId, 0, 10, ServiceSortField.DURATION, false))
+                .extracting(ServiceRow::id)
+                .containsExactly(third.id(), second.id(), first.id());
+    }
+
+    @Test
+    void priceSortOrdersByPriceThenNameThenId() {
+        UUID businessId = createBusiness();
+        ServiceRow cheapSecond = store.create(newServiceWithPrice(
+                businessId, "Second", new BigDecimal("10.00"), CREATED_AT));
+        ServiceRow cheapFirst = store.create(newServiceWithPrice(
+                businessId, "First", new BigDecimal("10.00"), CREATED_AT));
+        ServiceRow expensive = store.create(newServiceWithPrice(
+                businessId, "Third", new BigDecimal("20.00"), CREATED_AT));
+
+        assertThat(store.list(businessId, 0, 10, ServiceSortField.PRICE, true))
+                .extracting(ServiceRow::id)
+                .containsExactly(cheapFirst.id(), cheapSecond.id(), expensive.id());
+        assertThat(store.list(businessId, 0, 10, ServiceSortField.PRICE, false))
+                .extracting(ServiceRow::id)
+                .containsExactly(expensive.id(), cheapFirst.id(), cheapSecond.id());
+    }
+
+    @Test
+    void statusSortAscendingIsActiveFirstDescendingIsInactiveFirst() {
+        UUID businessId = createBusiness();
+        ServiceRow activeOne = store.create(newService(businessId, "Beta", CREATED_AT));
+        ServiceRow activeTwo = store.create(newService(businessId, "Alpha", CREATED_AT));
+        ServiceRow inactive = store.deactivate(
+                        businessId, activeOne.id(), activeOne.version(), UPDATED_AT)
+                .orElseThrow();
+
+        assertThat(store.list(businessId, 0, 10, ServiceSortField.STATUS, true))
+                .extracting(ServiceRow::id)
+                .containsExactly(activeTwo.id(), inactive.id());
+        assertThat(store.list(businessId, 0, 10, ServiceSortField.STATUS, false))
+                .extracting(ServiceRow::id)
+                .containsExactly(inactive.id(), activeTwo.id());
     }
 
     @Test
@@ -468,7 +530,7 @@ class ServiceStoreIntegrationTests extends PostgresIntegrationTest {
                         .isPresent());
 
         assertOneSuccessAndOneNameConflict(outcomes);
-        List<ServiceRow> stored = store.list(businessId, 0, 10);
+        List<ServiceRow> stored = store.list(businessId, 0, 10, ServiceSortField.NAME, true);
         assertThat(stored).filteredOn(row -> row.version() == 1).hasSize(1);
         assertThat(stored).filteredOn(row -> row.version() == 0).hasSize(1);
         assertThat(stored).filteredOn(row -> row.updatedAt().equals(CREATED_AT)).hasSize(1);
@@ -500,6 +562,30 @@ class ServiceStoreIntegrationTests extends PostgresIntegrationTest {
                 "Описание за " + name,
                 30,
                 new BigDecimal("20.00"),
+                createdAt);
+    }
+
+    private NewServiceRow newServiceWithDuration(
+            UUID businessId, String name, int durationMinutes, Instant createdAt) {
+        return newService(
+                UUID.randomUUID(),
+                businessId,
+                name,
+                "Описание за " + name,
+                durationMinutes,
+                new BigDecimal("20.00"),
+                createdAt);
+    }
+
+    private NewServiceRow newServiceWithPrice(
+            UUID businessId, String name, BigDecimal price, Instant createdAt) {
+        return newService(
+                UUID.randomUUID(),
+                businessId,
+                name,
+                "Описание за " + name,
+                30,
+                price,
                 createdAt);
     }
 

@@ -106,6 +106,9 @@ over the default risk level.
   interaction patterns, do not introduce a conflicting visual style, and update
   the guide when a human-approved decision changes it. Include a manual visual
   checkpoint when meaningful UI becomes available.
+- Authenticated, user-editable forms follow the shared unsaved-changes
+  behavior defined in `docs/ui-design-guidelines.md`. User-facing paginated
+  tables follow the shared table standard in the same guide.
 
 ## Security and state management
 

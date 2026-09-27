@@ -7,6 +7,8 @@ import bg.spotyourslot.business.BusinessAdministration;
 import bg.spotyourslot.business.BusinessApplicationException.BusinessNotFound;
 import bg.spotyourslot.business.BusinessApplicationException.BusinessSlugConflict;
 import bg.spotyourslot.business.BusinessApplicationException.ConcurrentUpdate;
+import bg.spotyourslot.business.BusinessApplicationException.InputField;
+import bg.spotyourslot.business.BusinessApplicationException.InvalidInput;
 import bg.spotyourslot.business.BusinessApplicationException.InvalidLifecycleTransition;
 import bg.spotyourslot.business.BusinessRecords.CreateBusinessCommand;
 import bg.spotyourslot.business.BusinessRecords.UpdateBusinessCommand;
@@ -84,20 +86,54 @@ class BusinessAdministrationServiceIntegrationTests extends PostgresIntegrationT
 
     @Test
     void listsDeterministicallyWithBoundedPaginationAndCount() {
+        // Display names: "Business first", "Business same-higher", "Business same-lower" —
+        // the default ascending display-name order places "first" ahead of both "same-*"
+        // entries, and "same-higher" ahead of "same-lower".
         UUID firstId = insertBusiness("first", NOW.minusSeconds(2));
         UUID lowerId = UUID.fromString("00000000-0000-0000-0000-000000000001");
         UUID higherId = UUID.fromString("00000000-0000-0000-0000-000000000002");
         insertBusiness(lowerId, "same-lower", NOW.minusSeconds(1));
         insertBusiness(higherId, "same-higher", NOW.minusSeconds(1));
 
-        var firstPage = administration.list(0, 2);
-        var secondPage = administration.list(1, 2);
+        var page = administration.list(0, 10, null, null);
 
-        assertThat(firstPage.totalElements()).isEqualTo(3);
-        assertThat(firstPage.businesses()).extracting(summary -> summary.id())
-                .containsExactly(higherId, lowerId);
-        assertThat(secondPage.businesses()).extracting(summary -> summary.id())
-                .containsExactly(firstId);
+        assertThat(page.totalElements()).isEqualTo(3);
+        assertThat(page.businesses()).extracting(summary -> summary.id())
+                .containsExactly(firstId, higherId, lowerId);
+    }
+
+    @Test
+    void sortAndDirectionAreAppliedThroughTheApplicationLayer() {
+        insertBusiness("zulu-business", NOW);
+        insertBusiness("alpha-business", NOW);
+
+        var ascending = administration.list(0, 10, "slug", "asc");
+        var descending = administration.list(0, 10, "slug", "desc");
+
+        assertThat(ascending.businesses()).extracting(summary -> summary.slug())
+                .containsExactly("alpha-business", "zulu-business");
+        assertThat(descending.businesses()).extracting(summary -> summary.slug())
+                .containsExactly("zulu-business", "alpha-business");
+    }
+
+    @Test
+    void rejectsInvalidPaginationSortAndDirection() {
+        assertThatThrownBy(() -> administration.list(-1, 10, null, null))
+                .isInstanceOf(InvalidInput.class)
+                .extracting(failure -> ((InvalidInput) failure).field())
+                .isEqualTo(InputField.PAGE);
+        assertThatThrownBy(() -> administration.list(0, 51, null, null))
+                .isInstanceOf(InvalidInput.class)
+                .extracting(failure -> ((InvalidInput) failure).field())
+                .isEqualTo(InputField.SIZE);
+        assertThatThrownBy(() -> administration.list(0, 10, "unknown", null))
+                .isInstanceOf(InvalidInput.class)
+                .extracting(failure -> ((InvalidInput) failure).field())
+                .isEqualTo(InputField.SORT);
+        assertThatThrownBy(() -> administration.list(0, 10, null, "sideways"))
+                .isInstanceOf(InvalidInput.class)
+                .extracting(failure -> ((InvalidInput) failure).field())
+                .isEqualTo(InputField.DIRECTION);
     }
 
     @Test

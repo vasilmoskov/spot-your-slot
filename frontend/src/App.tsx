@@ -30,6 +30,8 @@ import {
   subscribeToNavigation,
   type AuthenticatedRoute,
   type IdentityPage,
+  type ListNavigationMode,
+  type ListQueryState,
 } from './navigation'
 import { PlatformAdminShell } from './platform/PlatformAdminShell'
 import { BusinessList } from './platform/businesses/BusinessList'
@@ -511,6 +513,46 @@ export function AuthenticatedApplication({
     setFeedback(null)
   }, [session.activeBusinessId, setFeedback])
 
+  const previousActiveBusinessId = useRef(session.activeBusinessId)
+  // A layout effect so a stale page number from the previous Business is
+  // corrected before the Services list's own data-fetch effect (a passive
+  // effect) ever runs — otherwise it would briefly fetch the new Business's
+  // data using the old page number before self-correcting.
+  useLayoutEffect(() => {
+    if (previousActiveBusinessId.current === session.activeBusinessId) return
+    previousActiveBusinessId.current = session.activeBusinessId
+    const current = routeRef.current
+    if (current.kind !== 'business-services' || current.list.page === 0) return
+    const next: AuthenticatedRoute = { ...current, list: { ...current.list, page: 0 } }
+    replaceRoute(next)
+    setRoute(next)
+  }, [session.activeBusinessId])
+
+  const updateBusinessServicesList = (next: ListQueryState, mode: ListNavigationMode = 'push') => {
+    if (route.kind !== 'business-services') return
+    const nextRoute: AuthenticatedRoute = { ...route, list: next }
+    if (mode === 'replace') {
+      replaceRoute(nextRoute)
+    } else {
+      pushRoute(nextRoute)
+    }
+    setRoute(nextRoute)
+  }
+
+  const updatePlatformBusinessesList = (
+    next: ListQueryState,
+    mode: ListNavigationMode = 'push',
+  ) => {
+    if (route.kind !== 'platform-businesses') return
+    const nextRoute: AuthenticatedRoute = { ...route, list: next }
+    if (mode === 'replace') {
+      replaceRoute(nextRoute)
+    } else {
+      pushRoute(nextRoute)
+    }
+    setRoute(nextRoute)
+  }
+
   // Also a layout effect, for the same reason: the automatic Services
   // landing must correct the hash before paint so the rendered route and the
   // URL never observably disagree.
@@ -619,6 +661,8 @@ export function AuthenticatedApplication({
           <ServiceList
             key={businessKey}
             readOnly={readOnly}
+            list={route.list}
+            onListChange={updateBusinessServicesList}
             onAuthenticationRequired={authenticationRequired}
             onCreate={() => navigate({ kind: 'business-service-new' })}
             onOpen={(serviceId) => navigate({ kind: 'business-service-detail', serviceId })}
@@ -673,6 +717,8 @@ export function AuthenticatedApplication({
         />
       ) : route.kind === 'platform-businesses' ? (
         <BusinessList
+          list={route.list}
+          onListChange={updatePlatformBusinessesList}
           onAuthenticationRequired={authenticationRequired}
           onCreate={() => navigate(PLATFORM_BUSINESS_NEW_ROUTE)}
           onOpen={(businessId) =>

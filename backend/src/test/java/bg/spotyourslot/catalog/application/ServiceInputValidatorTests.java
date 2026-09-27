@@ -8,6 +8,7 @@ import bg.spotyourslot.catalog.ServiceApplicationException.InvalidInput;
 import bg.spotyourslot.catalog.ServiceRecords.CreateServiceCommand;
 import bg.spotyourslot.catalog.ServiceRecords.ServiceDetails;
 import bg.spotyourslot.catalog.ServiceRecords.ServicePage;
+import bg.spotyourslot.catalog.ServiceRecords.ServiceSortField;
 import bg.spotyourslot.catalog.ServiceRecords.ServiceVersionCommand;
 import bg.spotyourslot.catalog.ServiceRecords.UpdateServiceCommand;
 import java.math.BigDecimal;
@@ -20,6 +21,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class ServiceInputValidatorTests {
     private final ServiceInputValidator validator = new ServiceInputValidator();
@@ -131,8 +133,8 @@ class ServiceInputValidatorTests {
         assertThat(validator.validateBusinessId(id)).isEqualTo(id);
         assertThat(validator.validateServiceId(id)).isEqualTo(id);
         assertThat(validator.validateVersion(new ServiceVersionCommand(0L))).isZero();
-        assertThat(validator.validatePage(0, 1)).isEqualTo(new ServiceInputValidator.PageInput(0, 1));
-        assertThat(validator.validatePage(4, 100)).isEqualTo(new ServiceInputValidator.PageInput(4, 100));
+        assertThat(validator.validatePage(0, 10)).isEqualTo(new ServiceInputValidator.PageInput(0, 10));
+        assertThat(validator.validatePage(4, 50)).isEqualTo(new ServiceInputValidator.PageInput(4, 50));
 
         assertInvalid(InputField.BUSINESS_ID, () -> validator.validateBusinessId(null));
         assertInvalid(InputField.SERVICE_ID, () -> validator.validateServiceId(null));
@@ -142,7 +144,37 @@ class ServiceInputValidatorTests {
                 () -> validator.validateVersion(new ServiceVersionCommand(-1L)));
         assertInvalid(InputField.PAGE, () -> validator.validatePage(-1, 50));
         assertInvalid(InputField.SIZE, () -> validator.validatePage(0, 0));
-        assertInvalid(InputField.SIZE, () -> validator.validatePage(0, 101));
+        assertInvalid(InputField.SIZE, () -> validator.validatePage(0, 51));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {10, 25, 50})
+    void acceptsOnlyTheApprovedPageSizes(int size) {
+        assertThat(validator.validatePage(0, size))
+                .isEqualTo(new ServiceInputValidator.PageInput(0, size));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {1, 7, 20, 37, 49, 51})
+    void rejectsEveryPageSizeOutsideTheApprovedAllowlist(int size) {
+        assertInvalid(InputField.SIZE, () -> validator.validatePage(0, size));
+    }
+
+    @Test
+    void validatesSortAndDirection() {
+        assertThat(validator.validateSort(null)).isEqualTo(ServiceSortField.NAME);
+        assertThat(validator.validateSort("name")).isEqualTo(ServiceSortField.NAME);
+        assertThat(validator.validateSort("duration")).isEqualTo(ServiceSortField.DURATION);
+        assertThat(validator.validateSort("price")).isEqualTo(ServiceSortField.PRICE);
+        assertThat(validator.validateSort("status")).isEqualTo(ServiceSortField.STATUS);
+        assertInvalid(InputField.SORT, () -> validator.validateSort("unknown"));
+        assertInvalid(InputField.SORT, () -> validator.validateSort("NAME"));
+
+        assertThat(validator.validateAscending(null)).isTrue();
+        assertThat(validator.validateAscending("asc")).isTrue();
+        assertThat(validator.validateAscending("desc")).isFalse();
+        assertInvalid(InputField.DIRECTION, () -> validator.validateAscending("ASC"));
+        assertInvalid(InputField.DIRECTION, () -> validator.validateAscending("sideways"));
     }
 
     @Test

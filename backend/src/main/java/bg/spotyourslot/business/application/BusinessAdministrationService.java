@@ -54,9 +54,13 @@ public class BusinessAdministrationService
 
     @Override
     @Transactional(readOnly = true)
-    public BusinessPage list(int page, int size) {
+    public BusinessPage list(int page, int size, String sort, String direction) {
         PageInput validated = validator.validatePage(page, size);
-        var businesses = store.list(validated.page(), validated.size()).stream()
+        var sortField = validator.validateSort(sort);
+        boolean ascending = validator.validateAscending(direction);
+        var businesses = store.list(
+                        validated.page(), validated.size(), sortField, ascending)
+                .stream()
                 .map(this::summary)
                 .toList();
         return new BusinessPage(

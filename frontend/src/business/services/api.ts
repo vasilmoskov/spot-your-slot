@@ -32,11 +32,19 @@ export type UpdateServiceInput = CreateServiceInput & { expectedVersion: number 
 
 export function listServices(
   page = 0,
-  size = 50,
+  size = 10,
+  sort = 'name',
+  direction: 'asc' | 'desc' = 'asc',
   signal?: AbortSignal,
 ): Promise<ServicePage> {
   const options: RequestInit = signal ? { signal } : {}
-  return request<ServicePage>(`/api/business/services?page=${page}&size=${size}`, options)
+  const params = new URLSearchParams({
+    page: String(page),
+    size: String(size),
+    sort,
+    direction,
+  })
+  return request<ServicePage>(`/api/business/services?${params.toString()}`, options)
 }
 
 export function getService(

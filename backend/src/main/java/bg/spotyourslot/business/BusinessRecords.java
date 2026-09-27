@@ -10,6 +10,13 @@ public final class BusinessRecords {
     private BusinessRecords() {
     }
 
+    public enum BusinessSortField {
+        DISPLAY_NAME,
+        SLUG,
+        BUSINESS_TYPE,
+        STATUS
+    }
+
     public record BusinessSummary(
             UUID id,
             String slug,

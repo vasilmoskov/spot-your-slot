@@ -21,12 +21,22 @@ describe('services api client', () => {
     mockedRequest.mockReset()
   })
 
-  it('requests the paginated Service list', () => {
-    mockedRequest.mockResolvedValue({ services: [], page: 0, size: 50, totalElements: 0 })
+  it('requests the paginated Service list using the default sort and direction', () => {
+    mockedRequest.mockResolvedValue({ services: [], page: 0, size: 10, totalElements: 0 })
     void listServices(1, 20)
     expect(mockedRequest).toHaveBeenCalledWith(
-      '/api/business/services?page=1&size=20',
+      '/api/business/services?page=1&size=20&sort=name&direction=asc',
       {},
+    )
+  })
+
+  it('requests an explicit sort field and direction', () => {
+    mockedRequest.mockResolvedValue({ services: [], page: 0, size: 25, totalElements: 0 })
+    const controller = new AbortController()
+    void listServices(2, 25, 'price', 'desc', controller.signal)
+    expect(mockedRequest).toHaveBeenCalledWith(
+      '/api/business/services?page=2&size=25&sort=price&direction=desc',
+      { signal: controller.signal },
     )
   })
 

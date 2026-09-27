@@ -7,7 +7,7 @@ import bg.spotyourslot.business.BusinessRecords.UpdateBusinessCommand;
 import java.util.UUID;
 
 public interface BusinessAdministration {
-    BusinessPage list(int page, int size);
+    BusinessPage list(int page, int size, String sort, String direction);
 
     BusinessDetails get(UUID businessId);
 
