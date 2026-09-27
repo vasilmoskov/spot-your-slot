@@ -1,4 +1,12 @@
-import { FormEvent, useCallback, useEffect, useRef, useState, type RefObject } from 'react'
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from 'react'
 import { useFeedback, errorCategory, type Feedback, type FeedbackAttempt } from './ui/useFeedback'
 import { Button } from './ui/Button'
 import {
@@ -444,10 +452,11 @@ export function AuthenticatedApplication({
     return initialRoute
   })
   const landingResolved = useRef(!smartLandingApplicable || owner)
+  // Kept current during render (not via an effect) so it can never lag behind
+  // the layout effects below that read it to keep the URL hash synchronized
+  // with the rendered route before the browser paints.
   const routeRef = useRef(route)
-  useEffect(() => {
-    routeRef.current = route
-  }, [route])
+  routeRef.current = route
 
   const authenticationRequired = useCallback(
     (detail: string) => {
@@ -457,7 +466,13 @@ export function AuthenticatedApplication({
     [setFeedback, setSession],
   )
 
-  useEffect(() => {
+  // A layout effect (not a passive effect) so the corrected hash is applied
+  // to the URL before the browser paints the rendered route: with a plain
+  // useEffect, the route/heading commit and the history.replaceState() call
+  // that corrects the hash are not guaranteed to happen in the same tick,
+  // leaving a real (if brief) window where the rendered view and the URL
+  // disagree.
+  useLayoutEffect(() => {
     const synchronizeRoute = () => {
       const nextRoute = readAuthenticatedRoute()
       const target: AuthenticatedRoute =
@@ -496,7 +511,10 @@ export function AuthenticatedApplication({
     setFeedback(null)
   }, [session.activeBusinessId, setFeedback])
 
-  useEffect(() => {
+  // Also a layout effect, for the same reason: the automatic Services
+  // landing must correct the hash before paint so the rendered route and the
+  // URL never observably disagree.
+  useLayoutEffect(() => {
     if (route.kind !== 'profile') {
       landingResolved.current = true
       return

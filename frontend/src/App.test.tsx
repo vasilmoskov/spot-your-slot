@@ -841,12 +841,16 @@ describe('identity application', () => {
     expect(mockedRequest).toHaveBeenCalledTimes(1)
     expect(mockedListBusinesses).toHaveBeenCalledWith(0, 50, expect.any(AbortSignal))
 
-    history.pushState({}, '', '/#/profile')
-    window.dispatchEvent(new PopStateEvent('popstate'))
+    await act(async () => {
+      history.pushState({}, '', '/#/profile')
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    })
     expect(await screen.findByRole('heading', { name: 'Профил' })).toBeInTheDocument()
 
-    history.pushState({}, '', '/#/platform/businesses')
-    window.dispatchEvent(new HashChangeEvent('hashchange'))
+    await act(async () => {
+      history.pushState({}, '', '/#/platform/businesses')
+      window.dispatchEvent(new HashChangeEvent('hashchange'))
+    })
     expect(await screen.findByRole('heading', { name: 'Бизнеси' })).toBeInTheDocument()
   })
 
