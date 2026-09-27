@@ -1324,8 +1324,25 @@ describe('table sort/pagination URL state', () => {
       '/#/business/services?page=1&size=10&sort=name&direction=asc',
     )
 
+    // The recovered URL commits synchronously, but the recovered page's own
+    // fetch/render cycle (triggered by the corrected `list` prop) is still in
+    // flight at that point. Wait for that second cycle to actually finish
+    // and render the recovered row before interacting with the table -
+    // otherwise the sortable headers may not exist yet, which is exactly the
+    // CI-observed flake this test regressed on.
+    await screen.findByText('Подстригване')
+    expect(mockedListServices).toHaveBeenLastCalledWith(
+      1,
+      10,
+      'name',
+      'asc',
+      expect.any(AbortSignal),
+    )
+
+    pushSpy.mockClear()
     replaceSpy.mockClear()
-    fireEvent.click(screen.getByRole('button', { name: 'Цена' }))
+    const priceSortButton = await screen.findByRole('button', { name: 'Цена' })
+    fireEvent.click(priceSortButton)
     await waitFor(() =>
       expect(window.location.hash).toBe(
         '#/business/services?page=0&size=10&sort=price&direction=asc',
@@ -1372,6 +1389,19 @@ describe('table sort/pagination URL state', () => {
       {},
       '',
       '/#/platform/businesses?page=1&size=10&sort=displayName&direction=asc',
+    )
+
+    // As with the Services recovery test above, wait for the recovered
+    // page's own fetch/render cycle to finish and the table to actually show
+    // the recovered row before the test ends, so a still-pending second
+    // request/render is never mistaken for a completed recovery.
+    await screen.findByText('Студио А')
+    expect(mockedListBusinesses).toHaveBeenLastCalledWith(
+      1,
+      10,
+      'displayName',
+      'asc',
+      expect.any(AbortSignal),
     )
 
     pushSpy.mockRestore()
