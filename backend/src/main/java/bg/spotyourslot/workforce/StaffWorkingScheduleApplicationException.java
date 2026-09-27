@@ -1,8 +1,12 @@
 package bg.spotyourslot.workforce;
 
 public abstract sealed class StaffWorkingScheduleApplicationException extends RuntimeException
-        permits StaffWorkingScheduleApplicationException.ConcurrentUpdate,
+        permits StaffWorkingScheduleApplicationException.BusinessAccessDenied,
+                StaffWorkingScheduleApplicationException.BusinessSuspended,
+                StaffWorkingScheduleApplicationException.ConcurrentUpdate,
                 StaffWorkingScheduleApplicationException.InvalidInput,
+                StaffWorkingScheduleApplicationException.StaffMemberInactive,
+                StaffWorkingScheduleApplicationException.StaffMemberNotFound,
                 StaffWorkingScheduleApplicationException.StaffWorkingScheduleNotFound {
     private StaffWorkingScheduleApplicationException(String safeMessage) {
         super(safeMessage);
@@ -44,6 +48,30 @@ public abstract sealed class StaffWorkingScheduleApplicationException extends Ru
     public static final class ConcurrentUpdate extends StaffWorkingScheduleApplicationException {
         public ConcurrentUpdate() {
             super("Working schedule was changed by another operation");
+        }
+    }
+
+    public static final class BusinessAccessDenied extends StaffWorkingScheduleApplicationException {
+        public BusinessAccessDenied() {
+            super("Business access to working schedules is denied");
+        }
+    }
+
+    public static final class BusinessSuspended extends StaffWorkingScheduleApplicationException {
+        public BusinessSuspended() {
+            super("Suspended Business cannot mutate working schedules");
+        }
+    }
+
+    public static final class StaffMemberNotFound extends StaffWorkingScheduleApplicationException {
+        public StaffMemberNotFound() {
+            super("StaffMember was not found");
+        }
+    }
+
+    public static final class StaffMemberInactive extends StaffWorkingScheduleApplicationException {
+        public StaffMemberInactive() {
+            super("Inactive StaffMember cannot receive a schedule replacement");
         }
     }
 }

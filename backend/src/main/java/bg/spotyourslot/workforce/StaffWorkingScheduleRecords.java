@@ -3,6 +3,7 @@ package bg.spotyourslot.workforce;
 import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -31,6 +32,18 @@ public final class StaffWorkingScheduleRecords {
             if (periods != null) {
                 periods = Collections.unmodifiableList(new ArrayList<>(periods));
             }
+        }
+    }
+
+    public record StaffWorkingScheduleAdministrationDetails(
+            UUID staffMemberId,
+            ZoneId timezone,
+            List<WorkingPeriod> periods,
+            long version,
+            Instant createdAt,
+            Instant updatedAt) {
+        public StaffWorkingScheduleAdministrationDetails {
+            periods = List.copyOf(periods);
         }
     }
 }

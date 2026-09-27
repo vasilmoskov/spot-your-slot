@@ -75,6 +75,21 @@ public class StaffMemberStore {
                 .optional());
     }
 
+    public Optional<StaffMemberRow> lockActiveState(UUID businessId, UUID staffMemberId) {
+        return execute(() -> jdbc.sql("""
+                        SELECT id, business_id, display_name, contact_email, contact_phone,
+                               active, version, created_at, updated_at
+                        FROM staff_member
+                        WHERE business_id = :businessId
+                          AND id = :staffMemberId
+                        FOR SHARE
+                        """)
+                .param("businessId", businessId)
+                .param("staffMemberId", staffMemberId)
+                .query(this::staffMemberRow)
+                .optional());
+    }
+
     public StaffMemberRow create(NewStaffMemberRow staffMember) {
         return execute(() -> jdbc.sql("""
                         INSERT INTO staff_member(

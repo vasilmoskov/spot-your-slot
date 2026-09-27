@@ -13,6 +13,8 @@ import bg.spotyourslot.business.BusinessRecords.UpdateBusinessCommand;
 import bg.spotyourslot.business.BusinessLifecycleAccess;
 import bg.spotyourslot.business.BusinessLifecycleAccess.BusinessLifecycle;
 import bg.spotyourslot.business.BusinessLifecycleAccess.LifecycleStatus;
+import bg.spotyourslot.business.BusinessScheduleContextAccess;
+import bg.spotyourslot.business.BusinessScheduleContextAccess.BusinessScheduleContext;
 import bg.spotyourslot.business.application.BusinessInputValidator.PageInput;
 import bg.spotyourslot.business.domain.BusinessSlug;
 import bg.spotyourslot.business.domain.BusinessStatus;
@@ -36,7 +38,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class BusinessAdministrationService
-        implements BusinessAdministration, BusinessLifecycleAccess {
+        implements BusinessAdministration, BusinessLifecycleAccess, BusinessScheduleContextAccess {
     private static final String UNIQUE_VIOLATION_SQL_STATE = "23505";
 
     private final BusinessStore store;
@@ -78,6 +80,18 @@ public class BusinessAdministrationService
     @Transactional(propagation = Propagation.MANDATORY)
     public Optional<BusinessLifecycle> lockLifecycle(UUID businessId) {
         return store.findByIdForShare(businessId).map(this::lifecycle);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY, readOnly = true)
+    public Optional<BusinessScheduleContext> findScheduleContext(UUID businessId) {
+        return store.findById(businessId).map(this::scheduleContext);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Optional<BusinessScheduleContext> lockScheduleContext(UUID businessId) {
+        return store.findByIdForShare(businessId).map(this::scheduleContext);
     }
 
     @Override
@@ -269,5 +283,12 @@ public class BusinessAdministrationService
     private BusinessLifecycle lifecycle(BusinessRow row) {
         return new BusinessLifecycle(
                 row.id(), LifecycleStatus.valueOf(row.status().name()));
+    }
+
+    private BusinessScheduleContext scheduleContext(BusinessRow row) {
+        return new BusinessScheduleContext(
+                row.id(),
+                LifecycleStatus.valueOf(row.status().name()),
+                row.timezone().toZoneId());
     }
 }
