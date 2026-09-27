@@ -413,6 +413,13 @@ label {
   margin-bottom: var(--space-5);
 }
 
+.business-identity-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
 .business-list-state,
 .business-table-container {
   padding: var(--space-5);
@@ -580,10 +587,50 @@ label {
   background: var(--color-page-background);
 }
 
+.unsaved-changes-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: rgb(23 32 51 / 45%);
+}
+
+.unsaved-changes-overlay .confirmation-panel {
+  margin-top: 0;
+  width: min(100%, 30rem);
+  padding: var(--space-5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  box-shadow: 0 1.5rem 3rem rgb(23 32 51 / 22%);
+}
+
+.unsaved-changes-panel p {
+  margin-bottom: var(--space-5);
+}
+
 .action-group {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-3);
+}
+
+.unsaved-changes-actions {
+  flex-wrap: nowrap;
+}
+
+@media (max-width: 26rem) {
+  .unsaved-changes-actions {
+    flex-direction: column;
+    flex-wrap: wrap;
+  }
+
+  .unsaved-changes-actions .button {
+    width: 100%;
+  }
 }
 
 .invitation-accepted {
@@ -749,6 +796,65 @@ label {
 
   .business-detail-header {
     flex-direction: column;
+  }
+}
+
+/* The Business-owner shell keeps a persistent 16rem sidebar from 48rem, so
+   this four-column list needs the card presentation until more width is
+   actually available; the platform-admin Business table is unaffected. */
+@media (min-width: 48rem) and (max-width: 63.999rem) {
+  .services-table-container {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    overflow: visible;
+  }
+
+  .services-table,
+  .services-table tbody,
+  .services-table tr,
+  .services-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .services-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+  }
+
+  .services-table tr {
+    margin-bottom: var(--space-4);
+    padding: var(--space-4);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-card);
+    background: var(--color-surface);
+    box-shadow: var(--shadow-card);
+  }
+
+  .services-table td,
+  .services-table tbody tr:last-child td {
+    display: grid;
+    grid-template-columns: minmax(6.5rem, 0.4fr) minmax(0, 1fr);
+    gap: var(--space-3);
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--color-border);
+    overflow-wrap: anywhere;
+  }
+
+  .services-table td:last-child {
+    border-bottom: 0;
+  }
+
+  .services-table td::before {
+    content: attr(data-label);
+    color: var(--color-text-secondary);
+    font-size: 0.875rem;
+    font-weight: 700;
   }
 }
 

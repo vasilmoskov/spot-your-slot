@@ -13,7 +13,11 @@ export const FEEDBACK_DURATION = 5_000
 
 export function errorCategory(error: unknown): NonNullable<Feedback['category']> {
   if (!(error instanceof ApiError)) return 'transient'
-  if (['BUSINESS_CONCURRENT_UPDATE', 'INVITATION_INVALID'].includes(error.code)) {
+  if ([
+    'BUSINESS_CONCURRENT_UPDATE',
+    'INVITATION_INVALID',
+    'SERVICE_CONCURRENT_UPDATE',
+  ].includes(error.code)) {
     return 'blocking'
   }
   if ([
@@ -22,6 +26,7 @@ export function errorCategory(error: unknown): NonNullable<Feedback['category']>
     'AUTH_FAILED',
     'CURRENT_PASSWORD_INVALID',
     'INVITATION_CREDENTIAL_MISMATCH',
+    'SERVICE_NAME_CONFLICT',
   ].includes(error.code)) {
     return 'validation'
   }

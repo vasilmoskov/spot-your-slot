@@ -1,17 +1,23 @@
 import '@testing-library/jest-dom/vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { PROFILE_ROUTE, PLATFORM_BUSINESSES_ROUTE } from '../navigation'
+import {
+  BUSINESS_SERVICES_ROUTE,
+  PROFILE_ROUTE,
+  PLATFORM_BUSINESSES_ROUTE,
+} from '../navigation'
 import { PlatformAdminShell } from './PlatformAdminShell'
 
-function renderShell(platformAdmin = true) {
+function renderShell(platformAdmin = true, businessOwner = false, activeBusinessName?: string) {
   const onNavigate = vi.fn()
   const onLogout = vi.fn()
-  render(
+  const { unmount } = render(
     <PlatformAdminShell
       route={PROFILE_ROUTE}
       platformAdmin={platformAdmin}
+      businessOwner={businessOwner}
       displayName="Иван Иванов"
+      activeBusinessName={activeBusinessName}
       busy={false}
       onNavigate={onNavigate}
       onLogout={onLogout}
@@ -19,7 +25,7 @@ function renderShell(platformAdmin = true) {
       <p>Съдържание</p>
     </PlatformAdminShell>,
   )
-  return { onNavigate, onLogout }
+  return { onNavigate, onLogout, unmount }
 }
 
 describe('PlatformAdminShell', () => {
@@ -28,7 +34,9 @@ describe('PlatformAdminShell', () => {
       <PlatformAdminShell
         route={PROFILE_ROUTE}
         platformAdmin
+        businessOwner={false}
         displayName="Администратор"
+        activeBusinessName={undefined}
         busy={false}
         onNavigate={vi.fn()}
         onLogout={vi.fn()}
@@ -45,6 +53,28 @@ describe('PlatformAdminShell', () => {
     renderShell(false)
     expect(screen.queryByRole('link', { name: 'Бизнеси' })).not.toBeInTheDocument()
     expect(screen.getAllByRole('link').map((link) => link.textContent)).toEqual(['Профил'])
+  })
+
+  it('shows Business-owner configuration destinations only to an owner of the active Business', () => {
+    const { unmount } = renderShell(false, true)
+    expect(screen.getAllByRole('link').map((link) => link.textContent)).toEqual([
+      'Услуги',
+      'Екип',
+      'Работно време',
+      'Профил',
+    ])
+
+    unmount()
+    const { onNavigate } = renderShell(true, true)
+    expect(screen.getAllByRole('link').map((link) => link.textContent)).toEqual([
+      'Бизнеси',
+      'Услуги',
+      'Екип',
+      'Работно време',
+      'Профил',
+    ])
+    fireEvent.click(screen.getByRole('link', { name: 'Услуги' }))
+    expect(onNavigate).toHaveBeenCalledWith(BUSINESS_SERVICES_ROUTE)
   })
 
   it('focuses Businesses first for a platform administrator', () => {
@@ -87,5 +117,52 @@ describe('PlatformAdminShell', () => {
     expect(screen.getAllByText('Иван Иванов')).not.toHaveLength(0)
     fireEvent.click(screen.getAllByRole('button', { name: 'Изход' })[0]!)
     expect(onLogout).toHaveBeenCalledOnce()
+  })
+
+  it('shows the active Business name above Logout for an owner, not the personal display name', () => {
+    renderShell(false, true, 'Бизнес А')
+    expect(document.querySelector('.sidebar-account')).toHaveTextContent('Бизнес А')
+    expect(document.querySelector('.mobile-account')).toHaveTextContent('Бизнес А')
+    expect(screen.queryByText('Иван Иванов')).not.toBeInTheDocument()
+  })
+
+  it('updates the sidebar identity immediately when the active Business changes, with no stale name', () => {
+    const { rerender } = render(
+      <PlatformAdminShell
+        route={PROFILE_ROUTE}
+        platformAdmin={false}
+        businessOwner
+        displayName="Иван Иванов"
+        activeBusinessName="Бизнес А"
+        busy={false}
+        onNavigate={vi.fn()}
+        onLogout={vi.fn()}
+      >
+        <p>Съдържание</p>
+      </PlatformAdminShell>,
+    )
+    expect(document.querySelector('.sidebar-account')).toHaveTextContent('Бизнес А')
+
+    rerender(
+      <PlatformAdminShell
+        route={PROFILE_ROUTE}
+        platformAdmin={false}
+        businessOwner
+        displayName="Иван Иванов"
+        activeBusinessName="Бизнес Б"
+        busy={false}
+        onNavigate={vi.fn()}
+        onLogout={vi.fn()}
+      >
+        <p>Съдържание</p>
+      </PlatformAdminShell>,
+    )
+    expect(document.querySelector('.sidebar-account')).toHaveTextContent('Бизнес Б')
+    expect(screen.queryByText('Бизнес А')).not.toBeInTheDocument()
+  })
+
+  it('does not show a stale or invented Business name for a non-owner', () => {
+    renderShell(false, false, undefined)
+    expect(document.querySelector('.sidebar-account')).toHaveTextContent('Иван Иванов')
   })
 })

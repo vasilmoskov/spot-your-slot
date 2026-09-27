@@ -1,8 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  BUSINESS_SCHEDULE_ROUTE,
+  BUSINESS_SERVICE_NEW_ROUTE,
+  BUSINESS_SERVICES_ROUTE,
+  BUSINESS_STAFF_ROUTE,
   PROFILE_ROUTE,
   PLATFORM_BUSINESS_NEW_ROUTE,
   PLATFORM_BUSINESSES_ROUTE,
+  isBusinessOwnerRoute,
+  isPlatformRoute,
   pushRoute,
   readAuthenticatedRoute,
   readIdentityPage,
@@ -37,6 +43,16 @@ describe('application navigation', () => {
       kind: 'platform-business-detail',
       businessId: 'business-a',
     })
+    expect(readAuthenticatedRoute('#/business/services')).toEqual(BUSINESS_SERVICES_ROUTE)
+    expect(readAuthenticatedRoute('#/business/services/new')).toEqual(
+      BUSINESS_SERVICE_NEW_ROUTE,
+    )
+    expect(readAuthenticatedRoute('#/business/services/service-a')).toEqual({
+      kind: 'business-service-detail',
+      serviceId: 'service-a',
+    })
+    expect(readAuthenticatedRoute('#/business/staff')).toEqual(BUSINESS_STAFF_ROUTE)
+    expect(readAuthenticatedRoute('#/business/schedule')).toEqual(BUSINESS_SCHEDULE_ROUTE)
     expect(readAuthenticatedRoute('#/unknown')).toEqual(PROFILE_ROUTE)
   })
 
@@ -47,12 +63,30 @@ describe('application navigation', () => {
     expect(
       routeHref({ kind: 'platform-business-detail', businessId: 'business/a' }),
     ).toBe('/#/platform/businesses/business%2Fa')
+    expect(routeHref(BUSINESS_SERVICES_ROUTE)).toBe('/#/business/services')
+    expect(routeHref(BUSINESS_SERVICE_NEW_ROUTE)).toBe('/#/business/services/new')
+    expect(
+      routeHref({ kind: 'business-service-detail', serviceId: 'service/a' }),
+    ).toBe('/#/business/services/service%2Fa')
+    expect(routeHref(BUSINESS_STAFF_ROUTE)).toBe('/#/business/staff')
+    expect(routeHref(BUSINESS_SCHEDULE_ROUTE)).toBe('/#/business/schedule')
 
     pushRoute(PLATFORM_BUSINESSES_ROUTE)
     expect(window.location.hash).toBe('#/platform/businesses')
 
     replaceRoute(PROFILE_ROUTE)
     expect(window.location.hash).toBe('#/profile')
+  })
+
+  it('classifies platform and business-owner routes distinctly from Profile', () => {
+    expect(isPlatformRoute(PROFILE_ROUTE)).toBe(false)
+    expect(isPlatformRoute(PLATFORM_BUSINESSES_ROUTE)).toBe(true)
+    expect(isPlatformRoute(BUSINESS_SERVICES_ROUTE)).toBe(false)
+    expect(isBusinessOwnerRoute(PROFILE_ROUTE)).toBe(false)
+    expect(isBusinessOwnerRoute(PLATFORM_BUSINESSES_ROUTE)).toBe(false)
+    expect(isBusinessOwnerRoute(BUSINESS_SERVICES_ROUTE)).toBe(true)
+    expect(isBusinessOwnerRoute(BUSINESS_STAFF_ROUTE)).toBe(true)
+    expect(isBusinessOwnerRoute(BUSINESS_SCHEDULE_ROUTE)).toBe(true)
   })
 
   it('subscribes to browser Back/Forward and hash navigation', () => {

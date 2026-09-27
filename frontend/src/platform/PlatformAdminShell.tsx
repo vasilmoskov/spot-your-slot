@@ -1,6 +1,10 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { Button } from '../ui/Button'
 import {
+  BUSINESS_SCHEDULE_ROUTE,
+  BUSINESS_SERVICES_ROUTE,
+  BUSINESS_STAFF_ROUTE,
+  isBusinessOwnerRoute,
   isPlatformRoute,
   PROFILE_ROUTE,
   PLATFORM_BUSINESSES_ROUTE,
@@ -11,7 +15,9 @@ import {
 type PlatformAdminShellProps = {
   route: AuthenticatedRoute
   platformAdmin: boolean
+  businessOwner: boolean
   displayName: string
+  activeBusinessName: string | undefined
   busy: boolean
   children: ReactNode
   onNavigate: (route: AuthenticatedRoute) => void
@@ -21,12 +27,15 @@ type PlatformAdminShellProps = {
 export function PlatformAdminShell({
   route,
   platformAdmin,
+  businessOwner,
   displayName,
+  activeBusinessName,
   busy,
   children,
   onNavigate,
   onLogout,
 }: PlatformAdminShellProps) {
+  const accountIdentity = businessOwner ? activeBusinessName : displayName
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false)
   const navigationId = useId()
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -106,9 +115,36 @@ export function PlatformAdminShell({
               Бизнеси
             </a>
           )}
+          {businessOwner && (
+            <>
+              <a
+                className="navigation-link"
+                ref={platformAdmin ? undefined : firstNavigationItemRef}
+                href={routeHref(BUSINESS_SERVICES_ROUTE)}
+                aria-current={isBusinessOwnerRoute(route) ? 'page' : undefined}
+                onClick={(event) => navigate(event, BUSINESS_SERVICES_ROUTE)}
+              >
+                Услуги
+              </a>
+              <a
+                className="navigation-link"
+                href={routeHref(BUSINESS_STAFF_ROUTE)}
+                onClick={(event) => navigate(event, BUSINESS_STAFF_ROUTE)}
+              >
+                Екип
+              </a>
+              <a
+                className="navigation-link"
+                href={routeHref(BUSINESS_SCHEDULE_ROUTE)}
+                onClick={(event) => navigate(event, BUSINESS_SCHEDULE_ROUTE)}
+              >
+                Работно време
+              </a>
+            </>
+          )}
           <a
               className="navigation-link"
-            ref={platformAdmin ? undefined : firstNavigationItemRef}
+            ref={!platformAdmin && !businessOwner ? firstNavigationItemRef : undefined}
             href={routeHref(PROFILE_ROUTE)}
             aria-current={route.kind === 'profile' ? 'page' : undefined}
             onClick={(event) => navigate(event, PROFILE_ROUTE)}
@@ -116,7 +152,7 @@ export function PlatformAdminShell({
             Профил
           </a>
           <div className="mobile-account">
-            <span>{displayName}</span>
+            {accountIdentity && <span>{accountIdentity}</span>}
             <Button
               type="button"
               variant="secondary"
@@ -128,7 +164,7 @@ export function PlatformAdminShell({
           </div>
         </nav>
         <div className="sidebar-account">
-          <span>{displayName}</span>
+          {accountIdentity && <span>{accountIdentity}</span>}
           <Button type="button" variant="secondary" disabled={busy} onClick={onLogout}>
             Изход
           </Button>

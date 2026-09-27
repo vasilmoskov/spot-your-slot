@@ -1,7 +1,10 @@
 import '@testing-library/jest-dom/vitest'
+import { useState } from 'react'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { App } from './App'
+import { App, AuthenticatedApplication } from './App'
+import { useFeedback } from './ui/useFeedback'
+import { UnsavedChangesGuardProvider } from './ui/UnsavedChangesGuard'
 import { ApiError, request, type Session } from './identity/api'
 import {
   createBusiness,
@@ -10,6 +13,13 @@ import {
   type BusinessDetails,
   type BusinessPage,
 } from './platform/businesses/api'
+import {
+  getService,
+  listServices,
+  updateService,
+  type ServiceDetails,
+  type ServicePage,
+} from './business/services/api'
 
 vi.mock('./identity/api', async (importOriginal) => {
   const original = await importOriginal<typeof import('./identity/api')>()
@@ -24,11 +34,30 @@ vi.mock('./platform/businesses/api', async (importOriginal) => {
     listBusinesses: vi.fn(),
   }
 })
+vi.mock('./business/services/api', async (importOriginal) => {
+  const original = await importOriginal<typeof import('./business/services/api')>()
+  return { ...original, listServices: vi.fn(), getService: vi.fn(), updateService: vi.fn() }
+})
 
 const mockedRequest = vi.mocked(request)
 const mockedCreateBusiness = vi.mocked(createBusiness)
 const mockedGetBusiness = vi.mocked(getBusiness)
 const mockedListBusinesses = vi.mocked(listBusinesses)
+const mockedListServices = vi.mocked(listServices)
+const mockedGetService = vi.mocked(getService)
+const mockedUpdateService = vi.mocked(updateService)
+const emptyServicePage: ServicePage = { services: [], page: 0, size: 50, totalElements: 0 }
+const testService: ServiceDetails = {
+  id: 'service-a',
+  name: 'Подстригване',
+  description: null,
+  durationMinutes: 10,
+  price: 19.9,
+  active: true,
+  version: 0,
+  createdAt: '2026-08-19T09:00:00Z',
+  updatedAt: '2026-08-19T09:00:00Z',
+}
 const businessPage: BusinessPage = {
   businesses: [
     {
@@ -69,6 +98,12 @@ const session: Session = {
   activeBusinessId: 'a',
 }
 
+async function landOnProfile() {
+  await screen.findByRole('heading', { name: 'Услуги' })
+  fireEvent.click(screen.getByRole('link', { name: 'Профил' }))
+  await screen.findByRole('heading', { name: 'Профил' })
+}
+
 beforeEach(() => {
   history.replaceState({}, '', '/')
   mockedRequest.mockReset()
@@ -79,6 +114,12 @@ beforeEach(() => {
   mockedCreateBusiness.mockResolvedValue(businessDetails)
   mockedGetBusiness.mockReset()
   mockedGetBusiness.mockResolvedValue(businessDetails)
+  mockedListServices.mockReset()
+  mockedListServices.mockResolvedValue(emptyServicePage)
+  mockedGetService.mockReset()
+  mockedGetService.mockResolvedValue(testService)
+  mockedUpdateService.mockReset()
+  mockedUpdateService.mockResolvedValue(testService)
 })
 
 afterEach(() => {
@@ -121,7 +162,7 @@ describe('identity application', () => {
     fireEvent.keyDown(screen.getByLabelText('Парола'), { key: 'Enter', code: 'Enter' })
     fireEvent.submit(screen.getByRole('button', { name: 'Вход' }).closest('form')!)
     expect(screen.getByRole('button', { name: 'Вход' })).toBeDisabled()
-    expect(await screen.findByRole('heading', { name: 'Профил' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Услуги' })).toBeInTheDocument()
     expect(browserStorageWrite).not.toHaveBeenCalled()
     expect(indexedDatabaseOpen).not.toHaveBeenCalled()
   })
@@ -434,6 +475,7 @@ describe('identity application', () => {
     const browserStorageWrite = vi.spyOn(Storage.prototype, 'setItem')
     mockedRequest.mockResolvedValue(session)
     render(<App />)
+    await landOnProfile()
     const businessSelect = await screen.findByLabelText('Избери бизнес')
     const profilePanel = businessSelect.closest('.profile-panel') as HTMLElement
     const profileCard = profilePanel.closest('.content-card') as HTMLElement
@@ -528,7 +570,7 @@ describe('identity application', () => {
     mockedRequest.mockResolvedValueOnce(session).mockResolvedValueOnce(updatedSession)
     render(<App />)
 
-    await screen.findByRole('heading', { name: 'Профил' })
+    await landOnProfile()
     const edit = screen.getByRole('button', { name: 'Редактирай' })
     expect(edit).toHaveClass('button', 'button--secondary')
     expect(edit).not.toHaveClass('button--navigation')
@@ -554,7 +596,7 @@ describe('identity application', () => {
     expect(screen.queryByLabelText('Име')).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Лични данни' }).closest('.profile-panel'))
       .toHaveTextContent('Мария')
-    expect(document.querySelector('.sidebar-account')).toHaveTextContent('Мария')
+    expect(document.querySelector('.sidebar-account')).toHaveTextContent('Бизнес А')
     expect(screen.getByText('ivan@example.invalid')).toBeInTheDocument()
     expect(browserStorageWrite).not.toHaveBeenCalled()
   })
@@ -565,13 +607,15 @@ describe('identity application', () => {
       .mockRejectedValueOnce(new ApiError(400, 'VALIDATION_ERROR', 'Проверете въведените данни.'))
     render(<App />)
 
-    await screen.findByRole('heading', { name: 'Профил' })
+    await landOnProfile()
     fireEvent.click(screen.getByRole('button', { name: 'Редактирай' }))
     fireEvent.change(screen.getByLabelText('Име'), { target: { value: 'Ново име' } })
     fireEvent.click(screen.getByRole('button', { name: 'Запази промените' }))
     expect(await screen.findByRole('alert')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Смяна на парола' }))
+    expect(screen.getByRole('alertdialog', { name: 'Незапазени промени' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Смяна на парола' })).toBeInTheDocument()
   })
@@ -584,7 +628,7 @@ describe('identity application', () => {
     })
     render(<App />)
 
-    await screen.findByRole('heading', { name: 'Профил' })
+    await landOnProfile()
     vi.useFakeTimers()
     fireEvent.click(screen.getByRole('button', { name: 'Редактирай' }))
     fireEvent.change(screen.getByLabelText('Име'), { target: { value: 'Мария' } })
@@ -608,7 +652,7 @@ describe('identity application', () => {
   it('dismisses a transient Profile request failure while retaining the entered name', async () => {
     mockedRequest.mockResolvedValueOnce(session).mockRejectedValueOnce(new Error('Internal detail'))
     render(<App />)
-    await screen.findByRole('heading', { name: 'Профил' })
+    await landOnProfile()
     vi.useFakeTimers()
     fireEvent.click(screen.getByRole('button', { name: 'Редактирай' }))
     fireEvent.change(screen.getByLabelText('Име'), { target: { value: 'Мария' } })
@@ -629,21 +673,21 @@ describe('identity application', () => {
       new Promise<Session>((resolve) => { resolveUpdate = resolve }),
     )
     render(<App />)
-    await screen.findByRole('heading', { name: 'Профил' })
+    await landOnProfile()
     fireEvent.click(screen.getByRole('button', { name: 'Редактирай' }))
     fireEvent.click(screen.getByRole('button', { name: 'Запази промените' }))
     fireEvent.click(screen.getByRole('button', { name: 'Смяна на парола' }))
     await act(async () => resolveUpdate({ ...session, displayName: 'Мария' }))
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Смяна на парола' })).toHaveAttribute('aria-pressed', 'true')
-    expect(document.querySelector('.sidebar-account')).toHaveTextContent('Мария')
+    expect(document.querySelector('.sidebar-account')).toHaveTextContent('Бизнес А')
   })
 
   it('clears Profile feedback through browser route navigation', async () => {
     mockedRequest.mockResolvedValueOnce({ ...session, platformAdmin: true })
       .mockResolvedValueOnce({ ...session, platformAdmin: true, displayName: 'Мария' })
     render(<App />)
-    await screen.findByRole('heading', { name: 'Профил' })
+    await landOnProfile()
     fireEvent.click(screen.getByRole('button', { name: 'Редактирай' }))
     fireEvent.click(screen.getByRole('button', { name: 'Запази промените' }))
     await screen.findByRole('status')
@@ -655,14 +699,41 @@ describe('identity application', () => {
     expect(screen.queryByText('Личните данни са запазени.')).not.toBeInTheDocument()
   })
 
-  it('cancels display-name editing without a request or retained value', async () => {
+  it('exits display-name editing immediately when unchanged', async () => {
     mockedRequest.mockResolvedValue(session)
     render(<App />)
 
-    await screen.findByRole('heading', { name: 'Профил' })
+    await landOnProfile()
+    fireEvent.click(screen.getByRole('button', { name: 'Редактирай' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Отказ' }))
+
+    expect(mockedRequest).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Име')).not.toBeInTheDocument()
+  })
+
+  it('asks for confirmation and discards a dirty display-name edit without a request', async () => {
+    mockedRequest.mockResolvedValue(session)
+    render(<App />)
+
+    await landOnProfile()
     fireEvent.click(screen.getByRole('button', { name: 'Редактирай' }))
     fireEvent.change(screen.getByLabelText('Име'), { target: { value: 'Незаписано име' } })
     fireEvent.click(screen.getByRole('button', { name: 'Отказ' }))
+
+    const confirmation = screen.getByRole('alertdialog', { name: 'Незапазени промени' })
+    expect(confirmation).toHaveTextContent(
+      'Направените промени няма да бъдат запазени. Сигурни ли сте, че искате да продължите?',
+    )
+    expect(mockedRequest).toHaveBeenCalledTimes(1)
+    expect(screen.getByLabelText('Име')).toHaveValue('Незаписано име')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Продължи редактирането' }))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Име')).toHaveValue('Незаписано име')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Отказ' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
 
     expect(mockedRequest).toHaveBeenCalledTimes(1)
     expect(screen.queryByLabelText('Име')).not.toBeInTheDocument()
@@ -677,7 +748,7 @@ describe('identity application', () => {
       .mockRejectedValueOnce(new ApiError(400, 'VALIDATION_ERROR', 'Проверете въведените данни.'))
     render(<App />)
 
-    await screen.findByRole('heading', { name: 'Профил' })
+    await landOnProfile()
     fireEvent.click(screen.getByRole('button', { name: 'Редактирай' }))
     const displayName = screen.getByLabelText('Име')
     fireEvent.change(displayName, { target: { value: 'Ново име' } })
@@ -700,8 +771,9 @@ describe('identity application', () => {
       .mockResolvedValueOnce(session)
       .mockRejectedValueOnce(new ApiError(400, 'CURRENT_PASSWORD_INVALID', 'Текущата парола е невалидна.'))
     render(<App />)
+    await landOnProfile()
 
-    const passwordNavigation = await screen.findByRole('button', {
+    const passwordNavigation = screen.getByRole('button', {
       name: 'Смяна на парола',
     })
     fireEvent.click(passwordNavigation)
@@ -731,8 +803,9 @@ describe('identity application', () => {
   it('rejects mismatched password confirmation without calling the backend', async () => {
     mockedRequest.mockResolvedValueOnce(session)
     render(<App />)
+    await landOnProfile()
 
-    const passwordNavigation = await screen.findByRole('button', {
+    const passwordNavigation = screen.getByRole('button', {
       name: 'Смяна на парола',
     })
     fireEvent.click(passwordNavigation)
@@ -850,4 +923,541 @@ describe('identity application', () => {
       expect(mockedRequest).toHaveBeenCalledWith('/api/auth/session')
     },
   )
+
+  it('automatically selects the sole Business for a single-Business owner', async () => {
+    const singleBusinessSession: Session = {
+      email: session.email,
+      displayName: session.displayName,
+      platformAdmin: session.platformAdmin,
+      businesses: [session.businesses[0]!],
+    }
+    mockedRequest
+      .mockResolvedValueOnce(singleBusinessSession)
+      .mockResolvedValueOnce(session)
+    render(<App />)
+
+    await waitFor(() =>
+      expect(mockedRequest).toHaveBeenCalledWith(
+        '/api/auth/business',
+        expect.objectContaining({ body: JSON.stringify({ businessId: 'a' }) }),
+      ),
+    )
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Услуги' })).toBeInTheDocument()
+    })
+    expect(screen.getByRole('link', { name: 'Услуги' })).toBeInTheDocument()
+  })
+
+  it('shows safe feedback and a manual retry path when automatic selection fails', async () => {
+    const singleBusinessSession: Session = {
+      email: session.email,
+      displayName: session.displayName,
+      platformAdmin: session.platformAdmin,
+      businesses: [session.businesses[0]!],
+    }
+    mockedRequest
+      .mockResolvedValueOnce(singleBusinessSession)
+      .mockRejectedValueOnce(new Error('network failure'))
+    render(<App />)
+
+    await screen.findByRole('heading', { name: 'Профил' })
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Възникна грешка. Опитайте отново.',
+    )
+    expect(screen.queryByRole('link', { name: 'Услуги' })).not.toBeInTheDocument()
+
+    const retrySelector = screen.getByLabelText('Избери бизнес')
+    expect(retrySelector).toBeInTheDocument()
+    mockedRequest.mockResolvedValueOnce(session)
+    fireEvent.change(retrySelector, { target: { value: 'a' } })
+    await waitFor(() =>
+      expect(mockedRequest).toHaveBeenCalledWith(
+        '/api/auth/business',
+        expect.objectContaining({ body: JSON.stringify({ businessId: 'a' }) }),
+      ),
+    )
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Услуги' })).toBeInTheDocument()
+    })
+    expect(await screen.findByRole('link', { name: 'Услуги' })).toBeInTheDocument()
+  })
+
+  it('redirects to the authentication flow when automatic selection returns 401', async () => {
+    const singleBusinessSession: Session = {
+      email: session.email,
+      displayName: session.displayName,
+      platformAdmin: session.platformAdmin,
+      businesses: [session.businesses[0]!],
+    }
+    mockedRequest
+      .mockResolvedValueOnce(singleBusinessSession)
+      .mockRejectedValueOnce(new ApiError(401, 'AUTH_REQUIRED', 'Необходим е вход.'))
+    render(<App />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Вход' })).toBeInTheDocument()
+      expect(screen.getByRole('alert')).toHaveTextContent('Необходим е вход.')
+    })
+  })
+
+  it('does not let a late auto-selection response resurrect an authenticated view after logout', async () => {
+    const singleBusinessSession: Session = {
+      email: session.email,
+      displayName: session.displayName,
+      platformAdmin: session.platformAdmin,
+      businesses: [session.businesses[0]!],
+    }
+    let resolveAutoSelect!: (value: Session) => void
+    mockedRequest
+      .mockResolvedValueOnce(singleBusinessSession)
+      .mockImplementationOnce(
+        () => new Promise<Session>((resolve) => { resolveAutoSelect = resolve }),
+      )
+      .mockResolvedValueOnce(undefined)
+    render(<App />)
+
+    await waitFor(() =>
+      expect(mockedRequest).toHaveBeenCalledWith(
+        '/api/auth/business',
+        expect.objectContaining({ body: JSON.stringify({ businessId: 'a' }) }),
+      ),
+    )
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Изход' })[0]!)
+    expect(await screen.findByRole('heading', { name: 'Вход' })).toBeInTheDocument()
+
+    await act(async () => {
+      resolveAutoSelect({ ...singleBusinessSession, activeBusinessId: 'a' })
+      await Promise.resolve()
+    })
+
+    expect(screen.getByRole('heading', { name: 'Вход' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Услуги' })).not.toBeInTheDocument()
+  })
+
+  it('lands an owner directly on Services and shows Business-owner configuration navigation', async () => {
+    mockedRequest.mockResolvedValue(session)
+    render(<App />)
+
+    expect(await screen.findByRole('heading', { name: 'Услуги' })).toBeInTheDocument()
+    expect(window.location.hash).toBe('#/business/services')
+    expect(screen.getByRole('link', { name: 'Услуги' })).toBeInTheDocument()
+    expect(screen.getAllByText('Бизнес А').length).toBeGreaterThan(0)
+    expect(await screen.findByText('Все още няма създадени услуги.')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Бизнеси' })).not.toBeInTheDocument()
+  })
+
+  it.each(['MANAGER', 'STAFF'] as const)(
+    'redirects Business-configuration routes to Profile for non-owner role %s',
+    async (role) => {
+      history.replaceState({}, '', '/#/business/services')
+      mockedRequest.mockResolvedValue({
+        ...session,
+        businesses: [{ ...session.businesses[0], role }],
+      })
+      render(<App />)
+
+      expect(await screen.findByRole('heading', { name: 'Профил' })).toBeInTheDocument()
+      expect(window.location.hash).toBe('#/profile')
+    },
+  )
+
+  it('shows both platform and Business-owner navigation for a dual-role user on Profile', async () => {
+    mockedRequest.mockResolvedValue({ ...session, platformAdmin: true })
+    render(<App />)
+
+    await screen.findByRole('heading', { name: 'Услуги' })
+    fireEvent.click(screen.getByRole('link', { name: 'Профил' }))
+    await screen.findByRole('heading', { name: 'Профил' })
+    expect(screen.getAllByRole('link').map((link) => link.textContent)).toEqual([
+      'Бизнеси',
+      'Услуги',
+      'Екип',
+      'Работно време',
+      'Профил',
+    ])
+  })
+
+  it('presents a read-only Services notice and hides mutation actions for a SUSPENDED Business', async () => {
+    history.replaceState({}, '', '/#/business/services')
+    mockedRequest.mockResolvedValue({
+      ...session,
+      businesses: [{ ...session.businesses[0], status: 'SUSPENDED' }],
+    })
+    mockedListServices.mockResolvedValue(emptyServicePage)
+    render(<App />)
+
+    expect(await screen.findByRole('status')).toHaveTextContent('временно спрян')
+    expect(screen.queryByRole('button', { name: 'Нова услуга' })).not.toBeInTheDocument()
+  })
+})
+
+describe('Business-scoped state invalidation on context switch', () => {
+  function Harness({ session }: { session: Session }) {
+    const [busy, setBusy] = useState(false)
+    const { feedback, setFeedback, beginFeedback } = useFeedback('harness')
+    return (
+      <UnsavedChangesGuardProvider>
+        <AuthenticatedApplication
+          session={session}
+          setSession={() => undefined}
+          busy={busy}
+          setBusy={setBusy}
+          feedback={feedback}
+          setFeedback={setFeedback}
+          beginFeedback={beginFeedback}
+        />
+      </UnsavedChangesGuardProvider>
+    )
+  }
+
+  const businessA: Session = {
+    email: 'ivan@example.invalid',
+    displayName: 'Иван',
+    platformAdmin: false,
+    businesses: [
+      { id: 'business-a', displayName: 'Бизнес А', role: 'BUSINESS_OWNER', status: 'ACTIVE' },
+      { id: 'business-b', displayName: 'Бизнес Б', role: 'BUSINESS_OWNER', status: 'ACTIVE' },
+    ],
+    activeBusinessId: 'business-a',
+  }
+  const businessB: Session = { ...businessA, activeBusinessId: 'business-b' }
+
+  beforeEach(() => {
+    mockedListServices.mockReset()
+  })
+
+  it('remounts Services and discards a stale Business-A response after switching to Business B', async () => {
+    history.replaceState({}, '', '/#/business/services')
+    let resolveA!: (value: ServicePage) => void
+    mockedListServices.mockImplementationOnce(
+      () => new Promise<ServicePage>((resolve) => { resolveA = resolve }),
+    )
+    mockedListServices.mockResolvedValueOnce({
+      services: [
+        {
+          id: 'service-b',
+          name: 'Услуга на бизнес Б',
+          description: null,
+          durationMinutes: 15,
+          price: 5,
+          active: true,
+          version: 0,
+          createdAt: '2026-08-19T09:00:00Z',
+          updatedAt: '2026-08-19T09:00:00Z',
+        },
+      ],
+      page: 0,
+      size: 50,
+      totalElements: 1,
+    })
+
+    const { rerender } = render(<Harness session={businessA} />)
+    await waitFor(() => expect(mockedListServices).toHaveBeenCalledTimes(1))
+    expect(screen.getByText('Зареждане на услугите…')).toBeInTheDocument()
+
+    rerender(<Harness session={businessB} />)
+    await waitFor(() => expect(mockedListServices).toHaveBeenCalledTimes(2))
+    expect(await screen.findByText('Услуга на бизнес Б')).toBeInTheDocument()
+
+    await act(async () => {
+      resolveA({
+        services: [
+          {
+            id: 'service-a',
+            name: 'Обезценени данни от бизнес А',
+            description: null,
+            durationMinutes: 10,
+            price: 1,
+            active: true,
+            version: 0,
+            createdAt: '2026-08-19T09:00:00Z',
+            updatedAt: '2026-08-19T09:00:00Z',
+          },
+        ],
+        page: 0,
+        size: 50,
+        totalElements: 1,
+      })
+      await Promise.resolve()
+    })
+
+    expect(screen.queryByText('Обезценени данни от бизнес А')).not.toBeInTheDocument()
+    expect(screen.getByText('Услуга на бизнес Б')).toBeInTheDocument()
+  })
+})
+
+describe('shared unsaved-changes guard', () => {
+  async function openServiceEditForm() {
+    mockedRequest.mockResolvedValue(session)
+    mockedListServices.mockResolvedValue({
+      services: [testService],
+      page: 0,
+      size: 50,
+      totalElements: 1,
+    })
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Услуги' })
+    fireEvent.click(await screen.findByRole('link', { name: 'Отвори Подстригване' }))
+    await screen.findByRole('heading', { name: 'Услуга' })
+    fireEvent.click(screen.getByRole('button', { name: 'Редактирай' }))
+  }
+
+  it('guards sidebar navigation from a dirty Service edit, preserves values on reject, and continues on confirm', async () => {
+    await openServiceEditForm()
+    fireEvent.change(screen.getByLabelText('Име на услугата'), { target: { value: 'Ново име' } })
+
+    fireEvent.click(screen.getByRole('link', { name: 'Екип' }))
+    const dialog = screen.getByRole('alertdialog', { name: 'Незапазени промени' })
+    expect(dialog).toHaveTextContent(
+      'Направените промени няма да бъдат запазени. Сигурни ли сте, че искате да продължите?',
+    )
+    expect(screen.getByRole('heading', { name: 'Услуга' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Име на услугата')).toHaveValue('Ново име')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Продължи редактирането' }))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Услуга' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Име на услугата')).toHaveValue('Ново име')
+
+    fireEvent.click(screen.getByRole('link', { name: 'Екип' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
+    expect(await screen.findByRole('heading', { name: 'Екип' })).toBeInTheDocument()
+  })
+
+  it('does not prompt when navigating away from a clean Service edit form', async () => {
+    await openServiceEditForm()
+    fireEvent.click(screen.getByRole('link', { name: 'Екип' }))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Екип' })).toBeInTheDocument()
+  })
+
+  it('clears the guard after a successful Service save so subsequent navigation does not prompt', async () => {
+    await openServiceEditForm()
+    fireEvent.change(screen.getByLabelText('Име на услугата'), { target: { value: 'Ново име' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Запази промените' }))
+    await waitFor(() => expect(mockedUpdateService).toHaveBeenCalled())
+    await screen.findByText('Промените са запазени.')
+
+    fireEvent.click(screen.getByRole('link', { name: 'Екип' }))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Екип' })).toBeInTheDocument()
+  })
+
+  it('guards navigation from a dirty Profile edit with the shared dialog, and confirming discard reverts and navigates', async () => {
+    mockedRequest.mockResolvedValue(session)
+    render(<App />)
+    await landOnProfile()
+    fireEvent.click(screen.getByRole('button', { name: 'Редактирай' }))
+    fireEvent.change(screen.getByLabelText('Име'), { target: { value: 'Ново име' } })
+
+    fireEvent.click(screen.getByRole('link', { name: 'Услуги' }))
+    expect(screen.getByRole('alertdialog', { name: 'Незапазени промени' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Профил' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Име')).toHaveValue('Ново име')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Продължи редактирането' }))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Име')).toHaveValue('Ново име')
+
+    fireEvent.click(screen.getByRole('link', { name: 'Услуги' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
+    expect(await screen.findByRole('heading', { name: 'Услуги' })).toBeInTheDocument()
+  })
+
+  it('guards Business switching while a Profile edit is dirty', async () => {
+    mockedRequest.mockResolvedValue(session)
+    render(<App />)
+    await landOnProfile()
+    fireEvent.click(screen.getByRole('button', { name: 'Редактирай' }))
+    fireEvent.change(screen.getByLabelText('Име'), { target: { value: 'Ново име' } })
+
+    const businessSelect = screen.getByLabelText('Избери бизнес')
+    fireEvent.change(businessSelect, { target: { value: 'b' } })
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+    expect(mockedRequest).not.toHaveBeenCalledWith(
+      '/api/auth/business',
+      expect.anything(),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
+    await waitFor(() =>
+      expect(mockedRequest).toHaveBeenCalledWith(
+        '/api/auth/business',
+        expect.objectContaining({ body: JSON.stringify({ businessId: 'b' }) }),
+      ),
+    )
+  })
+
+  it('guards logout while a Service edit is dirty', async () => {
+    await openServiceEditForm()
+    fireEvent.change(screen.getByLabelText('Име на услугата'), { target: { value: 'Ново име' } })
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Изход' })[0]!)
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+    expect(mockedRequest).not.toHaveBeenCalledWith('/api/auth/logout', expect.anything())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
+    await waitFor(() =>
+      expect(mockedRequest).toHaveBeenCalledWith('/api/auth/logout', { method: 'POST' }),
+    )
+    expect(await screen.findByRole('heading', { name: 'Вход' })).toBeInTheDocument()
+  })
+
+  it('guards browser Back navigation from a dirty Service edit and restores the URL when cancelled', async () => {
+    await openServiceEditForm()
+    const dirtyHash = window.location.hash
+    fireEvent.change(screen.getByLabelText('Име на услугата'), { target: { value: 'Ново име' } })
+
+    await act(async () => {
+      history.pushState({}, '', '/#/business/services')
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    })
+
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Услуга' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Име на услугата')).toHaveValue('Ново име')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Продължи редактирането' }))
+    expect(window.location.hash).toBe(dirtyHash)
+    expect(screen.getByRole('heading', { name: 'Услуга' })).toBeInTheDocument()
+
+    await act(async () => {
+      history.pushState({}, '', '/#/business/services')
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
+    expect(await screen.findByRole('heading', { name: 'Услуги' })).toBeInTheDocument()
+  })
+})
+
+describe('Profile password guard', () => {
+  it('does not prompt when the password form is pristine', async () => {
+    mockedRequest.mockResolvedValue(session)
+    render(<App />)
+    await landOnProfile()
+    fireEvent.click(screen.getByRole('button', { name: 'Смяна на парола' }))
+
+    fireEvent.click(screen.getByRole('link', { name: 'Услуги' }))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Услуги' })).toBeInTheDocument()
+  })
+
+  it('prompts on section switch while the password form is dirty, and discarding clears the fields', async () => {
+    mockedRequest.mockResolvedValue(session)
+    render(<App />)
+    await landOnProfile()
+    fireEvent.click(screen.getByRole('button', { name: 'Смяна на парола' }))
+    fireEvent.change(screen.getByLabelText('Текуща парола'), { target: { value: 'a-value' } })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Лични данни' }))
+    expect(screen.getByRole('alertdialog', { name: 'Незапазени промени' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Смяна на парола' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
+    expect(screen.getByRole('button', { name: 'Лични данни' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Смяна на парола' }))
+    expect(screen.getByLabelText('Текуща парола')).toHaveValue('')
+  })
+
+  it('guards sidebar navigation from a dirty password form and preserves the values on reject', async () => {
+    mockedRequest.mockResolvedValue(session)
+    render(<App />)
+    await landOnProfile()
+    fireEvent.click(screen.getByRole('button', { name: 'Смяна на парола' }))
+    fireEvent.change(screen.getByLabelText('Нова парола'), { target: { value: 'a-new-value' } })
+
+    fireEvent.click(screen.getByRole('link', { name: 'Услуги' }))
+    expect(screen.getByRole('alertdialog', { name: 'Незапазени промени' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Профил' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Продължи редактирането' }))
+    expect(screen.getByLabelText('Нова парола')).toHaveValue('a-new-value')
+
+    fireEvent.click(screen.getByRole('link', { name: 'Услуги' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
+    expect(await screen.findByRole('heading', { name: 'Услуги' })).toBeInTheDocument()
+  })
+
+  it('guards logout while the password form is dirty', async () => {
+    mockedRequest.mockResolvedValue(session)
+    render(<App />)
+    await landOnProfile()
+    fireEvent.click(screen.getByRole('button', { name: 'Смяна на парола' }))
+    fireEvent.change(screen.getByLabelText('Текуща парола'), { target: { value: 'a-value' } })
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Изход' })[0]!)
+    expect(screen.getByRole('alertdialog', { name: 'Незапазени промени' })).toBeInTheDocument()
+    expect(mockedRequest).not.toHaveBeenCalledWith('/api/auth/logout', expect.anything())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
+    expect(await screen.findByRole('heading', { name: 'Вход' })).toBeInTheDocument()
+  })
+
+  it('clears the guard after a successful password change so subsequent navigation does not prompt', async () => {
+    mockedRequest.mockResolvedValueOnce(session).mockResolvedValueOnce(undefined)
+    render(<App />)
+    await landOnProfile()
+    fireEvent.click(screen.getByRole('button', { name: 'Смяна на парола' }))
+    fireEvent.change(screen.getByLabelText('Текуща парола'), { target: { value: 'a-value' } })
+    fireEvent.change(screen.getByLabelText('Нова парола'), { target: { value: 'a-new-value' } })
+    fireEvent.change(screen.getByLabelText('Потвърди новата парола'), {
+      target: { value: 'a-new-value' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Запази' }))
+    await screen.findByText('Паролата е променена успешно.')
+    expect(screen.getByLabelText('Текуща парола')).toHaveValue('')
+    expect(screen.getByLabelText('Нова парола')).toHaveValue('')
+    expect(screen.getByLabelText('Потвърди новата парола')).toHaveValue('')
+
+    fireEvent.click(screen.getByRole('link', { name: 'Услуги' }))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Услуги' })).toBeInTheDocument()
+  })
+
+  it('keeps the guard active and preserves values after a failed password change', async () => {
+    mockedRequest
+      .mockResolvedValueOnce(session)
+      .mockRejectedValueOnce(
+        new ApiError(400, 'CURRENT_PASSWORD_INVALID', 'Текущата парола е невалидна.'),
+      )
+    render(<App />)
+    await landOnProfile()
+    fireEvent.click(screen.getByRole('button', { name: 'Смяна на парола' }))
+    fireEvent.change(screen.getByLabelText('Текуща парола'), { target: { value: 'wrong-value' } })
+    fireEvent.change(screen.getByLabelText('Нова парола'), { target: { value: 'a-new-value' } })
+    fireEvent.change(screen.getByLabelText('Потвърди новата парола'), {
+      target: { value: 'a-new-value' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Запази' }))
+    await screen.findByRole('alert')
+
+    fireEvent.click(screen.getByRole('link', { name: 'Услуги' }))
+    expect(screen.getByRole('alertdialog', { name: 'Незапазени промени' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Текуща парола')).toHaveValue('wrong-value')
+  })
+})
+
+describe('Business-owner placeholder sections', () => {
+  it.each([
+    ['#/business/staff', 'Екип'],
+    ['#/business/schedule', 'Работно време'],
+  ] as const)('keeps the page heading on %s without repeating it inside the card', async (hash, title) => {
+    history.replaceState({}, '', `/${hash}`)
+    mockedRequest.mockResolvedValue(session)
+    render(<App />)
+
+    const heading = await screen.findByRole('heading', { name: title })
+    expect(screen.getAllByRole('heading', { name: title })).toHaveLength(1)
+    expect(heading.closest('.platform-page-header')).not.toBeNull()
+    const card = screen.getByText('Тази секция ще бъде налична скоро.').closest('.content-card')
+    expect(card?.querySelector('h1, h2, h3')).toBeNull()
+    expect(screen.getByText('Тази секция ще бъде налична скоро.')).toBeInTheDocument()
+  })
 })

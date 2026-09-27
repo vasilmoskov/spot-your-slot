@@ -1,11 +1,18 @@
 import { FormEvent, useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { useFeedback, errorCategory, type Feedback, type FeedbackAttempt } from './ui/useFeedback'
 import { Button } from './ui/Button'
+import {
+  UnsavedChangesGuardProvider,
+  useGuardedFormState,
+  useUnsavedChangesGuard,
+} from './ui/UnsavedChangesGuard'
 import { ApiError, request, type Session } from './identity/api'
 import {
   PROFILE_ROUTE,
   PLATFORM_BUSINESSES_ROUTE,
   PLATFORM_BUSINESS_NEW_ROUTE,
+  BUSINESS_SERVICES_ROUTE,
+  isBusinessOwnerRoute,
   isPlatformRoute,
   pushRoute,
   readAuthenticatedRoute,
@@ -20,6 +27,10 @@ import { PlatformAdminShell } from './platform/PlatformAdminShell'
 import { BusinessList } from './platform/businesses/BusinessList'
 import { BusinessCreate } from './platform/businesses/BusinessCreate'
 import { BusinessDetail } from './platform/businesses/BusinessDetail'
+import { BusinessOwnerShell } from './business/BusinessOwnerShell'
+import { ServiceList } from './business/services/ServiceList'
+import { ServiceCreate } from './business/services/ServiceCreate'
+import { ServiceDetail } from './business/services/ServiceDetail'
 
 const safeErrorDetail = (error: unknown): string =>
   error instanceof ApiError ? error.detail : 'Възникна грешка. Опитайте отново.'
@@ -118,15 +129,17 @@ export function App() {
 
   if (session) {
     return (
-      <AuthenticatedApplication
-        session={session}
-        setSession={setSession}
-        busy={busy}
-        setBusy={setBusy}
-        feedback={feedback}
-        setFeedback={setFeedback}
-        beginFeedback={beginFeedback}
-      />
+      <UnsavedChangesGuardProvider>
+        <AuthenticatedApplication
+          session={session}
+          setSession={setSession}
+          busy={busy}
+          setBusy={setBusy}
+          feedback={feedback}
+          setFeedback={setFeedback}
+          beginFeedback={beginFeedback}
+        />
+      </UnsavedChangesGuardProvider>
     )
   }
 
@@ -307,6 +320,8 @@ function Field(props: {
   minLength?: number
   maxLength?: number
   defaultValue?: string
+  value?: string
+  onValueChange?: (value: string) => void
   requireTrimmedValue?: boolean
 }) {
   const {
@@ -316,6 +331,8 @@ function Field(props: {
     minLength,
     maxLength,
     defaultValue,
+    value,
+    onValueChange,
     requireTrimmedValue,
   } = props
 
@@ -361,8 +378,9 @@ function Field(props: {
         type={type}
         minLength={minLength}
         maxLength={maxLength}
-        defaultValue={defaultValue}
+        {...(value !== undefined ? { value } : { defaultValue })}
         required
+        onChange={onValueChange ? (event) => onValueChange(event.target.value) : undefined}
         onInvalid={(event) => {
           if (event.currentTarget.validity.customError) return
           event.currentTarget.setCustomValidity('')
@@ -387,7 +405,7 @@ function Field(props: {
   )
 }
 
-type AuthenticatedApplicationProps = {
+export type AuthenticatedApplicationProps = {
   session: Session
   setSession: (session: Session | null) => void
   busy: boolean
@@ -397,7 +415,15 @@ type AuthenticatedApplicationProps = {
   beginFeedback: () => FeedbackAttempt
 }
 
-function AuthenticatedApplication({
+function activeBusinessOf(session: Session) {
+  return session.businesses.find((business) => business.id === session.activeBusinessId)
+}
+
+function isBusinessOwnerSession(session: Session): boolean {
+  return activeBusinessOf(session)?.role === 'BUSINESS_OWNER'
+}
+
+export function AuthenticatedApplication({
   session,
   setSession,
   busy,
@@ -406,12 +432,23 @@ function AuthenticatedApplication({
   setFeedback,
   beginFeedback,
 }: AuthenticatedApplicationProps) {
+  const guard = useUnsavedChangesGuard()
   const initialRoute = readAuthenticatedRoute()
-  const [route, setRoute] = useState<AuthenticatedRoute>(
-    isPlatformRoute(initialRoute) && !session.platformAdmin
-      ? PROFILE_ROUTE
-      : initialRoute,
-  )
+  const owner = isBusinessOwnerSession(session)
+  const explicitProfileRequested = window.location.hash === '#/profile'
+  const smartLandingApplicable = initialRoute.kind === 'profile' && !explicitProfileRequested
+  const [route, setRoute] = useState<AuthenticatedRoute>(() => {
+    if (isPlatformRoute(initialRoute) && !session.platformAdmin) return PROFILE_ROUTE
+    if (isBusinessOwnerRoute(initialRoute) && !owner) return PROFILE_ROUTE
+    if (smartLandingApplicable && owner) return BUSINESS_SERVICES_ROUTE
+    return initialRoute
+  })
+  const landingResolved = useRef(!smartLandingApplicable || owner)
+  const routeRef = useRef(route)
+  useEffect(() => {
+    routeRef.current = route
+  }, [route])
+
   const authenticationRequired = useCallback(
     (detail: string) => {
       setFeedback({ kind: 'error', category: 'blocking', text: detail })
@@ -422,33 +459,90 @@ function AuthenticatedApplication({
 
   useEffect(() => {
     const synchronizeRoute = () => {
-      setFeedback(null)
       const nextRoute = readAuthenticatedRoute()
-      if (isPlatformRoute(nextRoute) && !session.platformAdmin) {
-        replaceRoute(PROFILE_ROUTE)
-        setRoute(PROFILE_ROUTE)
-        return
-      }
-      setRoute(nextRoute)
+      const target: AuthenticatedRoute =
+        isPlatformRoute(nextRoute) && !session.platformAdmin
+          ? PROFILE_ROUTE
+          : isBusinessOwnerRoute(nextRoute) && !isBusinessOwnerSession(session)
+            ? PROFILE_ROUTE
+            : nextRoute
+      const targetNeedsReplace = target !== nextRoute
+
+      guard.guard(
+        () => {
+          setFeedback(null)
+          if (targetNeedsReplace) replaceRoute(target)
+          setRoute(target)
+        },
+        () => {
+          replaceRoute(routeRef.current)
+        },
+      )
     }
 
     const approvedHash = routeHrefMatchesCurrentLocation(initialRoute)
-    if (!approvedHash || (isPlatformRoute(initialRoute) && !session.platformAdmin)) {
-      replaceRoute(PROFILE_ROUTE)
+    if (
+      !approvedHash ||
+      (isPlatformRoute(initialRoute) && !session.platformAdmin) ||
+      (isBusinessOwnerRoute(initialRoute) && !isBusinessOwnerSession(session))
+    ) {
+      replaceRoute(routeRef.current)
     }
 
     return subscribeToNavigation(synchronizeRoute)
-  }, [initialRoute.kind, session.platformAdmin, setFeedback])
+  }, [initialRoute.kind, session, setFeedback, guard])
 
   useEffect(() => {
     setFeedback(null)
   }, [session.activeBusinessId, setFeedback])
 
+  useEffect(() => {
+    if (route.kind !== 'profile') {
+      landingResolved.current = true
+      return
+    }
+    if (landingResolved.current) return
+    if (owner) {
+      landingResolved.current = true
+      replaceRoute(BUSINESS_SERVICES_ROUTE)
+      setRoute(BUSINESS_SERVICES_ROUTE)
+    }
+  }, [owner, route.kind])
+
+  useEffect(() => {
+    if (session.activeBusinessId || session.businesses.length !== 1) {
+      return
+    }
+    const businessId = session.businesses[0]!.id
+    const controller = new AbortController()
+    request<Session>('/api/auth/business', {
+      method: 'POST',
+      body: JSON.stringify({ businessId }),
+      signal: controller.signal,
+    })
+      .then((value) => {
+        if (controller.signal.aborted) return
+        if (value) setSession(value)
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) return
+        if (error instanceof ApiError && error.status === 401) {
+          authenticationRequired(error.detail)
+          return
+        }
+        setFeedback({ kind: 'error', category: errorCategory(error), text: safeErrorDetail(error) })
+      })
+    return () => controller.abort()
+  }, [session, setSession, setFeedback, authenticationRequired])
+
   const navigate = (nextRoute: AuthenticatedRoute) => {
     if (isPlatformRoute(nextRoute) && !session.platformAdmin) return
-    pushRoute(nextRoute)
-    setRoute(nextRoute)
-    setFeedback(null)
+    if (isBusinessOwnerRoute(nextRoute) && !owner) return
+    guard.guard(() => {
+      pushRoute(nextRoute)
+      setRoute(nextRoute)
+      setFeedback(null)
+    })
   }
 
   const action = async (path: string, body?: object) => {
@@ -484,14 +578,66 @@ function AuthenticatedApplication({
     }
   }
 
+  const guardedLogout = () => guard.guard(() => void logout())
+
+  if (isBusinessOwnerRoute(route)) {
+    const activeBusiness = activeBusinessOf(session)
+    const readOnly = activeBusiness?.status === 'SUSPENDED'
+    const businessKey = session.activeBusinessId ?? 'none'
+    return (
+      <BusinessOwnerShell
+        route={route}
+        activeBusiness={activeBusiness}
+        busy={busy}
+        onNavigate={navigate}
+        onLogout={guardedLogout}
+      >
+        {feedback && (
+          <div className="platform-content">
+            <FeedbackMessage feedback={feedback} />
+          </div>
+        )}
+        {route.kind === 'business-services' ? (
+          <ServiceList
+            key={businessKey}
+            readOnly={readOnly}
+            onAuthenticationRequired={authenticationRequired}
+            onCreate={() => navigate({ kind: 'business-service-new' })}
+            onOpen={(serviceId) => navigate({ kind: 'business-service-detail', serviceId })}
+          />
+        ) : route.kind === 'business-service-new' ? (
+          <ServiceCreate
+            key={businessKey}
+            readOnly={readOnly}
+            onAuthenticationRequired={authenticationRequired}
+            onCancel={() => navigate(BUSINESS_SERVICES_ROUTE)}
+            onCreated={(serviceId) => navigate({ kind: 'business-service-detail', serviceId })}
+          />
+        ) : route.kind === 'business-service-detail' ? (
+          <ServiceDetail
+            key={`${businessKey}-${route.serviceId}`}
+            serviceId={route.serviceId}
+            readOnly={readOnly}
+            onAuthenticationRequired={authenticationRequired}
+            onBack={() => navigate(BUSINESS_SERVICES_ROUTE)}
+          />
+        ) : (
+          <ComingSoon />
+        )}
+      </BusinessOwnerShell>
+    )
+  }
+
   return (
     <PlatformAdminShell
       route={route}
       platformAdmin={session.platformAdmin}
+      businessOwner={owner}
       displayName={session.displayName}
+      activeBusinessName={activeBusinessOf(session)?.displayName}
       busy={busy}
       onNavigate={navigate}
-      onLogout={logout}
+      onLogout={guardedLogout}
     >
       {route.kind !== 'profile' && feedback && (
         <div className="platform-content">
@@ -505,6 +651,7 @@ function AuthenticatedApplication({
           feedback={feedback}
           setFeedback={setFeedback}
           action={action}
+          guard={guard}
         />
       ) : route.kind === 'platform-businesses' ? (
         <BusinessList
@@ -534,6 +681,16 @@ function AuthenticatedApplication({
   )
 }
 
+function ComingSoon() {
+  return (
+    <div className="platform-content">
+      <section className="content-card" aria-label="Предстояща секция">
+        <p>Тази секция ще бъде налична скоро.</p>
+      </section>
+    </div>
+  )
+}
+
 function routeHrefMatchesCurrentLocation(route: AuthenticatedRoute): boolean {
   return window.location.hash === routeHref(route).slice(1)
 }
@@ -544,13 +701,32 @@ type ProfileProps = {
   feedback: Feedback | null
   setFeedback: (feedback: Feedback | null) => void
   action: (path: string, body?: object) => Promise<boolean>
+  guard: ReturnType<typeof useUnsavedChangesGuard>
 }
 
-function Profile({ session, busy, feedback, setFeedback, action }: ProfileProps) {
+function Profile({ session, busy, feedback, setFeedback, action, guard }: ProfileProps) {
   const [section, setSection] = useState<'personal' | 'password'>('personal')
   const [editingPersonal, setEditingPersonal] = useState(false)
+  const [displayNameDraft, setDisplayNameDraft] = useState(session.displayName)
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [passwordConfirmation, setPasswordConfirmation] = useState('')
   const profileFeedback = useRef<HTMLParagraphElement>(null)
   const personalSelected = section === 'personal'
+  const personalEditDirty = editingPersonal && displayNameDraft !== session.displayName
+  const passwordEditDirty =
+    currentPassword !== '' || newPassword !== '' || passwordConfirmation !== ''
+
+  const resetPasswordFields = () => {
+    setCurrentPassword('')
+    setNewPassword('')
+    setPasswordConfirmation('')
+  }
+
+  useGuardedFormState(personalEditDirty || passwordEditDirty, () => {
+    setDisplayNameDraft(session.displayName)
+    resetPasswordFields()
+  })
 
   useEffect(() => {
     if (feedback?.kind === 'error') {
@@ -558,10 +734,23 @@ function Profile({ session, busy, feedback, setFeedback, action }: ProfileProps)
     }
   }, [editingPersonal, feedback, personalSelected])
 
-  const selectSection = (next: 'personal' | 'password') => {
-    setSection(next)
+  const exitPersonalEditing = () => {
     setEditingPersonal(false)
+    setDisplayNameDraft(session.displayName)
     setFeedback(null)
+  }
+
+  const startEditingPersonal = () => {
+    setDisplayNameDraft(session.displayName)
+    setEditingPersonal(true)
+    setFeedback(null)
+  }
+
+  const selectSection = (next: 'personal' | 'password') => {
+    guard.guard(() => {
+      setSection(next)
+      exitPersonalEditing()
+    })
   }
 
   return (
@@ -596,10 +785,7 @@ function Profile({ session, busy, feedback, setFeedback, action }: ProfileProps)
                     onSubmit={async (event) => {
                       event.preventDefault()
                       setFeedback(null)
-                      const displayName = String(
-                        new FormData(event.currentTarget).get('displayName') ?? '',
-                      )
-                      if (await action('/api/auth/profile', { displayName })) {
+                      if (await action('/api/auth/profile', { displayName: displayNameDraft })) {
                         setEditingPersonal(false)
                         setFeedback({
                           kind: 'success',
@@ -611,7 +797,8 @@ function Profile({ session, busy, feedback, setFeedback, action }: ProfileProps)
                     <Field
                       name="displayName"
                       label="Име"
-                      defaultValue={session.displayName}
+                      value={displayNameDraft}
+                      onValueChange={setDisplayNameDraft}
                       maxLength={200}
                     />
                     <dl className="profile-personal-details">
@@ -628,10 +815,7 @@ function Profile({ session, busy, feedback, setFeedback, action }: ProfileProps)
                         type="button"
                         variant="secondary"
                         disabled={busy}
-                        onClick={() => {
-                          setEditingPersonal(false)
-                          setFeedback(null)
-                        }}
+                        onClick={() => guard.guard(exitPersonalEditing)}
                       >
                         Отказ
                       </Button>
@@ -652,23 +836,24 @@ function Profile({ session, busy, feedback, setFeedback, action }: ProfileProps)
                     <Button
                       type="button"
                       variant="secondary"
-                      onClick={() => {
-                        setEditingPersonal(true)
-                        setFeedback(null)
-                      }}
+                      onClick={startEditingPersonal}
                     >
                       Редактирай
                     </Button>
                   </>
                 )}
-                {session.businesses.length > 1 && (
+                {(session.businesses.length > 1 ||
+                  (session.businesses.length === 1 && !session.activeBusinessId)) && (
                   <label>
                     Избери бизнес
                     <select
                       value={session.activeBusinessId ?? ''}
-                      onChange={(event) =>
-                        action('/api/auth/business', { businessId: event.target.value })
-                      }
+                      onChange={(event) => {
+                        const businessId = event.target.value
+                        guard.guard(() => {
+                          void action('/api/auth/business', { businessId })
+                        })
+                      }}
                     >
                       <option value="" disabled>
                         Изберете
@@ -691,10 +876,6 @@ function Profile({ session, busy, feedback, setFeedback, action }: ProfileProps)
                   onSubmit={async (event) => {
                     event.preventDefault()
                     setFeedback(null)
-                    const data = Object.fromEntries(new FormData(event.currentTarget))
-                    const currentPassword = String(data.currentPassword ?? '')
-                    const newPassword = String(data.newPassword ?? '')
-                    const passwordConfirmation = String(data.passwordConfirmation ?? '')
                     if (newPassword !== passwordConfirmation) {
                       setSection('password')
                       setFeedback({
@@ -704,14 +885,13 @@ function Profile({ session, busy, feedback, setFeedback, action }: ProfileProps)
                       })
                       return
                     }
-                    const form = event.currentTarget
                     if (
                       await action('/api/auth/password/change', {
                         currentPassword,
                         newPassword,
                       })
                     ) {
-                      form.reset()
+                      resetPasswordFields()
                       setFeedback({
                         kind: 'success',
                         text: 'Паролата е променена успешно.',
@@ -723,18 +903,24 @@ function Profile({ session, busy, feedback, setFeedback, action }: ProfileProps)
                     name="currentPassword"
                     label="Текуща парола"
                     type="password"
+                    value={currentPassword}
+                    onValueChange={setCurrentPassword}
                   />
                   <Field
                     name="newPassword"
                     label="Нова парола"
                     type="password"
                     minLength={8}
+                    value={newPassword}
+                    onValueChange={setNewPassword}
                   />
                   <Field
                     name="passwordConfirmation"
                     label="Потвърди новата парола"
                     type="password"
                     minLength={8}
+                    value={passwordConfirmation}
+                    onValueChange={setPasswordConfirmation}
                   />
                   <Button disabled={busy}>
                     Запази
