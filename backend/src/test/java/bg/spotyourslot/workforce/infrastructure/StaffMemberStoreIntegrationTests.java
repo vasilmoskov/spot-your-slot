@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import bg.spotyourslot.integration.PostgresIntegrationTest;
 import bg.spotyourslot.workforce.StaffMemberRecords.CreateStaffMemberCommand;
+import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberSortField;
 import bg.spotyourslot.workforce.application.StaffMemberInputValidator;
 import bg.spotyourslot.workforce.infrastructure.StaffMemberPersistenceException.UnexpectedFailure;
 import java.math.BigDecimal;
@@ -95,7 +96,7 @@ class StaffMemberStoreIntegrationTests extends PostgresIntegrationTest {
 
         assertThat(stored.displayName()).isEqualTo("Anna Иванова");
         assertThat(stored.contactEmail()).isEqualTo("team@example.invalid");
-        assertThat(stored.contactPhone()).isEqualTo("+359 (2) 123-45-67");
+        assertThat(stored.contactPhone()).isEqualTo("+35921234567");
     }
 
     @Test
@@ -110,7 +111,7 @@ class StaffMemberStoreIntegrationTests extends PostgresIntegrationTest {
                 businessId, "STRASSE", email, phone, CREATED_AT));
 
         assertThat(store.count(businessId)).isEqualTo(2);
-        assertThat(store.list(businessId, 0, 50))
+        assertThat(store.list(businessId, 0, 50, StaffMemberSortField.NAME, true))
                 .extracting(StaffMemberRow::id)
                 .containsExactlyInAnyOrder(first.id(), second.id());
         assertThat(jdbc.sql("""
@@ -141,8 +142,10 @@ class StaffMemberStoreIntegrationTests extends PostgresIntegrationTest {
         store.create(newStaff(betaId, businessId, "beta", null, null, CREATED_AT));
         store.create(newStaff(otherBusiness, "Aardvark", null, null, CREATED_AT));
 
-        List<StaffMemberRow> firstPage = store.list(businessId, 0, 2);
-        List<StaffMemberRow> secondPage = store.list(businessId, 1, 2);
+        List<StaffMemberRow> firstPage = store.list(
+                businessId, 0, 2, StaffMemberSortField.NAME, true);
+        List<StaffMemberRow> secondPage = store.list(
+                businessId, 1, 2, StaffMemberSortField.NAME, true);
 
         assertThat(firstPage).extracting(StaffMemberRow::id)
                 .containsExactly(firstAlphaId, secondAlphaId);
@@ -150,6 +153,106 @@ class StaffMemberStoreIntegrationTests extends PostgresIntegrationTest {
                 .containsExactly(betaId, gammaId);
         assertThat(store.count(businessId)).isEqualTo(4);
         assertThat(store.count(otherBusiness)).isEqualTo(1);
+    }
+
+    @Test
+    void nameSortDirectionReversesWithoutAffectingTieBreakers() {
+        UUID businessId = createBusiness();
+        store.create(newStaff(businessId, "beta", null, null, CREATED_AT));
+        store.create(newStaff(businessId, "Alpha", null, null, CREATED_AT));
+
+        assertThat(store.list(businessId, 0, 10, StaffMemberSortField.NAME, false))
+                .extracting(StaffMemberRow::displayName)
+                .containsExactly("beta", "Alpha");
+    }
+
+    @Test
+    void statusSortAscendingIsActiveFirstDescendingIsInactiveFirst() {
+        UUID businessId = createBusiness();
+        StaffMemberRow activeOne = store.create(newStaff(businessId, "Beta", null, null, CREATED_AT));
+        StaffMemberRow activeTwo = store.create(newStaff(businessId, "Alpha", null, null, CREATED_AT));
+        StaffMemberRow inactive = store.deactivate(
+                        businessId, activeOne.id(), activeOne.version(), UPDATED_AT)
+                .orElseThrow();
+
+        assertThat(store.list(businessId, 0, 10, StaffMemberSortField.STATUS, true))
+                .extracting(StaffMemberRow::id)
+                .containsExactly(activeTwo.id(), inactive.id());
+        assertThat(store.list(businessId, 0, 10, StaffMemberSortField.STATUS, false))
+                .extracting(StaffMemberRow::id)
+                .containsExactly(inactive.id(), activeTwo.id());
+    }
+
+    @Test
+    void phoneSortOrdersCanonicalValueWithNullsLastInBothDirections() {
+        UUID businessId = createBusiness();
+        StaffMemberRow withHigherPhone = store.create(
+                newStaff(businessId, "Beta", null, "+359888000002", CREATED_AT));
+        StaffMemberRow withLowerPhone = store.create(
+                newStaff(businessId, "Alpha", null, "+359888000001", CREATED_AT));
+        StaffMemberRow withoutPhone = store.create(
+                newStaff(businessId, "Gamma", null, null, CREATED_AT));
+
+        assertThat(store.list(businessId, 0, 10, StaffMemberSortField.PHONE, true))
+                .extracting(StaffMemberRow::id)
+                .containsExactly(withLowerPhone.id(), withHigherPhone.id(), withoutPhone.id());
+        assertThat(store.list(businessId, 0, 10, StaffMemberSortField.PHONE, false))
+                .extracting(StaffMemberRow::id)
+                .containsExactly(withHigherPhone.id(), withLowerPhone.id(), withoutPhone.id());
+    }
+
+    @Test
+    void phoneSortTieBreaksByNormalizedDisplayNameThenId() {
+        UUID businessId = createBusiness();
+        UUID higherId = UUID.fromString("00000000-0000-0000-0000-000000000102");
+        UUID lowerId = UUID.fromString("00000000-0000-0000-0000-000000000101");
+        String samePhone = "+359888000000";
+        StaffMemberRow sameNameHigherId = store.create(
+                newStaff(higherId, businessId, "Тим", null, samePhone, CREATED_AT));
+        StaffMemberRow sameNameLowerId = store.create(
+                newStaff(lowerId, businessId, "Тим", null, samePhone, CREATED_AT));
+        StaffMemberRow differentName = store.create(
+                newStaff(businessId, "Ана", null, samePhone, CREATED_AT));
+
+        assertThat(store.list(businessId, 0, 10, StaffMemberSortField.PHONE, true))
+                .extracting(StaffMemberRow::id)
+                .containsExactly(differentName.id(), sameNameLowerId.id(), sameNameHigherId.id());
+    }
+
+    @Test
+    void emailSortOrdersNormalizedLowercasedValueWithNullsLastInBothDirections() {
+        UUID businessId = createBusiness();
+        StaffMemberRow withHigherEmail = store.create(
+                newStaff(businessId, "Beta", "bravo@example.invalid", null, CREATED_AT));
+        StaffMemberRow withLowerEmail = store.create(
+                newStaff(businessId, "Alpha", "alfa@example.invalid", null, CREATED_AT));
+        StaffMemberRow withoutEmail = store.create(
+                newStaff(businessId, "Gamma", null, null, CREATED_AT));
+
+        assertThat(store.list(businessId, 0, 10, StaffMemberSortField.EMAIL, true))
+                .extracting(StaffMemberRow::id)
+                .containsExactly(withLowerEmail.id(), withHigherEmail.id(), withoutEmail.id());
+        assertThat(store.list(businessId, 0, 10, StaffMemberSortField.EMAIL, false))
+                .extracting(StaffMemberRow::id)
+                .containsExactly(withHigherEmail.id(), withLowerEmail.id(), withoutEmail.id());
+    }
+
+    @Test
+    void emailSortTieBreaksByNormalizedDisplayNameThenId() {
+        UUID businessId = createBusiness();
+        UUID higherId = UUID.fromString("00000000-0000-0000-0000-000000000202");
+        UUID lowerId = UUID.fromString("00000000-0000-0000-0000-000000000201");
+        String sameEmail = "team@example.invalid";
+        StaffMemberRow sameNameHigherId = store.create(
+                newStaff(higherId, businessId, "Тим", sameEmail, null, CREATED_AT));
+        StaffMemberRow sameNameLowerId = store.create(
+                newStaff(lowerId, businessId, "Тим", sameEmail, null, CREATED_AT));
+        StaffMemberRow differentName = store.create(
+                newStaff(businessId, "Ана", sameEmail, null, CREATED_AT));
+
+        assertThat(store.list(businessId, 0, 10, StaffMemberSortField.EMAIL, true))
+                .extracting(StaffMemberRow::id)
+                .containsExactly(differentName.id(), sameNameLowerId.id(), sameNameHigherId.id());
     }
 
     @Test
@@ -185,7 +288,7 @@ class StaffMemberStoreIntegrationTests extends PostgresIntegrationTest {
                 businessId,
                 "Първоначален",
                 "first@example.invalid",
-                "+359111222",
+                "+359888111222",
                 CREATED_AT));
 
         StaffMemberRow updated = store.updateProfile(
@@ -194,7 +297,7 @@ class StaffMemberStoreIntegrationTests extends PostgresIntegrationTest {
                         new StaffMemberProfileUpdateRow(
                                 "Обновен",
                                 "updated@example.invalid",
-                                "+359 (2) 123-45-67",
+                                "+35921234567",
                                 0,
                                 UPDATED_AT))
                 .orElseThrow();
@@ -204,7 +307,7 @@ class StaffMemberStoreIntegrationTests extends PostgresIntegrationTest {
         assertThat(updated.createdAt()).isEqualTo(original.createdAt());
         assertThat(updated.displayName()).isEqualTo("Обновен");
         assertThat(updated.contactEmail()).isEqualTo("updated@example.invalid");
-        assertThat(updated.contactPhone()).isEqualTo("+359 (2) 123-45-67");
+        assertThat(updated.contactPhone()).isEqualTo("+35921234567");
         assertThat(updated.active()).isTrue();
         assertThat(updated.version()).isEqualTo(1);
         assertThat(updated.updatedAt()).isEqualTo(UPDATED_AT);
@@ -238,7 +341,7 @@ class StaffMemberStoreIntegrationTests extends PostgresIntegrationTest {
                 businessId,
                 "Същият",
                 "same@example.invalid",
-                "+359123456",
+                "+359888123456",
                 CREATED_AT));
 
         StaffMemberRow updated = store.updateProfile(

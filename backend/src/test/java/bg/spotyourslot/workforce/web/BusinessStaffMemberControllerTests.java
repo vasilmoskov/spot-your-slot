@@ -97,14 +97,14 @@ class BusinessStaffMemberControllerTests {
     void allEightRoutesUseSecurityContextAndMapApprovedContracts() throws Exception {
         StaffMemberDetails details = details();
         StaffMemberAssignments assignments = assignments();
-        when(staffMembers.list(context, 0, 50))
-                .thenReturn(new StaffMemberPage(List.of(details), 0, 50, 1));
+        when(staffMembers.list(context, 0, 10, null, null))
+                .thenReturn(new StaffMemberPage(List.of(details), 0, 10, 1));
         when(staffMembers.get(context, STAFF_MEMBER_ID)).thenReturn(details);
         when(staffMembers.create(context, new CreateStaffMemberCommand(
                         "  Анна  ", " TEAM@EXAMPLE.INVALID ", " +359 888 123 456 ")))
                 .thenReturn(details);
         when(staffMembers.update(context, STAFF_MEMBER_ID, new UpdateStaffMemberCommand(
-                        "  Анна Петрова  ", null, " +359 2 123 456 ", 7L)))
+                        "  Анна Петрова  ", null, " +359 899 123 456 ", 7L)))
                 .thenReturn(details);
         when(staffMembers.deactivate(
                         context, STAFF_MEMBER_ID, new StaffMemberVersionCommand(7L)))
@@ -132,7 +132,7 @@ class BusinessStaffMemberControllerTests {
                 .andExpect(jsonPath("$.staffMembers[0].version").value(7))
                 .andExpect(jsonPath("$.staffMembers[0].businessId").doesNotExist())
                 .andExpect(jsonPath("$.page").value(0))
-                .andExpect(jsonPath("$.size").value(50))
+                .andExpect(jsonPath("$.size").value(10))
                 .andExpect(jsonPath("$.totalElements").value(1));
         mvc.perform(get("/api/business/staff-members/{staffMemberId}", STAFF_MEMBER_ID))
                 .andExpect(status().isOk())
@@ -156,7 +156,7 @@ class BusinessStaffMemberControllerTests {
                                 {
                                   "displayName": "  Анна Петрова  ",
                                   "contactEmail": null,
-                                  "contactPhone": " +359 2 123 456 ",
+                                  "contactPhone": " +359 899 123 456 ",
                                   "expectedVersion": 7
                                 }
                                 """))
@@ -194,12 +194,12 @@ class BusinessStaffMemberControllerTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.version").value(7));
 
-        verify(staffMembers).list(context, 0, 50);
+        verify(staffMembers).list(context, 0, 10, null, null);
         verify(staffMembers).get(context, STAFF_MEMBER_ID);
         verify(staffMembers).create(context, new CreateStaffMemberCommand(
                 "  Анна  ", " TEAM@EXAMPLE.INVALID ", " +359 888 123 456 "));
         verify(staffMembers).update(context, STAFF_MEMBER_ID, new UpdateStaffMemberCommand(
-                "  Анна Петрова  ", null, " +359 2 123 456 ", 7L));
+                "  Анна Петрова  ", null, " +359 899 123 456 ", 7L));
         verify(staffMembers).deactivate(
                 context, STAFF_MEMBER_ID, new StaffMemberVersionCommand(7L));
         verify(staffMembers).reactivate(
@@ -223,19 +223,36 @@ class BusinessStaffMemberControllerTests {
                 3,
                 CREATED,
                 UPDATED);
-        when(staffMembers.list(context, 2, 100))
-                .thenReturn(new StaffMemberPage(List.of(second, first), 2, 100, 202));
+        when(staffMembers.list(context, 2, 50, null, null))
+                .thenReturn(new StaffMemberPage(List.of(second, first), 2, 50, 202));
 
         mvc.perform(get("/api/business/staff-members")
                         .param("page", "2")
-                        .param("size", "100"))
+                        .param("size", "50"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.staffMembers[0].id").value(second.id().toString()))
                 .andExpect(jsonPath("$.staffMembers[1].id").value(first.id().toString()))
                 .andExpect(jsonPath("$.page").value(2))
-                .andExpect(jsonPath("$.size").value(100))
+                .andExpect(jsonPath("$.size").value(50))
                 .andExpect(jsonPath("$.totalElements").value(202));
-        verify(staffMembers).list(context, 2, 100);
+        verify(staffMembers).list(context, 2, 50, null, null);
+    }
+
+    @Test
+    void listPassesThroughExplicitSortAndDirection() throws Exception {
+        StaffMemberDetails details = details();
+        when(staffMembers.list(context, 1, 25, "status", "desc"))
+                .thenReturn(new StaffMemberPage(List.of(details), 1, 25, 30));
+
+        mvc.perform(get("/api/business/staff-members")
+                        .param("page", "1")
+                        .param("size", "25")
+                        .param("sort", "status")
+                        .param("direction", "desc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.page").value(1))
+                .andExpect(jsonPath("$.size").value(25));
+        verify(staffMembers).list(context, 1, 25, "status", "desc");
     }
 
     @Test

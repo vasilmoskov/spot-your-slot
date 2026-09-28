@@ -20,6 +20,13 @@ import {
   type ServiceDetails,
   type ServicePage,
 } from './business/services/api'
+import {
+  getStaffMember,
+  listStaffMembers,
+  updateStaffMember,
+  type StaffMemberDetails,
+  type StaffMemberPage,
+} from './business/staff/api'
 
 vi.mock('./identity/api', async (importOriginal) => {
   const original = await importOriginal<typeof import('./identity/api')>()
@@ -38,6 +45,15 @@ vi.mock('./business/services/api', async (importOriginal) => {
   const original = await importOriginal<typeof import('./business/services/api')>()
   return { ...original, listServices: vi.fn(), getService: vi.fn(), updateService: vi.fn() }
 })
+vi.mock('./business/staff/api', async (importOriginal) => {
+  const original = await importOriginal<typeof import('./business/staff/api')>()
+  return {
+    ...original,
+    listStaffMembers: vi.fn(),
+    getStaffMember: vi.fn(),
+    updateStaffMember: vi.fn(),
+  }
+})
 
 const mockedRequest = vi.mocked(request)
 const mockedCreateBusiness = vi.mocked(createBusiness)
@@ -46,13 +62,27 @@ const mockedListBusinesses = vi.mocked(listBusinesses)
 const mockedListServices = vi.mocked(listServices)
 const mockedGetService = vi.mocked(getService)
 const mockedUpdateService = vi.mocked(updateService)
+const mockedListStaffMembers = vi.mocked(listStaffMembers)
+const mockedGetStaffMember = vi.mocked(getStaffMember)
+const mockedUpdateStaffMember = vi.mocked(updateStaffMember)
 const emptyServicePage: ServicePage = { services: [], page: 0, size: 50, totalElements: 0 }
+const emptyStaffPage: StaffMemberPage = { staffMembers: [], page: 0, size: 10, totalElements: 0 }
 const testService: ServiceDetails = {
   id: 'service-a',
   name: 'Подстригване',
   description: null,
   durationMinutes: 10,
   price: 19.9,
+  active: true,
+  version: 0,
+  createdAt: '2026-08-19T09:00:00Z',
+  updatedAt: '2026-08-19T09:00:00Z',
+}
+const testStaffMember: StaffMemberDetails = {
+  id: 'staff-a',
+  displayName: 'Анна Иванова',
+  contactEmail: 'anna@example.invalid',
+  contactPhone: null,
   active: true,
   version: 0,
   createdAt: '2026-08-19T09:00:00Z',
@@ -120,6 +150,12 @@ beforeEach(() => {
   mockedGetService.mockResolvedValue(testService)
   mockedUpdateService.mockReset()
   mockedUpdateService.mockResolvedValue(testService)
+  mockedListStaffMembers.mockReset()
+  mockedListStaffMembers.mockResolvedValue(emptyStaffPage)
+  mockedGetStaffMember.mockReset()
+  mockedGetStaffMember.mockResolvedValue(testStaffMember)
+  mockedUpdateStaffMember.mockReset()
+  mockedUpdateStaffMember.mockResolvedValue(testStaffMember)
 })
 
 afterEach(() => {
@@ -1100,7 +1136,7 @@ describe('identity application', () => {
     render(<App />)
 
     expect(await screen.findByRole('status')).toHaveTextContent('временно спрян')
-    expect(screen.queryByRole('button', { name: 'Нова услуга' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Добави нова услуга' })).not.toBeInTheDocument()
   })
 })
 
@@ -1244,6 +1280,90 @@ describe('Business-scoped state invalidation on context switch', () => {
       '#/business/services?page=0&size=25&sort=price&direction=desc',
     )
   })
+
+  it('remounts Staff and discards a stale Business-A response after switching to Business B', async () => {
+    history.replaceState({}, '', '/#/business/staff')
+    let resolveA!: (value: StaffMemberPage) => void
+    mockedListStaffMembers.mockImplementationOnce(
+      () => new Promise<StaffMemberPage>((resolve) => { resolveA = resolve }),
+    )
+    mockedListStaffMembers.mockResolvedValueOnce({
+      staffMembers: [{ ...testStaffMember, id: 'staff-b', displayName: 'Член на бизнес Б' }],
+      page: 0,
+      size: 10,
+      totalElements: 1,
+    })
+
+    const { rerender } = render(<Harness session={businessA} />)
+    await waitFor(() => expect(mockedListStaffMembers).toHaveBeenCalledTimes(1))
+    expect(screen.getByText('Зареждане на екипа…')).toBeInTheDocument()
+
+    rerender(<Harness session={businessB} />)
+    await waitFor(() => expect(mockedListStaffMembers).toHaveBeenCalledTimes(2))
+    expect(await screen.findByText('Член на бизнес Б')).toBeInTheDocument()
+
+    await act(async () => {
+      resolveA({
+        staffMembers: [
+          { ...testStaffMember, id: 'staff-a', displayName: 'Обезценени данни от бизнес А' },
+        ],
+        page: 0,
+        size: 10,
+        totalElements: 1,
+      })
+      await Promise.resolve()
+    })
+
+    expect(screen.queryByText('Обезценени данни от бизнес А')).not.toBeInTheDocument()
+    expect(screen.getByText('Член на бизнес Б')).toBeInTheDocument()
+  })
+
+  it('resets the Staff list page to 0 but preserves size/sort/direction when the active Business changes', async () => {
+    history.replaceState(
+      {},
+      '',
+      '/#/business/staff?page=2&size=25&sort=status&direction=desc',
+    )
+    mockedListStaffMembers.mockResolvedValue({
+      staffMembers: [],
+      page: 2,
+      size: 25,
+      totalElements: 60,
+    })
+
+    const { rerender } = render(<Harness session={businessA} />)
+    await waitFor(() =>
+      expect(mockedListStaffMembers).toHaveBeenLastCalledWith(
+        2,
+        25,
+        'status',
+        'desc',
+        expect.any(AbortSignal),
+      ),
+    )
+
+    mockedListStaffMembers.mockResolvedValue({
+      staffMembers: [],
+      page: 0,
+      size: 25,
+      totalElements: 3,
+    })
+
+    rerender(<Harness session={businessB} />)
+
+    await waitFor(() =>
+      expect(mockedListStaffMembers).toHaveBeenLastCalledWith(
+        0,
+        25,
+        'status',
+        'desc',
+        expect.any(AbortSignal),
+      ),
+    )
+    expect(window.location.hash).toBe(
+      '#/business/staff?page=0&size=25&sort=status&direction=desc',
+    )
+  })
 })
 
 describe('table sort/pagination URL state', () => {
@@ -1292,6 +1412,56 @@ describe('table sort/pagination URL state', () => {
     await waitFor(() =>
       expect(window.location.hash).toBe(
         '#/business/services?page=0&size=10&sort=name&direction=asc',
+      ),
+    )
+  })
+
+  it('clicking a Staff sortable header updates the URL and Back restores the previous configuration', async () => {
+    mockedRequest.mockResolvedValue(session)
+    mockedListStaffMembers.mockResolvedValue({
+      staffMembers: [testStaffMember],
+      page: 0,
+      size: 10,
+      totalElements: 1,
+    })
+    history.replaceState({}, '', '/#/business/staff')
+    render(<App />)
+
+    await screen.findByRole('heading', { name: 'Екип' })
+    await screen.findByText('Анна Иванова')
+    expect(window.location.hash).toBe(
+      '#/business/staff?page=0&size=10&sort=name&direction=asc',
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Статус' }))
+    await waitFor(() =>
+      expect(window.location.hash).toBe(
+        '#/business/staff?page=0&size=10&sort=status&direction=asc',
+      ),
+    )
+
+    await act(async () => {
+      history.back()
+      await Promise.resolve()
+    })
+    await waitFor(() =>
+      expect(window.location.hash).toBe(
+        '#/business/staff?page=0&size=10&sort=name&direction=asc',
+      ),
+    )
+  })
+
+  it('normalizes an invalid Staff list query in the URL to canonical defaults on load', async () => {
+    history.replaceState({}, '', '/#/business/staff?page=-5&size=999&sort=bogus&direction=up')
+    mockedRequest.mockResolvedValue(session)
+    mockedListStaffMembers.mockResolvedValue(emptyStaffPage)
+
+    render(<App />)
+
+    await screen.findByRole('heading', { name: 'Екип' })
+    await waitFor(() =>
+      expect(window.location.hash).toBe(
+        '#/business/staff?page=0&size=10&sort=name&direction=asc',
       ),
     )
   })
@@ -1668,7 +1838,6 @@ describe('Profile password guard', () => {
 
 describe('Business-owner placeholder sections', () => {
   it.each([
-    ['#/business/staff', 'Екип'],
     ['#/business/schedule', 'Работно време'],
   ] as const)('keeps the page heading on %s without repeating it inside the card', async (hash, title) => {
     history.replaceState({}, '', `/${hash}`)

@@ -73,11 +73,21 @@ public class StaffMemberAdministrationService implements StaffMemberAdministrati
     @Override
     @Transactional(readOnly = true)
     public StaffMemberPage list(
-            AuthenticatedBusinessContext context, int page, int size) {
+            AuthenticatedBusinessContext context,
+            int page,
+            int size,
+            String sort,
+            String direction) {
         BusinessSelection selection = authorizeRead(context);
         PageInput validated = validator.validatePage(page, size);
+        var sortField = validator.validateSort(sort);
+        boolean ascending = validator.validateAscending(direction);
         var staffMembers = store.list(
-                        selection.businessId(), validated.page(), validated.size())
+                        selection.businessId(),
+                        validated.page(),
+                        validated.size(),
+                        sortField,
+                        ascending)
                 .stream()
                 .map(this::details)
                 .toList();

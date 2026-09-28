@@ -112,6 +112,19 @@ over the default risk level.
 
 ## Security and state management
 
+- Never run `docker compose down --volumes`, `docker volume rm`,
+  `docker volume prune`, delete a database volume, `DROP DATABASE`, a bulk
+  `TRUNCATE`, or otherwise reset persistent local-development data without
+  explicit user approval. Starting or stopping services without deleting
+  persistent data is allowed when it is within task scope. Tests must use
+  isolated Testcontainers/ephemeral databases rather than the local
+  development database. Any fixture needed for a manual/visual review must be
+  created non-destructively through supported APIs or normal application
+  flows, never by writing to the database directly. Never hand-edit a
+  password hash or otherwise bypass application security to create or adjust
+  a fixture. If a genuinely clean persistent database is required, stop and
+  ask first. Report any local fixture data created or mutated during a task,
+  with cleanup instructions.
 - Never return arbitrary internal exception messages, SQL details, stack traces,
   or secret values to API clients. Use stable public error codes and safe
   Bulgarian client messages.

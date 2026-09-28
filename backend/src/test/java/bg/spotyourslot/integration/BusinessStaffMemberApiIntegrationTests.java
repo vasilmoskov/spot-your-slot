@@ -78,7 +78,7 @@ class BusinessStaffMemberApiIntegrationTests extends PostgresIntegrationTest {
                 .andExpect(jsonPath("$", aMapWithSize(8)))
                 .andExpect(jsonPath("$.displayName").value("Анна Иванова"))
                 .andExpect(jsonPath("$.contactEmail").value("team@example.invalid"))
-                .andExpect(jsonPath("$.contactPhone").value("+359 (2) 123-45-67"))
+                .andExpect(jsonPath("$.contactPhone").value("+35921234567"))
                 .andExpect(jsonPath("$.active").value(true))
                 .andExpect(jsonPath("$.version").value(0))
                 .andExpect(jsonPath("$.createdAt").exists())
@@ -108,7 +108,7 @@ class BusinessStaffMemberApiIntegrationTests extends PostgresIntegrationTest {
                 .andExpect(jsonPath("$", aMapWithSize(4)))
                 .andExpect(jsonPath("$.staffMembers[0].id").value(staffMemberId.toString()))
                 .andExpect(jsonPath("$.page").value(0))
-                .andExpect(jsonPath("$.size").value(50))
+                .andExpect(jsonPath("$.size").value(10))
                 .andExpect(jsonPath("$.totalElements").value(1));
 
         String updatedBody = update(
@@ -277,30 +277,116 @@ class BusinessStaffMemberApiIntegrationTests extends PostgresIntegrationTest {
         mvc.perform(get("/api/business/staff-members").cookie(owner.session()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.page").value(0))
-                .andExpect(jsonPath("$.size").value(50))
+                .andExpect(jsonPath("$.size").value(10))
                 .andExpect(jsonPath("$.totalElements").value(3));
         mvc.perform(get("/api/business/staff-members")
                         .cookie(owner.session())
                         .param("page", "0")
-                        .param("size", "2"))
+                        .param("size", "10"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.staffMembers[0].id").value(alphaFirst.toString()))
                 .andExpect(jsonPath("$.staffMembers[0].active").value(false))
                 .andExpect(jsonPath("$.staffMembers[1].id").value(alphaSecond.toString()))
+                .andExpect(jsonPath("$.staffMembers[2].id").value(beta.toString()))
                 .andExpect(jsonPath("$.totalElements").value(3));
         mvc.perform(get("/api/business/staff-members")
                         .cookie(owner.session())
-                        .param("page", "1")
-                        .param("size", "2"))
+                        .param("page", "0")
+                        .param("size", "10")
+                        .param("sort", "status")
+                        .param("direction", "desc"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.staffMembers[0].id").value(beta.toString()));
+                .andExpect(jsonPath("$.staffMembers[0].id").value(alphaFirst.toString()))
+                .andExpect(jsonPath("$.staffMembers[0].active").value(false));
 
         assertValidationError(mvc.perform(get("/api/business/staff-members")
                 .cookie(owner.session()).param("page", "-1")));
         assertValidationError(mvc.perform(get("/api/business/staff-members")
                 .cookie(owner.session()).param("size", "0")));
         assertValidationError(mvc.perform(get("/api/business/staff-members")
-                .cookie(owner.session()).param("size", "101")));
+                .cookie(owner.session()).param("size", "20")));
+        assertValidationError(mvc.perform(get("/api/business/staff-members")
+                .cookie(owner.session()).param("size", "51")));
+        assertValidationError(mvc.perform(get("/api/business/staff-members")
+                .cookie(owner.session()).param("sort", "unknown")));
+        assertValidationError(mvc.perform(get("/api/business/staff-members")
+                .cookie(owner.session()).param("direction", "sideways")));
+    }
+
+    @Test
+    void listingSortsByPhoneAndEmailWithNullsLastInBothDirectionsAndTenantIsolation()
+            throws Exception {
+        Actor owner = actor("ACTIVE", "BUSINESS_OWNER", true, false, true);
+        Actor other = actor("ACTIVE", "BUSINESS_OWNER", true, false, true);
+        UUID lowerContact = UUID.fromString("00000000-0000-0000-0000-000000000011");
+        UUID higherContact = UUID.fromString("00000000-0000-0000-0000-000000000012");
+        UUID noContact = UUID.fromString("00000000-0000-0000-0000-000000000013");
+        insertStaffWithContact(
+                lowerContact, owner.businessId(), "Alpha", "+359800000001", "alfa@example.invalid");
+        insertStaffWithContact(
+                higherContact, owner.businessId(), "Beta", "+359800000002", "bravo@example.invalid");
+        insertStaff(noContact, owner.businessId(), "Gamma", true, 0);
+        insertStaffWithContact(
+                UUID.randomUUID(), other.businessId(), "Foreign", "+359800000009",
+                "foreign@example.invalid");
+
+        mvc.perform(get("/api/business/staff-members")
+                        .cookie(owner.session())
+                        .param("sort", "phone")
+                        .param("direction", "asc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(3))
+                .andExpect(jsonPath("$.staffMembers[0].id").value(lowerContact.toString()))
+                .andExpect(jsonPath("$.staffMembers[1].id").value(higherContact.toString()))
+                .andExpect(jsonPath("$.staffMembers[2].id").value(noContact.toString()));
+        mvc.perform(get("/api/business/staff-members")
+                        .cookie(owner.session())
+                        .param("sort", "phone")
+                        .param("direction", "desc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.staffMembers[0].id").value(higherContact.toString()))
+                .andExpect(jsonPath("$.staffMembers[1].id").value(lowerContact.toString()))
+                .andExpect(jsonPath("$.staffMembers[2].id").value(noContact.toString()));
+        mvc.perform(get("/api/business/staff-members")
+                        .cookie(owner.session())
+                        .param("sort", "email")
+                        .param("direction", "asc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.staffMembers[0].id").value(lowerContact.toString()))
+                .andExpect(jsonPath("$.staffMembers[1].id").value(higherContact.toString()))
+                .andExpect(jsonPath("$.staffMembers[2].id").value(noContact.toString()));
+        mvc.perform(get("/api/business/staff-members")
+                        .cookie(owner.session())
+                        .param("sort", "email")
+                        .param("direction", "desc"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.staffMembers[0].id").value(higherContact.toString()))
+                .andExpect(jsonPath("$.staffMembers[1].id").value(lowerContact.toString()))
+                .andExpect(jsonPath("$.staffMembers[2].id").value(noContact.toString()));
+    }
+
+    @Test
+    void listingAcceptsEveryPublicPageSizeAndRejectsUnsupportedOnes() throws Exception {
+        Actor owner = actor("ACTIVE", "BUSINESS_OWNER", true, false, true);
+        insertStaff(UUID.randomUUID(), owner.businessId(), "Alpha", true, 0);
+
+        for (int supportedSize : new int[] {10, 25, 50}) {
+            mvc.perform(get("/api/business/staff-members")
+                            .cookie(owner.session())
+                            .param("size", String.valueOf(supportedSize)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.size").value(supportedSize))
+                    .andExpect(jsonPath("$.totalElements").value(1));
+        }
+
+        // Representative rejections for values inside the previously unbounded
+        // range that are not one of the three supported public page sizes, and
+        // for a value above the highest supported size.
+        for (int unsupportedSize : new int[] {1, 7, 20, 51}) {
+            assertValidationError(mvc.perform(get("/api/business/staff-members")
+                    .cookie(owner.session())
+                    .param("size", String.valueOf(unsupportedSize))));
+        }
     }
 
     @Test
@@ -629,6 +715,24 @@ class BusinessStaffMemberApiIntegrationTests extends PostgresIntegrationTest {
                 .param("name", name)
                 .param("active", active)
                 .param("version", version)
+                .param("now", now)
+                .update();
+    }
+
+    private void insertStaffWithContact(
+            UUID id, UUID businessId, String name, String contactPhone, String contactEmail) {
+        jdbc.sql("""
+                        INSERT INTO staff_member(
+                            id,business_id,display_name,contact_email,contact_phone,
+                            active,version,created_at,updated_at)
+                        VALUES (
+                            :id,:business,:name,:email,:phone,true,0,:now,:now)
+                        """)
+                .param("id", id)
+                .param("business", businessId)
+                .param("name", name)
+                .param("email", contactEmail)
+                .param("phone", contactPhone)
                 .param("now", now)
                 .update();
     }

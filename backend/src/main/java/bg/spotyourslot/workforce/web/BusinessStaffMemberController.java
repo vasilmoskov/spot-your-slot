@@ -40,8 +40,11 @@ public class BusinessStaffMemberController {
             @CurrentSecurityContext(expression = "authentication")
                     AuthenticatedBusinessContext context,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "50") int size) {
-        return StaffMemberPageResponse.from(staffMembers.list(context, page, size));
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String sort,
+            @RequestParam(required = false) String direction) {
+        return StaffMemberPageResponse.from(
+                staffMembers.list(context, page, size, sort, direction));
     }
 
     @GetMapping("/{staffMemberId}")

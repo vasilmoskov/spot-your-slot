@@ -10,6 +10,13 @@ public final class StaffMemberRecords {
     private StaffMemberRecords() {
     }
 
+    public enum StaffMemberSortField {
+        NAME,
+        STATUS,
+        PHONE,
+        EMAIL
+    }
+
     public record StaffMemberDetails(
             UUID id,
             String displayName,

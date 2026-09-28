@@ -1,5 +1,6 @@
 package bg.spotyourslot.workforce.infrastructure;
 
+import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberSortField;
 import bg.spotyourslot.workforce.infrastructure.StaffMemberPersistenceException.UnexpectedFailure;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -17,7 +18,7 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public class StaffMemberStore {
-    public static final int MAX_PAGE_SIZE = 100;
+    public static final int MAX_PAGE_SIZE = 50;
 
     private static final String RETURNING_COLUMNS = """
             id, business_id, display_name, contact_email, contact_phone,
@@ -30,7 +31,8 @@ public class StaffMemberStore {
         this.jdbc = jdbc;
     }
 
-    public List<StaffMemberRow> list(UUID businessId, int page, int size) {
+    public List<StaffMemberRow> list(
+            UUID businessId, int page, int size, StaffMemberSortField sort, boolean ascending) {
         validatePage(page, size);
         long offset = Math.multiplyExact((long) page, size);
 
@@ -39,14 +41,41 @@ public class StaffMemberStore {
                                active, version, created_at, updated_at
                         FROM staff_member
                         WHERE business_id = :businessId
-                        ORDER BY normalized_display_name ASC, id ASC
+                        ORDER BY %s
                         LIMIT :size OFFSET :offset
-                        """)
+                        """.formatted(orderClause(sort, ascending)))
                 .param("businessId", businessId)
                 .param("size", size)
                 .param("offset", offset)
                 .query(this::staffMemberRow)
                 .list());
+    }
+
+    /**
+     * The primary criterion's direction follows {@code ascending} literally, except for
+     * {@code STATUS}: ascending is documented as active-first (ACTIVE before INACTIVE), which is
+     * {@code active DESC}. Tie-breakers stay fixed ascending regardless of direction so ordering
+     * remains deterministic.
+     *
+     * <p>{@code PHONE} and {@code EMAIL} order by the canonical/normalized contact column as the
+     * primary criterion, with {@code NULLS LAST} applied regardless of direction (a StaffMember
+     * without a telephone or email always sorts after one that has it, in both ascending and
+     * descending order). {@code normalized_display_name ASC, id ASC} remain fixed tie-breakers, as
+     * with the other sort fields, so ordering stays fully deterministic. Every branch below is a
+     * closed, trusted SQL fragment selected by the {@link StaffMemberSortField} enum; no request
+     * value is ever interpolated into the ORDER BY clause.
+     */
+    private String orderClause(StaffMemberSortField sort, boolean ascending) {
+        String direction = ascending ? "ASC" : "DESC";
+        return switch (sort) {
+            case NAME -> "normalized_display_name " + direction + ", id ASC";
+            case STATUS -> "active " + (ascending ? "DESC" : "ASC")
+                    + ", normalized_display_name ASC, id ASC";
+            case PHONE -> "contact_phone " + direction
+                    + " NULLS LAST, normalized_display_name ASC, id ASC";
+            case EMAIL -> "contact_email " + direction
+                    + " NULLS LAST, normalized_display_name ASC, id ASC";
+        };
     }
 
     public long count(UUID businessId) {

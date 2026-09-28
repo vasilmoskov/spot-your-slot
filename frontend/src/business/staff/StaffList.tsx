@@ -3,8 +3,8 @@ import { Button } from '../../ui/Button'
 import { ApiError } from '../../identity/api'
 import { PageSizeSelect, ResponsiveSortSelect, SortableColumnHeader } from '../../ui/ListSortControls'
 import {
-  SERVICES_SORT_FIELDS,
-  BUSINESS_SERVICE_NEW_ROUTE,
+  STAFF_SORT_FIELDS,
+  BUSINESS_STAFF_NEW_ROUTE,
   pushRoute,
   routeHref,
   type ListNavigationMode,
@@ -12,54 +12,50 @@ import {
   type ListQueryState,
   type ListSortDirection,
 } from '../../navigation'
-import { listServices, type ServicePage } from './api'
-import { formatServiceDuration, formatServicePrice, serviceStatusPresentation } from './presentation'
+import { listStaffMembers, type StaffMemberPage } from './api'
+import { formatStaffPhone, staffStatusPresentation } from './presentation'
 
-type ServiceSortField = (typeof SERVICES_SORT_FIELDS)[number]
+type StaffSortField = (typeof STAFF_SORT_FIELDS)[number]
 
-const SORT_OPTIONS: ReadonlyArray<{ field: ServiceSortField; ascLabel: string; descLabel: string }> = [
+const SORT_OPTIONS: ReadonlyArray<{ field: StaffSortField; ascLabel: string; descLabel: string }> = [
   { field: 'name', ascLabel: 'Име (А-Я)', descLabel: 'Име (Я-А)' },
-  {
-    field: 'duration',
-    ascLabel: 'Продължителност (най-кратки)',
-    descLabel: 'Продължителност (най-дълги)',
-  },
-  { field: 'price', ascLabel: 'Цена (най-ниска)', descLabel: 'Цена (най-висока)' },
   { field: 'status', ascLabel: 'Статус (активни)', descLabel: 'Статус (неактивни)' },
+  { field: 'phone', ascLabel: 'Телефон (възходящо)', descLabel: 'Телефон (низходящо)' },
+  { field: 'email', ascLabel: 'Имейл (възходящо)', descLabel: 'Имейл (низходящо)' },
 ]
 
-const COLUMN_LABELS: Record<ServiceSortField, string> = {
+const COLUMN_LABELS: Record<StaffSortField, string> = {
   name: 'Име',
-  duration: 'Продължителност',
-  price: 'Цена',
   status: 'Статус',
+  phone: 'Телефон',
+  email: 'Имейл',
 }
 
-type ServiceListProps = {
+type StaffListProps = {
   readOnly: boolean
   list: ListQueryState
   onListChange: (next: ListQueryState, mode?: ListNavigationMode) => void
   onAuthenticationRequired: (detail: string) => void
   onCreate?: () => void
-  onOpen?: (serviceId: string) => void
+  onOpen?: (staffMemberId: string) => void
 }
 
 type ListState =
   | { kind: 'loading' }
-  | { kind: 'loaded'; page: ServicePage }
+  | { kind: 'loaded'; page: StaffMemberPage }
   | { kind: 'forbidden'; detail: string }
   | { kind: 'error' }
 
-const GENERIC_ERROR = 'Списъкът с услуги не може да бъде зареден.'
+const GENERIC_ERROR = 'Списъкът с екипа не може да бъде зареден.'
 
-export function ServiceList({
+export function StaffList({
   readOnly,
   list,
   onListChange,
   onAuthenticationRequired,
-  onCreate = () => pushRoute(BUSINESS_SERVICE_NEW_ROUTE),
-  onOpen = (serviceId) => pushRoute({ kind: 'business-service-detail', serviceId }),
-}: ServiceListProps) {
+  onCreate = () => pushRoute(BUSINESS_STAFF_NEW_ROUTE),
+  onOpen = (staffMemberId) => pushRoute({ kind: 'business-staff-detail', staffMemberId }),
+}: StaffListProps) {
   const [state, setState] = useState<ListState>({ kind: 'loading' })
   const requestSequence = useRef(0)
   const activeRequest = useRef<{ id: number; controller: AbortController } | null>(null)
@@ -73,7 +69,7 @@ export function ServiceList({
       setState({ kind: 'loading' })
 
       try {
-        const response = await listServices(
+        const response = await listStaffMembers(
           query.page,
           query.size,
           query.sort,
@@ -86,7 +82,7 @@ export function ServiceList({
         ) {
           return
         }
-        if (query.page > 0 && response.services.length === 0 && response.totalElements > 0) {
+        if (query.page > 0 && response.staffMembers.length === 0 && response.totalElements > 0) {
           const lastValidPage = Math.max(
             0,
             Math.ceil(response.totalElements / query.size) - 1,
@@ -130,7 +126,7 @@ export function ServiceList({
     }
   }, [load, list.page, list.size, list.sort, list.direction])
 
-  const sortColumn = (field: ServiceSortField) => {
+  const sortColumn = (field: StaffSortField) => {
     if (list.sort === field) {
       onListChange({ ...list, page: 0, direction: list.direction === 'asc' ? 'desc' : 'asc' })
       return
@@ -149,7 +145,7 @@ export function ServiceList({
   if (state.kind === 'loading') {
     return (
       <div className="platform-content" aria-live="polite" aria-busy="true">
-        <p className="business-list-state">Зареждане на услугите…</p>
+        <p className="business-list-state">Зареждане на екипа…</p>
       </div>
     )
   }
@@ -187,18 +183,18 @@ export function ServiceList({
         <div className="business-page-actions">
           {!readOnly && (
             <Button type="button" onClick={onCreate}>
-              Добави нова услуга
+              Добави нов член
             </Button>
           )}
         </div>
         {readOnly && (
           <p className="section-introduction">
-            Бизнесът е временно спрян — услугите могат само да бъдат преглеждани.
+            Бизнесът е временно спрян — екипът може само да бъде преглеждан.
           </p>
         )}
-        <div className="list-toolbar services-list-toolbar">
+        <div className="list-toolbar staff-list-toolbar">
           <ResponsiveSortSelect
-            id="services-responsive-sort"
+            id="staff-responsive-sort"
             label="Подреди по"
             options={SORT_OPTIONS}
             sort={list.sort}
@@ -206,19 +202,19 @@ export function ServiceList({
             onChange={changeResponsiveSort}
           />
         </div>
-        {state.page.services.length === 0 ? (
+        {state.page.staffMembers.length === 0 ? (
           <p className="business-list-state" aria-live="polite">
             {state.page.totalElements === 0
-              ? 'Все още няма създадени услуги.'
-              : 'Няма услуги на тази страница.'}
+              ? 'Все още няма добавени членове на екипа.'
+              : 'Няма членове на екипа на тази страница.'}
           </p>
         ) : (
-          <div className="business-table-container services-table-container">
-            <table className="business-table services-table">
-              <caption className="visually-hidden">Списък с услуги</caption>
+          <div className="business-table-container staff-table-container">
+            <table className="business-table staff-table">
+              <caption className="visually-hidden">Списък с екипа</caption>
               <thead>
                 <tr>
-                  {SERVICES_SORT_FIELDS.map((field) => (
+                  {STAFF_SORT_FIELDS.map((field) => (
                     <SortableColumnHeader
                       key={field}
                       label={COLUMN_LABELS[field]}
@@ -230,33 +226,34 @@ export function ServiceList({
                 </tr>
               </thead>
               <tbody>
-                {state.page.services.map((service) => {
-                  const status = serviceStatusPresentation(service.active)
+                {state.page.staffMembers.map((staffMember) => {
+                  const status = staffStatusPresentation(staffMember.active)
                   return (
-                    <tr key={service.id}>
+                    <tr key={staffMember.id}>
                       <td data-label="Име">
                         <div className="business-name-cell">
                           <a
-                            aria-label={`Отвори ${service.name}`}
-                            href={routeHref({ kind: 'business-service-detail', serviceId: service.id })}
+                            aria-label={`Отвори ${staffMember.displayName}`}
+                            href={routeHref({
+                              kind: 'business-staff-detail',
+                              staffMemberId: staffMember.id,
+                            })}
                             onClick={(event) => {
                               event.preventDefault()
-                              onOpen(service.id)
+                              onOpen(staffMember.id)
                             }}
                           >
-                            {service.name}
+                            {staffMember.displayName}
                           </a>
                         </div>
                       </td>
-                      <td data-label="Продължителност">
-                        {formatServiceDuration(service.durationMinutes)}
-                      </td>
-                      <td data-label="Цена">{formatServicePrice(service.price)}</td>
                       <td data-label="Статус">
                         <span className={`status-badge status-badge-${status.tone}`}>
                           {status.label}
                         </span>
                       </td>
+                      <td data-label="Телефон">{formatStaffPhone(staffMember.contactPhone)}</td>
+                      <td data-label="Имейл">{staffMember.contactEmail ?? '—'}</td>
                     </tr>
                   )
                 })}
@@ -264,7 +261,7 @@ export function ServiceList({
             </table>
           </div>
         )}
-        <ServicePagination
+        <StaffPagination
           page={state.page}
           onPageRequested={(page) => onListChange({ ...list, page })}
           onSizeChange={changePageSize}
@@ -274,13 +271,13 @@ export function ServiceList({
   )
 }
 
-type ServicePaginationProps = {
-  page: ServicePage
+type StaffPaginationProps = {
+  page: StaffMemberPage
   onPageRequested: (page: number) => void
   onSizeChange: (size: ListPageSize) => void
 }
 
-function ServicePagination({ page, onPageRequested, onSizeChange }: ServicePaginationProps) {
+function StaffPagination({ page, onPageRequested, onSizeChange }: StaffPaginationProps) {
   const previousDisabled = page.page === 0
   const nextDisabled = (page.page + 1) * page.size >= page.totalElements
   const totalPages = Math.max(1, Math.ceil(page.totalElements / page.size))
@@ -288,17 +285,17 @@ function ServicePagination({ page, onPageRequested, onSizeChange }: ServicePagin
   const to = Math.min((page.page + 1) * page.size, page.totalElements)
 
   return (
-    <nav className="business-pagination" aria-label="Странициране на услугите">
+    <nav className="business-pagination" aria-label="Странициране на екипа">
       <div className="business-pagination-summary">
         <span>
-          {from}–{to} от {page.totalElements} услуги
+          {from}–{to} от {page.totalElements} членове на екипа
         </span>
         <span>
           Страница {page.page + 1} от {totalPages}
         </span>
       </div>
       <div className="business-pagination-controls">
-        <PageSizeSelect id="services-page-size" value={page.size as ListPageSize} onChange={onSizeChange} />
+        <PageSizeSelect id="staff-page-size" value={page.size as ListPageSize} onChange={onSizeChange} />
         <div className="business-pagination-actions">
           <Button
             type="button"

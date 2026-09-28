@@ -19,6 +19,8 @@ public abstract sealed class StaffMemberApplicationException extends RuntimeExce
         STAFF_MEMBER_ID,
         PAGE,
         SIZE,
+        SORT,
+        DIRECTION,
         DISPLAY_NAME,
         CONTACT_EMAIL,
         CONTACT_PHONE,

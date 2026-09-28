@@ -20,6 +20,7 @@ import {
   PLATFORM_BUSINESSES_ROUTE,
   PLATFORM_BUSINESS_NEW_ROUTE,
   BUSINESS_SERVICES_ROUTE,
+  BUSINESS_STAFF_ROUTE,
   isBusinessOwnerRoute,
   isPlatformRoute,
   pushRoute,
@@ -41,6 +42,9 @@ import { BusinessOwnerShell } from './business/BusinessOwnerShell'
 import { ServiceList } from './business/services/ServiceList'
 import { ServiceCreate } from './business/services/ServiceCreate'
 import { ServiceDetail } from './business/services/ServiceDetail'
+import { StaffList } from './business/staff/StaffList'
+import { StaffCreate } from './business/staff/StaffCreate'
+import { StaffDetail } from './business/staff/StaffDetail'
 
 const safeErrorDetail = (error: unknown): string =>
   error instanceof ApiError ? error.detail : 'Възникна грешка. Опитайте отново.'
@@ -522,7 +526,12 @@ export function AuthenticatedApplication({
     if (previousActiveBusinessId.current === session.activeBusinessId) return
     previousActiveBusinessId.current = session.activeBusinessId
     const current = routeRef.current
-    if (current.kind !== 'business-services' || current.list.page === 0) return
+    if (
+      (current.kind !== 'business-services' && current.kind !== 'business-staff') ||
+      current.list.page === 0
+    ) {
+      return
+    }
     const next: AuthenticatedRoute = { ...current, list: { ...current.list, page: 0 } }
     replaceRoute(next)
     setRoute(next)
@@ -530,6 +539,17 @@ export function AuthenticatedApplication({
 
   const updateBusinessServicesList = (next: ListQueryState, mode: ListNavigationMode = 'push') => {
     if (route.kind !== 'business-services') return
+    const nextRoute: AuthenticatedRoute = { ...route, list: next }
+    if (mode === 'replace') {
+      replaceRoute(nextRoute)
+    } else {
+      pushRoute(nextRoute)
+    }
+    setRoute(nextRoute)
+  }
+
+  const updateBusinessStaffList = (next: ListQueryState, mode: ListNavigationMode = 'push') => {
+    if (route.kind !== 'business-staff') return
     const nextRoute: AuthenticatedRoute = { ...route, list: next }
     if (mode === 'replace') {
       replaceRoute(nextRoute)
@@ -682,6 +702,32 @@ export function AuthenticatedApplication({
             readOnly={readOnly}
             onAuthenticationRequired={authenticationRequired}
             onBack={() => navigate(BUSINESS_SERVICES_ROUTE)}
+          />
+        ) : route.kind === 'business-staff' ? (
+          <StaffList
+            key={businessKey}
+            readOnly={readOnly}
+            list={route.list}
+            onListChange={updateBusinessStaffList}
+            onAuthenticationRequired={authenticationRequired}
+            onCreate={() => navigate({ kind: 'business-staff-new' })}
+            onOpen={(staffMemberId) => navigate({ kind: 'business-staff-detail', staffMemberId })}
+          />
+        ) : route.kind === 'business-staff-new' ? (
+          <StaffCreate
+            key={businessKey}
+            readOnly={readOnly}
+            onAuthenticationRequired={authenticationRequired}
+            onCancel={() => navigate(BUSINESS_STAFF_ROUTE)}
+            onCreated={(staffMemberId) => navigate({ kind: 'business-staff-detail', staffMemberId })}
+          />
+        ) : route.kind === 'business-staff-detail' ? (
+          <StaffDetail
+            key={`${businessKey}-${route.staffMemberId}`}
+            staffMemberId={route.staffMemberId}
+            readOnly={readOnly}
+            onAuthenticationRequired={authenticationRequired}
+            onBack={() => navigate(BUSINESS_STAFF_ROUTE)}
           />
         ) : (
           <ComingSoon />

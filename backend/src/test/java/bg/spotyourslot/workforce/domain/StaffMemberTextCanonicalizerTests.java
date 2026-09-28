@@ -35,7 +35,7 @@ class StaffMemberTextCanonicalizerTests {
         assertThat(StaffMemberTextCanonicalizer.canonicalContactEmail(
                         whitespace + "TEAM@EXAMPLE.INVALID" + whitespace))
                 .isEqualTo("team@example.invalid");
-        assertThat(StaffMemberTextCanonicalizer.canonicalContactPhone(
+        assertThat(StaffMemberTextCanonicalizer.canonicalTrimmed(
                         whitespace + "+359 (2) 123-45-67" + whitespace))
                 .isEqualTo("+359 (2) 123-45-67");
     }
@@ -47,7 +47,7 @@ class StaffMemberTextCanonicalizerTests {
         assertThat(StaffMemberTextCanonicalizer.canonicalContactEmail(
                         " ＴＥＡＭ@ＥＸＡＭＰＬＥ.INVALID "))
                 .isEqualTo("team@example.invalid");
-        assertThat(StaffMemberTextCanonicalizer.canonicalContactPhone(" ＋３５９ "))
+        assertThat(StaffMemberTextCanonicalizer.canonicalTrimmed(" ＋３５９ "))
                 .isEqualTo("+359");
     }
 
@@ -68,18 +68,11 @@ class StaffMemberTextCanonicalizerTests {
     @Test
     void convertsBlankOptionalContactsToNull() {
         assertThat(StaffMemberTextCanonicalizer.canonicalContactEmail(null)).isNull();
-        assertThat(StaffMemberTextCanonicalizer.canonicalContactPhone(null)).isNull();
+        assertThat(StaffMemberTextCanonicalizer.canonicalTrimmed(null)).isNull();
         assertThat(StaffMemberTextCanonicalizer.canonicalContactEmail("\u2003\n\u3000"))
                 .isNull();
-        assertThat(StaffMemberTextCanonicalizer.canonicalContactPhone("\u2003\n\u3000"))
+        assertThat(StaffMemberTextCanonicalizer.canonicalTrimmed("\u2003\n\u3000"))
                 .isNull();
-    }
-
-    @Test
-    void preservesAcceptedInternalPhoneFormatting() {
-        assertThat(StaffMemberTextCanonicalizer.canonicalContactPhone(
-                        "  +359 (2) 123.45/67-8  "))
-                .isEqualTo("+359 (2) 123.45/67-8");
     }
 
     @Test
@@ -89,7 +82,7 @@ class StaffMemberTextCanonicalizerTests {
         assertThat(StaffMemberTextCanonicalizer.canonicalContactEmail(
                         "\u200BTEAM@EXAMPLE.INVALID\u200B"))
                 .isEqualTo("\u200Bteam@example.invalid\u200B");
-        assertThat(StaffMemberTextCanonicalizer.canonicalContactPhone("\u200B123\u200B"))
+        assertThat(StaffMemberTextCanonicalizer.canonicalTrimmed("\u200B123\u200B"))
                 .isEqualTo("\u200B123\u200B");
         assertThat(StaffMemberTextCanonicalizer.isApprovedWhitespace(0x200B)).isFalse();
     }

@@ -7,7 +7,7 @@ import { BusinessOwnerShell } from './BusinessOwnerShell'
 function renderShell(status: string = 'ACTIVE') {
   const onNavigate = vi.fn()
   const onLogout = vi.fn()
-  render(
+  const result = render(
     <BusinessOwnerShell
       route={BUSINESS_SERVICES_ROUTE}
       activeBusiness={{ displayName: 'Студио А', status }}
@@ -18,7 +18,7 @@ function renderShell(status: string = 'ACTIVE') {
       <p>Съдържание</p>
     </BusinessOwnerShell>,
   )
-  return { onNavigate, onLogout }
+  return { onNavigate, onLogout, unmount: result.unmount }
 }
 
 describe('BusinessOwnerShell', () => {
@@ -66,30 +66,31 @@ describe('BusinessOwnerShell', () => {
     expect(document.querySelector('.mobile-account')?.querySelector('span')).toBeNull()
   })
 
-  it('associates the lifecycle status with the stable eyebrow, not the page title', () => {
-    renderShell('SUSPENDED')
-    const status = screen.getByText('Временно спрян')
-    const headerRow = document.querySelector('.business-identity-row') as HTMLElement
-    expect(within(headerRow).getByText('УПРАВЛЕНИЕ НА БИЗНЕСА')).toBeInTheDocument()
-    expect(headerRow).toContainElement(status)
-    expect(screen.getByRole('heading', { name: 'Услуги' })).not.toContainElement(status)
+  it('never shows a lifecycle badge in the page header, for any Business status', () => {
+    for (const status of ['DRAFT', 'ACTIVE', 'SUSPENDED']) {
+      const { unmount } = renderShell(status)
+      const headerRow = document.querySelector('.business-identity-row') as HTMLElement
+      expect(within(headerRow).getByText('УПРАВЛЕНИЕ НА БИЗНЕСА')).toBeInTheDocument()
+      expect(headerRow.querySelector('.status-badge')).not.toBeInTheDocument()
+      unmount()
+    }
   })
 
-  it('uses clearer Bulgarian wording for a DRAFT Business', () => {
+  it('does not bring back the retired "Предстои активиране" copy for a DRAFT Business', () => {
     renderShell('DRAFT')
-    expect(screen.getByText('Бизнесът е в подготовка')).toBeInTheDocument()
     expect(screen.queryByText('Предстои активиране')).not.toBeInTheDocument()
+    expect(screen.queryByText('Бизнесът е в подготовка')).not.toBeInTheDocument()
   })
 
-  it('shows the active status and a read-only notice while Business is SUSPENDED', () => {
+  it('communicates SUSPENDED only through the dedicated read-only notice, not a header badge', () => {
     renderShell('SUSPENDED')
-    expect(screen.getByText('Временно спрян')).toBeInTheDocument()
+    expect(screen.queryByText('Временно спрян')).not.toBeInTheDocument()
     expect(screen.getByRole('status')).toHaveTextContent('временно спрян')
   })
 
   it('does not show a read-only notice for an ACTIVE Business', () => {
     renderShell('ACTIVE')
-    expect(screen.getByText('Активен')).toBeInTheDocument()
+    expect(screen.queryByText('Активен')).not.toBeInTheDocument()
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 

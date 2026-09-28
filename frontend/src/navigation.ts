@@ -29,7 +29,9 @@ export type BusinessOwnerRoute =
   | { kind: 'business-services'; list: ListQueryState }
   | { kind: 'business-service-new' }
   | { kind: 'business-service-detail'; serviceId: string }
-  | { kind: 'business-staff' }
+  | { kind: 'business-staff'; list: ListQueryState }
+  | { kind: 'business-staff-new' }
+  | { kind: 'business-staff-detail'; staffMemberId: string }
   | { kind: 'business-schedule' }
 
 export type AuthenticatedRoute = { kind: 'profile' } | PlatformRoute | BusinessOwnerRoute
@@ -37,6 +39,7 @@ export type AuthenticatedRoute = { kind: 'profile' } | PlatformRoute | BusinessO
 export const LIST_PAGE_SIZES: readonly ListPageSize[] = [10, 25, 50]
 
 export const SERVICES_SORT_FIELDS = ['name', 'duration', 'price', 'status'] as const
+export const STAFF_SORT_FIELDS = ['name', 'status', 'phone', 'email'] as const
 export const BUSINESSES_SORT_FIELDS = [
   'displayName',
   'slug',
@@ -45,6 +48,12 @@ export const BUSINESSES_SORT_FIELDS = [
 ] as const
 
 export const SERVICES_DEFAULT_LIST: ListQueryState = {
+  page: 0,
+  size: 10,
+  sort: 'name',
+  direction: 'asc',
+}
+export const STAFF_DEFAULT_LIST: ListQueryState = {
   page: 0,
   size: 10,
   sort: 'name',
@@ -72,7 +81,13 @@ export const BUSINESS_SERVICES_ROUTE: AuthenticatedRoute = {
 export const BUSINESS_SERVICE_NEW_ROUTE: AuthenticatedRoute = {
   kind: 'business-service-new',
 }
-export const BUSINESS_STAFF_ROUTE: AuthenticatedRoute = { kind: 'business-staff' }
+export const BUSINESS_STAFF_ROUTE: AuthenticatedRoute = {
+  kind: 'business-staff',
+  list: STAFF_DEFAULT_LIST,
+}
+export const BUSINESS_STAFF_NEW_ROUTE: AuthenticatedRoute = {
+  kind: 'business-staff-new',
+}
 export const BUSINESS_SCHEDULE_ROUTE: AuthenticatedRoute = {
   kind: 'business-schedule',
 }
@@ -153,7 +168,13 @@ export function readAuthenticatedRoute(hash = window.location.hash): Authenticat
     }
   }
   if (path === '#/business/services/new') return BUSINESS_SERVICE_NEW_ROUTE
-  if (path === '#/business/staff') return BUSINESS_STAFF_ROUTE
+  if (path === '#/business/staff') {
+    return {
+      kind: 'business-staff',
+      list: parseListQuery(query, STAFF_DEFAULT_LIST, STAFF_SORT_FIELDS),
+    }
+  }
+  if (path === '#/business/staff/new') return BUSINESS_STAFF_NEW_ROUTE
   if (path === '#/business/schedule') return BUSINESS_SCHEDULE_ROUTE
 
   const detail = path.match(/^#\/platform\/businesses\/([^/?#]+)$/)
@@ -180,6 +201,18 @@ export function readAuthenticatedRoute(hash = window.location.hash): Authenticat
     }
   }
 
+  const staffDetail = path.match(/^#\/business\/staff\/([^/?#]+)$/)
+  if (staffDetail?.[1]) {
+    try {
+      return {
+        kind: 'business-staff-detail',
+        staffMemberId: decodeURIComponent(staffDetail[1]),
+      }
+    } catch {
+      return BUSINESS_STAFF_ROUTE
+    }
+  }
+
   return PROFILE_ROUTE
 }
 
@@ -198,7 +231,13 @@ export function routeHref(route: AuthenticatedRoute): string {
   if (route.kind === 'business-service-detail') {
     return `/#/business/services/${encodeURIComponent(route.serviceId)}`
   }
-  if (route.kind === 'business-staff') return '/#/business/staff'
+  if (route.kind === 'business-staff') {
+    return `/#/business/staff${serializeListQuery(route.list)}`
+  }
+  if (route.kind === 'business-staff-new') return '/#/business/staff/new'
+  if (route.kind === 'business-staff-detail') {
+    return `/#/business/staff/${encodeURIComponent(route.staffMemberId)}`
+  }
   if (route.kind === 'business-schedule') return '/#/business/schedule'
   return '/#/profile'
 }

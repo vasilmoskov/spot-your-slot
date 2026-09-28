@@ -38,7 +38,17 @@ public final class StaffMemberTextCanonicalizer {
         return canonical == null ? null : canonical.toLowerCase(Locale.ROOT);
     }
 
-    public static String canonicalContactPhone(String value) {
+    /**
+     * Trims and NFKC-normalizes an optional free-text contact value (email or
+     * telephone), returning {@code null} for a blank value. This is the only
+     * shared preprocessing step for contact fields; the caller is
+     * responsible for any further field-specific canonicalization and
+     * validation. {@link bg.spotyourslot.workforce.domain.StaffMemberPhoneNumbers}
+     * is the single place that interprets and validates a trimmed telephone
+     * candidate, so there is exactly one canonicalization implementation for
+     * writes.
+     */
+    public static String canonicalTrimmed(String value) {
         return canonicalOptionalContact(value);
     }
 

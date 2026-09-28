@@ -95,14 +95,14 @@ describe('ServiceList', () => {
     expect(screen.getByText('Активна')).toBeInTheDocument()
     expect(screen.getByText('1–1 от 1 услуги')).toBeInTheDocument()
     expect(screen.getByText('Страница 1 от 1')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Нова услуга' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Добави нова услуга' })).toBeInTheDocument()
   })
 
   it('hides mutation actions and shows a notice when the Business is SUSPENDED', async () => {
     mockedListServices.mockResolvedValue(populatedPage)
     renderServiceList({ readOnly: true })
     await screen.findByText('Подстригване')
-    expect(screen.queryByRole('button', { name: 'Нова услуга' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Добави нова услуга' })).not.toBeInTheDocument()
     expect(
       screen.getByText('Бизнесът е временно спрян — услугите могат само да бъдат преглеждани.'),
     ).toBeInTheDocument()

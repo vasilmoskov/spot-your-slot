@@ -11,6 +11,7 @@ import bg.spotyourslot.workforce.StaffMemberRecords.ReplaceServiceAssignmentsCom
 import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberAssignments;
 import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberDetails;
 import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberPage;
+import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberSortField;
 import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberVersionCommand;
 import bg.spotyourslot.workforce.StaffMemberRecords.UpdateStaffMemberCommand;
 import jakarta.validation.Validation;
@@ -23,7 +24,9 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class StaffMemberInputValidatorTests {
     private static final ValidatorFactory VALIDATOR_FACTORY =
@@ -47,7 +50,7 @@ class StaffMemberInputValidatorTests {
                 .isEqualTo(new CreateStaffMemberCommand(
                         "Anna Иванова",
                         "team@example.invalid",
-                        "+359 (2) 123-45-67"));
+                        "+35921234567"));
 
         var update = new UpdateStaffMemberCommand(
                 " \uFB03 e\u0301 ", "\u2003\n", "\u3000\t", 0L);
@@ -105,32 +108,28 @@ class StaffMemberInputValidatorTests {
 
     @ParameterizedTest
     @MethodSource("validPhones")
-    void acceptsApprovedFormattedPhones(String phone) {
+    void canonicalizesApprovedPhoneFormsToCompactE164(String rawPhone, String expectedCanonical) {
         assertThat(VALIDATOR.validateCreate(
-                                new CreateStaffMemberCommand("Екип", null, phone))
+                                new CreateStaffMemberCommand("Екип", null, rawPhone))
                         .contactPhone())
-                .isEqualTo(phone);
+                .isEqualTo(expectedCanonical);
     }
 
     @ParameterizedTest
     @MethodSource("invalidPhones")
-    void rejectsInvalidPhoneCharactersAndDigitBounds(String phone) {
+    void rejectsInvalidPhoneCharactersAmbiguityAndDigitBounds(String phone) {
         assertInvalid(InputField.CONTACT_PHONE, () -> VALIDATOR.validateCreate(
                 new CreateStaffMemberCommand("Екип", null, phone)));
     }
 
     @Test
-    void enforcesCanonicalPhoneCodePointLimit() {
-        String atLimit = "1" + " ".repeat(47) + "23";
-        String overLimit = "1" + " ".repeat(48) + "23";
-
-        assertThat(atLimit.codePointCount(0, atLimit.length())).isEqualTo(50);
-        assertThat(VALIDATOR.validateCreate(
-                                new CreateStaffMemberCommand("Екип", null, atLimit))
-                        .contactPhone())
-                .isEqualTo(atLimit);
+    void rejectsStructurallyInvalidForeignAndBulgarianNumbers() {
+        // Too few national digits for Germany's numbering plan.
         assertInvalid(InputField.CONTACT_PHONE, () -> VALIDATOR.validateCreate(
-                new CreateStaffMemberCommand("Екип", null, overLimit)));
+                new CreateStaffMemberCommand("Екип", null, "+491")));
+        // Too few national digits for Bulgaria's numbering plan.
+        assertInvalid(InputField.CONTACT_PHONE, () -> VALIDATOR.validateCreate(
+                new CreateStaffMemberCommand("Екип", null, "+35921")));
     }
 
     @Test
@@ -140,11 +139,11 @@ class StaffMemberInputValidatorTests {
         assertThat(VALIDATOR.validateBusinessId(id)).isEqualTo(id);
         assertThat(VALIDATOR.validateStaffMemberId(id)).isEqualTo(id);
         assertThat(VALIDATOR.validateVersion(new StaffMemberVersionCommand(0L))).isZero();
-        assertThat(VALIDATOR.validatePage(0, 1))
-                .isEqualTo(new StaffMemberInputValidator.PageInput(0, 1));
+        assertThat(VALIDATOR.validatePage(0, 10))
+                .isEqualTo(new StaffMemberInputValidator.PageInput(0, 10));
         assertThat(VALIDATOR.validatePage(4, StaffMemberInputValidator.MAX_PAGE_SIZE))
-                .isEqualTo(new StaffMemberInputValidator.PageInput(4, 100));
-        assertThat(StaffMemberInputValidator.DEFAULT_PAGE_SIZE).isEqualTo(50);
+                .isEqualTo(new StaffMemberInputValidator.PageInput(4, 50));
+        assertThat(StaffMemberInputValidator.DEFAULT_PAGE_SIZE).isEqualTo(10);
 
         assertInvalid(InputField.BUSINESS_ID, () -> VALIDATOR.validateBusinessId(null));
         assertInvalid(InputField.STAFF_MEMBER_ID, () -> VALIDATOR.validateStaffMemberId(null));
@@ -154,7 +153,37 @@ class StaffMemberInputValidatorTests {
                 () -> VALIDATOR.validateVersion(new StaffMemberVersionCommand(-1L)));
         assertInvalid(InputField.PAGE, () -> VALIDATOR.validatePage(-1, 50));
         assertInvalid(InputField.SIZE, () -> VALIDATOR.validatePage(0, 0));
-        assertInvalid(InputField.SIZE, () -> VALIDATOR.validatePage(0, 101));
+        assertInvalid(InputField.SIZE, () -> VALIDATOR.validatePage(0, 51));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {10, 25, 50})
+    void acceptsOnlyTheApprovedPageSizes(int size) {
+        assertThat(VALIDATOR.validatePage(0, size))
+                .isEqualTo(new StaffMemberInputValidator.PageInput(0, size));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {1, 7, 20, 37, 49, 51})
+    void rejectsEveryPageSizeOutsideTheApprovedAllowlist(int size) {
+        assertInvalid(InputField.SIZE, () -> VALIDATOR.validatePage(0, size));
+    }
+
+    @Test
+    void validatesSortAndDirection() {
+        assertThat(VALIDATOR.validateSort(null)).isEqualTo(StaffMemberSortField.NAME);
+        assertThat(VALIDATOR.validateSort("name")).isEqualTo(StaffMemberSortField.NAME);
+        assertThat(VALIDATOR.validateSort("status")).isEqualTo(StaffMemberSortField.STATUS);
+        assertThat(VALIDATOR.validateSort("phone")).isEqualTo(StaffMemberSortField.PHONE);
+        assertThat(VALIDATOR.validateSort("email")).isEqualTo(StaffMemberSortField.EMAIL);
+        assertInvalid(InputField.SORT, () -> VALIDATOR.validateSort("unknown"));
+        assertInvalid(InputField.SORT, () -> VALIDATOR.validateSort("NAME"));
+
+        assertThat(VALIDATOR.validateAscending(null)).isTrue();
+        assertThat(VALIDATOR.validateAscending("asc")).isTrue();
+        assertThat(VALIDATOR.validateAscending("desc")).isFalse();
+        assertInvalid(InputField.DIRECTION, () -> VALIDATOR.validateAscending("ASC"));
+        assertInvalid(InputField.DIRECTION, () -> VALIDATOR.validateAscending("sideways"));
     }
 
     @Test
@@ -265,25 +294,33 @@ class StaffMemberInputValidatorTests {
         return Stream.of(null, "", "\u2003\n\u3000", "a".repeat(201), "😀".repeat(201));
     }
 
-    private static Stream<String> validPhones() {
+    private static Stream<Arguments> validPhones() {
         return Stream.of(
-                "123",
-                "+123",
-                "+359 (2) 123-45-67",
-                "02 123.45/67-8",
-                "1".repeat(20));
+                // Bulgarian national prefix '0' is interpreted with the default BG country code.
+                Arguments.of("0895555777", "+359895555777"),
+                Arguments.of("02 123 45 67", "+35921234567"),
+                // International prefix '00' is converted to '+'.
+                Arguments.of("0049 151 23456789", "+4915123456789"),
+                // A value already starting with '+' preserves its supplied country code.
+                Arguments.of("+49 151 23456789", "+4915123456789"),
+                Arguments.of("+359 (895) 555-777", "+359895555777"),
+                // Allowed visual separators are removed from anywhere in the value.
+                Arguments.of("+359.895.555.777", "+359895555777"));
     }
 
     private static Stream<String> invalidPhones() {
         return Stream.of(
-                "12",
-                "+12",
-                "1".repeat(21),
-                "+359abc",
-                "+359_123",
-                "++359123",
-                "359+123",
-                "☎359123",
-                "١٢٣");
+                // Ambiguous: no '0', '00', or '+' prefix, so no country code can be inferred.
+                "895555777",
+                "123456789",
+                // Malformed: contains characters that are not allowed visual separators or digits.
+                "+359 abc",
+                "+359_123456",
+                "☎359123456",
+                "١٢٣٤٥٦٧٨", // Arabic-Indic digits
+                // A leading '0' inside an already-international number is not a valid E.164 form.
+                "+0895555777",
+                // A malformed leading '+' sequence.
+                "++359123456");
     }
 }

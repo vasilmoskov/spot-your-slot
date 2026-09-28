@@ -30,6 +30,7 @@ import bg.spotyourslot.workforce.StaffMemberApplicationException.StaffMemberNotF
 import bg.spotyourslot.workforce.StaffMemberRecords.CreateStaffMemberCommand;
 import bg.spotyourslot.workforce.StaffMemberRecords.ReplaceServiceAssignmentsCommand;
 import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberDetails;
+import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberSortField;
 import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberVersionCommand;
 import bg.spotyourslot.workforce.StaffMemberRecords.UpdateStaffMemberCommand;
 import bg.spotyourslot.workforce.application.StaffMemberInputValidator.PageInput;
@@ -90,10 +91,10 @@ class StaffMemberAdministrationServiceTests {
 
     @Test
     void requiresAuthenticationBeforeUsingCollaborators() {
-        assertThatThrownBy(() -> service.list(null, 0, 20))
+        assertThatThrownBy(() -> service.list(null, 0, 20, null, null))
                 .isInstanceOf(AuthenticationCredentialsNotFoundException.class)
                 .hasMessage("Authentication is required");
-        assertThatThrownBy(() -> service.list(new TestContext(null, BUSINESS_ID), 0, 20))
+        assertThatThrownBy(() -> service.list(new TestContext(null, BUSINESS_ID), 0, 20, null, null))
                 .isInstanceOf(AuthenticationCredentialsNotFoundException.class)
                 .hasMessage("Authentication is required");
         verifyNoInteractions(store, scheduleStore, validator, businesses, owners);
@@ -101,12 +102,12 @@ class StaffMemberAdministrationServiceTests {
 
     @Test
     void distinguishesMissingSelectionLifecycleAndOwnerAccess() {
-        assertThatThrownBy(() -> service.list(new TestContext(USER_ID, null), 0, 20))
+        assertThatThrownBy(() -> service.list(new TestContext(USER_ID, null), 0, 20, null, null))
                 .isInstanceOf(SelectedBusinessRequired.class);
 
         when(validator.validateBusinessId(BUSINESS_ID)).thenReturn(BUSINESS_ID);
         when(businesses.findLifecycle(BUSINESS_ID)).thenReturn(Optional.empty());
-        assertThatThrownBy(() -> service.list(context, 0, 20))
+        assertThatThrownBy(() -> service.list(context, 0, 20, null, null))
                 .isInstanceOf(BusinessAccessDenied.class)
                 .hasMessage("Business access to StaffMembers is denied");
         verifyNoInteractions(owners);
@@ -114,7 +115,7 @@ class StaffMemberAdministrationServiceTests {
         when(businesses.findLifecycle(BUSINESS_ID))
                 .thenReturn(Optional.of(lifecycle(LifecycleStatus.ACTIVE)));
         when(owners.authorize(USER_ID, BUSINESS_ID)).thenReturn(Authorization.DENIED);
-        assertThatThrownBy(() -> service.list(context, 0, 20))
+        assertThatThrownBy(() -> service.list(context, 0, 20, null, null))
                 .isInstanceOf(BusinessAccessDenied.class);
         verifyNoInteractions(store);
     }
@@ -124,14 +125,17 @@ class StaffMemberAdministrationServiceTests {
         StaffMemberRow first = row(STAFF_MEMBER_ID, true, 2, "Анна Иванова");
         StaffMemberRow second = row(UUID.randomUUID(), false, 4, "Борис Петров");
         authorizeRead(LifecycleStatus.SUSPENDED);
-        when(validator.validatePage(1, 2)).thenReturn(new PageInput(1, 2));
-        when(store.list(BUSINESS_ID, 1, 2)).thenReturn(List.of(first, second));
+        when(validator.validatePage(1, 25)).thenReturn(new PageInput(1, 25));
+        when(validator.validateSort(null)).thenReturn(StaffMemberSortField.NAME);
+        when(validator.validateAscending(null)).thenReturn(true);
+        when(store.list(BUSINESS_ID, 1, 25, StaffMemberSortField.NAME, true))
+                .thenReturn(List.of(first, second));
         when(store.count(BUSINESS_ID)).thenReturn(5L);
 
-        var result = service.list(context, 1, 2);
+        var result = service.list(context, 1, 25, null, null);
 
         assertThat(result.page()).isEqualTo(1);
-        assertThat(result.size()).isEqualTo(2);
+        assertThat(result.size()).isEqualTo(25);
         assertThat(result.totalElements()).isEqualTo(5);
         assertThat(result.staffMembers()).containsExactly(details(first), details(second));
         assertThatThrownBy(() -> result.staffMembers().clear())

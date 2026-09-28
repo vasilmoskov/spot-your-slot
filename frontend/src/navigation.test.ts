@@ -3,12 +3,14 @@ import {
   BUSINESS_SCHEDULE_ROUTE,
   BUSINESS_SERVICE_NEW_ROUTE,
   BUSINESS_SERVICES_ROUTE,
+  BUSINESS_STAFF_NEW_ROUTE,
   BUSINESS_STAFF_ROUTE,
   BUSINESSES_DEFAULT_LIST,
   PROFILE_ROUTE,
   PLATFORM_BUSINESS_NEW_ROUTE,
   PLATFORM_BUSINESSES_ROUTE,
   SERVICES_DEFAULT_LIST,
+  STAFF_DEFAULT_LIST,
   isBusinessOwnerRoute,
   isPlatformRoute,
   pushRoute,
@@ -54,6 +56,11 @@ describe('application navigation', () => {
       serviceId: 'service-a',
     })
     expect(readAuthenticatedRoute('#/business/staff')).toEqual(BUSINESS_STAFF_ROUTE)
+    expect(readAuthenticatedRoute('#/business/staff/new')).toEqual(BUSINESS_STAFF_NEW_ROUTE)
+    expect(readAuthenticatedRoute('#/business/staff/staff-a')).toEqual({
+      kind: 'business-staff-detail',
+      staffMemberId: 'staff-a',
+    })
     expect(readAuthenticatedRoute('#/business/schedule')).toEqual(BUSINESS_SCHEDULE_ROUTE)
     expect(readAuthenticatedRoute('#/unknown')).toEqual(PROFILE_ROUTE)
   })
@@ -74,7 +81,13 @@ describe('application navigation', () => {
     expect(
       routeHref({ kind: 'business-service-detail', serviceId: 'service/a' }),
     ).toBe('/#/business/services/service%2Fa')
-    expect(routeHref(BUSINESS_STAFF_ROUTE)).toBe('/#/business/staff')
+    expect(routeHref(BUSINESS_STAFF_ROUTE)).toBe(
+      '/#/business/staff?page=0&size=10&sort=name&direction=asc',
+    )
+    expect(routeHref(BUSINESS_STAFF_NEW_ROUTE)).toBe('/#/business/staff/new')
+    expect(
+      routeHref({ kind: 'business-staff-detail', staffMemberId: 'staff/a' }),
+    ).toBe('/#/business/staff/staff%2Fa')
     expect(routeHref(BUSINESS_SCHEDULE_ROUTE)).toBe('/#/business/schedule')
 
     pushRoute(PLATFORM_BUSINESSES_ROUTE)
@@ -107,6 +120,29 @@ describe('application navigation', () => {
     expect(
       readAuthenticatedRoute('#/platform/businesses?page=1&size=50&sort=status&direction=desc'),
     ).toEqual(businessesRoute)
+
+    const staffRoute = {
+      kind: 'business-staff' as const,
+      list: { page: 1, size: 25 as const, sort: 'status', direction: 'desc' as const },
+    }
+    expect(routeHref(staffRoute)).toBe(
+      '/#/business/staff?page=1&size=25&sort=status&direction=desc',
+    )
+    expect(readAuthenticatedRoute('#/business/staff?page=1&size=25&sort=status&direction=desc'))
+      .toEqual(staffRoute)
+
+    const staffPhoneRoute = {
+      kind: 'business-staff' as const,
+      list: { page: 0, size: 10 as const, sort: 'phone', direction: 'asc' as const },
+    }
+    expect(readAuthenticatedRoute('#/business/staff?page=0&size=10&sort=phone&direction=asc'))
+      .toEqual(staffPhoneRoute)
+    const staffEmailRoute = {
+      kind: 'business-staff' as const,
+      list: { page: 0, size: 10 as const, sort: 'email', direction: 'desc' as const },
+    }
+    expect(readAuthenticatedRoute('#/business/staff?page=0&size=10&sort=email&direction=desc'))
+      .toEqual(staffEmailRoute)
   })
 
   it('normalizes invalid or unsupported list query values to canonical defaults', () => {
@@ -121,6 +157,8 @@ describe('application navigation', () => {
       kind: 'business-services',
       list: SERVICES_DEFAULT_LIST,
     })
+    expect(readAuthenticatedRoute('#/business/staff?page=-1&size=999&sort=bogus&direction=up'))
+      .toEqual({ kind: 'business-staff', list: STAFF_DEFAULT_LIST })
   })
 
   it('classifies platform and business-owner routes distinctly from Profile', () => {

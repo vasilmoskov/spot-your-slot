@@ -4,29 +4,26 @@ import bg.spotyourslot.workforce.StaffMemberApplicationException.InputField;
 import bg.spotyourslot.workforce.StaffMemberApplicationException.InvalidInput;
 import bg.spotyourslot.workforce.StaffMemberRecords.CreateStaffMemberCommand;
 import bg.spotyourslot.workforce.StaffMemberRecords.ReplaceServiceAssignmentsCommand;
+import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberSortField;
 import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberVersionCommand;
 import bg.spotyourslot.workforce.StaffMemberRecords.UpdateStaffMemberCommand;
+import bg.spotyourslot.workforce.domain.StaffMemberPhoneNumbers;
 import bg.spotyourslot.workforce.domain.StaffMemberTextCanonicalizer;
 import jakarta.validation.Validator;
 import jakarta.validation.constraints.Email;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
-import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
 
 @Component
 public class StaffMemberInputValidator {
-    public static final int DEFAULT_PAGE_SIZE = 50;
-    public static final int MAX_PAGE_SIZE = 100;
+    public static final int DEFAULT_PAGE_SIZE = 10;
+    public static final int MAX_PAGE_SIZE = 50;
+    public static final Set<Integer> ALLOWED_PAGE_SIZES = Set.of(10, 25, 50);
     static final int DISPLAY_NAME_MAX_LENGTH = 200;
     static final int CONTACT_EMAIL_MAX_LENGTH = 320;
-    static final int CONTACT_PHONE_MAX_LENGTH = 50;
-    static final int CONTACT_PHONE_MIN_DIGITS = 3;
-    static final int CONTACT_PHONE_MAX_DIGITS = 20;
-
-    private static final Pattern CONTACT_PHONE_PATTERN =
-            Pattern.compile("\\+?[0-9 ()./-]+");
 
     private final Validator validator;
 
@@ -38,10 +35,34 @@ public class StaffMemberInputValidator {
         if (page < 0) {
             throw new InvalidInput(InputField.PAGE);
         }
-        if (size < 1 || size > MAX_PAGE_SIZE) {
+        if (!ALLOWED_PAGE_SIZES.contains(size)) {
             throw new InvalidInput(InputField.SIZE);
         }
         return new PageInput(page, size);
+    }
+
+    public StaffMemberSortField validateSort(String sort) {
+        if (sort == null) {
+            return StaffMemberSortField.NAME;
+        }
+        return switch (sort) {
+            case "name" -> StaffMemberSortField.NAME;
+            case "status" -> StaffMemberSortField.STATUS;
+            case "phone" -> StaffMemberSortField.PHONE;
+            case "email" -> StaffMemberSortField.EMAIL;
+            default -> throw new InvalidInput(InputField.SORT);
+        };
+    }
+
+    public boolean validateAscending(String direction) {
+        if (direction == null) {
+            return true;
+        }
+        return switch (direction) {
+            case "asc" -> true;
+            case "desc" -> false;
+            default -> throw new InvalidInput(InputField.DIRECTION);
+        };
     }
 
     public UUID validateBusinessId(UUID businessId) {
@@ -122,22 +143,24 @@ public class StaffMemberInputValidator {
     }
 
     private String contactPhone(String value) {
-        String canonical = StaffMemberTextCanonicalizer.canonicalContactPhone(value);
-        if (canonical == null) {
+        String trimmed = StaffMemberTextCanonicalizer.canonicalTrimmed(value);
+        if (trimmed == null) {
             return null;
         }
 
-        long digitCount = canonical.codePoints()
-                .filter(codePoint -> codePoint >= '0' && codePoint <= '9')
-                .count();
-        if (codePointLength(canonical) > CONTACT_PHONE_MAX_LENGTH
-                || !CONTACT_PHONE_PATTERN.matcher(canonical).matches()
-                || digitCount < CONTACT_PHONE_MIN_DIGITS
-                || digitCount > CONTACT_PHONE_MAX_DIGITS) {
-            throw new InvalidInput(InputField.CONTACT_PHONE);
-        }
-        return canonical;
+        return StaffMemberPhoneNumbers.canonicalize(trimmed)
+                .orElseThrow(() -> new InvalidInput(InputField.CONTACT_PHONE));
     }
+
+    /*
+     * StaffMemberPhoneNumbers is the single backend component that
+     * interprets a telephone candidate's prefix ('+', '00', or a bare '0'
+     * with the default BG region), parses it with libphonenumber, and
+     * requires full validity (not merely a possible-length check) before
+     * returning a canonical E.164 form. An ambiguous value without a
+     * recognizable prefix is rejected there rather than silently assumed to
+     * be Bulgarian.
+     */
 
     private long expectedVersion(Long value) {
         if (value == null || value < 0) {

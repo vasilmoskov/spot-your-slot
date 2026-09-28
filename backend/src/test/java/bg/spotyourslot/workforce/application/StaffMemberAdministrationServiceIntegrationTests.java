@@ -83,7 +83,7 @@ class StaffMemberAdministrationServiceIntegrationTests extends PostgresIntegrati
 
         assertThat(created.displayName()).isEqualTo("Анна Иванова");
         assertThat(created.contactEmail()).isEqualTo("team@example.invalid");
-        assertThat(created.contactPhone()).isEqualTo("+359 (2) 123-45-67");
+        assertThat(created.contactPhone()).isEqualTo("+35921234567");
         assertThat(created.active()).isTrue();
         assertThat(created.version()).isZero();
         assertThat(created.createdAt()).isEqualTo(NOW);
@@ -98,7 +98,7 @@ class StaffMemberAdministrationServiceIntegrationTests extends PostgresIntegrati
         assertThat(active.createdAt()).isEqualTo(created.createdAt());
         assertThat(active.updatedAt()).isEqualTo(NOW);
         assertThat(staffMembers.get(fixture.context(), created.id())).isEqualTo(active);
-        assertThat(staffMembers.list(fixture.context(), 0, 20).staffMembers())
+        assertThat(staffMembers.list(fixture.context(), 0, 10, null, null).staffMembers())
                 .containsExactly(active);
     }
 
@@ -139,7 +139,7 @@ class StaffMemberAdministrationServiceIntegrationTests extends PostgresIntegrati
             dropFailingScheduleInsertTrigger();
         }
 
-        assertThat(staffMembers.list(fixture.context(), 0, 20).staffMembers()).isEmpty();
+        assertThat(staffMembers.list(fixture.context(), 0, 10, null, null).staffMembers()).isEmpty();
         assertThat(countStaffMembers(fixture.businessId())).isZero();
         assertThat(countSchedules(fixture.businessId())).isZero();
     }
@@ -211,7 +211,7 @@ class StaffMemberAdministrationServiceIntegrationTests extends PostgresIntegrati
                 .isInstanceOf(StaffMemberNotFound.class);
 
         assertThat(snapshot(foreign.id())).isEqualTo(original);
-        assertThat(staffMembers.list(second.context(), 0, 20).staffMembers()).isEmpty();
+        assertThat(staffMembers.list(second.context(), 0, 10, null, null).staffMembers()).isEmpty();
     }
 
     @ParameterizedTest
@@ -219,7 +219,7 @@ class StaffMemberAdministrationServiceIntegrationTests extends PostgresIntegrati
     void nonqualifyingMembershipIsDeniedForReadsAndMutations(String role, boolean active) {
         Fixture fixture = ownerFixture("ACTIVE", active, role);
 
-        assertThatThrownBy(() -> staffMembers.list(fixture.context(), 0, 20))
+        assertThatThrownBy(() -> staffMembers.list(fixture.context(), 0, 10, null, null))
                 .isInstanceOf(BusinessAccessDenied.class)
                 .hasMessage("Business access to StaffMembers is denied");
         assertThatThrownBy(() -> staffMembers.create(fixture.context(), create("Denied")))
@@ -234,7 +234,7 @@ class StaffMemberAdministrationServiceIntegrationTests extends PostgresIntegrati
         grantPlatformAdmin(userId);
         var context = new TestContext(userId, businessId);
 
-        assertThatThrownBy(() -> staffMembers.list(context, 0, 20))
+        assertThatThrownBy(() -> staffMembers.list(context, 0, 10, null, null))
                 .isInstanceOf(BusinessAccessDenied.class);
         assertThatThrownBy(() -> staffMembers.create(context, create("Denied")))
                 .isInstanceOf(BusinessAccessDenied.class);
@@ -248,7 +248,7 @@ class StaffMemberAdministrationServiceIntegrationTests extends PostgresIntegrati
         UUID userId = user();
         var missingMembership = new TestContext(userId, selectedBusiness);
 
-        assertThatThrownBy(() -> staffMembers.list(missingMembership, 0, 20))
+        assertThatThrownBy(() -> staffMembers.list(missingMembership, 0, 10, null, null))
                 .isInstanceOf(BusinessAccessDenied.class);
 
         membership(membershipBusiness, userId, "BUSINESS_OWNER", true);
@@ -262,16 +262,16 @@ class StaffMemberAdministrationServiceIntegrationTests extends PostgresIntegrati
     void authenticationSelectionAndMissingBusinessRemainDistinct() {
         UUID userId = user();
 
-        assertThatThrownBy(() -> staffMembers.list(null, 0, 20))
+        assertThatThrownBy(() -> staffMembers.list(null, 0, 10, null, null))
                 .isInstanceOf(AuthenticationCredentialsNotFoundException.class);
         assertThatThrownBy(() -> staffMembers.list(
-                        new TestContext(null, UUID.randomUUID()), 0, 20))
+                        new TestContext(null, UUID.randomUUID()), 0, 10, null, null))
                 .isInstanceOf(AuthenticationCredentialsNotFoundException.class);
         assertThatThrownBy(() -> staffMembers.list(
-                        new TestContext(userId, null), 0, 20))
+                        new TestContext(userId, null), 0, 10, null, null))
                 .isInstanceOf(SelectedBusinessRequired.class);
         assertThatThrownBy(() -> staffMembers.list(
-                        new TestContext(userId, UUID.randomUUID()), 0, 20))
+                        new TestContext(userId, UUID.randomUUID()), 0, 10, null, null))
                 .isInstanceOf(BusinessAccessDenied.class);
     }
 
@@ -286,7 +286,7 @@ class StaffMemberAdministrationServiceIntegrationTests extends PostgresIntegrati
                 fixture.context(), created.id(), update("Updated", created.version()));
 
         assertThat(staffMembers.get(fixture.context(), created.id())).isEqualTo(updated);
-        assertThat(staffMembers.list(fixture.context(), 0, 20).staffMembers())
+        assertThat(staffMembers.list(fixture.context(), 0, 10, null, null).staffMembers())
                 .containsExactly(updated);
     }
 
@@ -299,7 +299,7 @@ class StaffMemberAdministrationServiceIntegrationTests extends PostgresIntegrati
         Snapshot before = snapshot(original.id());
 
         assertThat(staffMembers.get(fixture.context(), original.id())).isEqualTo(original);
-        assertThat(staffMembers.list(fixture.context(), 0, 20).staffMembers())
+        assertThat(staffMembers.list(fixture.context(), 0, 10, null, null).staffMembers())
                 .containsExactly(original);
         assertThatThrownBy(() -> staffMembers.create(fixture.context(), create("New")))
                 .isInstanceOf(BusinessSuspended.class);
@@ -327,19 +327,60 @@ class StaffMemberAdministrationServiceIntegrationTests extends PostgresIntegrati
         StaffMemberDetails inactive = staffMembers.deactivate(
                 fixture.context(), beta.id(), version(beta.version()));
 
-        var first = staffMembers.list(fixture.context(), 0, 1);
-        var second = staffMembers.list(fixture.context(), 1, 1);
+        var page = staffMembers.list(fixture.context(), 0, 10, null, null);
 
-        assertThat(first.totalElements()).isEqualTo(2);
-        assertThat(second.totalElements()).isEqualTo(2);
-        assertThat(first.staffMembers()).containsExactly(alpha);
-        assertThat(second.staffMembers()).containsExactly(inactive);
-        assertThat(staffMembers.list(fixture.context(), 0, 20).staffMembers())
+        assertThat(page.totalElements()).isEqualTo(2);
+        assertThat(page.staffMembers()).containsExactly(alpha, inactive);
+        assertThat(page.staffMembers())
                 .extracting(StaffMemberDetails::active)
                 .containsExactly(true, false);
         assertThat(StaffMemberDetails.class.getRecordComponents())
                 .extracting(component -> component.getName())
                 .doesNotContain("businessId", "membershipId", "userId");
+    }
+
+    @Test
+    void sortAndDirectionAreAppliedThroughTheApplicationLayerAndScopedPerTenant() {
+        Fixture fixture = ownerFixture("ACTIVE", true, "BUSINESS_OWNER");
+        Fixture other = ownerFixture("ACTIVE", true, "BUSINESS_OWNER");
+        StaffMemberDetails active = staffMembers.create(fixture.context(), create("Active"));
+        StaffMemberDetails toDeactivate = staffMembers.create(
+                fixture.context(), create("Inactive"));
+        StaffMemberDetails inactive = staffMembers.deactivate(
+                fixture.context(), toDeactivate.id(), version(toDeactivate.version()));
+        staffMembers.create(other.context(), create("Foreign"));
+
+        var ascending = staffMembers.list(fixture.context(), 0, 10, "status", "asc");
+        var descending = staffMembers.list(fixture.context(), 0, 10, "status", "desc");
+
+        assertThat(ascending.staffMembers()).extracting(StaffMemberDetails::id)
+                .containsExactly(active.id(), inactive.id());
+        assertThat(descending.staffMembers()).extracting(StaffMemberDetails::id)
+                .containsExactly(inactive.id(), active.id());
+    }
+
+    @Test
+    void phoneAndEmailSortAreAppliedThroughTheApplicationLayerWithNullsLast() {
+        Fixture fixture = ownerFixture("ACTIVE", true, "BUSINESS_OWNER");
+        StaffMemberDetails withPhoneAndEmail = staffMembers.create(
+                fixture.context(), create("With contact"));
+        StaffMemberDetails withoutContact = staffMembers.create(
+                fixture.context(),
+                new CreateStaffMemberCommand("No contact", null, null));
+
+        var phoneAscending = staffMembers.list(fixture.context(), 0, 10, "phone", "asc");
+        var phoneDescending = staffMembers.list(fixture.context(), 0, 10, "phone", "desc");
+        var emailAscending = staffMembers.list(fixture.context(), 0, 10, "email", "asc");
+        var emailDescending = staffMembers.list(fixture.context(), 0, 10, "email", "desc");
+
+        assertThat(phoneAscending.staffMembers()).extracting(StaffMemberDetails::id)
+                .containsExactly(withPhoneAndEmail.id(), withoutContact.id());
+        assertThat(phoneDescending.staffMembers()).extracting(StaffMemberDetails::id)
+                .containsExactly(withPhoneAndEmail.id(), withoutContact.id());
+        assertThat(emailAscending.staffMembers()).extracting(StaffMemberDetails::id)
+                .containsExactly(withPhoneAndEmail.id(), withoutContact.id());
+        assertThat(emailDescending.staffMembers()).extracting(StaffMemberDetails::id)
+                .containsExactly(withPhoneAndEmail.id(), withoutContact.id());
     }
 
     @ParameterizedTest
@@ -640,9 +681,20 @@ class StaffMemberAdministrationServiceIntegrationTests extends PostgresIntegrati
                                 context,
                                 new CreateStaffMemberCommand("Valid", null, "12"))),
                 Arguments.of(InputField.PAGE,
-                        (InvalidCall) (service, context, id) -> service.list(context, -1, 20)),
+                        (InvalidCall) (service, context, id) ->
+                                service.list(context, -1, 10, null, null)),
                 Arguments.of(InputField.SIZE,
-                        (InvalidCall) (service, context, id) -> service.list(context, 0, 0)),
+                        (InvalidCall) (service, context, id) ->
+                                service.list(context, 0, 0, null, null)),
+                Arguments.of(InputField.SIZE,
+                        (InvalidCall) (service, context, id) ->
+                                service.list(context, 0, 20, null, null)),
+                Arguments.of(InputField.SORT,
+                        (InvalidCall) (service, context, id) ->
+                                service.list(context, 0, 10, "unknown", null)),
+                Arguments.of(InputField.DIRECTION,
+                        (InvalidCall) (service, context, id) ->
+                                service.list(context, 0, 10, null, "sideways")),
                 Arguments.of(InputField.STAFF_MEMBER_ID,
                         (InvalidCall) (service, context, id) -> service.get(context, null)),
                 Arguments.of(InputField.EXPECTED_VERSION,

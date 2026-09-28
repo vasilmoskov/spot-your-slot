@@ -657,6 +657,42 @@ label {
   background: var(--color-page-background);
 }
 
+/* Scoped narrowly to the Staff Service-assignment table: a normal compact
+   checkbox, not the browser's oversized default rendered at the same size as
+   a text input. This does not change checkbox or input styling anywhere
+   else. */
+.assignment-checkbox-cell {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.assignment-checkbox {
+  width: 1.125rem;
+  height: 1.125rem;
+  margin: 0;
+  accent-color: var(--color-action-primary);
+}
+
+/* The read-only assignment indicator (check or cross): both symbols share
+   the same font weight, size, and line-height so neither reads as more or
+   less prominent than the other. Accessible text ("Да"/"Не") always
+   accompanies the symbol, so the distinction never relies on the symbol or
+   color alone. */
+.assignment-symbol {
+  display: inline-block;
+  font-weight: 700;
+  font-size: 1rem;
+  line-height: 1;
+  text-align: center;
+}
+
+@media (max-width: 47.999rem) {
+  .assignment-table td.assignment-checkbox-cell {
+    grid-template-columns: minmax(6.5rem, 0.4fr) auto;
+    align-items: center;
+  }
+}
+
 .unsaved-changes-overlay {
   position: fixed;
   inset: 0;
@@ -881,10 +917,13 @@ label {
 }
 
 /* The Business-owner shell keeps a persistent 16rem sidebar from 48rem, so
-   this four-column list needs the card presentation until more width is
-   actually available; the platform-admin Business table is unaffected. */
+   any four-column list needs the card presentation until more width is
+   actually available; the platform-admin Business table is unaffected. The
+   Staff table has the same need since Телефон/Имейл became separate
+   columns. */
 @media (min-width: 48rem) and (max-width: 63.999rem) {
-  .services-table-container {
+  .services-table-container,
+  .staff-table-container {
     padding: 0;
     border: 0;
     background: transparent;
@@ -895,20 +934,27 @@ label {
   .services-table,
   .services-table tbody,
   .services-table tr,
-  .services-table td {
+  .services-table td,
+  .staff-table,
+  .staff-table tbody,
+  .staff-table tr,
+  .staff-table td {
     display: block;
     width: 100%;
   }
 
-  .services-table thead {
+  .services-table thead,
+  .staff-table thead {
     display: none;
   }
 
-  .services-list-toolbar .responsive-sort-select {
+  .services-list-toolbar .responsive-sort-select,
+  .staff-list-toolbar .responsive-sort-select {
     display: flex;
   }
 
-  .services-table tr {
+  .services-table tr,
+  .staff-table tr {
     margin-bottom: var(--space-4);
     padding: var(--space-4);
     border: 1px solid var(--color-border);
@@ -918,7 +964,9 @@ label {
   }
 
   .services-table td,
-  .services-table tbody tr:last-child td {
+  .services-table tbody tr:last-child td,
+  .staff-table td,
+  .staff-table tbody tr:last-child td {
     display: grid;
     grid-template-columns: minmax(6.5rem, 0.4fr) minmax(0, 1fr);
     gap: var(--space-3);
@@ -927,11 +975,13 @@ label {
     overflow-wrap: anywhere;
   }
 
-  .services-table td:last-child {
+  .services-table td:last-child,
+  .staff-table td:last-child {
     border-bottom: 0;
   }
 
-  .services-table td::before {
+  .services-table td::before,
+  .staff-table td::before {
     content: attr(data-label);
     color: var(--color-text-secondary);
     font-size: 0.875rem;

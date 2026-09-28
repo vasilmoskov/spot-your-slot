@@ -11,7 +11,12 @@ import bg.spotyourslot.workforce.StaffMemberRecords.UpdateStaffMemberCommand;
 import java.util.UUID;
 
 public interface StaffMemberAdministration {
-    StaffMemberPage list(AuthenticatedBusinessContext context, int page, int size);
+    StaffMemberPage list(
+            AuthenticatedBusinessContext context,
+            int page,
+            int size,
+            String sort,
+            String direction);
 
     StaffMemberDetails get(
             AuthenticatedBusinessContext context, UUID staffMemberId);

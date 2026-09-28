@@ -14,12 +14,6 @@ export type ActiveBusinessIdentity = {
   status: string
 }
 
-const BUSINESS_STATUS_LABEL: Record<string, { label: string; tone: 'neutral' | 'success' | 'warning' }> = {
-  DRAFT: { label: 'Бизнесът е в подготовка', tone: 'neutral' },
-  ACTIVE: { label: 'Активен', tone: 'success' },
-  SUSPENDED: { label: 'Временно спрян', tone: 'warning' },
-}
-
 type BusinessOwnerShellProps = {
   route: AuthenticatedRoute
   activeBusiness: ActiveBusinessIdentity | undefined
@@ -33,6 +27,8 @@ function sectionTitle(route: AuthenticatedRoute): string {
   if (route.kind === 'business-service-new') return 'Нова услуга'
   if (route.kind === 'business-service-detail') return 'Услуга'
   if (route.kind === 'business-staff') return 'Екип'
+  if (route.kind === 'business-staff-new') return 'Нов член на екипа'
+  if (route.kind === 'business-staff-detail') return 'Член на екипа'
   if (route.kind === 'business-schedule') return 'Работно време'
   return 'Услуги'
 }
@@ -77,7 +73,6 @@ export function BusinessOwnerShell({
     onNavigate(nextRoute)
   }
 
-  const status = activeBusiness ? BUSINESS_STATUS_LABEL[activeBusiness.status] : undefined
   const suspended = activeBusiness?.status === 'SUSPENDED'
 
   return (
@@ -134,7 +129,13 @@ export function BusinessOwnerShell({
           <a
             className="navigation-link"
             href={routeHref(BUSINESS_STAFF_ROUTE)}
-            aria-current={route.kind === 'business-staff' ? 'page' : undefined}
+            aria-current={
+              route.kind === 'business-staff' ||
+              route.kind === 'business-staff-new' ||
+              route.kind === 'business-staff-detail'
+                ? 'page'
+                : undefined
+            }
             onClick={(event) => navigate(event, BUSINESS_STAFF_ROUTE)}
           >
             Екип
@@ -173,9 +174,6 @@ export function BusinessOwnerShell({
         <div className="platform-page-header">
           <div className="business-identity-row">
             <p className="eyebrow">УПРАВЛЕНИЕ НА БИЗНЕСА</p>
-            {status && (
-              <span className={`status-badge status-badge-${status.tone}`}>{status.label}</span>
-            )}
           </div>
           <h1 ref={headingRef} tabIndex={-1}>
             {sectionTitle(route)}

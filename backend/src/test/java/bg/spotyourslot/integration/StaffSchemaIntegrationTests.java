@@ -92,7 +92,7 @@ class StaffSchemaIntegrationTests extends PostgresIntegrationTest {
     void canonicalOptionalContactsAreStoredAndMayBeDuplicated() {
         UUID businessId = createBusiness();
         String email = "team@example.invalid";
-        String phone = "+359 (2) 123-45-67";
+        String phone = "+35921234567";
 
         insertStaff(businessId, "Първи", true, email, phone, 0);
         insertStaff(businessId, "Втори", true, email, phone, 0);
@@ -123,13 +123,19 @@ class StaffSchemaIntegrationTests extends PostgresIntegrationTest {
         assertRejected(() -> insertStaff(
                 businessId, "Пълна ширина", true, "ｔｅａｍ@example.invalid", null, 0));
         assertRejected(() -> insertStaff(
-                businessId, "Телефон букви", true, null, "+359 abc", 0));
+                businessId, "Телефон букви", true, null, "+359abc", 0));
         assertRejected(() -> insertStaff(
                 businessId, "Кратък телефон", true, null, "+12", 0));
         assertRejected(() -> insertStaff(
-                businessId, "Дълъг телефон", true, null, "1".repeat(21), 0));
+                businessId, "Дълъг телефон", true, null, "+1".repeat(21), 0));
         assertRejected(() -> insertStaff(
-                businessId, "Интервал телефон", true, null, " +359123", 0));
+                businessId, "Интервал телефон", true, null, " +359123456", 0));
+        assertRejected(() -> insertStaff(
+                businessId, "Некомпактен телефон", true, null, "+359 895 555 777", 0));
+        assertRejected(() -> insertStaff(
+                businessId, "Национален префикс в базата", true, null, "0895555777", 0));
+        assertRejected(() -> insertStaff(
+                businessId, "Водеща нула след плюс", true, null, "+0895555777", 0));
     }
 
     @Test

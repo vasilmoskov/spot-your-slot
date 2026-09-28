@@ -118,7 +118,7 @@ class WorkingScheduleSchemaIntegrationTests extends PostgresIntegrationTest {
     }
 
     @Test
-    void migrationFromEmptyAppliesV7AsTheOnlyVersionAfterV6() {
+    void migrationFromEmptyAppliesV7ThenV8AfterV6() {
         List<String> versions = jdbc.sql("""
                         SELECT version
                         FROM flyway_schema_history
@@ -128,7 +128,7 @@ class WorkingScheduleSchemaIntegrationTests extends PostgresIntegrationTest {
                 .query(String.class)
                 .list();
 
-        assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7");
+        assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7", "8");
     }
 
     @Test
