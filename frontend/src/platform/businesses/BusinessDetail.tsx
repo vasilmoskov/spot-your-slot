@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type FormEvent,
@@ -167,13 +168,13 @@ export function BusinessDetail({
     }
   }, [load])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (lifecycleConfirmation || resendEmail) {
       confirmationButton.current?.focus()
     }
   }, [lifecycleConfirmation, resendEmail])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (profileFeedback?.kind === 'error') {
       if (profileSection.current) profileSection.current.open = true
       setProfileOpen(true)
@@ -181,7 +182,7 @@ export function BusinessDetail({
     }
   }, [profileFeedback])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (invitationFeedback?.kind === 'error') {
       if (invitationSection.current) invitationSection.current.open = true
       setInvitationOpen(true)
@@ -189,7 +190,7 @@ export function BusinessDetail({
     }
   }, [invitationFeedback])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (lifecycleFeedback?.kind === 'error') {
       if (lifecycleSection.current) lifecycleSection.current.open = true
       setLifecycleOpen(true)

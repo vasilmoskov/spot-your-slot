@@ -16,6 +16,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "libphonenumber-js": "1.13.14",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },

@@ -97,6 +97,50 @@ class StaffMemberInputValidatorTests {
                 new CreateStaffMemberCommand("Екип", "a b@example.invalid", null)));
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "a@a",
+        "a@\u0430",
+        "a@xn--80a",
+        "@primer.bg",
+        "a@",
+        "a@.bg",
+        "a@primer.",
+        "a@primer..bg",
+        "a@-primer.bg",
+        "a@primer-.bg",
+        "a@primer.-bg",
+        "a@primer.bg-",
+        "a b@primer.bg",
+        "a@pri mer.bg",
+        "a@@primer.bg",
+        "a@b@primer.bg",
+        "a..b@primer.bg",
+        ".ab@primer.bg",
+        "ab.@primer.bg",
+        "\u0438\u0432\u0430\u043d@primer.bg",
+        "\u0438\u0432\u0430\u043d@\u043f\u0440\u0438\u043c\u0435\u0440.\u0431\u0433",
+        "ime@\u043f\u0440\u0438\u043c\u0435\u0440.\u0431\u0433",
+    })
+    void rejectsAddressesWithoutARoutableDottedDomain(String email) {
+        assertInvalid(InputField.CONTACT_EMAIL, () -> VALIDATOR.validateCreate(
+                new CreateStaffMemberCommand("Екип", email, null)));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "ime@primer.bg",
+        "ime.prezime@primer.bg",
+        "a@ab.bg",
+        "ime@mail.primer.bg",
+        "ime.prezime+tag@sub.primer.co.uk",
+    })
+    void acceptsAsciiAddressesWithDottedDomains(String email) {
+        assertThat(VALIDATOR.validateCreate(new CreateStaffMemberCommand("Екип", email, null))
+                        .contactEmail())
+                .isEqualTo(email);
+    }
+
     @Test
     void convertsBlankEmailAndPhoneToNull() {
         CreateStaffMemberCommand validated = VALIDATOR.validateCreate(

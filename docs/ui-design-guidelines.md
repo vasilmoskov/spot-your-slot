@@ -94,7 +94,9 @@ grid or flex item is not collapsed and silently stacks on top of the
 intended `gap`. Review the error-state layout specifically, not only the
 success/default state: an inline validation message must not visually touch
 the action buttons below it, whether the error is short or wraps across
-multiple lines.
+multiple lines. Prefer a parent grid/flex `gap`; use an explicit token-based
+margin only when `gap` is not appropriate, and never rely on browser-default
+element margins.
 
 ## 6. Buttons and interactive controls
 
@@ -133,7 +135,11 @@ radius, focus-visible outline, and transition:
   side/flip decision as a small pure function so it can be unit tested
   without relying on real browser layout in tests. Menu item labels must
   never be truncated or ellipsized; size the menu to its content instead of
-  a fixed width that may be narrower than the longest label.
+  a fixed width that may be narrower than the longest label. A popover or
+  overflow menu must not cover the content it was invoked from, must not
+  detach from its trigger, and defines its Escape (closes and restores focus
+  to the trigger), outside-click, scroll, and resize behavior; every listener
+  it registers is removed when it closes or unmounts.
 
 Do not apply the non-destructive action colors to destructive or disabled controls,
 selected navigation/tab states, status badges, plain text links, or native
@@ -167,10 +173,47 @@ form separately from its surrounding heading and feedback.
 
 Show validation near the affected field when possible and provide an accessible
 form-level summary when several errors need attention. Move focus deliberately
-after failed submission when that helps recovery. Preserve entered non-secret
-values when safe, but do not retain authentication or sensitive data in browser
-storage. Backend rules and safe Bulgarian problem responses remain
-authoritative.
+after failed submission when that helps recovery.
+
+Field problems and form problems are presented differently:
+
+- **A field problem** (a value the user can correct) is an inline message
+  directly below that field: a concrete Bulgarian sentence in the
+  `.field-error` style (red text plus an invalid-field border) linked with
+  `aria-invalid` and `aria-describedby` (`fieldControlProps`/`FieldError`). It
+  is never wrapped in a red alert panel and never duplicated in a form-level
+  alert.
+- **A form or request problem** (network or unavailable server, authentication
+  or authorization failure, optimistic-concurrency conflict, unexpected server
+  failure, or a `VALIDATION_ERROR` without usable field metadata) uses the
+  form-level feedback component.
+
+Business-owner configuration forms (Services and StaffMembers, and the
+schedule period dialog for its own fields) validate every locally knowable rule
+before sending a request, using `noValidate` and the shared
+`ui/formValidation` `useFieldValidation` policy:
+
+- An untouched form shows no required-field errors.
+- Leaving a field (blur) validates it. Once touched, a field is revalidated on
+  every change and its error disappears the moment the value is valid.
+- A non-empty value that is already invalid (a negative duration or price, a
+  malformed email or telephone) shows its error immediately, without waiting
+  for blur or submit.
+- Submit validates every field, shows all errors together, preserves entered
+  values, and focuses the first invalid control in DOM order.
+- Trim before judging required values (whitespace-only is empty); optional
+  fields accept blank and validate only when non-blank.
+- Mirror only rules that are deterministic in the browser. The telephone is
+  checked with `libphonenumber-js` (full metadata; Bulgaria as the default
+  region for a leading `0`, `+` and `00` as explicit international numbers),
+  never with a hand-written prefix list. The backend stays authoritative.
+- The backend names an invalid body field in an optional `fieldErrors` object
+  of the `VALIDATION_ERROR` problem response (public field name to fixed
+  Bulgarian message). Show each known field's message inline under its
+  control, focus the first, drop it as soon as that field changes, and do not
+  also show the generic alert. Unknown field names are ignored. A
+  `VALIDATION_ERROR` with no usable `fieldErrors` shows a safe form-level
+  message; never guess a field.
 
 Browser constraint messages shown to Bulgarian users must use natural Bulgarian
 while preserving native validation, focus behavior, and keyboard submission
@@ -250,8 +293,11 @@ priority.
 
 Do not hide essential information only because the viewport is narrow. Dense
 desktop tables must transform into a readable mobile pattern rather than merely
-shrinking. Test at approximately 360 px, representative desktop widths, and
-200% browser zoom.
+shrinking. Review every screen at ordinary desktop width, an intermediate/tablet
+width (about 1024 px), mobile width (about 375 px), and 200% browser zoom. Fix
+overflow without degrading the preferred information hierarchy: keep a
+recognizable layout (for example the weekly schedule) whenever enough room
+exists and collapse it only where it genuinely does not fit.
 
 ## 11. Accessibility requirements
 
@@ -441,6 +487,14 @@ create/edit, and later forms) uses the shared `UnsavedChangesGuardProvider`/
   initial focus; the destructive action (“Откажи промените”) is never the
   default focus.
 - The browser's `beforeunload` prompt is armed only while the form is dirty.
+- Every transition that would discard a dirty editor goes through the guard:
+  sidebar navigation, browser Back/Forward, Business switching, logout,
+  switching between mutually exclusive editors, and reloading fresh data after
+  an optimistic-concurrency conflict.
+- A dirty state that lives outside the form's own values (for example an open
+  dialog with typed input) is included in the registered dirty state, and the
+  registered discard callback resets all of it. Registration is removed on
+  unmount.
 
 ## 17. Identity and page hierarchy
 
@@ -473,3 +527,61 @@ Never describe a layout as visually verified when it has not been reviewed in a
 rendered browser. Stop for human feedback at the task's review gate. When
 feedback establishes or changes an enduring design decision, update this guide
 as part of the approved change so future screens remain consistent.
+
+## 19. Dialogs and confirmations
+
+- A dialog heading describes the operation precisely; avoid misleading generic
+  headings such as „Отказ“ when the user initiated navigation or another
+  action.
+- Action labels say what the action does. A safe cancellation is „Отказ“, never
+  „Запази…“ when nothing is saved.
+- When copy contains several complete sentences with separate purposes, render
+  each as its own paragraph and let the container's standard gap space them;
+  do not insert `<br>` merely for visual layout.
+- Confirmation dialogs focus the safe action first. A destructive confirmation
+  never receives default focus, whether it is a modal or an inline
+  `alertdialog`. Modal dialogs set `aria-modal="true"`, Escape behaves like the
+  safe action, and focus returns to the invoking control (or the nearest
+  meaningful control when the invoker disappeared).
+- Use the destructive treatment only for actions that modify or remove
+  persisted or draft data. Non-destructive selection resets stay neutral.
+- While a destructive request is in flight, disable duplicate submission, keep
+  the dialog open, and ignore Escape and cancellation so the operation never
+  appears cancelled while it continues in the background. Controls behind the
+  dialog that could start a competing operation are disabled as well.
+- A separate destructive operation with its own meaning (for example clearing
+  a whole schedule) is not hidden inside ordinary editing; read-only and edit
+  modes expose only the actions that belong to that mode.
+- A dialog with an unsaved typed value ignores Escape; only the explicit safe
+  action discards it.
+
+## 20. Wording and hierarchy
+
+- Do not repeat headings, add explanatory copy that does not help the user
+  finish a task, duplicate metadata, or show status labels without actionable
+  information.
+- Button labels communicate an action („Добави нова услуга“,
+  „Редактирай графика“) rather than merely naming an entity.
+- Bulgarian weekday names are capitalized as standalone headings and labels and
+  lowercase when embedded in a sentence; use one shared mapping for each form.
+
+## 21. Business-scoped asynchronous data
+
+- Business-scoped data and feedback must never survive a change of Business,
+  route, entity, or operation. Key Business-owner sections by the active
+  Business (and entity id), abort obsolete reads with `AbortController`, ignore
+  responses that belong to a superseded request, and invalidate operation-scoped
+  feedback when its context changes (`useFeedback` generations).
+- Prevent duplicate mutations while one is in flight with a synchronous ref
+  guard, not only a disabled attribute; a response that arrives after the
+  originating view unmounted must not navigate or render.
+- A successful create/save clears the dirty state synchronously before
+  navigating; a failed operation preserves safe input and keeps the guard
+  active.
+
+## 22. Fixtures for manual review
+
+Manual visual review uses only supported APIs and normal application flows, or
+a throwaway mock that never touches the development database. Never write to
+the database directly, hand-edit password hashes, or delete volumes, and report
+any fixture data created or mutated together with cleanup instructions.

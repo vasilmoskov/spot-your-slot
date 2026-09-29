@@ -19,8 +19,10 @@ and platform-admin client, Flyway-managed PostgreSQL, local Docker Compose, and
 non-deploying CI. Platform administrators can manage the Business lifecycle,
 and active Business owners can administer Services, StaffMembers,
 StaffMember-to-Service assignments, and each StaffMember's recurring weekly
-working schedule through authenticated APIs. The Business-owner configuration
-interface, schedule exceptions/time off, Customers, Appointments, booking,
+working schedule through authenticated APIs and through the Bulgarian
+Business-owner configuration interface (Services, Team, assignments, and the
+recurring weekly working schedule). Browser end-to-end verification of that
+journey, schedule exceptions/time off, Customers, Appointments, booking,
 production email, and hosting are not implemented.
 
 ## Product identity
@@ -185,7 +187,7 @@ updates and lifecycle operations use `expectedVersion` to reject stale writes.
 
 | Method and path | Purpose |
 |---|---|
-| `GET /api/platform/businesses` | List Businesses (`page=0`, `size=50`, maximum 100) |
+| `GET /api/platform/businesses?page=0&size=10&sort=displayName&direction=asc` | List Businesses; `size` is exactly 10, 25, or 50; `sort` is `displayName`, `slug`, `businessType`, or `status` |
 | `GET /api/platform/businesses/{businessId}` | Retrieve approved Business metadata |
 | `POST /api/platform/businesses` | Create a `DRAFT` Business at version 0 |
 | `PUT /api/platform/businesses/{businessId}` | Update approved profile fields |
@@ -209,17 +211,19 @@ update, deactivate, and reactivate requests carry `expectedVersion`.
 
 | Method and path | Purpose |
 |---|---|
-| `GET /api/business/services?page=0&size=50` | List active and inactive Services, with a maximum page size of 100 |
+| `GET /api/business/services?page=0&size=10&sort=name&direction=asc` | List active and inactive Services; `size` is exactly 10, 25, or 50; `sort` is `name`, `duration`, `price`, or `status` |
 | `GET /api/business/services/{serviceId}` | Retrieve one tenant-scoped Service |
 | `POST /api/business/services` | Create an active Service and return `201` with its `Location` |
 | `PUT /api/business/services/{serviceId}` | Update an active or inactive Service |
 | `POST /api/business/services/{serviceId}/deactivate` | Deactivate an active Service |
 | `POST /api/business/services/{serviceId}/reactivate` | Reactivate an inactive Service |
 
-Service requests and responses do not contain `businessId`. Lists are ordered
-by normalized name and then ID. DRAFT and ACTIVE Businesses permit reads and
+Service requests and responses do not contain `businessId`. Lists use the
+requested server-side sort with a deterministic tie-breaker (normalized name,
+then ID). DRAFT and ACTIVE Businesses permit reads and
 mutations; SUSPENDED Businesses remain readable but reject Service mutations.
-The Business-owner UI and its end-to-end configuration journey remain pending.
+The Business-owner UI is documented in
+[task 04d](docs/tasks/04d-business-owner-configuration-frontend.md).
 
 ### Business StaffMember API
 
@@ -232,7 +236,7 @@ uses the StaffMember's `expectedVersion`.
 
 | Method and path | Purpose |
 |---|---|
-| `GET /api/business/staff-members?page=0&size=50` | List active and inactive StaffMembers, with a maximum page size of 100 |
+| `GET /api/business/staff-members?page=0&size=10&sort=name&direction=asc` | List active and inactive StaffMembers; `size` is exactly 10, 25, or 50; `sort` is `name`, `status`, `phone`, or `email` |
 | `GET /api/business/staff-members/{staffMemberId}` | Retrieve one tenant-scoped StaffMember |
 | `POST /api/business/staff-members` | Create an active StaffMember and return `201` with its `Location` |
 | `PUT /api/business/staff-members/{staffMemberId}` | Update an active or inactive StaffMember profile |
@@ -252,8 +256,9 @@ aggregate version exactly once.
 Requests and responses expose no Business, user, Membership, role, credential,
 session, normalized, SQL, or persistence fields. DRAFT and ACTIVE Businesses
 permit reads and mutations. SUSPENDED Businesses remain readable and reject
-mutations with the safe public error contract. The Business-owner interface and
-its browser end-to-end verification remain deferred to issues #14 and #15.
+mutations with the safe public error contract. The Business-owner interface is
+implemented by issue #14; its browser end-to-end verification remains deferred
+to issue #15.
 
 ### Business StaffMember working-schedule API
 

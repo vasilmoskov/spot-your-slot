@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { useFeedback, errorCategory, type Feedback } from '../../ui/useFeedback'
 import { Button } from '../../ui/Button'
+import { useUnsavedChangesGuard } from '../../ui/UnsavedChangesGuard'
 import {
   deactivateService,
   getService,
@@ -11,6 +12,12 @@ import {
 } from './api'
 import { ServiceForm } from './ServiceForm'
 import { isAuthenticationRequired, isConcurrentUpdate, safeServiceError } from './errors'
+import { backendFieldErrors, type SubmitOutcome } from '../../ui/formValidation'
+import {
+  SERVICE_BACKEND_FIELDS,
+  SERVICE_REJECTED_MESSAGE,
+  type ServiceField,
+} from './validation'
 import { formatServiceDuration, formatServicePrice, serviceStatusPresentation } from './presentation'
 
 type ServiceDetailProps = {
@@ -43,10 +50,11 @@ export function ServiceDetail({
   const [updating, setUpdating] = useState(false)
   const [deactivateConfirmation, setDeactivateConfirmation] = useState(false)
   const [lifecycleBusy, setLifecycleBusy] = useState(false)
+  const guard = useUnsavedChangesGuard()
   const activeLoad = useRef<AbortController | null>(null)
   const updateInProgress = useRef(false)
   const lifecycleInProgress = useRef(false)
-  const confirmationButton = useRef<HTMLButtonElement>(null)
+  const cancelDeactivationButton = useRef<HTMLButtonElement>(null)
   const profileError = useRef<HTMLDivElement>(null)
   const lifecycleError = useRef<HTMLDivElement>(null)
 
@@ -88,25 +96,25 @@ export function ServiceDetail({
     }
   }, [load])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (deactivateConfirmation) {
-      confirmationButton.current?.focus()
+      cancelDeactivationButton.current?.focus()
     }
   }, [deactivateConfirmation])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (profileFeedback?.kind === 'error') {
       profileError.current?.focus()
     }
   }, [profileFeedback])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (lifecycleFeedback?.kind === 'error') {
       lifecycleError.current?.focus()
     }
   }, [lifecycleFeedback])
 
-  const update = async (input: UpdateServiceInput) => {
+  const update = async (input: UpdateServiceInput): Promise<SubmitOutcome<ServiceField>> => {
     if (updateInProgress.current) return
     updateInProgress.current = true
     setUpdating(true)
@@ -122,10 +130,16 @@ export function ServiceDetail({
         onAuthenticationRequired(caught.detail)
         return
       }
+      const fieldErrors = backendFieldErrors(caught, SERVICE_BACKEND_FIELDS)
+      if (fieldErrors) return { fieldErrors }
       publish({
         kind: 'error',
         category: errorCategory(caught),
-        text: safeServiceError(caught, 'Промените не могат да бъдат запазени.'),
+        text: safeServiceError(
+          caught,
+          'Промените не могат да бъдат запазени.',
+          SERVICE_REJECTED_MESSAGE,
+        ),
         reload: isConcurrentUpdate(caught),
       })
     } finally {
@@ -190,6 +204,10 @@ export function ServiceDetail({
     }
   }
 
+  // Reloading discards an open, possibly dirty editor, so it goes through the
+  // shared unsaved-changes guard like every other discarding transition.
+  const reloadGuarded = () => guard.guard(() => void load())
+
   if (loading) {
     return (
       <div className="platform-content" aria-live="polite" aria-busy="true">
@@ -253,7 +271,7 @@ export function ServiceDetail({
                 setEditing(false)
                 setProfileFeedback(null)
               }}
-              onSubmit={(input) => void update(input as UpdateServiceInput)}
+              onSubmit={(input) => update(input as UpdateServiceInput)}
             />
           ) : (
             <>
@@ -285,7 +303,7 @@ export function ServiceDetail({
             </>
           )}
           <LocalFeedback feedback={profileFeedback} errorRef={profileError} />
-          <FeedbackReloadControl feedback={profileFeedback} onReload={load} />
+          <FeedbackReloadControl feedback={profileFeedback} onReload={reloadGuarded} />
         </div>
       </div>
 
@@ -294,7 +312,7 @@ export function ServiceDetail({
           <div className="feedback-action-layout">
             <LocalFeedback feedback={lifecycleFeedback} errorRef={lifecycleError} />
             <div className="feedback-action-controls">
-              <FeedbackReloadControl feedback={lifecycleFeedback} onReload={load} />
+              <FeedbackReloadControl feedback={lifecycleFeedback} onReload={reloadGuarded} />
               {service.active && !deactivateConfirmation && (
                 <Button
                   type="button"
@@ -328,7 +346,6 @@ export function ServiceDetail({
                   </p>
                   <div className="action-group">
                     <Button
-                      ref={confirmationButton}
                       type="button"
                       variant="destructive"
                       disabled={lifecycleBusy}
@@ -337,6 +354,7 @@ export function ServiceDetail({
                       {lifecycleBusy ? 'Запазване…' : 'Потвърди деактивирането'}
                     </Button>
                     <Button
+                      ref={cancelDeactivationButton}
                       type="button"
                       variant="secondary"
                       disabled={lifecycleBusy}
@@ -385,12 +403,12 @@ function FeedbackReloadControl({
   onReload,
 }: {
   feedback: Feedback | null
-  onReload: () => Promise<void>
+  onReload: () => void
 }) {
   if (!feedback?.reload) return null
 
   return (
-    <Button type="button" variant="secondary" onClick={() => void onReload()}>
+    <Button type="button" variant="secondary" onClick={onReload}>
       Зареди актуалните данни
     </Button>
   )

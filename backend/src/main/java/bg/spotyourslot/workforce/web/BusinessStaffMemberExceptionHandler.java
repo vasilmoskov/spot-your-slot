@@ -9,6 +9,7 @@ import bg.spotyourslot.workforce.StaffMemberApplicationException.InvalidLifecycl
 import bg.spotyourslot.workforce.StaffMemberApplicationException.ServiceInactive;
 import bg.spotyourslot.workforce.StaffMemberApplicationException.ServiceNotFound;
 import bg.spotyourslot.workforce.StaffMemberApplicationException.StaffMemberNotFound;
+import java.util.Map;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
@@ -20,11 +21,28 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice(assignableTypes = BusinessStaffMemberController.class)
 public class BusinessStaffMemberExceptionHandler {
     @ExceptionHandler(InvalidInput.class)
-    ProblemDetail invalidInput() {
-        return problem(
+    ProblemDetail invalidInput(InvalidInput exception) {
+        var problem = problem(
                 HttpStatus.BAD_REQUEST,
                 "VALIDATION_ERROR",
                 "Проверете въведените данни.");
+        // Only body fields a client can correct are named; page, sort,
+        // identifier, version, assignment, and command failures stay generic.
+        switch (exception.field()) {
+            case DISPLAY_NAME -> addFieldError(
+                    problem, "displayName", "Въведете име на члена на екипа до 200 знака.");
+            case CONTACT_EMAIL -> addFieldError(
+                    problem, "contactEmail", "Въведеният имейл адрес не е валиден.");
+            case CONTACT_PHONE -> addFieldError(
+                    problem, "contactPhone", "Въведеният телефонен номер не е валиден.");
+            default -> {
+            }
+        }
+        return problem;
+    }
+
+    private static void addFieldError(ProblemDetail problem, String field, String message) {
+        problem.setProperty("fieldErrors", Map.of(field, message));
     }
 
     @ExceptionHandler(SelectedBusinessRequired.class)

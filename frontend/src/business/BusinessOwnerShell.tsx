@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { useId, useRef, useState, useLayoutEffect, type ReactNode } from 'react'
 import { Button } from '../ui/Button'
 import {
   BUSINESS_SCHEDULE_ROUTE,
@@ -47,13 +47,13 @@ export function BusinessOwnerShell({
   const firstNavigationItemRef = useRef<HTMLAnchorElement>(null)
   const headingRef = useRef<HTMLHeadingElement>(null)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (mobileNavigationOpen) {
       firstNavigationItemRef.current?.focus()
     }
   }, [mobileNavigationOpen])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     headingRef.current?.focus()
   }, [route.kind])
 

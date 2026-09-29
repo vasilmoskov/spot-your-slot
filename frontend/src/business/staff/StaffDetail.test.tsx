@@ -207,6 +207,37 @@ describe('StaffDetail', () => {
     expect(screen.queryByLabelText('Име на члена на екипа')).not.toBeInTheDocument()
   })
 
+  it('confirms before a reload discards a dirty profile edit after a concurrent-update conflict', async () => {
+    mockedGetStaffMember.mockResolvedValue(staffMember)
+    mockedUpdateStaffMember.mockRejectedValue(
+      new ApiError(409, 'STAFF_MEMBER_CONCURRENT_UPDATE', 'Членът на екипа е променен.'),
+    )
+    render(
+      <StaffDetail
+        staffMemberId="staff-a"
+        readOnly={false}
+        onAuthenticationRequired={onAuthenticationRequired}
+        onBack={onBack}
+      />,
+    )
+    await screen.findByRole('heading', { name: 'Анна Иванова' })
+    fireEvent.click(screen.getByRole('button', { name: 'Редактирай' }))
+    fireEvent.change(screen.getByLabelText('Име на члена на екипа'), {
+      target: { value: 'Ново име' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Запази промените' }))
+    await screen.findByRole('button', { name: 'Зареди актуалните данни' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Зареди актуалните данни' }))
+    expect(mockedGetStaffMember).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Продължи редактирането' }))
+    expect(screen.getByLabelText('Име на члена на екипа')).toHaveValue('Ново име')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Зареди актуалните данни' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
+    await waitFor(() => expect(mockedGetStaffMember).toHaveBeenCalledTimes(2))
+  })
+
   it('requires confirmation before deactivating and shows the StaffMember name', async () => {
     mockedGetStaffMember.mockResolvedValue(staffMember)
     mockedDeactivateStaffMember.mockResolvedValue({ ...staffMember, active: false, version: 1 })
@@ -222,6 +253,10 @@ describe('StaffDetail', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Деактивирай' }))
     expect(screen.getByRole('alertdialog')).toHaveTextContent('Анна Иванова')
     expect(mockedDeactivateStaffMember).not.toHaveBeenCalled()
+
+    // The safe action, never the destructive one, receives initial focus.
+    expect(screen.getByRole('button', { name: 'Отказ' })).toHaveFocus()
+    expect(screen.getByRole('button', { name: 'Потвърди деактивирането' })).not.toHaveFocus()
 
     fireEvent.click(screen.getByRole('button', { name: 'Потвърди деактивирането' }))
     await waitFor(() => expect(mockedDeactivateStaffMember).toHaveBeenCalledWith('staff-a', 0))

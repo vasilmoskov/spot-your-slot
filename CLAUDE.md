@@ -124,6 +124,9 @@ material ambiguity.
 
 ## Visual and manual validation
 
+- Frontend work must read and follow `docs/ui-design-guidelines.md` and perform
+  its documented visual and error-state checks, including wrapped validation
+  errors, dialogs, and desktop, tablet, mobile, and 200% zoom review.
 - Explicitly notify the user when functionality becomes visually testable.
 - Provide concise manual verification steps for frontend, responsive,
   accessibility, browser, email-rendering, and other user-visible behavior.

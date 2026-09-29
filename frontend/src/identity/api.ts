@@ -6,19 +6,43 @@ type ProblemResponse = {
   code?: unknown
   detail?: unknown
   title?: unknown
+  fieldErrors?: unknown
+}
+
+const MAX_FIELD_ERROR_LENGTH = 300
+
+// Keeps only string messages keyed by field name; anything else in the
+// response is ignored so a malformed body can never be rendered.
+function safeFieldErrors(value: unknown): Record<string, string> | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined
+  const entries = Object.entries(value).filter(
+    (entry): entry is [string, string] =>
+      typeof entry[1] === 'string' &&
+      entry[1] !== '' &&
+      entry[1].length <= MAX_FIELD_ERROR_LENGTH,
+  )
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined
 }
 
 export class ApiError extends Error {
   readonly status: number
   readonly code: string
   readonly detail: string
+  // Present only when the backend named the invalid body field(s).
+  readonly fieldErrors: Record<string, string> | undefined
 
-  constructor(status: number, code: string, detail: string) {
+  constructor(
+    status: number,
+    code: string,
+    detail: string,
+    fieldErrors?: Record<string, string>,
+  ) {
     super(detail)
     this.name = 'ApiError'
     this.status = status
     this.code = code
     this.detail = detail
+    this.fieldErrors = fieldErrors
   }
 }
 
@@ -55,6 +79,7 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
         : problem.code === 'AUTH_REQUIRED' && typeof problem.title === 'string'
           ? problem.title
           : SAFE_FALLBACK,
+      safeFieldErrors(problem.fieldErrors),
     )
   }
   if (response.status === 204) {

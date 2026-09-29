@@ -3,6 +3,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
@@ -77,7 +78,7 @@ export function UnsavedChangesGuardProvider({ children }: { children: ReactNode 
     return () => window.removeEventListener('beforeunload', handler)
   }, [isDirty])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (pending) continueButtonRef.current?.focus()
   }, [pending])
 
@@ -153,11 +154,15 @@ export function useGuardedFormState(isDirty: boolean, discard: () => void): Unsa
   const discardRef = useRef(discard)
   discardRef.current = discard
 
-  useEffect(() => {
+  // Layout effects, so the guard's dirty state is updated in the same commit
+  // as the DOM the user sees. With passive effects there is a window where a
+  // cleared form (for example after a successful save) is still registered
+  // dirty and a click in that window would show a false prompt.
+  useLayoutEffect(() => {
     registerDirty(isDirty, () => discardRef.current())
   }, [isDirty, registerDirty])
 
-  useEffect(() => () => unregisterDirty(), [unregisterDirty])
+  useLayoutEffect(() => () => unregisterDirty(), [unregisterDirty])
 
   return guard
 }

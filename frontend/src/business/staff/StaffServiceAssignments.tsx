@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Button } from '../../ui/Button'
 import { useFeedback, errorCategory } from '../../ui/useFeedback'
 import { useGuardedFormState } from '../../ui/UnsavedChangesGuard'
@@ -215,7 +215,7 @@ export function StaffServiceAssignments({
     // ref-stable `assignments` snapshot already in scope.
   }, [editing])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (feedback?.kind === 'error') errorMessage.current?.focus()
   }, [feedback])
 
@@ -380,7 +380,11 @@ export function StaffServiceAssignments({
         </div>
       )}
       {feedback?.reload && (
-        <Button type="button" variant="secondary" onClick={() => void loadAssignments()}>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => guard.guard(() => void loadAssignments())}
+        >
           Зареди актуалните данни
         </Button>
       )}

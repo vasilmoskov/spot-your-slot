@@ -260,3 +260,242 @@ describe('ServiceCreate', () => {
     expect(mockedCreateService).not.toHaveBeenCalled()
   })
 })
+
+describe('ServiceCreate inline validation', () => {
+  const onAuthenticationRequired = vi.fn()
+  const onCreated = vi.fn()
+  const onCancel = vi.fn()
+
+  beforeEach(() => {
+    mockedCreateService.mockReset()
+    onCreated.mockReset()
+  })
+
+  function renderForm() {
+    render(
+      <ServiceCreate
+        readOnly={false}
+        onAuthenticationRequired={onAuthenticationRequired}
+        onCreated={onCreated}
+        onCancel={onCancel}
+      />,
+    )
+  }
+
+  it('rejects a whitespace-only name locally with a field error, focus, and ARIA wiring', () => {
+    renderForm()
+    fireEvent.change(screen.getByLabelText('Име на услугата'), { target: { value: '   ' } })
+    fireEvent.change(screen.getByLabelText('Продължителност (минути)'), { target: { value: '30' } })
+    fireEvent.change(screen.getByLabelText('Цена (EUR)'), { target: { value: '10' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Създай услуга' }))
+
+    const name = screen.getByLabelText('Име на услугата')
+    expect(mockedCreateService).not.toHaveBeenCalled()
+    expect(screen.getByText('Въведете име на услугата.')).toBeInTheDocument()
+    expect(name).toHaveAttribute('aria-invalid', 'true')
+    expect(name).toHaveAccessibleDescription('Въведете име на услугата.')
+    expect(name).toHaveFocus()
+    // No generic form-level replacement for the specific message.
+    expect(screen.queryByText('Проверете въведените данни.')).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    // Entered safe values are preserved.
+    expect(screen.getByLabelText('Продължителност (минути)')).toHaveValue(30)
+    expect(screen.getByLabelText('Цена (EUR)')).toHaveValue('10')
+  })
+
+  it('shows every field error at once, focuses the first, and clears each on correction', () => {
+    renderForm()
+    fireEvent.click(screen.getByRole('button', { name: 'Създай услуга' }))
+
+    expect(screen.getByText('Въведете име на услугата.')).toBeInTheDocument()
+    expect(screen.getByText('Въведете продължителност в минути.')).toBeInTheDocument()
+    expect(screen.getByText('Въведете цена.')).toBeInTheDocument()
+    expect(screen.getByLabelText('Име на услугата')).toHaveFocus()
+
+    fireEvent.change(screen.getByLabelText('Име на услугата'), { target: { value: 'Боядисване' } })
+    expect(screen.queryByText('Въведете име на услугата.')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Име на услугата')).not.toHaveAttribute('aria-invalid')
+    expect(screen.getByText('Въведете цена.')).toBeInTheDocument()
+  })
+
+  it('reports duration and price errors next to their own fields and revalidates live', () => {
+    renderForm()
+    fireEvent.change(screen.getByLabelText('Име на услугата'), { target: { value: 'Боядисване' } })
+    fireEvent.change(screen.getByLabelText('Продължителност (минути)'), { target: { value: '481' } })
+    fireEvent.change(screen.getByLabelText('Цена (EUR)'), { target: { value: '12,50' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Създай услуга' }))
+
+    const duration = screen.getByLabelText('Продължителност (минути)')
+    const price = screen.getByLabelText('Цена (EUR)')
+    expect(duration).toHaveAccessibleDescription(
+      'Продължителността трябва да бъде между 1 и 480 минути.',
+    )
+    expect(price).toHaveAccessibleDescription(/най-много 2 знака след десетичната точка/)
+    expect(duration).toHaveFocus()
+    expect(mockedCreateService).not.toHaveBeenCalled()
+
+    // Still invalid: the message updates; valid: it disappears at once.
+    fireEvent.change(duration, { target: { value: '1.5' } })
+    expect(duration).toHaveAccessibleDescription(/цяло число минути/)
+    fireEvent.change(duration, { target: { value: '45' } })
+    expect(duration).not.toHaveAttribute('aria-invalid')
+    fireEvent.change(price, { target: { value: '12.50' } })
+    expect(price).not.toHaveAttribute('aria-invalid')
+    expect(screen.queryByText(/най-много 2 знака/)).not.toBeInTheDocument()
+  })
+
+  it('shows no error on the untouched form and validates a field when it loses focus', () => {
+    renderForm()
+    expect(document.querySelectorAll('.field-error')).toHaveLength(0)
+    expect(screen.getByLabelText('Име на услугата')).not.toHaveAttribute('aria-invalid')
+
+    const name = screen.getByLabelText('Име на услугата')
+    fireEvent.focus(name)
+    fireEvent.blur(name)
+    expect(screen.getByText('Въведете име на услугата.')).toBeInTheDocument()
+    expect(name).toHaveAccessibleDescription('Въведете име на услугата.')
+    // Other untouched fields stay quiet.
+    expect(screen.queryByText('Въведете цена.')).not.toBeInTheDocument()
+
+    fireEvent.change(name, { target: { value: 'А' } })
+    expect(screen.queryByText('Въведете име на услугата.')).not.toBeInTheDocument()
+    fireEvent.change(name, { target: { value: '   ' } })
+    expect(screen.getByText('Въведете име на услугата.')).toBeInTheDocument()
+  })
+
+  it('shows a negative duration and a negative price immediately, before blur or submit', () => {
+    renderForm()
+    fireEvent.change(screen.getByLabelText('Продължителност (минути)'), { target: { value: '-5' } })
+    fireEvent.change(screen.getByLabelText('Цена (EUR)'), { target: { value: '-1' } })
+
+    expect(
+      screen.getByText('Продължителността трябва да бъде между 1 и 480 минути.'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Цената не може да бъде отрицателна.')).toBeInTheDocument()
+    // The untouched empty name is still quiet.
+    expect(screen.queryByText('Въведете име на услугата.')).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Цена (EUR)'), { target: { value: '0' } })
+    expect(screen.queryByText('Цената не може да бъде отрицателна.')).not.toBeInTheDocument()
+  })
+
+  it('maps backend fieldErrors to their fields without any form-level alert', async () => {
+    mockedCreateService.mockRejectedValue(
+      new ApiError(400, 'VALIDATION_ERROR', 'Проверете въведените данни.', {
+        price: 'Въведете валидна цена в евро с най-много 2 знака след десетичната точка.',
+      }),
+    )
+    renderForm()
+    fireEvent.change(screen.getByLabelText('Име на услугата'), { target: { value: 'Боядисване' } })
+    fireEvent.change(screen.getByLabelText('Продължителност (минути)'), { target: { value: '45' } })
+    fireEvent.change(screen.getByLabelText('Цена (EUR)'), { target: { value: '30' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Създай услуга' }))
+
+    const price = screen.getByLabelText('Цена (EUR)')
+    expect(await screen.findByText(/Въведете валидна цена в евро/)).toBeInTheDocument()
+    expect(price).toHaveAttribute('aria-invalid', 'true')
+    expect(price).toHaveFocus()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByText('Проверете въведените данни.')).not.toBeInTheDocument()
+
+    // Correcting the field drops the backend message immediately.
+    fireEvent.change(price, { target: { value: '31' } })
+    expect(price).not.toHaveAttribute('aria-invalid')
+  })
+
+  it('falls back to a form-level message for unknown field names and never shows them inline', async () => {
+    mockedCreateService.mockRejectedValue(
+      new ApiError(400, 'VALIDATION_ERROR', 'Проверете въведените данни.', {
+        unknownField: 'Нещо',
+      }),
+    )
+    renderForm()
+    fireEvent.change(screen.getByLabelText('Име на услугата'), { target: { value: 'Боядисване' } })
+    fireEvent.change(screen.getByLabelText('Продължителност (минути)'), { target: { value: '45' } })
+    fireEvent.change(screen.getByLabelText('Цена (EUR)'), { target: { value: '30' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Създай услуга' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Проверете името, описанието, продължителността и цената.',
+    )
+    expect(screen.queryByText('Нещо')).not.toBeInTheDocument()
+    expect(document.querySelectorAll('.field-error')).toHaveLength(0)
+  })
+
+  it('keeps non-field failures in the form-level alert', async () => {
+    mockedCreateService.mockRejectedValue(new Error('network'))
+    renderForm()
+    fireEvent.change(screen.getByLabelText('Име на услугата'), { target: { value: 'Боядисване' } })
+    fireEvent.change(screen.getByLabelText('Продължителност (минути)'), { target: { value: '45' } })
+    fireEvent.change(screen.getByLabelText('Цена (EUR)'), { target: { value: '30' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Създай услуга' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Услугата не може да бъде създадена.')
+    expect(document.querySelectorAll('.field-error')).toHaveLength(0)
+  })
+
+  it('replaces the backend generic validation text with an actionable form-level message', async () => {
+    mockedCreateService.mockRejectedValue(
+      new ApiError(400, 'VALIDATION_ERROR', 'Проверете въведените данни.'),
+    )
+    renderForm()
+    fireEvent.change(screen.getByLabelText('Име на услугата'), { target: { value: 'Боядисване' } })
+    fireEvent.change(screen.getByLabelText('Продължителност (минути)'), { target: { value: '45' } })
+    fireEvent.change(screen.getByLabelText('Цена (EUR)'), { target: { value: '30' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Създай услуга' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Проверете името, описанието, продължителността и цената.',
+    )
+    expect(screen.queryByText('Проверете въведените данни.')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Име на услугата')).toHaveValue('Боядисване')
+  })
+})
+
+describe('ServiceCreate late responses', () => {
+  beforeEach(() => {
+    mockedCreateService.mockReset()
+  })
+
+  it('does not navigate to the created Service when the form was left before the response arrived', async () => {
+    let resolveCreate: ((service: ServiceDetails) => void) | undefined
+    mockedCreateService.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveCreate = resolve
+        }),
+    )
+    const onCreated = vi.fn()
+    const { unmount } = render(
+      <ServiceCreate
+        readOnly={false}
+        onAuthenticationRequired={vi.fn()}
+        onCreated={onCreated}
+        onCancel={vi.fn()}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText('Име на услугата'), { target: { value: 'Подстригване' } })
+    fireEvent.change(screen.getByLabelText('Продължителност (минути)'), { target: { value: '10' } })
+    fireEvent.change(screen.getByLabelText('Цена (EUR)'), { target: { value: '19.90' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Създай услуга' }))
+    // A second activation while the request is pending is ignored.
+    fireEvent.click(screen.getByRole('button', { name: 'Запазване…' }))
+    expect(mockedCreateService).toHaveBeenCalledTimes(1)
+
+    unmount()
+    resolveCreate?.({
+      id: 'service-a',
+      name: 'Подстригване',
+      description: null,
+      durationMinutes: 10,
+      price: 19.9,
+      active: true,
+      version: 0,
+      createdAt: '2026-08-19T09:00:00Z',
+      updatedAt: '2026-08-19T09:00:00Z',
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(onCreated).not.toHaveBeenCalled()
+  })
+})

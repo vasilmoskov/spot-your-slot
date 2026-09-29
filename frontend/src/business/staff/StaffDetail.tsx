@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import { useFeedback, errorCategory, type Feedback } from '../../ui/useFeedback'
 import { Button } from '../../ui/Button'
 import { useUnsavedChangesGuard } from '../../ui/UnsavedChangesGuard'
@@ -13,6 +13,8 @@ import {
 import { StaffForm } from './StaffForm'
 import { StaffServiceAssignments } from './StaffServiceAssignments'
 import { isAuthenticationRequired, isConcurrentUpdate, safeStaffError } from './errors'
+import { backendFieldErrors, type SubmitOutcome } from '../../ui/formValidation'
+import { STAFF_BACKEND_FIELDS, STAFF_REJECTED_MESSAGE, type StaffField } from './validation'
 import { formatStaffPhone, staffStatusPresentation } from './presentation'
 
 type StaffDetailProps = {
@@ -55,7 +57,7 @@ export function StaffDetail({
   const activeLoad = useRef<AbortController | null>(null)
   const updateInProgress = useRef(false)
   const lifecycleInProgress = useRef(false)
-  const confirmationButton = useRef<HTMLButtonElement>(null)
+  const cancelDeactivationButton = useRef<HTMLButtonElement>(null)
   const profileError = useRef<HTMLDivElement>(null)
   const lifecycleError = useRef<HTMLDivElement>(null)
 
@@ -99,19 +101,19 @@ export function StaffDetail({
     }
   }, [load])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (deactivateConfirmation) {
-      confirmationButton.current?.focus()
+      cancelDeactivationButton.current?.focus()
     }
   }, [deactivateConfirmation])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (profileFeedback?.kind === 'error') {
       profileError.current?.focus()
     }
   }, [profileFeedback])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (lifecycleFeedback?.kind === 'error') {
       lifecycleError.current?.focus()
     }
@@ -121,7 +123,7 @@ export function StaffDetail({
     setStaffMember((current) => (current ? { ...current, version } : current))
   }, [])
 
-  const update = async (input: UpdateStaffMemberInput) => {
+  const update = async (input: UpdateStaffMemberInput): Promise<SubmitOutcome<StaffField>> => {
     if (updateInProgress.current) return
     updateInProgress.current = true
     setUpdating(true)
@@ -137,10 +139,16 @@ export function StaffDetail({
         onAuthenticationRequired(caught.detail)
         return
       }
+      const fieldErrors = backendFieldErrors(caught, STAFF_BACKEND_FIELDS)
+      if (fieldErrors) return { fieldErrors }
       publish({
         kind: 'error',
         category: errorCategory(caught),
-        text: safeStaffError(caught, 'Промените не могат да бъдат запазени.'),
+        text: safeStaffError(
+          caught,
+          'Промените не могат да бъдат запазени.',
+          STAFF_REJECTED_MESSAGE,
+        ),
         reload: isConcurrentUpdate(caught),
       })
     } finally {
@@ -205,6 +213,10 @@ export function StaffDetail({
     }
   }
 
+  // Reloading discards an open, possibly dirty editor, so it goes through the
+  // shared unsaved-changes guard like every other discarding transition.
+  const reloadGuarded = () => guard.guard(() => void load())
+
   if (loading) {
     return (
       <div className="platform-content" aria-live="polite" aria-busy="true">
@@ -268,7 +280,7 @@ export function StaffDetail({
                 setEditingSection('none')
                 setProfileFeedback(null)
               }}
-              onSubmit={(input) => void update(input as UpdateStaffMemberInput)}
+              onSubmit={(input) => update(input as UpdateStaffMemberInput)}
             />
           ) : (
             <>
@@ -302,7 +314,7 @@ export function StaffDetail({
             </>
           )}
           <LocalFeedback feedback={profileFeedback} errorRef={profileError} />
-          <FeedbackReloadControl feedback={profileFeedback} onReload={load} />
+          <FeedbackReloadControl feedback={profileFeedback} onReload={reloadGuarded} />
         </div>
       </div>
 
@@ -311,7 +323,7 @@ export function StaffDetail({
           <div className="feedback-action-layout">
             <LocalFeedback feedback={lifecycleFeedback} errorRef={lifecycleError} />
             <div className="feedback-action-controls">
-              <FeedbackReloadControl feedback={lifecycleFeedback} onReload={load} />
+              <FeedbackReloadControl feedback={lifecycleFeedback} onReload={reloadGuarded} />
               {staffMember.active && !deactivateConfirmation && (
                 <Button
                   type="button"
@@ -346,7 +358,6 @@ export function StaffDetail({
                   </p>
                   <div className="action-group">
                     <Button
-                      ref={confirmationButton}
                       type="button"
                       variant="destructive"
                       disabled={lifecycleBusy}
@@ -355,6 +366,7 @@ export function StaffDetail({
                       {lifecycleBusy ? 'Запазване…' : 'Потвърди деактивирането'}
                     </Button>
                     <Button
+                      ref={cancelDeactivationButton}
                       type="button"
                       variant="secondary"
                       disabled={lifecycleBusy}
@@ -417,12 +429,12 @@ function FeedbackReloadControl({
   onReload,
 }: {
   feedback: Feedback | null
-  onReload: () => Promise<void>
+  onReload: () => void
 }) {
   if (!feedback?.reload) return null
 
   return (
-    <Button type="button" variant="secondary" onClick={() => void onReload()}>
+    <Button type="button" variant="secondary" onClick={onReload}>
       Зареди актуалните данни
     </Button>
   )

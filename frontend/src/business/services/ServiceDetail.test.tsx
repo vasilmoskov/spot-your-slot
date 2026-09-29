@@ -207,6 +207,9 @@ describe('ServiceDetail', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Деактивирай' }))
     expect(screen.getByRole('alertdialog')).toHaveTextContent('Подстригване')
     expect(mockedDeactivateService).not.toHaveBeenCalled()
+    // The safe action, never the destructive one, receives initial focus.
+    expect(screen.getByRole('button', { name: 'Отказ' })).toHaveFocus()
+    expect(screen.getByRole('button', { name: 'Потвърди деактивирането' })).not.toHaveFocus()
 
     fireEvent.click(screen.getByRole('button', { name: 'Потвърди деактивирането' }))
     await waitFor(() => expect(mockedDeactivateService).toHaveBeenCalledWith('service-a', 0))
@@ -250,6 +253,36 @@ describe('ServiceDetail', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Услугата е променена.')
     expect(screen.getByRole('button', { name: 'Зареди актуалните данни' })).toBeInTheDocument()
+  })
+
+  it('confirms before a reload discards a dirty edit after a concurrent-update conflict', async () => {
+    mockedGetService.mockResolvedValue(service)
+    mockedUpdateService.mockRejectedValue(
+      new ApiError(409, 'SERVICE_CONCURRENT_UPDATE', 'Услугата е променена.'),
+    )
+    render(
+      <ServiceDetail
+        serviceId="service-a"
+        readOnly={false}
+        onAuthenticationRequired={onAuthenticationRequired}
+        onBack={onBack}
+      />,
+    )
+    await screen.findByRole('heading', { name: 'Подстригване' })
+    fireEvent.click(screen.getByRole('button', { name: 'Редактирай' }))
+    fireEvent.change(screen.getByLabelText('Име на услугата'), { target: { value: 'Ново име' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Запази промените' }))
+    await screen.findByRole('button', { name: 'Зареди актуалните данни' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Зареди актуалните данни' }))
+    expect(mockedGetService).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Продължи редактирането' }))
+    expect(screen.getByLabelText('Име на услугата')).toHaveValue('Ново име')
+    expect(mockedGetService).toHaveBeenCalledTimes(1)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Зареди актуалните данни' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
+    await waitFor(() => expect(mockedGetService).toHaveBeenCalledTimes(2))
   })
 
   it('redirects to authentication on a 401 load response', async () => {

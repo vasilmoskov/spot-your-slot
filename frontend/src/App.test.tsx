@@ -607,6 +607,18 @@ describe('identity application', () => {
     expect(browserStorageWrite).not.toHaveBeenCalled()
   })
 
+  it('rejects a whitespace-only profile display name locally', async () => {
+    mockedRequest.mockResolvedValueOnce(session)
+    render(<App />)
+
+    await landOnProfile()
+    fireEvent.click(screen.getByRole('button', { name: 'Редактирай' }))
+    const displayName = screen.getByLabelText('Име')
+    fireEvent.input(displayName, { target: { value: '   ' } })
+
+    expect(displayName).toHaveProperty('validationMessage', 'Моля, попълнете това поле.')
+  })
+
   it('edits the display name, refreshes Profile and sidebar, and keeps email read-only', async () => {
     const updatedSession = { ...session, displayName: 'Мария' }
     const browserStorageWrite = vi.spyOn(Storage.prototype, 'setItem')

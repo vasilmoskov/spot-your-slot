@@ -1,13 +1,23 @@
-import { useState, type FormEvent, type InvalidEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { Button } from '../../ui/Button'
+import {
+  FieldError,
+  fieldControlProps,
+  useFieldValidation,
+  type SubmitOutcome,
+} from '../../ui/formValidation'
 import { useGuardedFormState } from '../../ui/UnsavedChangesGuard'
 import { type CreateServiceInput, type ServiceDetails, type UpdateServiceInput } from './api'
-
-const NAME_MAX_LENGTH = 200
-const DESCRIPTION_MAX_LENGTH = 2_000
-const MIN_DURATION_MINUTES = 1
-const MAX_DURATION_MINUTES = 480
-const PRICE_PATTERN = /^\d{1,10}(\.\d{1,2})?$/
+import {
+  DESCRIPTION_MAX_LENGTH,
+  MAX_DURATION_MINUTES,
+  MIN_DURATION_MINUTES,
+  NAME_MAX_LENGTH,
+  SERVICE_FIELD_ORDER,
+  validateService,
+  type ServiceField,
+  type ServiceFormValues,
+} from './validation'
 
 type ServiceFormProps = {
   service?: ServiceDetails
@@ -15,31 +25,9 @@ type ServiceFormProps = {
   submitLabel: string
   onChange?: () => void
   onCancel?: () => void
-  onSubmit: (input: CreateServiceInput | UpdateServiceInput) => void
-}
-
-function priceValidationMessage(field: HTMLInputElement): string {
-  if (field.validity.valueMissing) return 'Моля, въведете цена.'
-  if (field.validity.patternMismatch) {
-    return 'Въведете цена като число с най-много 2 знака след десетичната точка.'
-  }
-  return ''
-}
-
-function nameValidationMessage(field: HTMLInputElement | HTMLTextAreaElement): string {
-  if (field.validity.valueMissing) return 'Моля, попълнете това поле.'
-  if (field.validity.tooLong) {
-    return `Полето може да съдържа най-много ${field.maxLength} знака.`
-  }
-  return ''
-}
-
-function durationValidationMessage(field: HTMLInputElement): string {
-  if (field.validity.valueMissing) return 'Моля, въведете продължителност.'
-  if (field.validity.rangeUnderflow || field.validity.rangeOverflow) {
-    return `Продължителността трябва да е между ${MIN_DURATION_MINUTES} и ${MAX_DURATION_MINUTES} минути.`
-  }
-  return 'Моля, въведете валидна продължителност в минути.'
+  onSubmit: (
+    input: CreateServiceInput | UpdateServiceInput,
+  ) => Promise<SubmitOutcome<ServiceField>> | void
 }
 
 export function ServiceForm({
@@ -58,7 +46,20 @@ export function ServiceForm({
   const [name, setName] = useState(initialName)
   const [description, setDescription] = useState(initialDescription)
   const [durationMinutes, setDurationMinutes] = useState(initialDurationMinutes)
+  const [durationBadInput, setDurationBadInput] = useState(false)
   const [price, setPrice] = useState(initialPrice)
+
+  const values: ServiceFormValues = { name, description, durationMinutes, price, durationBadInput }
+  const { errors, controlRef, touch, edited, validateAll, applyServerErrors } =
+    useFieldValidation<ServiceField, ServiceFormValues>({
+      order: SERVICE_FIELD_ORDER,
+      values,
+      validate: validateService,
+      isEmpty: (field, current) =>
+        field === 'durationMinutes'
+          ? current.durationMinutes.trim() === '' && !current.durationBadInput
+          : current[field].trim() === '',
+    })
 
   const isDirty =
     name !== initialName ||
@@ -72,63 +73,67 @@ export function ServiceForm({
     guard.guard(() => onCancel?.())
   }
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (busy) return
+    if (!validateAll()) return
 
-    const data = new FormData(event.currentTarget)
-    const rawDescription = String(data.get('description') ?? '').trim()
+    const rawDescription = description.trim()
     const common = {
-      name: String(data.get('name') ?? '').trim(),
+      name: name.trim(),
       description: rawDescription === '' ? undefined : rawDescription,
-      durationMinutes: Number(data.get('durationMinutes')),
-      price: String(data.get('price') ?? '').trim(),
+      durationMinutes: Number(durationMinutes),
+      price: price.trim(),
     }
 
-    if (service) {
-      onSubmit({ ...common, expectedVersion: service.version })
-      return
-    }
-
-    onSubmit(common)
+    const outcome = await onSubmit(
+      service ? { ...common, expectedVersion: service.version } : common,
+    )
+    if (outcome?.fieldErrors) applyServerErrors(outcome.fieldErrors)
   }
 
   return (
-    <form onChange={onChange} className="business-form" onSubmit={submit}>
-      <label>
-        Име на услугата
+    <form onChange={onChange} className="business-form" onSubmit={submit} noValidate>
+      <div className="form-field">
+        <label htmlFor="service-name">Име на услугата</label>
         <input
+          {...fieldControlProps('service-name', errors.name)}
+          ref={controlRef('name')}
           name="name"
           type="text"
           value={name}
           required
           maxLength={NAME_MAX_LENGTH}
-          onChange={(event) => setName(event.target.value)}
-          onInvalid={(event: InvalidEvent<HTMLInputElement>) => {
-            event.currentTarget.setCustomValidity('')
-            event.currentTarget.setCustomValidity(nameValidationMessage(event.currentTarget))
+          onBlur={() => touch('name')}
+          onChange={(event) => {
+            edited('name')
+            setName(event.target.value)
           }}
-          onInput={(event) => event.currentTarget.setCustomValidity('')}
         />
-      </label>
-      <label>
-        Описание (по избор)
+        <FieldError id="service-name" error={errors.name} />
+      </div>
+      <div className="form-field">
+        <label htmlFor="service-description">Описание (по избор)</label>
         <textarea
+          {...fieldControlProps('service-description', errors.description)}
+          ref={controlRef('description')}
           name="description"
           value={description}
           maxLength={DESCRIPTION_MAX_LENGTH}
           rows={4}
-          onChange={(event) => setDescription(event.target.value)}
-          onInvalid={(event: InvalidEvent<HTMLTextAreaElement>) => {
-            event.currentTarget.setCustomValidity('')
-            event.currentTarget.setCustomValidity(nameValidationMessage(event.currentTarget))
+          onBlur={() => touch('description')}
+          onChange={(event) => {
+            edited('description')
+            setDescription(event.target.value)
           }}
-          onInput={(event) => event.currentTarget.setCustomValidity('')}
         />
-      </label>
-      <label>
-        Продължителност (минути)
+        <FieldError id="service-description" error={errors.description} />
+      </div>
+      <div className="form-field">
+        <label htmlFor="service-duration">Продължителност (минути)</label>
         <input
+          {...fieldControlProps('service-duration', errors.durationMinutes)}
+          ref={controlRef('durationMinutes')}
           name="durationMinutes"
           type="number"
           inputMode="numeric"
@@ -137,31 +142,33 @@ export function ServiceForm({
           min={MIN_DURATION_MINUTES}
           max={MAX_DURATION_MINUTES}
           step={1}
-          onChange={(event) => setDurationMinutes(event.target.value)}
-          onInvalid={(event: InvalidEvent<HTMLInputElement>) => {
-            event.currentTarget.setCustomValidity('')
-            event.currentTarget.setCustomValidity(durationValidationMessage(event.currentTarget))
+          onBlur={() => touch('durationMinutes')}
+          onChange={(event) => {
+            edited('durationMinutes')
+            setDurationBadInput(event.target.validity.badInput)
+            setDurationMinutes(event.target.value)
           }}
-          onInput={(event) => event.currentTarget.setCustomValidity('')}
         />
-      </label>
-      <label>
-        Цена (EUR)
+        <FieldError id="service-duration" error={errors.durationMinutes} />
+      </div>
+      <div className="form-field">
+        <label htmlFor="service-price">Цена (EUR)</label>
         <input
+          {...fieldControlProps('service-price', errors.price)}
+          ref={controlRef('price')}
           name="price"
           type="text"
           inputMode="decimal"
           value={price}
           required
-          pattern={PRICE_PATTERN.source}
-          onChange={(event) => setPrice(event.target.value)}
-          onInvalid={(event: InvalidEvent<HTMLInputElement>) => {
-            event.currentTarget.setCustomValidity('')
-            event.currentTarget.setCustomValidity(priceValidationMessage(event.currentTarget))
+          onBlur={() => touch('price')}
+          onChange={(event) => {
+            edited('price')
+            setPrice(event.target.value)
           }}
-          onInput={(event) => event.currentTarget.setCustomValidity('')}
         />
-      </label>
+        <FieldError id="service-price" error={errors.price} />
+      </div>
       <div className="action-group">
         <Button disabled={busy}>{busy ? 'Запазване…' : submitLabel}</Button>
         {onCancel && (

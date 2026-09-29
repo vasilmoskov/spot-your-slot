@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState, useLayoutEffect } from 'react'
 import { useFeedback, errorCategory } from '../../ui/useFeedback'
 import { Button } from '../../ui/Button'
 import { createBusiness, type CreateBusinessInput } from './api'
@@ -21,7 +21,7 @@ export function BusinessCreate({
   const submitting = useRef(false)
   const errorMessage = useRef<HTMLParagraphElement>(null)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (error) errorMessage.current?.focus()
   }, [error])
 

@@ -332,6 +332,37 @@ class BusinessServiceApiIntegrationTests extends PostgresIntegrationTest {
     }
 
     @Test
+    void invalidServiceBodyFieldsAreNamedInFieldErrors() throws Exception {
+        Actor owner = actor("ACTIVE", "BUSINESS_OWNER", true, false, true);
+        String[][] cases = {
+            {"\" \"", "30", "\"10.00\"", "name"},
+            {"\"Valid\"", "0", "\"10.00\"", "durationMinutes"},
+            {"\"Valid\"", "481", "\"10.00\"", "durationMinutes"},
+            {"\"Valid\"", "30", "\"-1\"", "price"},
+            {"\"Valid\"", "30", "\"10.999\"", "price"},
+        };
+        for (String[] testCase : cases) {
+            mvc.perform(post("/api/business/services")
+                            .with(csrf())
+                            .cookie(owner.session())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"name\":" + testCase[0]
+                                    + ",\"durationMinutes\":" + testCase[1]
+                                    + ",\"price\":" + testCase[2] + "}"))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                    .andExpect(jsonPath("$.detail").value("Проверете въведените данни."))
+                    .andExpect(jsonPath("$.fieldErrors." + testCase[3]).isNotEmpty())
+                    .andExpect(jsonPath("$.fieldErrors.length()").value(1));
+        }
+        mvc.perform(get("/api/business/services")
+                        .cookie(owner.session())
+                        .param("size", "7"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors").doesNotExist());
+    }
+
+    @Test
     void malformedUuidJsonAndQueryTypesUseTheSafeValidationOutcome() throws Exception {
         Actor owner = actor("ACTIVE", "BUSINESS_OWNER", true, false, true);
 

@@ -1,10 +1,16 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState, useLayoutEffect } from 'react'
 import { useFeedback, errorCategory } from '../../ui/useFeedback'
 import { Button } from '../../ui/Button'
 import { useUnsavedChangesGuard } from '../../ui/UnsavedChangesGuard'
 import { createService, type CreateServiceInput } from './api'
 import { ServiceForm } from './ServiceForm'
 import { isAuthenticationRequired, safeServiceError } from './errors'
+import { backendFieldErrors, type SubmitOutcome } from '../../ui/formValidation'
+import {
+  SERVICE_BACKEND_FIELDS,
+  SERVICE_REJECTED_MESSAGE,
+  type ServiceField,
+} from './validation'
 
 type ServiceCreateProps = {
   readOnly: boolean
@@ -25,11 +31,11 @@ export function ServiceCreate({
   const submitting = useRef(false)
   const errorMessage = useRef<HTMLParagraphElement>(null)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (error) errorMessage.current?.focus()
   }, [error])
 
-  const submit = async (input: CreateServiceInput) => {
+  const submit = async (input: CreateServiceInput): Promise<SubmitOutcome<ServiceField>> => {
     if (submitting.current) return
     submitting.current = true
     setBusy(true)
@@ -48,10 +54,16 @@ export function ServiceCreate({
         onAuthenticationRequired(caught.detail)
         return
       }
+      const fieldErrors = backendFieldErrors(caught, SERVICE_BACKEND_FIELDS)
+      if (fieldErrors) return { fieldErrors }
       publish({
         kind: 'error',
         category: errorCategory(caught),
-        text: safeServiceError(caught, 'Услугата не може да бъде създадена.'),
+        text: safeServiceError(
+          caught,
+          'Услугата не може да бъде създадена.',
+          SERVICE_REJECTED_MESSAGE,
+        ),
       })
     } finally {
       submitting.current = false
@@ -87,7 +99,7 @@ export function ServiceCreate({
           busy={busy}
           submitLabel="Създай услуга"
           onChange={() => setFeedback(null)}
-          onSubmit={(input) => void submit(input as CreateServiceInput)}
+          onSubmit={(input) => submit(input as CreateServiceInput)}
         />
         {error && (
           <p

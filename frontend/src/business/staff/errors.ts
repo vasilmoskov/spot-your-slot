@@ -12,7 +12,20 @@ const SAFE_STAFF_CODES = new Set([
   'BUSINESS_SUSPENDED',
 ])
 
-export function safeStaffError(error: unknown, fallback: string): string {
+// `validationMessage` replaces the backend's generic VALIDATION_ERROR text
+// (which names no field) with an actionable message from the caller.
+export function safeStaffError(
+  error: unknown,
+  fallback: string,
+  validationMessage?: string,
+): string {
+  if (
+    validationMessage &&
+    error instanceof ApiError &&
+    error.code === 'VALIDATION_ERROR'
+  ) {
+    return validationMessage
+  }
   if (error instanceof ApiError && SAFE_STAFF_CODES.has(error.code)) {
     return error.detail
   }

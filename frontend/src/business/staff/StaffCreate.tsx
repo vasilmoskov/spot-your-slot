@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState, useLayoutEffect } from 'react'
 import { useFeedback, errorCategory } from '../../ui/useFeedback'
 import { Button } from '../../ui/Button'
 import { useUnsavedChangesGuard } from '../../ui/UnsavedChangesGuard'
 import { createStaffMember, type CreateStaffMemberInput } from './api'
 import { StaffForm } from './StaffForm'
 import { isAuthenticationRequired, safeStaffError } from './errors'
+import { backendFieldErrors, type SubmitOutcome } from '../../ui/formValidation'
+import { STAFF_BACKEND_FIELDS, STAFF_REJECTED_MESSAGE, type StaffField } from './validation'
 
 type StaffCreateProps = {
   readOnly: boolean
@@ -25,11 +27,11 @@ export function StaffCreate({
   const submitting = useRef(false)
   const errorMessage = useRef<HTMLParagraphElement>(null)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (error) errorMessage.current?.focus()
   }, [error])
 
-  const submit = async (input: CreateStaffMemberInput) => {
+  const submit = async (input: CreateStaffMemberInput): Promise<SubmitOutcome<StaffField>> => {
     if (submitting.current) return
     submitting.current = true
     setBusy(true)
@@ -48,10 +50,16 @@ export function StaffCreate({
         onAuthenticationRequired(caught.detail)
         return
       }
+      const fieldErrors = backendFieldErrors(caught, STAFF_BACKEND_FIELDS)
+      if (fieldErrors) return { fieldErrors }
       publish({
         kind: 'error',
         category: errorCategory(caught),
-        text: safeStaffError(caught, 'Членът на екипа не може да бъде създаден.'),
+        text: safeStaffError(
+          caught,
+          'Членът на екипа не може да бъде създаден.',
+          STAFF_REJECTED_MESSAGE,
+        ),
       })
     } finally {
       submitting.current = false
@@ -87,7 +95,7 @@ export function StaffCreate({
           busy={busy}
           submitLabel="Добави член на екипа"
           onChange={() => setFeedback(null)}
-          onSubmit={(input) => void submit(input as CreateStaffMemberInput)}
+          onSubmit={(input) => submit(input as CreateStaffMemberInput)}
         />
         {error && (
           <p

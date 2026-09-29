@@ -57,11 +57,11 @@ are as defined in issue #14 and are not repeated here.
    confirmation, timezone display, backend overlap/concurrency error
    rendering; see "Phase 3 — Recurring working-schedule management" below for
    the concrete decisions and evidence.
-5. **Phase 4 — Cross-cutting hardening, visual review, and documentation.**
-   Audit stale-response and Business-context-change handling across all three
-   features, perform the full desktop/mobile/200%-zoom human visual review,
-   update authoritative documentation, run the full frontend regression
-   suite.
+5. **Phase 4 — Cross-cutting hardening, validation UX, and documentation**
+   (completed, pending the human visual checkpoint below). Field-level local
+   validation for every Issue #14 form, shared unsaved-changes and
+   destructive-confirmation hardening, stale-response audit, documentation and
+   durable UI rules; see "Phase 4 — cross-cutting hardening" below.
 
 ## Phase 1 acceptance criteria
 
@@ -453,9 +453,9 @@ render generically from the allowlist.
 
 **Read-only assignment indicator** — the read-only `Назначени услуги` table
 (shown outside edit mode) now renders `Услуга`/`Назначена` columns matching
-the editable table's headers, with a non-interactive `✓` plus visually
-hidden `Да` text (not a disabled checkbox) in the second column; no status
-badge and no `✕` (unassigned Services are not listed there at all). The
+the editable table's headers, with a non-interactive `✓`/`✕` plus visually
+hidden `Да`/`Не` text (not a disabled checkbox) in the second column, for
+every active Service and any assigned inactive Service; no status badge. The
 editable assignment table, its compact interactive checkboxes, active/
 unassigned filtering, full-catalog pagination, and stale-response
 protection are unchanged.
@@ -568,11 +568,10 @@ copy specified for the whole-schedule case: heading "Изчистване на �
 destructive button "Изчисти графика"). Removing a single period, or clearing
 an already-empty day/schedule (the button is disabled in that state), never
 prompts. The safe button always receives initial focus and the destructive
-button is never auto-focused — the opposite convention from the codebase's
-existing deactivate-style confirmations (StaffDetail), which intentionally
-focus the destructive action; this phase followed the task's explicit
-instruction for these two dialogs specifically, matching the same safe-
-focus rule the shared `UnsavedChangesGuard` dialog already uses.
+button is never auto-focused — the same safe-focus rule the shared
+`UnsavedChangesGuard` dialog uses. (The Service/Staff deactivate confirmations,
+which originally focused the destructive action, were aligned to this rule in
+Phase 4.)
 
 **Validation** — `validateDraftPeriods` (pure, unit-tested in
 `presentation.test.ts`) enforces: both times required, canonical `HH:mm`
@@ -1130,17 +1129,16 @@ schedule mutated during a check (e.g. a test clear) was restored through
 the application's own "Откажи промените"/reload flows before moving to the
 next check.
 
-**Deviations / limitations** — None from the approved correction scope. The
-`window resize` listener that keeps an open overflow menu correctly
-positioned does not also listen for `scroll`; if the page is scrolled while
-the menu is open, the menu (being `position: fixed`) stays fixed on screen
-rather than following the trigger. This is a pre-existing category of gap
-(the menu also has no outside-click-to-close handler and no full ARIA
-focus trap, both already documented as accepted limitations in the prior
-redesign pass) rather than a regression introduced here, and was judged out
-of this bounded correction's scope.
+**Deviations / limitations** — None from the approved correction scope. This
+limitation was later resolved: the open menu now closes on outside click and
+on scroll, Escape closes it and restores focus to the trigger, and all
+listeners are removed on close/unmount. It still has no full roving-tabindex
+arrow-key navigation or focus trap (two items only).
 
-### Mandatory Phase 4 / final-hardening item — field-level backend validation mapping
+### Mandatory Phase 4 / final-hardening item — field-level validation (resolved in Phase 4, with one backend limitation)
+
+_Status: resolved in Phase 4 for every locally knowable rule; the backend
+limitation below remains and is documented in the Phase 4 section._
 
 Confirmed existing UX defect, recorded during Phase 3 rather than fixed (out
 of Phase 3's approved scope): when the backend rejects a specific field —
@@ -1165,6 +1163,220 @@ optional future idea:
   be the only information.
 * Entered values and dirty state must be preserved.
 * Unknown/general failures must remain safely sanitized.
+
+## Phase 4 — cross-cutting hardening
+
+Frontend and documentation only; no backend, migration, dependency, or API
+contract change. Treated as Standard risk.
+
+**Repository gate** — `main` at `71a3cbf` equal to `origin/main`, clean tree,
+empty index, latest `main` CI run green, migrations V1–V8 unchanged.
+
+**Local field-level validation** — Services, StaffMembers, and the schedule
+period dialog no longer rely on native browser validation and the generic
+backend message. New shared helper `ui/formValidation.tsx`
+(`useFieldErrors`, `fieldControlProps`, `FieldError`) plus pure, unit-tested
+rule modules `business/services/validation.ts` and
+`business/staff/validation.ts` (canonicalization in `business/text.ts`
+mirroring the backend's approved whitespace and NFKC handling):
+
+* forms use `noValidate`; every error is a Bulgarian sentence rendered under
+  its field in a `.form-field` block, tied with `aria-invalid` and
+  `aria-describedby`; all errors appear at once, the first invalid control in
+  DOM order receives focus, and entered values are preserved;
+* editing a field re-evaluates only that field, so its error disappears once
+  the value is valid;
+* rules covered: required and whitespace-only names (including non-breaking
+  and ideographic spaces), name length in code points (200), description
+  length (2000), duration 1–480 whole minutes (including the number input's
+  unparseable-text state), EUR price format (`^\d{1,10}(\.\d{1,2})?$`), optional
+  email (blank accepted, shape and 320-character limit when non-blank),
+  optional telephone (blank accepted; otherwise only a `+`, `00`, or `0`
+  prefix, digits after removing the backend's approved separators, and the
+  15-digit E.164 ceiling);
+* schedule period dialog: a missing start or end time is reported next to its
+  own field; a reversed, overlapping, duplicate, or over-limit period is a
+  range error tied to both fields; focus moves to the first invalid time
+  field; editing clears the affected error;
+* Business-owner Profile display name now also rejects a whitespace-only value
+  locally (`requireTrimmedValue`). The other Profile fields are pre-existing
+  identity forms and were not changed.
+
+**Backend limitation (documented, not changed)** — the backend reports every
+rejected value as one generic `VALIDATION_ERROR` (`Проверете въведените
+данни.`) with no field metadata, and the phone number is finally checked
+against real numbering rules by the backend. The frontend therefore cannot
+map an unforeseen backend rejection to a field. It does not guess: it shows
+an actionable form-level message instead. For Services it lists the fields to
+review; for StaffMembers it names the telephone or the email only when that
+is the sole non-blank contact value, and otherwise mentions both. Exposing
+machine-readable field names would be a public API contract change and needs
+separate approval; it was not made. The earlier required item "backend
+validation responses must identify the invalid field" therefore remains open
+as a backend follow-up.
+
+**Unsaved-changes audit** — every editable workflow already used the single
+shared guard (Service and Staff create/edit, assignment editing, schedule
+editing including the dirty period dialog, Profile). One real gap was found and
+fixed: the "Зареди актуалните данни" reload after an optimistic-concurrency
+conflict discarded a dirty editor without confirmation. It now goes through
+`guard.guard` in `ServiceDetail`, `StaffDetail`, `StaffServiceAssignments`, and
+`WorkingScheduleEditor`, so the user can continue editing or explicitly discard.
+
+**Destructive confirmation hardening** — the Service and Staff deactivate
+confirmations focused the destructive button; they now focus the safe „Отказ“
+action first (verified in the browser). The two schedule `alertdialog`s gained
+`aria-modal="true"`, and „Редактирай графика“ is disabled while a whole-schedule
+clear is in flight so nothing behind the modal can start a competing operation.
+
+**Stale-response and Business-context audit** — reads use `AbortController`
+plus request-sequence guards; mutations use synchronous in-progress refs and
+`useFeedback` generations; Business-owner sections are keyed by the active
+Business (and entity id); the Business selector exists only on the Profile
+route, so Business-owner data unmounts before a switch. No defect was found in
+that infrastructure. Regression tests were added for the uncovered case of a
+create response arriving after the form was left (no navigation) and for
+duplicate activation while a create is pending.
+
+**Lifecycle and authorization presentation** — verified against the code and
+the backend service: DRAFT/ACTIVE allow mutations, SUSPENDED shows the shell
+banner and no mutation controls, an inactive StaffMember keeps profile and
+assignment editing (the backend blocks only a suspended Business) while its
+schedule is view-only, Business-owner routes are unavailable to
+platform-admin-only and non-owner sessions, and the platform-admin shell does
+not render Business-owner controls.
+
+**Accessibility and layout** — headings are single-`h1` with section headings
+below; dialogs expose `role`, label, and `aria-modal`; sortable headers keep
+`aria-sort`; the schedule period dialog fields now wrap instead of squeezing
+at narrow widths (`repeat(auto-fit, minmax(9rem, 1fr))`).
+
+**Test evidence** — Frontend (Vitest/Testing Library): new
+`services/validation.test.ts` and `staff/validation.test.ts` (rules and
+boundaries), form-level tests in `ServiceCreate.test.tsx` and
+`StaffCreate.test.tsx` (inline error, focus, ARIA, clearing, generic-backend
+replacement, late responses), safe-focus and confirm-before-reload tests in
+`ServiceDetail.test.tsx`/`StaffDetail.test.tsx`, schedule-dialog per-field
+error, focus, and clearing tests, an `aria-modal`/disabled-edit assertion, and
+a Profile whitespace-name test in `App.test.tsx`. Full `npm run test`: 457
+tests passed across 34 files (last documented count before this phase: 418 in
+32 files). `npm run lint` and `npm run build` clean; `git diff --check` clean;
+index empty; no migration, dependency, or backend file changed.
+
+**Visual review** — Performed in the built-in browser against a throwaway
+in-memory mock of the Business-owner API (a script kept outside the
+repository, on a second Vite instance), because no local Business-owner
+credentials were available and none were searched for. The real backend and
+PostgreSQL were not touched and no fixture data was created or changed there.
+Reviewed: Service and Staff create forms with all error states at desktop and
+375 px (wrapped multi-line errors do not touch fields or the action button),
+the schedule Add dialog (missing times, overlap range error) at 375 px and
+1024 px, the guarded hash navigation from a dirty form, the deactivate
+confirmation (focus on „Отказ“), and a `SUSPENDED` Business at 640 px
+(≈ 200% zoom of a 1280 px window; banner shown, no mutation controls, no
+horizontal overflow). Not covered by this review, and therefore still
+requiring the user's opinion on a real fixture: the Services and Staff list
+tables, the weekly grid at every width, the assignment editor, the whole-week
+clear/copy dialogs, and the DRAFT presentation.
+
+### Phase 4 validation-consistency correction (Strict, approved)
+
+**Backend contract extension (backwards compatible)** — a `VALIDATION_ERROR`
+response from the Service and StaffMember endpoints may now carry one optional
+property next to the unchanged `status`, `title`, `code`, and `detail`:
+
+```json
+{ "code": "VALIDATION_ERROR", "detail": "Проверете въведените данни.",
+  "fieldErrors": { "contactPhone": "Въведеният телефонен номер не е валиден." } }
+```
+
+`fieldErrors` maps a public HTTP field name to a fixed Bulgarian message and
+never contains exception text or submitted values. Named fields: Service
+`name`, `description`, `durationMinutes`, `price`; StaffMember `displayName`,
+`contactEmail`, `contactPhone`. Page, size, sort, direction, identifier,
+version, assignment, and command failures stay generic (no `fieldErrors`). The
+validators stop at the first failure, so the backend names one field per
+response; the frontend still reports every locally detectable error together.
+Implemented in `BusinessServiceExceptionHandler` and
+`BusinessStaffMemberExceptionHandler` (`InvalidInput` already carried the
+internal field). The working-schedule and platform endpoints are unchanged.
+
+**Telephone stays optional** (approved option A): blank or absent is valid and
+clears the value; a non-blank value must be a valid country-aware number. No
+schema or StaffMember contract change.
+
+**Frontend** — `ui/formValidation.tsx` now implements the touched/submitted
+policy (`useFieldValidation`): no premature required errors, validation on
+blur, live revalidation once touched, immediate errors for already-invalid
+non-empty values, all-errors-plus-first-focus on submit, and backend
+`fieldErrors` mapped inline (`backendFieldErrors`, `ApiError.fieldErrors`,
+sanitized to short string messages). Service duration/price messages follow
+the specified order (syntax, range/format, negative price). Telephone is
+validated with the newly added exact-pinned dependency `libphonenumber-js`
+1.13.14 (MIT, no runtime dependencies), using the `max` metadata because the
+smaller `min` set accepts numbers the backend's full metadata rejects (for
+example `+359800123456`); `package.json` and `package-lock.json` gained only
+that entry. The telephone metadata is emitted as its own eagerly preloaded `vendor-libphonenumber` chunk (194 kB, 51 kB gzip) through `manualChunks` in `vite.config.ts`, leaving the application chunk at 317 kB (86 kB gzip) and the build free of the chunk-size warning. A
+`VALIDATION_ERROR` without usable `fieldErrors` shows the form-level
+fallback. Non-field failures keep using the form alert.
+
+**Audit** — Profile: the display name uses native browser validation for its
+single field and its backend validation carries no field metadata, so it was
+left unchanged (its whitespace-only check from the first correction remains).
+Schedule period dialog: already shows field-specific inline errors that clear
+on edit; it does not use the shared hook (its errors are produced on
+submission) and was not changed.
+
+**Test-stability fix** — the full suite occasionally failed under CPU load
+(reproduced 3 times in 24 loaded runs before the fix): a passive `useEffect`
+that moves focus to an error alert, or that registers the unsaved-changes
+guard's dirty state, can run after the DOM already shows the new state, so a
+click or assertion in that window saw stale focus or a stale "dirty" guard
+(failures: my `StaffCreate` "maps backend fieldErrors…" `toHaveFocus`, the
+pre-existing `App` "clears the guard after a successful password change" and
+`BusinessCreate` "shows safe validation and slug-conflict feedback" tests).
+All focus-moving effects and `useGuardedFormState` registration are now
+layout effects, so focus and guard state change in the same commit as the DOM.
+This is a small production correctness fix, not only a test fix. After it,
+6 normal and 16 CPU-loaded consecutive `npm run test` runs passed 465/465
+with no `act()` warning, unhandled rejection, or console error.
+
+**Contact-email policy (blocking correction)** — a real defect let `a@a`
+(possibly with a Cyrillic `а`, which the browser's email input submits as
+`a@xn--80a`) be accepted and later displayed as `a@xn--80a`. Neither the
+backend nor the frontend performs IDN conversion; the browser does. The defect
+was accepting a single-label domain. The policy is now defined once per side
+and asserted with the same examples: `StaffMemberEmailPolicy` (backend, applied
+before the general `@Email` check) and `isAcceptableEmail` in
+`staff/validation.ts`. Rules: exactly one `@`, a non-empty local part that does not start or end
+with `.` or contain `..` (the frontend enforces this itself; the backend
+rejects it through its general `@Email` validator), no whitespace, and a dotted domain of at least two labels, none empty, none
+starting or ending with `-`, each made of letters, digits, and `-`; the 320
+character limit is unchanged. Rejected: `a@a`, `a@а`, `a@xn--80a`,
+`@primer.bg`, `a@`, `a@.bg`, `a@primer.`, `a@primer..bg`, hyphen-edged labels,
+and whitespace. Accepted: `ime@primer.bg`, `a@ab.bg`, subdomain addresses, and
+ASCII addresses with dotted local parts and subdomains. **Only ASCII
+addresses are accepted**: any non-ASCII character in the local part or domain
+(`иван@primer.bg`, `ime@пример.бг`, `иван@пример.бг`) is rejected. Internationalized
+addresses need SMTPUTF8 support from every future mail provider and integration
+(invitations, password resets, notifications), so they are intentionally
+deferred for the MVP rather than accidentally unsupported; no Punycode
+conversion or SMTPUTF8 support is added, and an explicitly typed ASCII
+`xn--` domain with a dot is treated as ordinary ASCII. Blank stays valid (the
+contact email is optional). The inline message is exactly „Въведете валиден
+имейл, например ime@primer.bg.“; the backend `fieldErrors.contactEmail`
+message stays „Въведеният имейл адрес не е валиден.“. No schema change; existing rows,
+including any already-stored single-label address, are not modified and must be
+corrected through the UI.
+
+**Limitations** — libphonenumber-js and the backend's Google libphonenumber
+ship separate metadata releases and can disagree on rare numbers; the backend
+`fieldErrors.contactPhone` is then shown inline. The backend reports one field
+at a time.
+
+**Remaining explicit exclusions** — appointment calendar, availability,
+schedule exceptions, booking, Membership management, backend field-level
+validation metadata (see above), and browser end-to-end tests (#15).
 
 ## Notes
 

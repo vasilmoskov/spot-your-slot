@@ -2,7 +2,9 @@ package bg.spotyourslot.catalog.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import bg.spotyourslot.catalog.ServiceApplicationException;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -24,11 +26,36 @@ class BusinessServiceExceptionHandlerTests {
                 .doesNotContain("exception");
     }
 
+    @Test
+    void namesOnlyCorrectableBodyFieldsWithFixedMessages() {
+        var handler = new BusinessServiceExceptionHandler();
+        var expected = java.util.Map.of(
+                ServiceApplicationException.InputField.NAME, "name",
+                ServiceApplicationException.InputField.DESCRIPTION, "description",
+                ServiceApplicationException.InputField.DURATION_MINUTES, "durationMinutes",
+                ServiceApplicationException.InputField.PRICE, "price");
+        for (var field : ServiceApplicationException.InputField.values()) {
+            var problem = handler.invalidInput(new ServiceApplicationException.InvalidInput(field));
+            assertThat(problem.getStatus()).isEqualTo(400);
+            assertThat(problem.getProperties()).containsEntry("code", "VALIDATION_ERROR");
+            assertThat(problem.getDetail()).isEqualTo("Проверете въведените данни.");
+            if (expected.containsKey(field)) {
+                @SuppressWarnings("unchecked")
+                var fieldErrors = (java.util.Map<String, String>) problem.getProperties()
+                        .get("fieldErrors");
+                assertThat(fieldErrors).containsOnlyKeys(expected.get(field));
+                assertThat(fieldErrors.get(expected.get(field))).isNotBlank();
+            } else {
+                assertThat(problem.getProperties()).doesNotContainKey("fieldErrors");
+            }
+        }
+    }
+
     private static Stream<Arguments> problems() {
         var handler = new BusinessServiceExceptionHandler();
         return Stream.of(
                 Arguments.of(
-                        handler.invalidInput(),
+                        handler.invalidInput(new ServiceApplicationException.InvalidInput(ServiceApplicationException.InputField.COMMAND)),
                         400,
                         "VALIDATION_ERROR",
                         "Проверете въведените данни."),

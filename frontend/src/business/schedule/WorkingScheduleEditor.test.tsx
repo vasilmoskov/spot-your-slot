@@ -260,8 +260,58 @@ describe('WorkingScheduleEditor — add/edit period dialog', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Добави' }))
 
     expect(screen.getByRole('dialog')).toBeInTheDocument()
-    expect(within(dialog).getByText('Въведете начален и краен час.')).toBeInTheDocument()
+    const end = within(dialog).getByLabelText('Краен час')
+    expect(within(dialog).getByText('Въведете краен час.')).toBeInTheDocument()
+    expect(end).toHaveAttribute('aria-invalid', 'true')
+    expect(end).toHaveAttribute('aria-describedby', 'period-dialog-end-error')
+    expect(end).toHaveFocus()
+    expect(within(dialog).getByLabelText('Начален час')).not.toHaveAttribute('aria-invalid')
     expect(within(dialog).getByLabelText('Начален час')).toHaveValue('09:00')
+  })
+
+  it('names each missing time next to its own field and focuses the first one', async () => {
+    await renderEditing(emptySchedule)
+    fireEvent.click(within(daySection('Понеделник')).getByRole('button', { name: '+ Добави' }))
+    const dialog = screen.getByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Добави' }))
+
+    const start = within(dialog).getByLabelText('Начален час')
+    const end = within(dialog).getByLabelText('Краен час')
+    expect(within(dialog).getByText('Въведете начален час.')).toBeInTheDocument()
+    expect(within(dialog).getByText('Въведете краен час.')).toBeInTheDocument()
+    expect(start).toHaveAttribute('aria-describedby', 'period-dialog-start-error')
+    expect(end).toHaveAttribute('aria-describedby', 'period-dialog-end-error')
+    expect(start).toHaveFocus()
+
+    fireEvent.change(start, { target: { value: '09:00' } })
+    expect(within(dialog).queryByText('Въведете начален час.')).not.toBeInTheDocument()
+    expect(start).not.toHaveAttribute('aria-invalid')
+    expect(within(dialog).getByText('Въведете краен час.')).toBeInTheDocument()
+  })
+
+  it('ties a range error to both time fields and clears it when either is corrected', async () => {
+    await renderEditing(emptySchedule)
+    fireEvent.click(within(daySection('Понеделник')).getByRole('button', { name: '+ Добави' }))
+    const dialog = screen.getByRole('dialog')
+    const start = within(dialog).getByLabelText('Начален час')
+    const end = within(dialog).getByLabelText('Краен час')
+    fireEvent.change(start, { target: { value: '12:00' } })
+    fireEvent.change(end, { target: { value: '09:00' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Добави' }))
+
+    expect(within(dialog).getByText('Началният час трябва да бъде преди крайния.')).toBeInTheDocument()
+    expect(start).toHaveAttribute('aria-invalid', 'true')
+    expect(end).toHaveAttribute('aria-invalid', 'true')
+    expect(start).toHaveAttribute('aria-describedby', 'period-dialog-range-error')
+    expect(end).toHaveAttribute('aria-describedby', 'period-dialog-range-error')
+    expect(start).toHaveFocus()
+
+    fireEvent.change(end, { target: { value: '13:00' } })
+    expect(
+      within(dialog).queryByText('Началният час трябва да бъде преди крайния.'),
+    ).not.toBeInTheDocument()
+    expect(start).not.toHaveAttribute('aria-invalid')
+    expect(end).not.toHaveAttribute('aria-invalid')
   })
 
   it('rejects a reversed range without saving', async () => {
@@ -648,8 +698,11 @@ describe('WorkingScheduleEditor — page-level save/cancel and error handling', 
     ).toBeInTheDocument()
     const reloadButton = screen.getByRole('button', { name: 'Зареди актуалните данни' })
 
+    // Reloading discards the still-dirty draft, so it must be confirmed.
     mockedGetWorkingSchedule.mockResolvedValueOnce(splitSchedule)
     fireEvent.click(reloadButton)
+    expect(mockedGetWorkingSchedule).toHaveBeenCalledTimes(1)
+    fireEvent.click(await screen.findByRole('button', { name: 'Откажи промените' }))
     expect(await screen.findByText('09:00\u201312:00')).toBeInTheDocument()
     expect(mockedGetWorkingSchedule).toHaveBeenCalledTimes(2)
   })
@@ -1171,7 +1224,10 @@ describe('WorkingScheduleEditor — standalone whole-schedule clearing (outside 
     // The confirmation stays open (both actions disabled) while the request
     // is in flight, so a rapid second click cannot fire a second request.
     expect(screen.getByRole('alertdialog')).toBeInTheDocument()
+    expect(screen.getByRole('alertdialog')).toHaveAttribute('aria-modal', 'true')
     expect(confirmButton).toBeDisabled()
+    // Nothing behind the modal can start a competing operation meanwhile.
+    expect(screen.getByRole('button', { name: 'Редактирай графика' })).toBeDisabled()
 
     resolveReplace?.({ ...splitSchedule, periods: [], version: 3 })
     expect(await screen.findByText('Работният график е изчистен.')).toBeInTheDocument()

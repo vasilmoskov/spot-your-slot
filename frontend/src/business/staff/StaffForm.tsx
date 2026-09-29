@@ -1,11 +1,23 @@
-import { useState, type FormEvent, type InvalidEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { Button } from '../../ui/Button'
+import {
+  FieldError,
+  fieldControlProps,
+  useFieldValidation,
+  type SubmitOutcome,
+} from '../../ui/formValidation'
 import { useGuardedFormState } from '../../ui/UnsavedChangesGuard'
 import { type CreateStaffMemberInput, type StaffMemberDetails, type UpdateStaffMemberInput } from './api'
-
-const DISPLAY_NAME_MAX_LENGTH = 200
-const CONTACT_EMAIL_MAX_LENGTH = 320
-const CONTACT_PHONE_MAX_LENGTH = 50
+import { canonicalOptional } from '../text'
+import {
+  CONTACT_EMAIL_MAX_LENGTH,
+  CONTACT_PHONE_MAX_LENGTH,
+  DISPLAY_NAME_MAX_LENGTH,
+  STAFF_FIELD_ORDER,
+  validateStaff,
+  type StaffField,
+  type StaffFormValues,
+} from './validation'
 
 type StaffFormProps = {
   staffMember?: StaffMemberDetails
@@ -13,32 +25,9 @@ type StaffFormProps = {
   submitLabel: string
   onChange?: () => void
   onCancel?: () => void
-  onSubmit: (input: CreateStaffMemberInput | UpdateStaffMemberInput) => void
-}
-
-function nameValidationMessage(field: HTMLInputElement): string {
-  if (field.validity.valueMissing) return 'Моля, попълнете това поле.'
-  if (field.validity.tooLong) {
-    return `Полето може да съдържа най-много ${field.maxLength} знака.`
-  }
-  return ''
-}
-
-function emailValidationMessage(field: HTMLInputElement): string {
-  if (field.validity.tooLong) {
-    return `Полето може да съдържа най-много ${field.maxLength} знака.`
-  }
-  if (field.validity.typeMismatch) {
-    return 'Въведете валиден имейл адрес.'
-  }
-  return ''
-}
-
-function phoneValidationMessage(field: HTMLInputElement): string {
-  if (field.validity.tooLong) {
-    return `Полето може да съдържа най-много ${field.maxLength} знака.`
-  }
-  return ''
+  onSubmit: (
+    input: CreateStaffMemberInput | UpdateStaffMemberInput,
+  ) => Promise<SubmitOutcome<StaffField>> | void
 }
 
 export function StaffForm({
@@ -57,6 +46,15 @@ export function StaffForm({
   const [contactEmail, setContactEmail] = useState(initialContactEmail)
   const [contactPhone, setContactPhone] = useState(initialContactPhone)
 
+  const values: StaffFormValues = { displayName, contactEmail, contactPhone }
+  const { errors, controlRef, touch, edited, validateAll, applyServerErrors } =
+    useFieldValidation<StaffField, StaffFormValues>({
+      order: STAFF_FIELD_ORDER,
+      values,
+      validate: validateStaff,
+      isEmpty: (field, current) => canonicalOptional(current[field]) === '',
+    })
+
   const isDirty =
     displayName !== initialDisplayName ||
     contactEmail !== initialContactEmail ||
@@ -68,75 +66,79 @@ export function StaffForm({
     guard.guard(() => onCancel?.())
   }
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (busy) return
+    if (!validateAll()) return
 
-    const data = new FormData(event.currentTarget)
-    const rawContactEmail = String(data.get('contactEmail') ?? '').trim()
-    const rawContactPhone = String(data.get('contactPhone') ?? '').trim()
+    const rawContactEmail = contactEmail.trim()
+    const rawContactPhone = contactPhone.trim()
     const common = {
-      displayName: String(data.get('displayName') ?? '').trim(),
+      displayName: displayName.trim(),
       contactEmail: rawContactEmail === '' ? undefined : rawContactEmail,
       contactPhone: rawContactPhone === '' ? undefined : rawContactPhone,
     }
 
-    if (staffMember) {
-      onSubmit({ ...common, expectedVersion: staffMember.version })
-      return
-    }
-
-    onSubmit(common)
+    const outcome = await onSubmit(
+      staffMember ? { ...common, expectedVersion: staffMember.version } : common,
+    )
+    if (outcome?.fieldErrors) applyServerErrors(outcome.fieldErrors)
   }
 
   return (
-    <form onChange={onChange} className="business-form" onSubmit={submit}>
-      <label>
-        Име на члена на екипа
+    <form onChange={onChange} className="business-form" onSubmit={submit} noValidate>
+      <div className="form-field">
+        <label htmlFor="staff-display-name">Име на члена на екипа</label>
         <input
+          {...fieldControlProps('staff-display-name', errors.displayName)}
+          ref={controlRef('displayName')}
           name="displayName"
           type="text"
           value={displayName}
           required
           maxLength={DISPLAY_NAME_MAX_LENGTH}
-          onChange={(event) => setDisplayName(event.target.value)}
-          onInvalid={(event: InvalidEvent<HTMLInputElement>) => {
-            event.currentTarget.setCustomValidity('')
-            event.currentTarget.setCustomValidity(nameValidationMessage(event.currentTarget))
+          onBlur={() => touch('displayName')}
+          onChange={(event) => {
+            edited('displayName')
+            setDisplayName(event.target.value)
           }}
-          onInput={(event) => event.currentTarget.setCustomValidity('')}
         />
-      </label>
-      <label>
-        Имейл за връзка (по избор)
+        <FieldError id="staff-display-name" error={errors.displayName} />
+      </div>
+      <div className="form-field">
+        <label htmlFor="staff-contact-email">Имейл за връзка (по избор)</label>
         <input
+          {...fieldControlProps('staff-contact-email', errors.contactEmail)}
+          ref={controlRef('contactEmail')}
           name="contactEmail"
           type="email"
           value={contactEmail}
           maxLength={CONTACT_EMAIL_MAX_LENGTH}
-          onChange={(event) => setContactEmail(event.target.value)}
-          onInvalid={(event: InvalidEvent<HTMLInputElement>) => {
-            event.currentTarget.setCustomValidity('')
-            event.currentTarget.setCustomValidity(emailValidationMessage(event.currentTarget))
+          onBlur={() => touch('contactEmail')}
+          onChange={(event) => {
+            edited('contactEmail')
+            setContactEmail(event.target.value)
           }}
-          onInput={(event) => event.currentTarget.setCustomValidity('')}
         />
-      </label>
-      <label>
-        Телефон за връзка (по избор)
+        <FieldError id="staff-contact-email" error={errors.contactEmail} />
+      </div>
+      <div className="form-field">
+        <label htmlFor="staff-contact-phone">Телефон за връзка (по избор)</label>
         <input
+          {...fieldControlProps('staff-contact-phone', errors.contactPhone)}
+          ref={controlRef('contactPhone')}
           name="contactPhone"
           type="tel"
           value={contactPhone}
           maxLength={CONTACT_PHONE_MAX_LENGTH}
-          onChange={(event) => setContactPhone(event.target.value)}
-          onInvalid={(event: InvalidEvent<HTMLInputElement>) => {
-            event.currentTarget.setCustomValidity('')
-            event.currentTarget.setCustomValidity(phoneValidationMessage(event.currentTarget))
+          onBlur={() => touch('contactPhone')}
+          onChange={(event) => {
+            edited('contactPhone')
+            setContactPhone(event.target.value)
           }}
-          onInput={(event) => event.currentTarget.setCustomValidity('')}
         />
-      </label>
+        <FieldError id="staff-contact-phone" error={errors.contactPhone} />
+      </div>
       <div className="action-group">
         <Button disabled={busy}>{busy ? 'Запазване…' : submitLabel}</Button>
         {onCancel && (

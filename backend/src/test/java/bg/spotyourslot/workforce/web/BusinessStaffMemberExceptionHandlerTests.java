@@ -2,7 +2,9 @@ package bg.spotyourslot.workforce.web;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import bg.spotyourslot.workforce.StaffMemberApplicationException;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -27,11 +29,36 @@ class BusinessStaffMemberExceptionHandlerTests {
                 .doesNotContain("stackTrace");
     }
 
+    @Test
+    void namesOnlyCorrectableBodyFieldsWithFixedMessages() {
+        var handler = new BusinessStaffMemberExceptionHandler();
+        var expected = java.util.Map.of(
+                StaffMemberApplicationException.InputField.DISPLAY_NAME, "displayName",
+                StaffMemberApplicationException.InputField.CONTACT_EMAIL, "contactEmail",
+                StaffMemberApplicationException.InputField.CONTACT_PHONE, "contactPhone");
+        for (var field : StaffMemberApplicationException.InputField.values()) {
+            var problem = handler.invalidInput(
+                    new StaffMemberApplicationException.InvalidInput(field));
+            assertThat(problem.getStatus()).isEqualTo(400);
+            assertThat(problem.getProperties()).containsEntry("code", "VALIDATION_ERROR");
+            assertThat(problem.getDetail()).isEqualTo("Проверете въведените данни.");
+            if (expected.containsKey(field)) {
+                @SuppressWarnings("unchecked")
+                var fieldErrors = (java.util.Map<String, String>) problem.getProperties()
+                        .get("fieldErrors");
+                assertThat(fieldErrors).containsOnlyKeys(expected.get(field));
+                assertThat(fieldErrors.get(expected.get(field))).isNotBlank();
+            } else {
+                assertThat(problem.getProperties()).doesNotContainKey("fieldErrors");
+            }
+        }
+    }
+
     private static Stream<Arguments> problems() {
         var handler = new BusinessStaffMemberExceptionHandler();
         return Stream.of(
                 Arguments.of(
-                        handler.invalidInput(),
+                        handler.invalidInput(new StaffMemberApplicationException.InvalidInput(StaffMemberApplicationException.InputField.COMMAND)),
                         400,
                         "VALIDATION_ERROR",
                         "Проверете въведените данни."),

@@ -845,7 +845,7 @@ function Profile({ session, busy, feedback, setFeedback, action, guard }: Profil
     resetPasswordFields()
   })
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (feedback?.kind === 'error') {
       profileFeedback.current?.focus()
     }
@@ -917,6 +917,7 @@ function Profile({ session, busy, feedback, setFeedback, action, guard }: Profil
                       value={displayNameDraft}
                       onValueChange={setDisplayNameDraft}
                       maxLength={200}
+                      requireTrimmedValue
                     />
                     <dl className="profile-personal-details">
                       <div>

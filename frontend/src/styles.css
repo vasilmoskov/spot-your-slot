@@ -649,6 +649,32 @@ label {
   resize: vertical;
 }
 
+/* A label, its control, and the inline validation message form one field.
+   `gap` is the single source of spacing between them (children's own margins
+   are zeroed) so a wrapped multi-line error never touches the control or the
+   next field. */
+.form-field {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.form-field > * {
+  margin: 0;
+}
+
+.field-error {
+  color: var(--color-danger);
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.form-field input[aria-invalid="true"],
+.form-field textarea[aria-invalid="true"] {
+  border-color: var(--color-danger);
+}
+
 .confirmation-panel {
   margin-top: var(--space-4);
   padding: var(--space-4);
@@ -1347,8 +1373,9 @@ label {
 
 .schedule-dialog-fields {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
   gap: var(--space-3);
+  align-items: start;
 }
 
 .schedule-copy-shortcuts {

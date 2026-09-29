@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '../../ui/Button'
+import { FieldError, fieldControlProps } from '../../ui/formValidation'
 import { useFeedback, errorCategory } from '../../ui/useFeedback'
 import { useGuardedFormState } from '../../ui/UnsavedChangesGuard'
 import {
@@ -31,6 +32,15 @@ type WorkingScheduleEditorProps = {
   onAuthenticationRequired: (detail: string) => void
 }
 
+// `start`/`end` are problems with a single missing value; `range` concerns
+// the pair (reversed, overlapping, duplicate, or over the period limit) and is
+// tied to both fields.
+type PeriodDialogErrors = {
+  start?: string
+  end?: string
+  range?: string
+}
+
 type PeriodDialogState = {
   weekday: Weekday
   clientId: string | null
@@ -38,7 +48,7 @@ type PeriodDialogState = {
   end: string
   initialStart: string
   initialEnd: string
-  error: string | null
+  errors: PeriodDialogErrors
 }
 
 type CopyDialogState = {
@@ -101,6 +111,7 @@ export function WorkingScheduleEditor({
   const errorSummary = useRef<HTMLParagraphElement>(null)
   const dialogInvoker = useRef<HTMLElement | null>(null)
   const periodDialogStartRef = useRef<HTMLInputElement>(null)
+  const periodDialogEndRef = useRef<HTMLInputElement>(null)
   const copyDialogFirstCheckboxRef = useRef<HTMLInputElement>(null)
   const clearWeekdaySafeButton = useRef<HTMLButtonElement>(null)
   const clearAllSafeButton = useRef<HTMLButtonElement>(null)
@@ -175,25 +186,25 @@ export function WorkingScheduleEditor({
     }
   }, [editing])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (feedback?.kind === 'error') errorMessage.current?.focus()
   }, [feedback])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (clearWeekdayConfirmation) clearWeekdaySafeButton.current?.focus()
   }, [clearWeekdayConfirmation])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (clearAllConfirmation) clearAllSafeButton.current?.focus()
   }, [clearAllConfirmation])
 
   // Keyed on presence only (not on the dialog's own content), so typing in
   // the fields never steals focus back to the start-time input.
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (periodDialog) periodDialogStartRef.current?.focus()
   }, [Boolean(periodDialog)])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (copyDialog) copyDialogFirstCheckboxRef.current?.focus()
   }, [Boolean(copyDialog)])
 
@@ -300,7 +311,7 @@ export function WorkingScheduleEditor({
       end: '',
       initialStart: '',
       initialEnd: '',
-      error: null,
+      errors: {},
     })
   }
 
@@ -313,7 +324,7 @@ export function WorkingScheduleEditor({
       end: period.endTime,
       initialStart: period.startTime,
       initialEnd: period.endTime,
-      error: null,
+      errors: {},
     })
   }
 
@@ -324,28 +335,36 @@ export function WorkingScheduleEditor({
 
   const submitPeriodDialog = () => {
     if (!periodDialog) return
+    const errors: PeriodDialogErrors = {}
+    if (!periodDialog.start) errors.start = 'Въведете начален час.'
+    if (!periodDialog.end) errors.end = 'Въведете краен час.'
     const clientId = periodDialog.clientId ?? nextClientId()
-    const candidate: DraftPeriod = {
-      clientId,
-      weekday: periodDialog.weekday,
-      startTime: periodDialog.start,
-      endTime: periodDialog.end,
+    if (!errors.start && !errors.end) {
+      const candidate: DraftPeriod = {
+        clientId,
+        weekday: periodDialog.weekday,
+        startTime: periodDialog.start,
+        endTime: periodDialog.end,
+      }
+      const nextDraft = periodDialog.clientId
+        ? draft.map((period) => (period.clientId === clientId ? candidate : period))
+        : [...draft, candidate]
+      const result = validateDraftPeriods(nextDraft)
+      if (result.errorsByPeriod.has(clientId)) {
+        errors.range = periodValidationMessage(result.errorsByPeriod.get(clientId)!)
+      } else if (result.tooManyPeriods) {
+        errors.range = `Достигнат е максималният брой от ${MAX_WORKING_PERIODS} периода за седмицата.`
+      } else {
+        setDraft(nextDraft)
+        closePeriodDialog()
+        return
+      }
     }
-    const nextDraft = periodDialog.clientId
-      ? draft.map((period) => (period.clientId === clientId ? candidate : period))
-      : [...draft, candidate]
-    const result = validateDraftPeriods(nextDraft)
-    const message = result.tooManyPeriods
-      ? `Достигнат е максималният брой от ${MAX_WORKING_PERIODS} периода за седмицата.`
-      : result.errorsByPeriod.has(clientId)
-        ? periodValidationMessage(result.errorsByPeriod.get(clientId)!)
-        : null
-    if (message) {
-      setPeriodDialog({ ...periodDialog, error: message })
-      return
-    }
-    setDraft(nextDraft)
-    closePeriodDialog()
+    setPeriodDialog({ ...periodDialog, errors })
+    // Focus the first invalid control: a missing end time alone points at the
+    // end field; every other failure starts at the start field.
+    const target = errors.start || errors.range ? periodDialogStartRef : periodDialogEndRef
+    target.current?.focus()
   }
 
   const removePeriod = (clientId: string) => {
@@ -705,7 +724,7 @@ export function WorkingScheduleEditor({
         </div>
       )}
       {feedback?.reload && (
-        <Button type="button" variant="secondary" onClick={() => void load()}>
+        <Button type="button" variant="secondary" onClick={() => guard.guard(() => void load())}>
           Зареди актуалните данни
         </Button>
       )}
@@ -729,6 +748,7 @@ export function WorkingScheduleEditor({
             <div className="action-group">
               <Button
                 type="button"
+                disabled={clearingAll}
                 onClick={() => {
                   setFeedback(null)
                   setDraft(toDraftPeriods(schedule.periods))
@@ -769,39 +789,70 @@ export function WorkingScheduleEditor({
                 : `Добавяне на работно време за ${WEEKDAY_SENTENCE_LABELS[periodDialog.weekday]}`}
             </h4>
             <div className="schedule-dialog-fields">
-              <label htmlFor="period-dialog-start">Начален час</label>
-              <input
-                id="period-dialog-start"
-                ref={periodDialogStartRef}
-                type="time"
-                value={periodDialog.start}
-                aria-invalid={!!periodDialog.error}
-                aria-describedby={periodDialog.error ? 'period-dialog-error' : undefined}
-                onChange={(event) =>
-                  setPeriodDialog((current) =>
-                    current ? { ...current, start: event.target.value, error: null } : current,
-                  )
-                }
-              />
-              <label htmlFor="period-dialog-end">Краен час</label>
-              <input
-                id="period-dialog-end"
-                type="time"
-                value={periodDialog.end}
-                aria-invalid={!!periodDialog.error}
-                aria-describedby={periodDialog.error ? 'period-dialog-error' : undefined}
-                onChange={(event) =>
-                  setPeriodDialog((current) =>
-                    current ? { ...current, end: event.target.value, error: null } : current,
-                  )
-                }
-              />
+              <div className="form-field">
+                <label htmlFor="period-dialog-start">Начален час</label>
+                <input
+                  {...fieldControlProps(
+                    'period-dialog-start',
+                    periodDialog.errors.start ?? periodDialog.errors.range,
+                  )}
+                  aria-describedby={
+                    periodDialog.errors.start
+                      ? 'period-dialog-start-error'
+                      : periodDialog.errors.range
+                        ? 'period-dialog-range-error'
+                        : undefined
+                  }
+                  ref={periodDialogStartRef}
+                  type="time"
+                  value={periodDialog.start}
+                  onChange={(event) =>
+                    setPeriodDialog((current) =>
+                      current
+                        ? {
+                            ...current,
+                            start: event.target.value,
+                            errors: current.errors.end ? { end: current.errors.end } : {},
+                          }
+                        : current,
+                    )
+                  }
+                />
+                <FieldError id="period-dialog-start" error={periodDialog.errors.start} />
+              </div>
+              <div className="form-field">
+                <label htmlFor="period-dialog-end">Краен час</label>
+                <input
+                  {...fieldControlProps(
+                    'period-dialog-end',
+                    periodDialog.errors.end ?? periodDialog.errors.range,
+                  )}
+                  aria-describedby={
+                    periodDialog.errors.end
+                      ? 'period-dialog-end-error'
+                      : periodDialog.errors.range
+                        ? 'period-dialog-range-error'
+                        : undefined
+                  }
+                  ref={periodDialogEndRef}
+                  type="time"
+                  value={periodDialog.end}
+                  onChange={(event) =>
+                    setPeriodDialog((current) =>
+                      current
+                        ? {
+                            ...current,
+                            end: event.target.value,
+                            errors: current.errors.start ? { start: current.errors.start } : {},
+                          }
+                        : current,
+                    )
+                  }
+                />
+                <FieldError id="period-dialog-end" error={periodDialog.errors.end} />
+              </div>
             </div>
-            {periodDialog.error && (
-              <p id="period-dialog-error" className="status-message status-error" role="alert">
-                {periodDialog.error}
-              </p>
-            )}
+            <FieldError id="period-dialog-range" error={periodDialog.errors.range} />
             <div className="action-group">
               <Button type="button" onClick={submitPeriodDialog}>
                 {periodDialog.clientId ? 'Запази' : 'Добави'}
@@ -906,6 +957,7 @@ export function WorkingScheduleEditor({
           <div
             className="confirmation-panel schedule-dialog-panel"
             role="alertdialog"
+            aria-modal="true"
             aria-labelledby="schedule-clear-weekday-heading"
             aria-describedby="schedule-clear-weekday-description-1 schedule-clear-weekday-description-2"
           >
@@ -944,6 +996,7 @@ export function WorkingScheduleEditor({
           <div
             className="confirmation-panel schedule-dialog-panel"
             role="alertdialog"
+            aria-modal="true"
             aria-labelledby="schedule-clear-all-heading"
             aria-describedby="schedule-clear-all-description-1 schedule-clear-all-description-2"
           >

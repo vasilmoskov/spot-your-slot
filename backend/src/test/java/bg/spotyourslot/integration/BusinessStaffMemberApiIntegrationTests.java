@@ -436,6 +436,16 @@ class BusinessStaffMemberApiIntegrationTests extends PostgresIntegrationTest {
         assertValidationError(create(owner, "Valid", "invalid", null, null, true));
         assertValidationError(create(owner, "Valid", null, "12", null, true));
         assertValidationError(update(owner, active, "Valid", null, null, -1, true));
+        assertFieldError(create(owner, " ", null, null, null, true), "displayName");
+        assertFieldError(create(owner, "Valid", "invalid", null, null, true), "contactEmail");
+        assertFieldError(create(owner, "Valid", "a@a", null, null, true), "contactEmail");
+        assertFieldError(create(owner, "Valid", "a@\u0430", null, null, true), "contactEmail");
+        assertFieldError(create(owner, "Valid", "a@primer..bg", null, null, true), "contactEmail");
+        assertFieldError(create(owner, "Valid", null, "12", null, true), "contactPhone");
+        // Shape-valid but not a real Bulgarian number.
+        assertFieldError(
+                create(owner, "Valid", null, "+3598881234561", null, true), "contactPhone");
+        assertNoFieldError(update(owner, active, "Valid", null, null, -1, true));
         assertValidationError(mvc.perform(put(
                         "/api/business/staff-members/{staffMemberId}/service-assignments",
                         active)
@@ -959,6 +969,17 @@ class BusinessStaffMemberApiIntegrationTests extends PostgresIntegrationTest {
                 .param("staffMemberId", staffMemberId)
                 .query(UUID.class)
                 .list()).containsExactlyInAnyOrderElementsOf(expected);
+    }
+
+    private void assertFieldError(ResultActions result, String field) throws Exception {
+        assertValidationError(result);
+        result.andExpect(jsonPath("$.fieldErrors." + field).isNotEmpty())
+                .andExpect(jsonPath("$.fieldErrors.length()").value(1));
+    }
+
+    private void assertNoFieldError(ResultActions result) throws Exception {
+        assertValidationError(result);
+        result.andExpect(jsonPath("$.fieldErrors").doesNotExist());
     }
 
     private void assertValidationError(ResultActions result) throws Exception {

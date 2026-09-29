@@ -109,6 +109,9 @@ over the default risk level.
 - Authenticated, user-editable forms follow the shared unsaved-changes
   behavior defined in `docs/ui-design-guidelines.md`. User-facing paginated
   tables follow the shared table standard in the same guide.
+  Frontend work must read and follow that guide and perform its documented
+  visual and error-state checks (wrapped validation errors, dialogs, and
+  desktop, tablet, mobile, and 200% zoom review) before completion.
 
 ## Security and state management
 

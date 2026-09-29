@@ -26,6 +26,35 @@ describe('identity API client', () => {
     )
   })
 
+  it('keeps only string field errors from a validation problem', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          code: 'VALIDATION_ERROR',
+          detail: 'Проверете въведените данни.',
+          fieldErrors: { contactPhone: 'Невалиден.', bad: 5, empty: '' },
+        }),
+        { status: 400, headers: { 'Content-Type': 'application/problem+json' } },
+      ),
+    )
+
+    const error = await request('/api/example').catch((caught: unknown) => caught)
+    expect(error).toBeInstanceOf(ApiError)
+    expect((error as ApiError).fieldErrors).toEqual({ contactPhone: 'Невалиден.' })
+    expect((error as ApiError).detail).toBe('Проверете въведените данни.')
+  })
+
+  it('ignores malformed field errors', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({ code: 'VALIDATION_ERROR', detail: 'x', fieldErrors: ['a'] }),
+        { status: 400, headers: { 'Content-Type': 'application/problem+json' } },
+      ),
+    )
+    const error = await request('/api/example').catch((caught: unknown) => caught)
+    expect((error as ApiError).fieldErrors).toBeUndefined()
+  })
+
   it('uses the structured authentication title when the filter response has no detail', async () => {
     fetchMock.mockResolvedValue(
       new Response(

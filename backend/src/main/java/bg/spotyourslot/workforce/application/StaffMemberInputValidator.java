@@ -7,6 +7,7 @@ import bg.spotyourslot.workforce.StaffMemberRecords.ReplaceServiceAssignmentsCom
 import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberSortField;
 import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberVersionCommand;
 import bg.spotyourslot.workforce.StaffMemberRecords.UpdateStaffMemberCommand;
+import bg.spotyourslot.workforce.domain.StaffMemberEmailPolicy;
 import bg.spotyourslot.workforce.domain.StaffMemberPhoneNumbers;
 import bg.spotyourslot.workforce.domain.StaffMemberTextCanonicalizer;
 import jakarta.validation.Validator;
@@ -136,6 +137,7 @@ public class StaffMemberInputValidator {
         String canonical = StaffMemberTextCanonicalizer.canonicalContactEmail(value);
         if (canonical != null
                 && (codePointLength(canonical) > CONTACT_EMAIL_MAX_LENGTH
+                        || !StaffMemberEmailPolicy.isAcceptable(canonical)
                         || !validator.validate(new ContactEmailCandidate(canonical)).isEmpty())) {
             throw new InvalidInput(InputField.CONTACT_EMAIL);
         }

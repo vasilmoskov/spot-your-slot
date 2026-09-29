@@ -8,6 +8,7 @@ import bg.spotyourslot.catalog.ServiceApplicationException.InvalidLifecycleTrans
 import bg.spotyourslot.catalog.ServiceApplicationException.ServiceNameConflict;
 import bg.spotyourslot.catalog.ServiceApplicationException.ServiceNotFound;
 import bg.spotyourslot.identity.SelectedBusinessRequired;
+import java.util.Map;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
@@ -19,11 +20,34 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice(assignableTypes = BusinessServiceController.class)
 public class BusinessServiceExceptionHandler {
     @ExceptionHandler(InvalidInput.class)
-    ProblemDetail invalidInput() {
-        return problem(
+    ProblemDetail invalidInput(InvalidInput exception) {
+        var problem = problem(
                 HttpStatus.BAD_REQUEST,
                 "VALIDATION_ERROR",
                 "Проверете въведените данни.");
+        // Only body fields a client can correct are named; page, sort,
+        // identifier, version, and command failures stay generic.
+        switch (exception.field()) {
+            case NAME -> addFieldError(
+                    problem, "name", "Въведете име на услугата до 200 знака.");
+            case DESCRIPTION -> addFieldError(
+                    problem, "description", "Описанието може да съдържа най-много 2000 знака.");
+            case DURATION_MINUTES -> addFieldError(
+                    problem,
+                    "durationMinutes",
+                    "Продължителността трябва да бъде между 1 и 480 минути.");
+            case PRICE -> addFieldError(
+                    problem,
+                    "price",
+                    "Въведете валидна цена в евро с най-много 2 знака след десетичната точка.");
+            default -> {
+            }
+        }
+        return problem;
+    }
+
+    private static void addFieldError(ProblemDetail problem, String field, String message) {
+        problem.setProperty("fieldErrors", Map.of(field, message));
     }
 
     @ExceptionHandler(SelectedBusinessRequired.class)
