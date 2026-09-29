@@ -1,6 +1,6 @@
 # SpotYourSlot — Availability, Schedule Exceptions, and Slot Calculation
 
-Status: In progress — Phase 1 implemented; awaiting review
+Status: In progress — Phases 1 and 2 implemented; awaiting review
 GitHub issue: #16 — Build availability, schedule exceptions, and slot calculation engine
 Depends on: #11, #12, #13
 Decision record: [ADR-0013](../decisions/ADR-0013-define-availability-interval-precedence-grid-and-dst-semantics.md)
@@ -35,7 +35,7 @@ Business-local dates today through today + 29, zero buffers.
 | Phase | Outcome | Status |
 |---|---|---|
 | 1 | Task record, ADR-0013, `scheduling` skeleton, pure engine, unit tests | Implemented; awaiting review |
-| 2 | Exception schema and persistence | Not started; needs approval |
+| 2 | Exception schema and persistence (V9, ADR-0014) | Implemented; awaiting review |
 | 3 | Exception administration API | Not started |
 | 4 | Availability orchestration and published contracts | Not started |
 | 5 | Business-owner interface | Not started; separate approval |
@@ -71,6 +71,15 @@ configuration of horizon, notice, or buffers, and any GitHub mutation.
 
 Nothing is published outside the module yet; the future published contract is a
 later-phase decision.
+
+## Phase 2 scope
+
+Delivered: `V9__add_schedule_exceptions.sql`, ADR-0014, immutable stored-aggregate
+records and the pure `ScheduleExceptionInputs` translator in `scheduling.domain`,
+the internal `ScheduleExceptionStore` in `scheduling.infrastructure`, and
+PostgreSQL schema, store, and concurrency tests. Explicitly excluded:
+administration service, authorization, controllers, frontend, availability
+orchestration, `BusyIntervalSource`, and Business configuration.
 
 ## Acceptance evidence (Phase 1)
 

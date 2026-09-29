@@ -135,6 +135,40 @@ version and `updated_at` exactly once, including an identical replacement.
 Exceptions, holidays, leave, time off, working overrides, and breaks remain
 outside `V7`.
 
+Flyway `V9__add_schedule_exceptions.sql` creates the implemented
+**schedule_exception** and **schedule_exception_period** tables
+([ADR-0014](decisions/ADR-0014-store-schedule-exceptions-as-versioned-aggregates-with-same-kind-date-exclusion.md)).
+`schedule_exception` is a versioned aggregate: UUID `id`, `business_id`,
+nullable `staff_member_id`, `kind`, inclusive `first_date`/`last_date`,
+`all_day`, a generated inclusive `date_range`, nonnegative `bigint version`
+starting at 0, and UTC `created_at`/`updated_at`. `kind` is one of
+`BUSINESS_CLOSURE`, `STAFF_TIME_OFF`, `WORKING_DAY_OVERRIDE`, and
+`ADDITIONAL_WORKING_PERIODS`; the StaffMember is absent exactly for
+`BUSINESS_CLOSURE`. A composite foreign key to `staff_member(business_id, id)`
+prevents cross-Business references. Full-day ranges (`all_day`) exist only for
+closures and time off; partial blocks and both working kinds cover exactly one
+date. Only finite dates and `first_date <= last_date` are required; no
+calendar-year bounds are imposed. `kind` and StaffMember are immutable.
+
+`schedule_exception_period` stores the local `start_time`/`end_time` of one
+aggregate with a generated `int4range`. Periods are whole-minute, `start_time <
+end_time`, and `24:00` is rejected. A per-aggregate GiST exclusion constraint
+rejects duplicate and overlapping periods; adjacent periods are allowed and
+never merged. Its foreign key to the exception is `ON DELETE CASCADE`:
+aggregate composition, not an independently owned relationship.
+
+Two GiST exclusion constraints reject overlapping date ranges only for the same
+kind and scope (Business closures per Business; each StaffMember kind per
+StaffMember), so one date belongs to at most one aggregate of that kind and
+scope and disjoint partial periods share one aggregate. Cross-kind overlaps,
+such as a closure over an override, are allowed and resolved by the availability
+engine. PostgreSQL does not enforce child-row counts: the domain content record
+and store require zero periods for full-day aggregates, at least one for partial
+closures/time off and additional working periods, and permit zero or more for an
+override. Exact indexes: primary key, `(business_id, id)`, the two exclusion
+indexes, `(business_id, first_date, last_date, id)`, and GiST `(business_id,
+date_range)`.
+
 ## Customers and Appointments
 
 - **customer:** `business_id`, name, original/normalized phone and email,

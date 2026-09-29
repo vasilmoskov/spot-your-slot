@@ -186,6 +186,25 @@ response carries StaffMember ID, live Business timezone, ordered periods,
 independent schedule version, and timestamps. Exceptions, time off, breaks,
 overrides, and availability remain outside this slice.
 
+The `scheduling` module also owns internal persistence of schedule exceptions
+(Issue #16 Phase 2, [ADR-0014](decisions/ADR-0014-store-schedule-exceptions-as-versioned-aggregates-with-same-kind-date-exclusion.md)).
+`ScheduleExceptionStore` in `scheduling.infrastructure` inserts, finds by
+Business and id, lists by inclusive date window (optionally with StaffMember
+filtering that always includes Business closures), conditionally replaces, and
+conditionally hard-deletes a versioned `schedule_exception` aggregate with its
+composed periods, in one joined read for aggregate plus periods. Stored
+aggregates are immutable `scheduling.domain` records, separate from engine
+inputs; `ScheduleExceptionInputs` translates them purely. Replace and delete are
+conditional on Business, id, and expected version; an empty result or `false`
+means only that no such row matched, so the store does not distinguish missing,
+stale, or concurrently deleted. The future application service reads first and
+treats a later failed mutation as a concurrent change. The store takes no
+Business, Membership, or StaffMember locks and applies no authorization or
+lifecycle rules; those, and the lock order Business, Membership, StaffMember,
+aggregate, belong to a later phase. Concurrent conflicting inserts are
+serialized by PostgreSQL exclusion constraints. Nothing is published outside the
+module yet.
+
 The platform Business API provides bounded deterministic listing, retrieval,
 DRAFT creation, profile update, initial activation, suspension, and
 reactivation. Mutations carry `expectedVersion`; PostgreSQL compare-and-update

@@ -94,3 +94,4 @@ with the ADR's actual lifecycle status.
 | [ADR-0011](ADR-0011-use-staff-aggregate-versioning-for-service-assignments.md) | Use StaffMember aggregate versioning for Service assignments | Accepted | 2026-09-18 | 2026-09-18 | #10, #12 |
 | [ADR-0012](ADR-0012-use-versioned-atomic-replacement-for-staff-working-schedules.md) | Use versioned atomic replacement for StaffMember working schedules | Accepted | 2026-09-23 | 2026-09-23 | #10, #13 |
 | [ADR-0013](ADR-0013-define-availability-interval-precedence-grid-and-dst-semantics.md) | Define availability interval, precedence, grid, and DST semantics | Accepted | 2026-09-29 | 2026-09-29 | #16 |
+| [ADR-0014](ADR-0014-store-schedule-exceptions-as-versioned-aggregates-with-same-kind-date-exclusion.md) | Store schedule exceptions as versioned aggregates with same-kind date exclusion | Accepted | 2026-09-29 | 2026-09-29 | #16 |

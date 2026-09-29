@@ -257,6 +257,27 @@ including `workforce`, remains acyclic. Issue #13 adds no frontend or browser
 E2E coverage; exceptions, time off, breaks, overrides, and availability remain
 future work.
 
+## Schedule-exception persistence verification
+
+Issue #16 Phase 2 tests run against PostgreSQL 18.4 through Testcontainers.
+`ScheduleExceptionSchemaIntegrationTests` cover V1 through V9 migration order,
+V1–V8 byte integrity, a V8-to-V9 upgrade with existing data, the exact
+constraint and index set, immutable generated ranges, all four kinds, scope and
+composite tenant foreign keys, full-day and partial shapes, minute precision,
+rejected `24:00`, reversed, duplicate, and overlapping periods, allowed
+adjacency, and the complete cross-aggregate overlap matrix.
+`ScheduleExceptionStoreIntegrationTests` cover create/read/list, inclusive
+window edges, deterministic ordering, atomic replace and delete, stale versions,
+rollback preservation, timestamps and versions, cross-Business parity, and safe
+persistence failures. `ScheduleExceptionStoreConcurrencyIntegrationTests` prove
+conflicting inserts (first commits and first rolls back), same-version replace,
+replace/delete, and a concurrent date-conflicting replacement using latches and
+`pg_stat_activity` lock-wait observation, and a real opposite-order deadlock
+reported as a retryable write conflict. `ScheduleExceptionContentTests` and
+`ScheduleExceptionInputsTests` cover domain invariants and the translation to
+engine inputs, including a precedence round trip through `AvailabilityEngine`.
+No sleeps are used as concurrency proof.
+
 ## Browser E2E for Business onboarding and lifecycle
 
 Issue #7 adds a Playwright layer above the existing MockMvc/PostgreSQL and
