@@ -121,6 +121,12 @@ Customers may book; its default remains 30 days. It is independent of the daily
 and weekly administrative calendar views. Those views only change how Business
 users inspect and manage Appointments and never cap the booking horizon.
 
+Current MVP implementation: booking window and minimum notice are not yet
+Business settings. Availability uses the fixed values of ADR-0013 and ADR-0016:
+Business-local dates from today through today + 29 (30 dates), an inclusive
+two-hour minimum notice, a 15-minute grid, zero buffers, and no breaks. Making
+them configurable is a recorded follow-up that needs separate approval.
+
 The implemented Service backend stores a canonical display name, optional
 canonical description, `BigDecimal` EUR price, duration, active state,
 optimistic version, and creation/update timestamps under immutable Business
@@ -157,14 +163,19 @@ Each is a versioned exception with a full-day date range for closures and time
 off or local `HH:mm` periods on one date, and is created, atomically replaced,
 or hard-deleted with the expected version. Exceptions of an inactive StaffMember
 stay readable but cannot be changed, and a suspended Business is read-only. They
-are not yet applied to availability.
+are applied by the internal Scheduling availability calculation described below;
+no public availability endpoint, booking, or Appointment exists yet.
 
 ## Availability and assignment
 
 Availability considers Business and StaffMember state, qualification, Service
 duration plus buffer, weekly intervals, breaks, overrides, absences, blocking
 Appointments, notice, booking window, and Business timezone. The complete
-duration and buffer must fit one available interval.
+duration and buffer must fit one available interval. Implemented so far: the
+internal calculation over an ACTIVE Business, an active Service, and active
+assigned StaffMembers with the fixed values above; Appointments and breaks do not
+exist yet, so no busy time is subtracted. Availability is a current view that
+reserves nothing.
 
 For “Без предпочитание”, select among qualified available StaffMembers using
 the fewest non-cancelled Appointments on the local date, then creation time and

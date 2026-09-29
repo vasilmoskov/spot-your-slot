@@ -73,11 +73,15 @@ the latter captures Service duration plus buffer. Weekly schedules use local
 weekday/time and the Business IANA timezone. Availability intersects working
 intervals/overrides, subtracts breaks/time off/blocking Appointments, and applies
 qualification, notice, window, and DST rules with an injected clock.
-Service buffers belong to this future availability work and are not persisted or
-configurable by the current Service backend.
-The booking window is a Business setting defining how many days ahead Customers
-may book, defaulting to 30 days. Daily and weekly administrative calendars are
-query/presentation views over Appointments; they do not constrain that horizon.
+Service buffers belong to future availability work and are not persisted or
+configurable by the current Service backend; breaks are not implemented.
+The intended product direction is a Business-configurable booking window
+(default 30 days) and minimum notice (default two hours). The current MVP
+implementation fixes them, per ADR-0013 and ADR-0016, at 30 Business-local dates
+(today through today + 29) and an inclusive two-hour notice on a 15-minute grid
+with zero buffers; configuration is a recorded follow-up. Daily and weekly
+administrative calendars are query/presentation views over Appointments; they do
+not constrain that horizon.
 `StaffMember` remains the internal English term, while generic Bulgarian
 administration uses “Екип” and “Член на екипа” and public booking may use
 contextual wording instead of a fixed performer label.
@@ -225,8 +229,29 @@ constraints; there is no pre-check. The authenticated API under
 create, atomic replace (which retains the stored kind and StaffMember), and hard
 delete, both mutating variants carrying `expectedVersion`; responses omit
 Business identity. Validation bounds, the unpaginated list, and the inactive
-StaffMember trade-off are recorded in the ADR. Availability orchestration and a
-frontend remain outside this slice.
+StaffMember trade-off are recorded in the ADR. A frontend remains outside this
+slice.
+
+Issue #16 Phase 4 ([ADR-0016](decisions/ADR-0016-orchestrate-availability-through-published-contracts-and-a-scheduling-owned-busy-interval-seam.md))
+adds the internal published `scheduling.AvailabilityQuery`, which assembles the
+pure engine's inputs from narrow published contracts: the existing Business
+schedule context, `catalog.ServiceAvailabilityAccess` (identity and duration of
+an active Service), and `workforce.StaffAvailabilityAccess` (active StaffMembers
+assigned to the Service with their recurring periods, one joined statement).
+The result is deeply immutable published records; the internal engine records
+stay private. A standalone call creates a read-only repeatable-read transaction; a call
+inside an existing transaction joins it and fails before any read unless that
+transaction is already repeatable-read or serializable. The method itself
+performs no writes or explicit locks, though a joined outer transaction may be
+read-write, and PostgreSQL's first-statement snapshot then covers every
+committed database read; the result is a current view that reserves nothing and booking
+must revalidate. The Scheduling-owned `BusyIntervalSource` is the seam for
+occupied time. Its real implementation belongs to the future Booking issue and
+must join the caller's transaction with one bulk query; a temporary
+`NoBookingBusyIntervalSource` placeholder is a required ordinary bean, so a
+second implementation makes startup fail until the placeholder is deleted. The
+orchestration issues four application SQL statements regardless of team size.
+There is no public availability endpoint.
 
 The platform Business API provides bounded deterministic listing, retrieval,
 DRAFT creation, profile update, initial activation, suspension, and

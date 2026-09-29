@@ -63,9 +63,13 @@
   generic Bulgarian administration use “Екип” and “Член на екипа”; in public
   booking prefer contextual wording such as “При кого искаш да запазиш час?”
   and the option “Без предпочитание”, rather than a mandatory performer noun.
-- A Business configures how many days in advance Customers may book; the default
-  booking window is 30 days. Daily and weekly administrative calendar views are
-  display modes only and never limit how far ahead booking is possible.
+- The product direction is that a Business configures how many days in advance
+  Customers may book (default 30 days). The current MVP implementation fixes the
+  window at 30 Business-local dates (today through today + 29), the minimum
+  notice at two hours, the slot grid at 15 minutes, and buffers at zero
+  (ADR-0013, ADR-0016); Business configuration is a follow-up needing separate
+  approval. Daily and weekly administrative calendar views are display modes
+  only and never limit how far ahead booking is possible.
 - Normal business operations never physically delete appointments.
 
 ## Risk-based workflow

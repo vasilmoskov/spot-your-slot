@@ -96,3 +96,4 @@ with the ADR's actual lifecycle status.
 | [ADR-0013](ADR-0013-define-availability-interval-precedence-grid-and-dst-semantics.md) | Define availability interval, precedence, grid, and DST semantics | Accepted | 2026-09-29 | 2026-09-29 | #16 |
 | [ADR-0014](ADR-0014-store-schedule-exceptions-as-versioned-aggregates-with-same-kind-date-exclusion.md) | Store schedule exceptions as versioned aggregates with same-kind date exclusion | Accepted | 2026-09-29 | 2026-09-29 | #16 |
 | [ADR-0015](ADR-0015-administer-schedule-exceptions-through-a-versioned-business-owner-api.md) | Administer schedule exceptions through a versioned Business-owner API | Accepted | 2026-09-29 | 2026-09-29 | #16 |
+| [ADR-0016](ADR-0016-orchestrate-availability-through-published-contracts-and-a-scheduling-owned-busy-interval-seam.md) | Orchestrate availability through published contracts and a Scheduling-owned busy-interval seam | Accepted | 2026-09-29 | 2026-09-29 | #16 |

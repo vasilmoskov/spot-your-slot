@@ -193,7 +193,7 @@ volume were untouched. `npm run lint` and `git diff --check` are clean.
 | Reactivation restores editing without data loss | "reactivating the Business restores editing…" |
 | Owner/admin/unauthorized context isolation; cross-Business reads/writes rejected | Isolation describe (owner B, admin without Membership, owner shell, storage, cookies) |
 | Critical negatives with safe Bulgarian feedback | Service validation, duplicate name, schedule overlap, inactive-staff schedule |
-| Real PostgreSQL and all Flyway migrations | Runner: empty database migrated by Spring Boot startup (V1–V8) |
+| Real PostgreSQL and all Flyway migrations | Runner: empty database migrated by Spring Boot startup (V1–V9) |
 | Desktop journey plus mobile smoke | Desktop describes; "Pixel 7 owner reaches every destination…" |
 | Existing suites pass | Backend `verify`, frontend test/lint/build (below) |
 | Local and CI execution/cleanup documented | `README.md`, `docs/testing-strategy.md` |

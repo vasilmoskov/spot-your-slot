@@ -25,8 +25,11 @@ recurring weekly working schedule). Browser end-to-end verification of that
 journey, Customers, Appointments, booking, production email, and hosting are
 not implemented. Business closures, StaffMember time off, working-day
 overrides, and additional working periods can be administered through an
-authenticated backend API but have no interface and do not yet affect
-availability.
+authenticated backend API but have no interface. An internal Scheduling
+contract combines them with the recurring schedules into a current availability
+view under fixed MVP values (15-minute grid, two-hour notice, 30 local dates,
+zero buffers, no breaks; Business configuration is a follow-up); there is no
+public availability HTTP endpoint, and Appointments and booking do not exist.
 
 ## Product identity
 
@@ -136,7 +139,7 @@ export POSTGRES_PASSWORD='the-value-from-your-local-env-file'
 ```
 
 Health is public at `http://localhost:8080/actuator/health`. Flyway applies the
-six current migrations on startup and Hibernate validates the schema.
+nine current migrations (V1–V9) on startup and Hibernate validates the schema.
 
 To create the first local `PLATFORM_ADMIN`, explicitly opt in for one startup:
 
@@ -291,8 +294,8 @@ remain readable and reject mutations. Active and inactive StaffMembers retain
 readable schedules, but only an active StaffMember may receive a mutation.
 Deactivation and Business suspension preserve all schedule data. Requests and
 responses expose no Business, user, Membership, role, credential, session,
-normalized, SQL, or persistence fields. Breaks and availability calculation
-remain future work.
+normalized, SQL, or persistence fields. Breaks remain future work; availability
+is calculated only through the internal Scheduling contract (ADR-0016).
 
 ### Business schedule-exception API
 
@@ -372,7 +375,7 @@ values and reduce the delay if a local observation run times out.
 The runner creates only the validated `spotyourslot-e2e` Compose project. It
 uses PostgreSQL on port `55432`, Spring Boot on `18080`, and Vite on `15173`.
 Every run recreates the dedicated database volume, starts Spring Boot so Flyway
-applies all current Flyway migrations (V1–V8), generates local test credentials in
+applies all current Flyway migrations (V1–V9), generates local test credentials in
 memory, and removes the E2E containers, network, and volume on exit. It neither
 reuses nor removes the ordinary development Compose project or its volume.
 

@@ -99,7 +99,13 @@ availability inputs beyond these backend slices also remain pending.
   qualification, and deterministic no-preference assignment.
 - Preserve the 30-day default while allowing each Business to configure how
   many days ahead Customers may book. Keep that booking window independent of
-  daily and weekly administrative calendar views.
+  daily and weekly administrative calendar views. Issue #16 currently fixes the
+  window at 30 Business-local dates and the notice at two hours (ADR-0013,
+  ADR-0016); Business configuration remains a follow-up.
+- Issue #16 Phase 4 delivers the internal availability orchestration and the
+  Scheduling-owned busy-interval seam with a temporary placeholder. The public
+  endpoint, StaffMember-exposure decision, and the real busy-interval source
+  (Booking) remain later work.
 - Generic public Business/Profile/Service APIs and Bulgarian UI through slot
   selection.
 - Exit: DST/boundary/cancelled-slot/assignment and BusinessType parity pass.

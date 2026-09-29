@@ -52,7 +52,9 @@ without accounts remain valid.
 ### Time, lifecycle, tokens, and notifications
 
 Test Service plus buffer, breaks/time off/overrides, minimum-notice and
-Business-configured booking-window boundaries (including the 30-day default),
+booking-window boundaries (the MVP currently fixes them at two hours and 30
+Business-local dates per ADR-0013; Business-configured values, buffers, and
+breaks are follow-ups),
 cancelled-slot release, qualifications, no-preference ties, fixed clocks,
 `Europe/Sofia` DST gaps/overlaps, UTC storage/display, and
 `COMPLETED`/`NO_SHOW` rejection before start and acceptance at/after start.
@@ -322,6 +324,38 @@ CORS preflight while keeping the exact-origin, header, and method policy.
 `ModuleBoundaryTests` verify the added `scheduling` edges remain acyclic. Phase 3
 adds no frontend or browser E2E coverage.
 
+## Availability orchestration verification
+
+Issue #16 Phase 4 tests the internal orchestration
+([ADR-0016](decisions/ADR-0016-orchestrate-availability-through-published-contracts-and-a-scheduling-owned-busy-interval-seam.md)).
+`AvailabilityQueryServiceTests` use mocked published contracts and the real
+`ScheduleExceptionInputs` and engine. They cover ACTIVE-only Business with the
+missing, DRAFT, and SUSPENDED collapse; active-only Service; corrupt duration;
+specific versus any StaffMember and the inactive, foreign, and unassigned
+collapse; empty eligible set and empty schedule; overrides, additional periods,
+closures, and time off; busy windows and every invalid busy-source output; the
+single clock read; determinism; sanitized failures; and deep immutability.
+`AvailabilityQueryServiceTimeTests` cover the exact notice boundary, the last
+included and first excluded horizon dates, Business-local midnight, zone-rule
+busy windows, a spring gap, and an autumn overlap with distinct instants and
+offsets, deriving every transition from `ZoneRules`.
+`AvailabilityQueryServiceIntegrationTests` assemble real PostgreSQL Business,
+Service, assignment, StaffMember, recurring-schedule, and V9 exception data with
+tenant isolation, inactive and removed-assignment cases, and one and ten
+StaffMembers. `AvailabilityQueryStatementCountIntegrationTests` count application
+SQL through a test-scoped `DataSource` proxy: four statements for one and for ten
+StaffMembers, three when nobody is eligible. The same class covers the
+transaction boundary with explicit `TransactionTemplate` cases: a standalone call
+uses repeatable-read, a read-committed or default-isolation outer transaction
+fails with a sanitized failure before any availability SQL, and repeatable-read
+and serializable outer transactions are joined and succeed. `ServiceAvailabilityAccessIntegrationTests`
+and `StaffAvailabilityAccessIntegrationTests` cover the published provider
+contracts, including the mandatory caller transaction.
+`BusyIntervalSourceFailFastTests` and `BusyIntervalSourceWiringIntegrationTests`
+prove the placeholder is the single implementation and that a second one fails
+startup. `AvailabilityModuleBoundaryTests` and `ModuleBoundaryTests` verify no
+`scheduling` dependency on `booking` and no reverse edges.
+
 ## Browser E2E for Business onboarding and lifecycle
 
 Issue #7 adds a Playwright layer above the existing MockMvc/PostgreSQL and
@@ -376,7 +410,7 @@ performs validated cleanup of only the disposable E2E Compose project.
 Issue #15 extends the Playwright layer above with
 `frontend/e2e/business-configuration-journey.spec.ts` and the shared
 `frontend/e2e/support/` helpers, using the same isolated runner, Flyway
-migrations V1–V8 from an empty database, and redaction, artifact, and cleanup
+migrations V1–V9 from an empty database, and redaction, artifact, and cleanup
 policy described above. It covers the journey delivered by issues #11–#14; it
 does not repeat their validation, concurrency, or tenant-isolation matrices,
 which remain in the backend PostgreSQL integration tests and the Vitest
