@@ -87,8 +87,10 @@ dependencies absent separate approval.
 
 Completing issues #11, #12, and #13 does not complete this phase or parent
 issue #10. The Business-owner Services, StaffMember, assignment, and schedule
-interface remains with issue #14, and the complete browser journey remains
-with issue #15. Exceptions, time off, breaks, working overrides, and
+interface was delivered by issue #14. The complete browser journey is
+implemented by issue #15
+(`docs/tasks/04e-business-configuration-e2e-verification.md`); the issue and
+parent remain open until that work is reviewed and closed. Exceptions, time off, breaks, working overrides, and
 availability inputs beyond these backend slices also remain pending.
 
 ## Phase 5 — availability engine

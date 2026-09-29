@@ -1,4 +1,16 @@
-import { devices, expect, test, type BrowserContext, type Page } from '@playwright/test'
+import { devices, expect, test } from '@playwright/test'
+import {
+  expectNoHorizontalOverflow,
+  expectNoSessionCookie,
+  publicSession,
+  signIn,
+} from './support/browser'
+import { API_ORIGIN, requiredEnvironment } from './support/environment'
+import {
+  invitationUrls,
+  openInvitationWithoutHistoryToken,
+  submitInvitation,
+} from './support/mailbox'
 
 const BUSINESS_NAME = 'Студио Орбита Е2Е'
 const BUSINESS_SLUG = 'studio-orbita-e2e'
@@ -15,126 +27,6 @@ const OWNER_LAST_NAME = 'Орбита'
 const OWNER_DISPLAY_NAME = `${OWNER_FIRST_NAME} ${OWNER_LAST_NAME}`
 const INVALID_INVITATION_MESSAGE =
   'Поканата е невалидна, изтекла или вече е използвана. Поискайте нова покана.'
-
-type MailboxMessage = {
-  kind: string
-  recipient: string
-  url: string
-}
-
-type SessionBusiness = {
-  id: string
-  displayName: string
-  status: string
-  role: string
-}
-
-type PublicSession = {
-  email: string
-  displayName: string
-  platformAdmin: boolean
-  businesses: SessionBusiness[]
-  activeBusinessId?: string | null
-}
-
-function requiredEnvironment(name: string): string {
-  const value = process.env[name]
-  if (!value) throw new Error(`Missing required E2E environment variable: ${name}`)
-  return value
-}
-
-const API_ORIGIN = `http://localhost:${requiredEnvironment('E2E_BACKEND_PORT')}`
-
-async function signIn(page: Page, email: string, password: string): Promise<void> {
-  await page.goto('/')
-  await expect(page.getByRole('heading', { name: 'Вход' })).toBeVisible()
-  await page.getByLabel('Имейл').fill(email)
-  await page.getByLabel('Парола').fill(password)
-  const loginResponse = page.waitForResponse((response) =>
-    response.url() === `${API_ORIGIN}/api/auth/login`
-      && response.request().method() === 'POST',
-  )
-  await page.getByRole('button', { name: 'Вход' }).click()
-  expect((await loginResponse).status()).toBe(200)
-  await expect(page.getByRole('heading', { name: 'Профил' })).toBeVisible()
-}
-
-async function publicSession(page: Page): Promise<{ status: number, body: PublicSession | null }> {
-  return page.evaluate(async (apiOrigin) => {
-    const response = await fetch(`${apiOrigin}/api/auth/session`, {
-      credentials: 'include',
-    })
-    return {
-      status: response.status,
-      body: response.ok ? await response.json() as PublicSession : null,
-    }
-  }, API_ORIGIN)
-}
-
-async function invitationUrls(
-  context: BrowserContext,
-  recipient: string,
-): Promise<string[]> {
-  const response = await context.request.get(`${API_ORIGIN}/api/dev/mailbox`)
-  expect(response.status()).toBe(200)
-  const payload: unknown = await response.json()
-  if (!Array.isArray(payload)) {
-    throw new Error('The protected development mailbox returned an invalid shape')
-  }
-
-  const urls = payload
-    .filter((message): message is MailboxMessage => {
-      if (typeof message !== 'object' || message === null) return false
-      const candidate = message as Record<string, unknown>
-      return candidate.kind === 'OWNER_INVITATION'
-        && candidate.recipient === recipient
-        && typeof candidate.url === 'string'
-    })
-    .map((message) => message.url)
-
-  for (const invitationUrl of urls) {
-    const parsed = new URL(invitationUrl)
-    const tokens = parsed.searchParams.getAll('token')
-    if (parsed.pathname !== '/invitation' || tokens.length !== 1 || !tokens[0]) {
-      throw new Error('An owner invitation must contain exactly one nonblank token')
-    }
-  }
-  return urls
-}
-
-async function openInvitationWithoutHistoryToken(page: Page, invitationUrl: string): Promise<void> {
-  await page.goto(invitationUrl)
-  await expect(page.getByRole('heading', { name: 'Приемане на покана' })).toBeVisible()
-  await page.evaluate(() => {
-    history.replaceState({}, '', location.pathname)
-  })
-  expect(new URL(page.url()).search).toBe('')
-  const browserStorageIsEmpty = await page.evaluate(() =>
-    localStorage.length === 0 && sessionStorage.length === 0,
-  )
-  expect(browserStorageIsEmpty).toBe(true)
-}
-
-async function submitInvitation(page: Page): Promise<void> {
-  await page.getByLabel('Име').fill(OWNER_FIRST_NAME)
-  await page.getByLabel('Фамилия').fill(OWNER_LAST_NAME)
-  await page.getByLabel('Парола', { exact: true }).fill(requiredEnvironment('E2E_OWNER_PASSWORD'))
-  await page.getByLabel('Потвърди паролата').fill(requiredEnvironment('E2E_OWNER_PASSWORD'))
-  await page.getByRole('button', { name: 'Приеми поканата' }).click()
-}
-
-async function expectNoSessionCookie(context: BrowserContext): Promise<void> {
-  const hasSessionCookie = (await context.cookies())
-    .some((cookie) => cookie.name === 'SPOTYOURSESSION')
-  expect(hasSessionCookie).toBe(false)
-}
-
-async function expectNoHorizontalOverflow(page: Page): Promise<void> {
-  const fitsViewport = await page.evaluate(() =>
-    document.documentElement.scrollWidth <= document.documentElement.clientWidth,
-  )
-  expect(fitsViewport).toBe(true)
-}
 
 test('Business onboarding and lifecycle through isolated browser contexts', async ({ browser, page }) => {
   test.setTimeout(90_000)
@@ -230,7 +122,7 @@ test('Business onboarding and lifecycle through isolated browser contexts', asyn
   try {
     const replacedPage = await replacedContext.newPage()
     await openInvitationWithoutHistoryToken(replacedPage, firstInvitationUrl)
-    await submitInvitation(replacedPage)
+    await submitInvitation(replacedPage, OWNER_FIRST_NAME, OWNER_LAST_NAME)
     await expect(replacedPage.getByRole('alert')).toHaveText(INVALID_INVITATION_MESSAGE)
     expect((await publicSession(replacedPage)).status).toBe(401)
     await expectNoSessionCookie(replacedContext)
@@ -242,7 +134,7 @@ test('Business onboarding and lifecycle through isolated browser contexts', asyn
   try {
     const ownerPage = await ownerContext.newPage()
     await openInvitationWithoutHistoryToken(ownerPage, replacementInvitationUrl)
-    await submitInvitation(ownerPage)
+    await submitInvitation(ownerPage, OWNER_FIRST_NAME, OWNER_LAST_NAME)
     await expect(ownerPage.getByRole('status')).toHaveText(
       'Поканата е приета успешно. Бизнесът очаква активиране от администратор.',
     )
@@ -305,7 +197,7 @@ test('Business onboarding and lifecycle through isolated browser contexts', asyn
   try {
     const replayPage = await replayContext.newPage()
     await openInvitationWithoutHistoryToken(replayPage, replacementInvitationUrl)
-    await submitInvitation(replayPage)
+    await submitInvitation(replayPage, OWNER_FIRST_NAME, OWNER_LAST_NAME)
     await expect(replayPage.getByRole('alert')).toHaveText(INVALID_INVITATION_MESSAGE)
     expect((await publicSession(replayPage)).status).toBe(401)
     await expectNoSessionCookie(replayContext)

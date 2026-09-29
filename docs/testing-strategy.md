@@ -154,8 +154,9 @@ role and tenant boundaries, lifecycle conflicts, stale versions, stable
 Bulgarian RFC 7807 responses, and generic sanitization of unexpected failures.
 They also verify that client payloads and responses cannot supply or expose
 Business identity. There is no Business-owner Services frontend component or
-browser E2E coverage yet; issues #14 and #15 remain responsible for that user
-journey.
+browser E2E coverage at the time of issue #11; issue #14 added the component
+tests and issue #15 the browser journey (see "Browser E2E for the Business
+configuration journey").
 
 ## StaffMember and Service-assignment backend verification
 
@@ -190,8 +191,9 @@ request/response mapping, CSRF on every POST and PUT, role and tenant isolation,
 lifecycle and optimistic conflicts, exact Bulgarian RFC 7807 errors, privacy,
 and sanitized generic 500 behavior. Requests and responses cannot supply or
 expose Business, user, Membership, credential, role, session, normalized, SQL,
-or persistence data. Issues #14 and #15 still own the Business-owner interface
-and browser journey; issue #12 adds no frontend or browser E2E coverage.
+or persistence data. Issue #12 adds no frontend or browser E2E coverage; the
+Business-owner interface (issue #14) and browser journey (issue #15) were added
+later.
 
 Phase 3 frontend component tests cover typed hash navigation, platform-only
 navigation visibility, responsive Business listing and pagination, request
@@ -303,3 +305,56 @@ Locally, install Chromium once from `frontend` with
 frontend verification jobs, installs locked npm dependencies plus pinned
 Playwright Chromium and Linux dependencies, runs the same script, and always
 performs validated cleanup of only the disposable E2E Compose project.
+
+## Browser E2E for the Business configuration journey
+
+Issue #15 extends the Playwright layer above with
+`frontend/e2e/business-configuration-journey.spec.ts` and the shared
+`frontend/e2e/support/` helpers, using the same isolated runner, Flyway
+migrations V1–V8 from an empty database, and redaction, artifact, and cleanup
+policy described above. It covers the journey delivered by issues #11–#14; it
+does not repeat their validation, concurrency, or tenant-isolation matrices,
+which remain in the backend PostgreSQL integration tests and the Vitest
+component tests.
+
+Each setup attempt provisions a DRAFT Business and its owner through the
+administrator UI, the invitation flow, and the protected development mailbox,
+with random slug and email suffixes so a worker restart cannot collide with
+earlier data. The administrator, owner A, and owner B always use separate
+browser contexts.
+
+- **Desktop journey** — sole-Business selection and Services landing; Service
+  create, edit, deactivate, reactivate, EUR price and duration presentation, and
+  reload persistence; StaffMember create, edit, deactivate, reactivate, with
+  optional email and telephone validation; assignment add, remove, and restore,
+  with inactive Services not offered; the recurring weekly schedule with
+  multiple weekdays, a split day, deterministic ordering, edit and removal,
+  persistence after navigation and reload, and an inactive StaffMember's
+  read-only schedule with a forced `STAFF_MEMBER_INACTIVE` rejection.
+- **Unsaved changes** — one representative dirty Service form through the shared
+  dialog (initial focus, continue, discard).
+- **Lifecycle** — DRAFT and ACTIVE editing, SUSPENDED read-only rendering with
+  forced mutations rejected as `BUSINESS_SUSPENDED`, Profile, password section,
+  and logout still available, and reactivation restoring editing with all data.
+- **Isolation and context** — Business B and owner B cannot read or mutate
+  Business A entities by identifier; a `PLATFORM_ADMIN` without a Membership
+  receives 403 from private configuration endpoints; the owner shell exposes no
+  platform navigation; `localStorage`, `sessionStorage`, IndexedDB, and
+  script-visible cookies hold no authentication or Business context; session
+  cookies differ per context.
+- **Mobile smoke** — a Pixel 7 context signs in as the owner, operates the
+  navigation by keyboard, identifies the active Business, reaches Services,
+  Staff, and Working Schedule, checks readable list and schedule presentation
+  and the SUSPENDED banner, and asserts no horizontal overflow.
+- **Focused negatives** — local Bulgarian Service validation and the backend's
+  duplicate-name rejection.
+
+Not asserted by design: visible schedule timezone text, the removed StaffMember
+account explanation, and a DRAFT/ACTIVE status badge (intentionally removed in
+issue #14). StaffMember/account separation is a backend invariant; see the task
+record for the cited schema tests and the documented lack of a row-count test.
+
+Troubleshooting: a serial-describe timeout restarts the Playwright worker and
+re-runs file-level setup; because fixtures are unique per attempt, the first
+reported failure is the real one. After an interrupted run, use the exact
+cleanup command in `README.md`.

@@ -257,8 +257,8 @@ Requests and responses expose no Business, user, Membership, role, credential,
 session, normalized, SQL, or persistence fields. DRAFT and ACTIVE Businesses
 permit reads and mutations. SUSPENDED Businesses remain readable and reject
 mutations with the safe public error contract. The Business-owner interface is
-implemented by issue #14; its browser end-to-end verification remains deferred
-to issue #15.
+implemented by issue #14; issue #15 adds its browser end-to-end verification
+(see "Browser end-to-end tests" below and `docs/testing-strategy.md`).
 
 ### Business StaffMember working-schedule API
 
@@ -347,9 +347,24 @@ values and reduce the delay if a local observation run times out.
 The runner creates only the validated `spotyourslot-e2e` Compose project. It
 uses PostgreSQL on port `55432`, Spring Boot on `18080`, and Vite on `15173`.
 Every run recreates the dedicated database volume, starts Spring Boot so Flyway
-applies the current V1–V5 migrations, generates local test credentials in
+applies all current Flyway migrations (V1–V8), generates local test credentials in
 memory, and removes the E2E containers, network, and volume on exit. It neither
 reuses nor removes the ordinary development Compose project or its volume.
+
+The suite contains the Business onboarding and lifecycle journey, the startup
+smoke check, and the Business-owner configuration journey (Services, Staff,
+Service assignments, recurring weekly schedules, unsaved-changes protection,
+DRAFT → ACTIVE → SUSPENDED → ACTIVE behavior, two-Business isolation, storage
+and browser-context isolation, and a focused Pixel 7 mobile smoke check). Each
+configuration setup attempt provisions its own Businesses and owners through
+the administrator UI, the invitation flow, and the protected development
+mailbox, using a random slug and email suffix, so a Playwright worker restart
+never collides with earlier data. Credentials, invitation URLs, and cookies stay
+in memory; screenshots, videos, traces, reports, and storage-state files are
+disabled, and terminal output is redacted. Browser E2E complements, and does
+not replace, the Vitest component tests and the backend PostgreSQL integration
+tests, which own detailed validation, concurrency, and tenant-isolation
+matrices.
 
 If a run is interrupted before its exit trap completes, use this exact cleanup
 command from the repository root:
