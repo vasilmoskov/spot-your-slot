@@ -22,8 +22,11 @@ StaffMember-to-Service assignments, and each StaffMember's recurring weekly
 working schedule through authenticated APIs and through the Bulgarian
 Business-owner configuration interface (Services, Team, assignments, and the
 recurring weekly working schedule). Browser end-to-end verification of that
-journey, schedule exceptions/time off, Customers, Appointments, booking,
-production email, and hosting are not implemented.
+journey, Customers, Appointments, booking, production email, and hosting are
+not implemented. Business closures, StaffMember time off, working-day
+overrides, and additional working periods can be administered through an
+authenticated backend API but have no interface and do not yet affect
+availability.
 
 ## Product identity
 
@@ -288,8 +291,30 @@ remain readable and reject mutations. Active and inactive StaffMembers retain
 readable schedules, but only an active StaffMember may receive a mutation.
 Deactivation and Business suspension preserve all schedule data. Requests and
 responses expose no Business, user, Membership, role, credential, session,
-normalized, SQL, or persistence fields. Schedule exceptions, time off, breaks,
-working overrides, and availability calculation remain future work.
+normalized, SQL, or persistence fields. Breaks and availability calculation
+remain future work.
+
+### Business schedule-exception API
+
+Access and identity follow the working-schedule API above. Documented in
+`docs/security.md` and ADR-0015.
+
+| Method and path | Purpose |
+|---|---|
+| `GET /api/business/schedule-exceptions?from=yyyy-MM-dd&to=yyyy-MM-dd` | List exceptions overlapping an inclusive window of at most 93 dates |
+| `GET /api/business/schedule-exceptions/{exceptionId}` | Retrieve one exception |
+| `POST /api/business/schedule-exceptions` | Create one (`201` with `Location`) |
+| `PUT /api/business/schedule-exceptions/{exceptionId}` | Atomically replace dates, `allDay`, and periods with `expectedVersion`; the kind and StaffMember are retained |
+| `DELETE /api/business/schedule-exceptions/{exceptionId}?expectedVersion=N` | Hard-delete (`204`) |
+
+Kinds are `BUSINESS_CLOSURE`, `STAFF_TIME_OFF`, `WORKING_DAY_OVERRIDE`, and
+`ADDITIONAL_WORKING_PERIODS`. Dates are strict `yyyy-MM-dd` between 2000-01-01
+and 2100-12-31, times strict `HH:mm`, a full-day span is at most 366 dates, and
+an exception has at most 24 periods. A stale version or a retryable database
+concurrency failure returns 409 `SCHEDULE_EXCEPTION_CONCURRENT_UPDATE`. Inactive
+StaffMembers' exceptions are readable but not changeable, so deleting one
+requires temporary reactivation. The list is unpaginated for the small-Business
+MVP.
 
 The development mailbox retains at most 50 links in memory and never logs,
 writes, or persists raw tokens. Sessions use an opaque `SPOTYOURSESSION` cookie

@@ -64,7 +64,8 @@ context adds complexity and would not replace application checks.
 APIs expose generic Business, StaffMember, Service, Customer, Appointment, and
 Schedule terminology. DTOs use validation and pagination where needed. Current
 RFC 7807 responses contain the standard status/title/detail fields as applicable
-and a stable `code`; they do not add field arrays, timestamps, paths, or
+and a stable `code`, plus an optional `fieldErrors` map naming a correctable body
+field where an API defines one; they do not add timestamps, paths, or
 correlation IDs. OpenAPI is development-only.
 
 Appointments persist `[start_at, occupied_until)` as UTC `timestamptz` values;
@@ -200,10 +201,32 @@ means only that no such row matched, so the store does not distinguish missing,
 stale, or concurrently deleted. The future application service reads first and
 treats a later failed mutation as a concurrent change. The store takes no
 Business, Membership, or StaffMember locks and applies no authorization or
-lifecycle rules; those, and the lock order Business, Membership, StaffMember,
-aggregate, belong to a later phase. Concurrent conflicting inserts are
-serialized by PostgreSQL exclusion constraints. Nothing is published outside the
-module yet.
+lifecycle rules; the administration service of Phase 3 owns those. Concurrent
+conflicting inserts are serialized by PostgreSQL exclusion constraints.
+
+Issue #16 Phase 3 ([ADR-0015](decisions/ADR-0015-administer-schedule-exceptions-through-a-versioned-business-owner-api.md))
+adds the private Business-owner administration of schedule exceptions. The
+published `scheduling.ScheduleExceptionAdministration` contract accepts the
+server-derived authenticated Business context and is implemented by an
+application service that depends only on the published Business schedule-context
+and identity owner-access contracts and on Workforce's narrow published
+`StaffMemberReferenceAccess`, which exposes only a StaffMember's ID and active
+state and locks its row `FOR SHARE` inside the caller's transaction; Workforce has
+no reverse dependency. Reads run at repeatable-read isolation with non-locking
+checks. Each mutation runs in one transaction that locks, in order, the Business
+lifecycle row, the exact owner Membership row, the StaffMember row for
+StaffMember-scoped kinds, and finally the aggregate through the store's
+conditional statement. Replace and delete first read the aggregate in that
+transaction, report not-found only when the read is empty, and treat a failed
+conditional mutation afterwards, or a deadlock or serialization victim, as a
+concurrent update. Overlap is decided only by the PostgreSQL exclusion
+constraints; there is no pre-check. The authenticated API under
+`/api/business/schedule-exceptions` exposes list by inclusive date window, get,
+create, atomic replace (which retains the stored kind and StaffMember), and hard
+delete, both mutating variants carrying `expectedVersion`; responses omit
+Business identity. Validation bounds, the unpaginated list, and the inactive
+StaffMember trade-off are recorded in the ADR. Availability orchestration and a
+frontend remain outside this slice.
 
 The platform Business API provides bounded deterministic listing, retrieval,
 DRAFT creation, profile update, initial activation, suspension, and

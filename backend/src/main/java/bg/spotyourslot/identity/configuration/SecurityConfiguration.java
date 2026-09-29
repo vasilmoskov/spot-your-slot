@@ -63,7 +63,7 @@ public class SecurityConfiguration {
             @Value("${spotyourslot.security.allowed-origin}") String origin) {
         var configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(List.of(origin));
-        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "OPTIONS"));
+        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("Content-Type", "X-XSRF-TOKEN"));
         configuration.setAllowCredentials(true);
         var source = new UrlBasedCorsConfigurationSource();

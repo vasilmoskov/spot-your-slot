@@ -147,8 +147,17 @@ one-minute precision, an independent optimistic version, and atomic complete
 replacement of the desired week. An authorized Business owner retrieves and
 replaces this schedule through its own authenticated endpoint; the schedule
 version is separate from the StaffMember version, and inactive StaffMembers
-keep a readable but non-mutable schedule. Breaks, time off, and working
-overrides remain future capabilities.
+keep a readable but non-mutable schedule. Breaks remain a future capability.
+
+An authorized Business owner can also administer, through an authenticated
+backend API (there is no interface yet), four kinds of schedule exception: a
+Business closure, StaffMember time off, a working-day override (which may have no
+periods, removing that day's recurring periods), and additional working periods.
+Each is a versioned exception with a full-day date range for closures and time
+off or local `HH:mm` periods on one date, and is created, atomically replaced,
+or hard-deleted with the expected version. Exceptions of an inactive StaffMember
+stay readable but cannot be changed, and a suspended Business is read-only. They
+are not yet applied to availability.
 
 ## Availability and assignment
 

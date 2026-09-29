@@ -507,6 +507,34 @@ class AuthenticationApiIntegrationTests extends PostgresIntegrationTest {
                 .andExpect(status().isForbidden());
     }
 
+    @Test
+    void corsPreflightPermitsDeleteForTheExactCredentialedOriginWithoutWideningOtherPolicy()
+            throws Exception {
+        mvc.perform(options("/api/business/schedule-exceptions/{id}", UUID.randomUUID())
+                        .header("Origin", "http://localhost:5173")
+                        .header("Access-Control-Request-Method", "DELETE")
+                        .header("Access-Control-Request-Headers", "X-XSRF-TOKEN"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Access-Control-Allow-Origin", "http://localhost:5173"))
+                .andExpect(header().string("Access-Control-Allow-Credentials", "true"))
+                .andExpect(header().string(
+                        "Access-Control-Allow-Methods",
+                        org.hamcrest.Matchers.containsString("DELETE")));
+        mvc.perform(options("/api/business/schedule-exceptions/{id}", UUID.randomUUID())
+                        .header("Origin", "https://evil.invalid")
+                        .header("Access-Control-Request-Method", "DELETE"))
+                .andExpect(status().isForbidden());
+        mvc.perform(options("/api/business/schedule-exceptions/{id}", UUID.randomUUID())
+                        .header("Origin", "http://localhost:5173")
+                        .header("Access-Control-Request-Method", "PATCH"))
+                .andExpect(status().isForbidden());
+        mvc.perform(options("/api/business/schedule-exceptions/{id}", UUID.randomUUID())
+                        .header("Origin", "http://localhost:5173")
+                        .header("Access-Control-Request-Method", "DELETE")
+                        .header("Access-Control-Request-Headers", "Authorization"))
+                .andExpect(status().isForbidden());
+    }
+
     private void assertGenericLoginRejection() throws Exception {
         mvc.perform(post("/api/auth/login")
                         .with(csrf())

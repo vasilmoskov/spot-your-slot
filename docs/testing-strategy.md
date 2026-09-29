@@ -278,6 +278,50 @@ reported as a retryable write conflict. `ScheduleExceptionContentTests` and
 engine inputs, including a precedence round trip through `AvailabilityEngine`.
 No sleeps are used as concurrency proof.
 
+## Schedule-exception administration backend verification
+
+Issue #16 Phase 3 tests the private Business-owner API against PostgreSQL 18.4
+through Testcontainers. `ScheduleExceptionInputValidatorTests` cover every
+validation rule, including the exact accepted limit and first rejected value for
+the date bounds, the 366-date span, the 24-period cap, and the 93-date list
+window. `ScheduleExceptionAdministrationServiceTests` (mocked collaborators)
+cover authentication, the read and mutation authorization paths, the
+SUSPENDED and inactive-StaffMember rules, kind-specific StaffMember locking,
+stored kind and StaffMember retention on replace, not-found versus concurrent
+update, and persistence-failure translation.
+`ScheduleExceptionAdministrationServiceIntegrationTests` exercise the published
+contract against real PostgreSQL: all four kinds, deterministic list order and
+inclusive edges, atomic period replacement, empty overrides, the cross-kind,
+cross-StaffMember, adjacency, and duplicate-date overlap matrix, stale and
+deleted aggregates, Business A/B isolation, the role matrix, and lifecycle rules.
+`StaffMemberReferenceAccessIntegrationTests` cover the published Workforce
+contract, including the mandatory caller transaction.
+
+`ScheduleExceptionLockingIntegrationTests` prove the Business, Membership,
+StaffMember, aggregate lock order with observing wrappers recording one backend
+connection, that reads acquire no such lock, and, using latches and
+`pg_stat_activity` lock-wait observation without sleeps, same-version replace
+races, conflicting concurrent creates (first commits and first rolls back),
+replace versus delete in both orders, Business suspension racing a mutation in
+both orders, StaffMember deactivation racing a StaffMember-scoped mutation in
+both orders, and an opposite-order deadlock whose victim maps to the retryable
+conflict.
+
+`BusinessScheduleExceptionControllerTests` and
+`BusinessScheduleExceptionExceptionHandlerTests` cover status codes, `Location`,
+request and response mapping, absence of `kind` and StaffMember from the replace
+contract, strict date and time rejection, the exception-to-HTTP matrix, named
+`fieldErrors`, and sanitized 500 responses.
+`BusinessScheduleExceptionApiIntegrationTests` cover the full stack: all five
+routes, session-derived context, unauthenticated and missing-selection outcomes,
+the role and Membership matrix with `PLATFORM_ADMIN` alone, lifecycle,
+cross-Business identifiers, ignored client Business identity, validation
+boundaries, strict JSON, CSRF on POST, PUT, and DELETE, and privacy of
+responses. `AuthenticationApiIntegrationTests` add the credentialed `DELETE`
+CORS preflight while keeping the exact-origin, header, and method policy.
+`ModuleBoundaryTests` verify the added `scheduling` edges remain acyclic. Phase 3
+adds no frontend or browser E2E coverage.
+
 ## Browser E2E for Business onboarding and lifecycle
 
 Issue #7 adds a Playwright layer above the existing MockMvc/PostgreSQL and

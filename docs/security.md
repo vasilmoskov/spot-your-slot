@@ -38,9 +38,9 @@ persistent for 12 hours, and `Secure` in production. Credentialed CORS uses one
 exact environment-configured origin. Forwarding headers are ignored unless a
 trusted deployment is explicitly configured.
 
-The exact origin permits credentialed `GET`, `POST`, `PUT`, and `OPTIONS`
-requests with only `Content-Type` and `X-XSRF-TOKEN` request headers. POST and
-PUT remain CSRF-protected. Filter-level missing-authentication and
+The exact origin permits credentialed `GET`, `POST`, `PUT`, `DELETE`, and
+`OPTIONS` requests with only `Content-Type` and `X-XSRF-TOKEN` request headers.
+POST, PUT, and DELETE remain CSRF-protected. Filter-level missing-authentication and
 access-denied/CSRF failures return `application/problem+json` without exposing
 roles, sessions, tokens, or framework details.
 
@@ -226,6 +226,68 @@ These responses never expose SQL diagnostics, constraint names, stack traces,
 rejected personal input, internal identifiers, Membership details, or tenant
 existence. Exceptions, holidays, leave, time off, working overrides, and
 breaks remain outside this contract.
+
+### Business schedule-exception authorization
+
+Every `/api/business/schedule-exceptions` operation derives the user and
+selected Business only from the authenticated server-managed context; no path,
+query, request, or response field carries Business, user, Membership, role, or
+session identity, and a `businessId` sent in a body is ignored. Access requires
+an active `BUSINESS_OWNER` Membership for that exact user and Business.
+`PLATFORM_ADMIN` alone, `MANAGER`, `STAFF`, inactive or missing Memberships, and
+foreign Memberships are denied exactly as for the working-schedule API (an
+absent, inactive, or foreign Membership is rejected by the session filter as
+`ACTIVE_BUSINESS_REQUIRED`; a retained non-owner role as `ACCESS_DENIED`).
+Missing and cross-Business exception identifiers share `SCHEDULE_EXCEPTION_NOT_FOUND`.
+
+DRAFT and ACTIVE Businesses permit reads and mutations; SUSPENDED Businesses
+remain readable and reject create, replace, and delete with `BUSINESS_SUSPENDED`.
+StaffMember-scoped mutations require a same-Business active StaffMember: a
+missing or foreign StaffMember is `STAFF_MEMBER_NOT_FOUND`, an inactive one
+`STAFF_MEMBER_INACTIVE`. Inactive StaffMembers' exceptions stay readable but
+cannot be created, replaced, or deleted, so removing one requires temporary
+reactivation. No Membership or login account is created or implied.
+
+Mutations lock, in order, the Business lifecycle row, the exact owner Membership
+row, the StaffMember row (StaffMember-scoped kinds only), and finally the
+aggregate through a conditional expected-version `UPDATE` or `DELETE`. There is
+no overlap pre-check; PostgreSQL exclusion constraints are authoritative. Replace
+and delete distinguish a missing exception (empty tenant-scoped read) from a
+concurrent change (failed conditional mutation after a successful read). Replace
+retains the stored kind and StaffMember, which the request cannot supply. Every
+POST, PUT, and DELETE remains CSRF-protected.
+
+Accepted dates are strict `yyyy-MM-dd` and times strict `HH:mm`
+(`00:00`–`23:59`, no `24:00`, seconds, or lenient forms). Dates must lie between
+`2000-01-01` and `2100-12-31` inclusive for create, replace, and list; a
+full-day span is at most 366 dates, an exception has at most 24 periods, and a
+list window at most 93 dates. Periods must not duplicate or overlap; adjacent
+periods are valid. These bounds are an MVP technical safety boundary, not the
+booking horizon.
+
+Schedule-exception failures use this stable public contract:
+
+| Status | Code | Bulgarian public wording |
+|---:|---|---|
+| 400 | `VALIDATION_ERROR` (optional `fieldErrors`) | `Проверете въведените данни.` |
+| 401 | `AUTH_REQUIRED` | `Необходим е вход.` |
+| 403 | `ACTIVE_BUSINESS_REQUIRED` | `Изберете бизнес, за да продължите.` |
+| 403 | `ACCESS_DENIED` | `Нямате достъп до тази операция.` |
+| 404 | `STAFF_MEMBER_NOT_FOUND` | `Членът на екипа не е намерен.` |
+| 404 | `SCHEDULE_EXCEPTION_NOT_FOUND` | `Изключението от графика не е намерено.` |
+| 409 | `STAFF_MEMBER_INACTIVE` | `Изключенията на неактивен член на екипа не могат да бъдат променяни.` |
+| 409 | `SCHEDULE_EXCEPTION_OVERLAP` | `Вече има изключение от същия вид за тези дати.` |
+| 409 | `SCHEDULE_EXCEPTION_CONCURRENT_UPDATE` | `Изключението от графика е променено от друга операция. Обновете данните и опитайте отново.` |
+| 409 | `BUSINESS_SUSPENDED` | `Спрян бизнес може само да преглежда данните си.` |
+| 500 | `INTERNAL_ERROR` | `Възникна неочаквана грешка.` |
+
+A stale version, a concurrent delete, and a PostgreSQL deadlock or serialization
+victim share `SCHEDULE_EXCEPTION_CONCURRENT_UPDATE`; the guidance is to reload
+and retry. `fieldErrors` names only correctable body fields (`kind`,
+`staffMemberId`, `firstDate`, `lastDate`, `allDay`, `periods`); identifier,
+version, list-window, and whole-body failures stay generic. Responses never
+expose SQL diagnostics, constraint names, stack traces, submitted identifiers,
+Membership details, or tenant existence.
 
 Repositories require `business_id`; foreign/composite constraints validate
 common ownership. STAFF is restricted to the linked StaffMember’s schedule and
