@@ -34,8 +34,8 @@ All backend packages live below `bg.spotyourslot`.
 | `platform` | PLATFORM_ADMIN operations and Business lifecycle |
 | `business` | Business profile, BusinessType, slug, settings, status, tenant context |
 | `catalog` | Business-owned Services, prices, durations, lifecycle, and versioned administration |
-| `workforce` | StaffMembers, Service qualifications, weekly hours, breaks, time off, overrides |
-| `scheduling` | timezone-aware availability and deterministic assignment |
+| `workforce` | StaffMembers, Service qualifications, recurring weekly hours |
+| `scheduling` | timezone-aware availability, Business closures, StaffMember time off, working-day overrides, additional working periods, and deterministic assignment (ADR-0013) |
 | `booking` | transactional Appointment lifecycle and conflicts |
 | `customer` | Business-scoped Customers and safe matching |
 | `notification` | outbox, delivery attempts, reminders, `EmailService` |
