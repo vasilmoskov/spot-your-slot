@@ -45,6 +45,7 @@ import { ServiceDetail } from './business/services/ServiceDetail'
 import { StaffList } from './business/staff/StaffList'
 import { StaffCreate } from './business/staff/StaffCreate'
 import { StaffDetail } from './business/staff/StaffDetail'
+import { StaffWorkingSchedule } from './business/schedule/StaffWorkingSchedule'
 
 const safeErrorDetail = (error: unknown): string =>
   error instanceof ApiError ? error.detail : 'Възникна грешка. Опитайте отново.'
@@ -728,6 +729,12 @@ export function AuthenticatedApplication({
             readOnly={readOnly}
             onAuthenticationRequired={authenticationRequired}
             onBack={() => navigate(BUSINESS_STAFF_ROUTE)}
+          />
+        ) : route.kind === 'business-schedule' ? (
+          <StaffWorkingSchedule
+            key={businessKey}
+            readOnly={readOnly}
+            onAuthenticationRequired={authenticationRequired}
           />
         ) : (
           <ComingSoon />

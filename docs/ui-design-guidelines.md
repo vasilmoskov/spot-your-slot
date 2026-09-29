@@ -82,6 +82,20 @@ Cards and elevated surfaces may use subtle shadows, but borders and spacing
 should carry most of the hierarchy. Avoid heavy elevation, ornamental borders,
 gradients, and decorative layering.
 
+Distinct semantic blocks within one component — form fields, inline
+validation/error feedback, and action groups chief among them — must have
+explicit, token-based spacing between them (a layout `gap` on a shared
+`display: grid`/`flex` container, or an explicit `margin`/`padding` token),
+never an element's own accidental default margin (a bare `<h4>`, `<p>`, or
+similar). When a container relies on `gap` for this spacing, zero the outer
+margin on its direct children so `gap` remains the single source of spacing
+regardless of which element type is present — a default browser margin on a
+grid or flex item is not collapsed and silently stacks on top of the
+intended `gap`. Review the error-state layout specifically, not only the
+success/default state: an inline validation message must not visually touch
+the action buttons below it, whether the error is short or wraps across
+multiple lines.
+
 ## 6. Buttons and interactive controls
 
 Use the shared `Button` component and semantic variants; do not create page-specific
@@ -107,6 +121,19 @@ radius, focus-visible outline, and transition:
 - `navigation` is the explicit full-width exception for equal Profile section
   controls. Use restrained light-purple selection and purple text, never a
   saturated block. Sidebar links remain semantic navigation links.
+- A popup menu or overflow menu opened from a trigger inside a narrow,
+  repeated, or edge-adjacent container (a grid column, a table row, a card
+  near the viewport edge) must use collision-aware positioning, measured
+  from the real trigger and the real (natural-size) menu at open time, not a
+  fixed CSS offset such as `top: 100%; right: 0` tuned for only one
+  instance. Prefer a consistent primary side (e.g. opening to the right,
+  aligned with the trigger), flip to the opposite side when the viewport
+  does not have room, and clamp the final position so the menu never
+  overflows the viewport or gets clipped by a narrow ancestor. Extract the
+  side/flip decision as a small pure function so it can be unit tested
+  without relying on real browser layout in tests. Menu item labels must
+  never be truncated or ellipsized; size the menu to its content instead of
+  a fixed width that may be narrower than the longest label.
 
 Do not apply the non-destructive action colors to destructive or disabled controls,
 selected navigation/tab states, status badges, plain text links, or native

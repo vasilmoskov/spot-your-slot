@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom/vitest'
 import { useState } from 'react'
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { App, AuthenticatedApplication } from './App'
 import { useFeedback } from './ui/useFeedback'
@@ -27,6 +27,7 @@ import {
   type StaffMemberDetails,
   type StaffMemberPage,
 } from './business/staff/api'
+import { getWorkingSchedule, type WorkingSchedule } from './business/schedule/api'
 
 vi.mock('./identity/api', async (importOriginal) => {
   const original = await importOriginal<typeof import('./identity/api')>()
@@ -54,6 +55,10 @@ vi.mock('./business/staff/api', async (importOriginal) => {
     updateStaffMember: vi.fn(),
   }
 })
+vi.mock('./business/schedule/api', async (importOriginal) => {
+  const original = await importOriginal<typeof import('./business/schedule/api')>()
+  return { ...original, getWorkingSchedule: vi.fn() }
+})
 
 const mockedRequest = vi.mocked(request)
 const mockedCreateBusiness = vi.mocked(createBusiness)
@@ -65,6 +70,7 @@ const mockedUpdateService = vi.mocked(updateService)
 const mockedListStaffMembers = vi.mocked(listStaffMembers)
 const mockedGetStaffMember = vi.mocked(getStaffMember)
 const mockedUpdateStaffMember = vi.mocked(updateStaffMember)
+const mockedGetWorkingSchedule = vi.mocked(getWorkingSchedule)
 const emptyServicePage: ServicePage = { services: [], page: 0, size: 50, totalElements: 0 }
 const emptyStaffPage: StaffMemberPage = { staffMembers: [], page: 0, size: 10, totalElements: 0 }
 const testService: ServiceDetails = {
@@ -156,6 +162,7 @@ beforeEach(() => {
   mockedGetStaffMember.mockResolvedValue(testStaffMember)
   mockedUpdateStaffMember.mockReset()
   mockedUpdateStaffMember.mockResolvedValue(testStaffMember)
+  mockedGetWorkingSchedule.mockReset()
 })
 
 afterEach(() => {
@@ -1836,19 +1843,65 @@ describe('Profile password guard', () => {
   })
 })
 
-describe('Business-owner placeholder sections', () => {
-  it.each([
-    ['#/business/schedule', 'Работно време'],
-  ] as const)('keeps the page heading on %s without repeating it inside the card', async (hash, title) => {
-    history.replaceState({}, '', `/${hash}`)
+describe('Business-owner working-schedule route', () => {
+  it('renders the real schedule feature (not a placeholder) with the active-Business key', async () => {
+    history.replaceState({}, '', '/#/business/schedule')
     mockedRequest.mockResolvedValue(session)
     render(<App />)
 
-    const heading = await screen.findByRole('heading', { name: title })
-    expect(screen.getAllByRole('heading', { name: title })).toHaveLength(1)
-    expect(heading.closest('.platform-page-header')).not.toBeNull()
-    const card = screen.getByText('Тази секция ще бъде налична скоро.').closest('.content-card')
-    expect(card?.querySelector('h1, h2, h3')).toBeNull()
-    expect(screen.getByText('Тази секция ще бъде налична скоро.')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Работно време' })).toBeInTheDocument()
+    expect(
+      await screen.findByText(/Все още няма добавени членове на екипа/),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Тази секция ще бъде налична скоро.')).not.toBeInTheDocument()
+  })
+
+  it('guards browser Back navigation from a dirty schedule Add-period dialog, even though the weekly draft itself is still clean', async () => {
+    history.replaceState({}, '', '/#/business/schedule')
+    mockedRequest.mockResolvedValue(session)
+    mockedListStaffMembers.mockResolvedValue({
+      staffMembers: [testStaffMember],
+      page: 0,
+      size: 10,
+      totalElements: 1,
+    })
+    const schedule: WorkingSchedule = {
+      staffMemberId: 'staff-a',
+      timezone: 'Europe/Sofia',
+      periods: [],
+      version: 0,
+      createdAt: '2026-08-19T09:00:00Z',
+      updatedAt: '2026-08-19T09:00:00Z',
+    }
+    mockedGetWorkingSchedule.mockResolvedValue(schedule)
+    render(<App />)
+
+    await screen.findByRole('heading', { name: 'Понеделник' })
+    fireEvent.click(screen.getByRole('button', { name: 'Редактирай графика' }))
+    const monday = screen.getByRole('heading', { name: 'Понеделник' }).closest('section') as HTMLElement
+    fireEvent.click(within(monday).getByRole('button', { name: '+ Добави' }))
+    const dialog = screen.getByRole('dialog')
+    fireEvent.change(within(dialog).getByLabelText('Начален час'), { target: { value: '09:00' } })
+
+    const dirtyHash = window.location.hash
+    await act(async () => {
+      history.pushState({}, '', '/#/business/staff')
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    })
+
+    expect(screen.getByRole('alertdialog', { name: 'Незапазени промени' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(within(dialog).getByLabelText('Начален час')).toHaveValue('09:00')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Продължи редактирането' }))
+    expect(window.location.hash).toBe(dirtyHash)
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+
+    await act(async () => {
+      history.pushState({}, '', '/#/business/staff')
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
+    expect(await screen.findByRole('heading', { name: 'Екип' })).toBeInTheDocument()
   })
 })

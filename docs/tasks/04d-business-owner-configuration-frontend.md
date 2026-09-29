@@ -52,10 +52,11 @@ are as defined in issue #14 and are not repeated here.
    Service-assignment management, following the same shape as Phase 1; see
    "Phase 2 — Staff management + service assignments" below for the concrete
    decisions and evidence.
-4. **Phase 3 — Recurring working-schedule management.** Per-staff weekly
-   editor, split working days, weekday/full-schedule clearing with
+4. **Phase 3 — Recurring working-schedule management** (completed). Per-staff
+   weekly editor, split working days, weekday/full-schedule clearing with
    confirmation, timezone display, backend overlap/concurrency error
-   rendering.
+   rendering; see "Phase 3 — Recurring working-schedule management" below for
+   the concrete decisions and evidence.
 5. **Phase 4 — Cross-cutting hardening, visual review, and documentation.**
    Audit stale-response and Business-context-change handling across all three
    features, perform the full desktop/mobile/200%-zoom human visual review,
@@ -496,6 +497,674 @@ edit), `StaffCreate.test.tsx` (explanatory-copy absence),
 `navigation.test.ts` (`phone`/`email` accepted by the Staff route
 allowlist). Full `npm run test`: 315 tests passed across 26 files. `npm run
 lint` and `npm run build` both clean. `git diff --check` clean.
+
+## Phase 3 — Recurring working-schedule management
+
+Implemented the Bulgarian Business-owner UI for viewing and editing each
+StaffMember's recurring weekly working schedule, consuming the completed
+Phase-#13 backend (`GET`/`PUT /api/business/staff-members/{staffMemberId}/working-schedule`)
+without changing its contract. `navigation.ts`'s `business-schedule` route,
+`BusinessOwnerShell`'s "Работно време" sidebar link, and its page title were
+already wired ahead of this phase; only the API/component layer was missing.
+
+**New feature module** — `frontend/src/business/schedule/`: `api.ts` (typed
+`getWorkingSchedule`/`replaceWorkingSchedule` client), `errors.ts` (safe error
+codes: `VALIDATION_ERROR`, `ACCESS_DENIED`, `ACTIVE_BUSINESS_REQUIRED`,
+`STAFF_MEMBER_NOT_FOUND`, `STAFF_MEMBER_INACTIVE`,
+`WORKING_SCHEDULE_CONCURRENT_UPDATE`, `BUSINESS_SUSPENDED` — the concurrent-
+update code is schedule-specific and distinct from Staff's own
+`STAFF_MEMBER_CONCURRENT_UPDATE`), `presentation.ts` (the seven Bulgarian
+weekday labels in the required order, chronological sorting/grouping, and a
+pure `validateDraftPeriods` function mirroring the backend's own overlap/
+adjacency/range rules for immediate client-side feedback),
+`StaffWorkingSchedule.tsx` (StaffMember selector), and
+`WorkingScheduleEditor.tsx` (the per-StaffMember weekly view/editor). Wired
+into `App.tsx`'s `route.kind === 'business-schedule'` branch (previously
+`ComingSoon`), passing `key={businessKey}` like every other Business-owner
+section.
+
+**StaffMember selection** — The route carries no StaffMember id (a single
+combined page, not a second router or per-staff URL). `StaffWorkingSchedule`
+loads every page of the StaffMember catalog (active and inactive, the same
+full-pagination pattern already used for the Staff Service-assignment
+editor) into a `<select>`, defaulting to the first entry and showing the
+selected StaffMember's status badge. Switching the selection goes through
+the shared `UnsavedChangesGuardProvider` (`guard.guard(...)`), so a dirty
+schedule draft blocks the switch exactly like sidebar navigation, logout,
+Business switching, and browser Back/Forward do automatically for any
+component registered via `useGuardedFormState`. The whole page remounts
+(`key={businessKey}` in `App.tsx`) on a Business switch, so a Business-A
+selection is never silently retained into Business B, and the per-StaffMember
+`WorkingScheduleEditor` is itself keyed by the selected StaffMember id, so
+switching StaffMembers aborts any in-flight schedule request via the
+existing `AbortController`/remount pattern rather than needing a separate
+request-sequence guard.
+
+**View and edit** — All seven weekdays always render, Понеделник through
+Неделя, each showing every configured period in chronological order (or "Няма
+работни часове" when empty), split working days included. The authoritative
+Business timezone from the response is displayed verbatim; the frontend never
+infers or hardcodes it. Editing uses native `<input type="time">` controls
+(always canonical `HH:mm`, no seconds, no Date/timezone conversion of any
+kind — pure wall-clock strings from load to save) with per-weekday add/
+remove/clear controls and a whole-schedule clear control. Saving always sends
+the complete resulting period set with the current `expectedVersion` (the
+backend's replace-only contract), never a partial update; an empty period
+list is a valid save. `useGuardedFormState` compares the live draft against
+the last-loaded schedule (not a touched flag); a successful save clears the
+guard before returning to view mode, a failed save preserves the draft and
+keeps the guard active, and Cancel goes through the shared guard exactly like
+the Staff profile/assignment editors, restoring the persisted schedule when
+a dirty discard is confirmed. Only one editor (the schedule itself) is ever
+open per page, so the existing single-registration guard contract needed no
+change.
+
+**Confirmation dialogs** — Clearing a weekday with periods, and clearing the
+whole schedule, both require an inline `role="alertdialog"` confirmation
+(mentioning the Bulgarian weekday name for the per-day case; the exact
+copy specified for the whole-schedule case: heading "Изчистване на работния
+график", body "Всички работни периоди за седмицата ще бъдат премахнати.
+Сигурни ли сте, че искате да продължите?", safe button "Запази графика",
+destructive button "Изчисти графика"). Removing a single period, or clearing
+an already-empty day/schedule (the button is disabled in that state), never
+prompts. The safe button always receives initial focus and the destructive
+button is never auto-focused — the opposite convention from the codebase's
+existing deactivate-style confirmations (StaffDetail), which intentionally
+focus the destructive action; this phase followed the task's explicit
+instruction for these two dialogs specifically, matching the same safe-
+focus rule the shared `UnsavedChangesGuard` dialog already uses.
+
+**Validation** — `validateDraftPeriods` (pure, unit-tested in
+`presentation.test.ts`) enforces: both times required, canonical `HH:mm`
+format, start strictly before end (a reversed or equal range is rejected),
+no two periods on the same weekday overlapping, and a maximum of 100 periods
+for the week (the backend's own `MAX_PERIODS`). Adjacent periods (one
+period's `endTime` equal to another's `startTime`) are explicitly accepted,
+matching the backend's half-open-interval semantics. A duplicate period is
+caught by the same overlap check, since an identical range always overlaps
+itself. Errors render next to the affected period (`aria-invalid`,
+`aria-describedby`, and an inline Bulgarian message), not only as a
+page-level notice; a failed submit attempt moves focus to the first invalid
+period's start-time input, or to an error summary when the only failure is
+the period-count limit. The backend remains authoritative — this only
+improves UX by surfacing the same failures immediately; a genuine backend
+`VALIDATION_ERROR` (which cannot distinguish the failing field, per the
+existing generic contract) still renders as a safe page-level message via
+`safeScheduleError`.
+
+**Lifecycle and error handling** — `GET` succeeds for inactive StaffMembers
+and `SUSPENDED` Businesses (confirmed by reading
+`StaffWorkingScheduleAdministrationService`: `authorizeRead` performs no
+lifecycle check at all); `PUT` is blocked for both, matching the backend's
+`authorizeMutation`. The frontend mirrors this exactly: `canEdit = !readOnly
+&& staffMemberActive` hides the edit control and shows the corresponding
+Bulgarian explanation, while the schedule itself always remains visible and
+readable. Every other backend failure case (unauthenticated,
+`ACTIVE_BUSINESS_REQUIRED`, `ACCESS_DENIED`, `STAFF_MEMBER_NOT_FOUND`, a
+stale `expectedVersion`, an unexpected failure) is handled with the same
+safe-error/feedback pattern already established for Services and Staff. A
+stale-version conflict (`WORKING_SCHEDULE_CONCURRENT_UPDATE`) shows a sticky
+message with an explicit "Зареди актуалните данни" reload action and never
+silently overwrites the user's draft.
+
+**Test evidence** — Frontend (Vitest/Testing Library):
+`business/schedule/api.test.ts`, `errors.test.ts`, `presentation.test.ts`
+(all seven weekdays and labels in order, formatting, grouping, and every
+validation rule: empty list, single/multiple/adjacent/overlapping/duplicate/
+reversed/malformed periods, the 100-period boundary, Bulgarian messages),
+`WorkingScheduleEditor.test.tsx` (empty and split-day display, authoritative
+timezone, SUSPENDED/inactive read-only notices and control hiding, add/edit/
+remove period, inline overlap errors blocking save, adjacent-period save,
+weekday/whole-schedule clear confirmation including disabled-when-empty and
+safe-button focus, single-period removal without confirmation, Cancel with
+and without changes, the shared guard blocking an external guarded action
+and clearing after a successful save, a failed save preserving the draft,
+stale-version conflict with reload, and the 401 redirect),
+`StaffWorkingSchedule.test.tsx` (default selection and status display,
+full-catalog pagination, empty-team state, StaffMember switching and
+schedule reload, a stale schedule response ignored after switching, the
+guard blocking a StaffMember switch while dirty, and the 401 redirect), plus
+an `App.tsx` test confirming the route renders the real feature instead of
+the previous `ComingSoon` placeholder (the now-obsolete
+`#/business/schedule` entry in `App.test.tsx`'s placeholder-sections table
+was removed, since the route is no longer a placeholder). Full `npm run
+test`: 367 tests passed across 31 files. `npm run lint`, `npm run build`
+(`tsc -b && vite build`), and `git diff --check` all clean. No backend,
+migration, dependency, or unrelated file was modified; `git status` shows
+only frontend changes for this phase.
+
+**Deviations / exclusions** — None. Phase 4 (cross-cutting hardening, visual
+review, documentation) was not started per the approved scope; this document
+records the mandatory field-level-validation hardening item below as
+required future scope rather than broadening Phase 3 into it.
+
+### Phase 3 UI/UX redesign — compact weekly grid
+
+The initial Phase 3 implementation above (one large vertical card per
+weekday, with permanent time inputs and a `Премахни`/`Изчисти деня`/`Добави
+период` button trio always visible inside every weekday) was visually
+rejected as too long, button-heavy, and form-like. This pass replaced the
+interaction model while preserving every Phase 3 behavioral guarantee
+(complete-set atomic `PUT`, optimistic `expectedVersion`, the shared
+`UnsavedChangesGuard`, failed-save draft preservation, successful-save guard
+cleanup, stale-version reload, and all inactive/`SUSPENDED` read-only
+authorization behavior). No backend, migration, dependency, or API-contract
+change was involved.
+
+**Weekly grid, not seven independent cards** — `WorkingScheduleEditor.tsx`
+renders one `.schedule-grid` container holding all seven weekday `<section
+className="schedule-day">` elements in the same Monday-to-Sunday DOM order
+as before. The container is `display: flex; flex-direction: column` by
+default (mobile-first stacked cards) and becomes `display: grid;
+grid-template-columns: repeat(7, minmax(0, 1fr))` at the existing shared
+`48rem` breakpoint (the same breakpoint already used elsewhere in the
+product for the mobile/tablet transition), so the desktop weekly table and
+the mobile stacked cards are the *same DOM*, not two parallel
+implementations — only the container's CSS `display` mode changes. This is
+also why the frontend test suite verifies the responsive transformation
+through semantic structure (one `.schedule-grid` container, seven
+`section.schedule-day` children, one heading per weekday) rather than through
+rendered-pixel snapshots, which jsdom cannot evaluate media queries against
+anyway.
+
+**Compact chips instead of permanent inputs** — Read-only and edit mode both
+render each period as a small pill (`.schedule-period-chip`, e.g.
+`09:00–12:00`) instead of a bulleted list or a permanent pair of `<input
+type="time">` elements. An empty weekday shows the single word `Почивен ден`
+instead of a full empty-state card. No `<input type="time">` exists anywhere
+in read-only mode. In edit mode, each chip becomes a small button pair: the
+period text (click to edit) plus a compact `×` remove button — removal stays
+immediate with no confirmation, matching the previously accepted behavior.
+Each weekday has one compact `+ Добави` action; there are no other
+permanently visible per-weekday buttons.
+
+**Focused add/edit dialog** — Clicking `+ Добави` or an existing period chip
+opens one modal dialog (`role="dialog"`, `aria-modal`) titled `Добавяне на
+период за {weekday}` or `Редактиране на период за {weekday}`, with a start-
+and end-time field, inline Bulgarian validation next to the fields
+(`aria-invalid`/`aria-describedby`), and primary/secondary actions
+(`Добави`/`Запази` and `Отказ`). Validation reuses the existing
+`validateDraftPeriods` function unchanged (required fields, canonical
+`HH:mm`, start-before-end, no overlap, no duplicates — duplicates are
+naturally caught as identical-range overlaps, adjacent periods accepted, the
+existing 100-period cap): the dialog constructs a candidate full draft with
+the new/edited period applied and re-validates the whole schedule, so the
+same overlap/duplicate/limit logic that governs the final save also governs
+every single add/edit, with no separate implementation to keep in sync. On
+failure the dialog stays open, shows the concrete Bulgarian message, and
+preserves the entered values; a valid period is never left unsaved and an
+invalid one is never committed to the draft. The start-time field receives
+initial focus on open (via an effect keyed on dialog-open state only, not on
+the dialog's own contents, so typing never steals focus back). Escape closes
+the dialog only when it is clean (start/end unchanged from how it opened);
+once the user has typed anything, Escape is a no-op and only the explicit
+`Отказ` button can discard the in-progress entry, per the task's explicit
+requirement that Escape must never silently discard dirty dialog input.
+Closing (by any path) restores focus to whichever control opened the
+dialog.
+
+**Overflow menu, not permanent per-day buttons** — The `Изчисти деня`
+button no longer renders permanently inside every weekday. A weekday that
+currently has at least one period shows a compact `⋯` ("Още действия за
+{weekday}") trigger; clicking it opens a small `role="menu"` with two
+`role="menuitem"` actions: `Изчисти деня` (unchanged confirmation dialog and
+copy, now presented as a page-level modal rather than inline inside the
+narrow grid cell) and the new `Копирай към…`. An empty weekday shows no `⋯`
+trigger at all, since it has no non-empty-day actions to offer.
+
+**Copy-to-weekdays** — `Копирай към…` opens a dialog (`role="dialog"`)
+titled `Копиране на график от {source weekday}` with one checkbox per *other*
+weekday (the source weekday is never offered as its own target — enforced by
+filtering it out of the target list, not merely disabling it). A target
+weekday that already has draft periods discloses this inline next to its
+checkbox (`ще замени N период(а)`), and the primary button's label switches
+from `Копирай` to `Копирай и замени` whenever at least one selected target
+currently has periods, so the replacement is disclosed before the user
+commits, not hidden behind a generic confirm. Copying operates purely on the
+local `draft` state — the target weekdays' existing periods are removed and
+replaced with clones of the source weekday's periods (new client-side ids,
+reassigned weekday, same start/end times); nothing is sent to the backend
+until the page-level `Запази промените`. Because a source weekday's own
+periods never overlap each other (it is itself a valid saved/draft day) and
+a target's prior periods are fully cleared before the copies are inserted,
+copied periods cannot introduce a new overlap; the existing whole-schedule
+`validateDraftPeriods` result (surfaced as the page-level "too many periods"
+notice) still governs the 100-period cap after a copy that pushes the total
+over the limit, since copying is the one path that adds periods without
+going through the per-dialog check. Copying immediately marks the form
+dirty through the same `draft`-vs-`schedule.periods` comparison already used
+everywhere else, so it participates in the shared `UnsavedChangesGuard`
+exactly like a manual edit. Cancel discards the pending target selection and
+changes nothing.
+
+**One page-level action group** — `Запази промените`, `Отказ`, and a
+secondary-positioned destructive `Изчисти графика` (the existing
+whole-schedule clear, with its existing confirmation copy and safe-button-
+focus behavior, now presented as a page-level modal) appear exactly once, in
+a `.schedule-page-actions` row below the grid, never repeated per weekday.
+
+**Removed metadata** — The StaffMember status badge (`Активен`/`Неактивен`)
+no longer renders in the schedule header; `StaffWorkingSchedule.tsx`'s
+`<select>` still appends `(неактивен)` to an inactive StaffMember's option
+text, which remains the only way the picker distinguishes lifecycle state.
+The visible `Часова зона на бизнеса: {timezone}` paragraph was removed
+entirely; the backend response's `timezone` field is unchanged and still
+flows through the API/domain layer untouched — it is simply not rendered on
+this screen anymore, and is neither inferred nor hardcoded anywhere in the
+frontend. For an inactive StaffMember, the message was corrected from the
+inaccurate "Неактивен член на екипа не може да получи работен график."
+(which described a write restriction as if it blocked all access) to
+"Работният график на неактивен член на екипа може само да бъде преглеждан."
+For a `SUSPENDED` Business, the schedule-specific paragraph was removed
+entirely — `BusinessOwnerShell`'s existing shared banner already states the
+Business is suspended, so the editor now only hides its edit controls
+(`canEdit = !readOnly && staffMemberActive`) without repeating that
+explanation in a second, schedule-specific notice.
+
+**Focus-restoration edge cases** — Two destructive confirmations can remove
+the very control that invoked them: clearing a weekday removes its `⋯`
+trigger (which only renders while the weekday is non-empty), and clearing
+the whole schedule disables the invoking `Изчисти графика` button (disabled
+once the draft is empty, and a disabled control cannot receive focus).
+`confirmClearWeekday` therefore restores focus to that weekday's
+always-present `+ Добави` control instead of the vanished trigger, and
+`confirmClearAll` restores focus to the primary `Запази промените` button
+instead of the now-disabled invoker.
+
+**Test evidence** — `frontend/src/business/schedule/WorkingScheduleEditor.test.tsx`
+was rewritten (29 tests) covering: the seven-weekday grid structure and
+order, chip-based read-only display (`Почивен ден`, chronological chips, no
+`<input type="time">` in read-only mode), absence of the status badge and
+timezone text, the corrected inactive-StaffMember wording with no duplicate
+`SUSPENDED` message, opening the Add dialog for the correct weekday with
+initial focus, opening the Edit dialog pre-populated, immediate no-confirm
+period removal, dialog validation (required fields, reversed range,
+overlap, adjacent-accepted), Escape closing only when clean and restoring
+focus, the day overflow menu appearing only for a non-empty weekday, clear-day
+and clear-all confirmations (including safe-button focus and the
+now-unmounted/disabled invoker focus-restoration fallbacks above), copy to
+one and to multiple target weekdays, the inline replacement disclosure and
+`Копирай и замени` label switch, copy cancel leaving the draft unchanged,
+the source weekday never being offered as its own target, a copy
+participating in the dirty-state guard and in the final save payload,
+Cancel with and without changes, the shared guard blocking an external
+guarded action and clearing after a successful save, a failed save
+preserving the draft, the stale-version conflict with reload, and the 401
+redirect. `StaffWorkingSchedule.test.tsx` was updated in place (no test
+removed) to drop the retired status-badge/timezone-text assertions and
+assert the corrected inactive wording and structural waits instead; its
+StaffMember-switch, full-catalog pagination, stale-response, and
+unsaved-changes-guard coverage is otherwise unchanged. `presentation.test.ts`,
+`errors.test.ts`, and `api.test.ts` required no changes (the validation,
+error-mapping, and HTTP-client logic they cover did not change). A repo-wide
+CSS guardrail test (`frontend/src/ui/Button.test.tsx`, "restricts action
+colors to shared semantic selectors") caught one styling mistake during this
+pass — a bare `.schedule-day-menu button` element selector with color/
+background rules, which the guardrail requires to be scoped under `.button`
+or to avoid the word "button" in the selector entirely — fixed by renaming
+it to the dedicated `.schedule-day-menu-item` class instead of relying on
+the bare element selector. Full `npm run test`: 379 tests passed across 31
+files. `npm run lint`, `npm run build` (`tsc -b && vite build`), and
+`git diff --check` all clean. No backend, migration, dependency, or
+unrelated file was modified.
+
+**Manual visual verification** — Performed in the browser against the same
+running local backend/frontend and Business-owner fixture from the initial
+Phase 3 review (see below for the exact steps and screenshots taken).
+
+**Deviations / limitations** — None from the approved redesign scope. The
+day overflow menu is a minimal custom implementation (`role="menu"`/
+`role="menuitem"` with initial-open-state focus and Escape-to-close) rather
+than a full roving-tabindex ARIA menu widget with arrow-key navigation;
+given the existing codebase has no shared menu component to extend and the
+menu holds exactly two items, this was judged proportionate rather than
+under-built, consistent with the same level of rigor the existing
+`UnsavedChangesGuard` dialog uses (initial focus, Escape, focus restoration,
+no full focus trap).
+
+### Phase 3 final corrections — wording, spacing, ordering, copy shortcuts, dialog guard
+
+A further correction pass on the accepted compact-weekly-grid redesign,
+addressing five issues found in review before the stable checkpoint commit.
+No backend, migration, dependency, or API-contract change; the weekly-grid
+design and every previously completed behavior are preserved.
+
+**Bulgarian sentence-form weekday wording** — `presentation.ts` now exports
+`WEEKDAY_SENTENCE_LABELS` (lowercase: `понеделник`, `вторник`, `сряда`,
+`четвъртък`, `петък`, `събота`, `неделя`) alongside the existing capitalized
+`WEEKDAY_LABELS` (standalone column headings and copy-target checkbox
+labels, which are list-item-style standalone labels, not sentence-embedded
+text). Every schedule dialog sentence/phrase that embeds a weekday
+mid-sentence now uses the sentence-form label: the Add/Edit-period dialog
+heading (`Добавяне на часове за {weekday}` / `Редактиране на часове за
+{weekday}` — note "часове" replaces the earlier "период" wording, per the
+accepted correction, not only a casing change), the Copy-to-weekdays dialog
+heading and description, the Clear-day confirmation heading and body, the
+day overflow-menu's accessible name (`Още действия за {weekday}` /
+`Действия за {weekday}`), and the period chip's edit/remove accessible
+names (`Редактирай периода … за {weekday}` / `Премахни периода … за
+{weekday}`). A shared label mapping is used throughout rather than scattered
+inline `.toLowerCase()` calls or string concatenation, so the distinction is
+enforced by which constant a call site imports, not by an easy-to-miss
+per-call transformation.
+
+**Dialog spacing** — `.schedule-dialog-panel` (the Add/Edit-period, Copy-to-
+weekdays, Clear-day, and Clear-all-schedule modals) is now `display: grid;
+gap: var(--space-4)`, and `.schedule-dialog-panel > *` is reset to
+`margin: 0`. Both halves of this rule matter: `gap` establishes the token-
+based spacing between the heading, fields, inline validation, and action
+group, and the margin reset prevents a plain `<h4>`/`<p>`'s own
+browser-default margin from silently stacking on top of that `gap` — CSS
+Grid does not collapse item margins the way normal document flow collapses
+adjacent block margins, so without the reset the validation error would
+still end up closer to (or further from) the action buttons than the
+declared `space-4` token, depending on the browser's UA stylesheet. Verified
+in the browser with no error, a one-line error, a wrapping two-line error
+(the overlap message), mobile width, and 200% zoom — see the visual
+verification below. `docs/ui-design-guidelines.md` §5 now states the durable
+general rule (distinct semantic blocks need explicit token-based spacing,
+never accidental default margins; review the error-state layout
+specifically) once, in the one place `AGENTS.md`/`CLAUDE.md` already point
+agents to for UI guidance — not duplicated in either instruction file.
+
+**Immediate chronological ordering** — `sortPeriodsForDisplay` (in
+`presentation.ts`) is now generic over any `{ weekday, startTime, endTime }`
+shape (previously typed only for the plain `WorkingPeriod` API shape), with
+an explicit end-time tie-break added for full determinism, and is the single
+function used for: the read-only view, the editable draft (grouped via
+`groupPeriodsByWeekday(sortPeriodsForDisplay(draft))`, recomputed by the
+existing `draftGroups` memo on every `draft` change), and the final atomic
+PUT payload (`sortPeriodsForDisplay(draft).map(stripClientId)`). Because
+every local draft mutation — add, edit, copy, remove, clear-then-add, or a
+discarded/restored draft — funnels through the same `draft` state and the
+same memoized grouping, the weekly grid re-sorts immediately after each one,
+with no dependency on a backend round-trip; `clientId` values are untouched
+by the sort (it only reorders array position). Test evidence: a new
+"immediate chronological ordering" describe block in
+`WorkingScheduleEditor.test.tsx` covering out-of-order adds, an edit that
+moves a period earlier, a copy from a deliberately unsorted source array,
+removal, clear-then-add, discard/restore, and the exact final PUT payload
+order built from an edit sequence that scrambles insertion order across
+weekdays.
+
+**Copy-dialog shortcuts** — The accepted `Копирай към…` dialog gained three
+compact shortcut buttons above the target checkboxes: `Понеделник–петък`
+(the weekday range minus the source day), `Всички останали дни` (all six
+possible targets), and `Изчисти избора` (clears the pending selection). Each
+only adjusts `copyDialog.targets`; none performs the copy — the user must
+still press `Копирай`/`Копирай и замени`, the existing inline replacement
+disclosure is unaffected, copying remains local-draft-only until the page-
+level `Запази промените`, and no second backend call was introduced. Styled
+as small pill buttons (`.schedule-copy-shortcut`), visually contained inside
+the dialog — the weekly grid itself gained no new controls.
+
+**Add/Edit dialog joins the shared unsaved-changes guard** — Fixed the
+confirmed correctness gap: the values a user types into the Add/Edit-period
+dialog (`periodDialog.start`/`.end`) previously existed only in that local
+dialog state, which the shared `UnsavedChangesGuard` registration never
+saw — only the weekly `draft`-vs-`schedule.periods` comparison was
+registered. A guarded navigation while a dialog was dirty but the weekly
+draft was still clean (the common case: opening Add and typing a time before
+ever submitting) would previously show no confirmation at all, silently
+discarding the typed value. The registered dirty state is now
+`weeklyDraftDirty || periodDialogDirty` (the latter already existed for the
+Escape-key check and is now reused, not duplicated), and the shared guard's
+discard callback resets both: it restores `draft` from the persisted
+schedule and closes the dialog (`setPeriodDialog(null)`). This required no
+second confirmation implementation — the existing single shared
+`UnsavedChangesGuardProvider` dialog, already used for every other guarded
+transition in the app, now simply reflects a dirty state that accounts for
+the open dialog. The explicit local `Отказ` button inside the dialog still
+discards immediately without its own nested confirmation (consistent with a
+Cancel button's ordinary meaning — the click itself is the explicit,
+non-accidental discard signal) and leaves no stale registration, since
+`isDirty` recomputes to `false` once the dialog closes; only Escape is
+gated (closes a clean dialog immediately, is a no-op on a dirty one),
+because an accidental key press is exactly the case this guard exists to
+protect against. Test evidence: a new "dirty Add/Edit dialog participates in
+the shared guard" describe block in `WorkingScheduleEditor.test.tsx`
+(untouched dialog is not guarded; either field becoming dirty is guarded
+even with a clean weekly draft; an unchanged vs. changed Edit dialog;
+`Продължи редактирането` preserves the dialog and its values; confirming
+discard — with both the dialog and the weekly draft dirty at once — closes
+the dialog, restores the persisted draft, and completes the pending guarded
+action; explicit local `Отказ` leaves no stale registration; a successful
+Add transfers the change into the weekly draft, which then itself carries
+the guard; Escape's clean-only behavior), plus one new `App.test.tsx` test
+proving the same combined dirty state blocks and correctly resolves a real
+browser Back (`popstate`) navigation. `beforeunload` arming is not
+duplicated with a schedule-specific test: it is already proven generically
+in `UnsavedChangesGuard.test.tsx` against the same shared `isDirty` state
+this fix now correctly feeds, for any registered dirty source.
+
+**Test evidence (this pass)** — `WorkingScheduleEditor.test.tsx` grew from
+29 to 48 tests; `presentation.test.ts` grew from 16 to 19 tests (sentence-
+label mapping, the end-time tie-break, and clientId preservation through the
+generic sort); `App.test.tsx` gained one test. Full `npm run test`: 402
+tests passed across 31 files (up from 379). `npm run lint`, `npm run build`
+(`tsc -b && vite build`), and `git diff --check` all clean. No backend,
+migration, dependency, or unrelated file was modified.
+
+**Deviations / limitations** — None from the approved correction scope.
+
+## Product boundary — recurring weekly schedule, schedule exceptions, and the appointment calendar
+
+Recorded per explicit product-boundary review during Phase 3, for durable
+reference by future issues (not implemented in this correction; nothing
+below is new scope for Phase 3):
+
+* Phase 3 (`#/business/schedule`) manages the **recurring standard weekly
+  schedule only** — a Monday-to-Sunday template of working periods that
+  repeats every week until changed. It has no concept of a specific
+  calendar date.
+* **Date-specific hours, closures, holidays, leave, and time off** (e.g. "closed
+  on 2026-12-24", "Anna is on leave 2026-07-01 through 2026-07-14") are out
+  of scope for the recurring weekly schedule and require a separate,
+  future **schedule-exceptions** capability that overlays specific dates on
+  top of the recurring weekly template. This is not a UI-only addition — it
+  needs its own backend contract and data model, following the existing
+  `docs/tasks/04a`–`04c` backend-then-frontend pattern already used for this
+  issue, and matches the "Explicit exclusions" already recorded at the top
+  of this document (exceptional dates, holidays, leave, temporary
+  overrides).
+* **Concrete daily/weekly/monthly calendars showing actual appointments and
+  clients** belong entirely to the future "Build Business calendar and
+  appointment management" issue, not to this one. A monthly view must never
+  be simulated from weekday-only recurring data — the recurring schedule
+  says which hours are open in general, not which dates have which
+  appointments, and collapsing the two would misrepresent exceptions,
+  cancellations, and actual bookings as if they followed the recurring
+  template exactly.
+* Recommended future sequence, in order, each depending on the one before
+  it: (1) recurring weekly schedule — this issue, completed; (2)
+  date-specific schedule exceptions/time off; (3) availability calculation
+  using both the recurring template and the exceptions layer together; (4)
+  the appointment calendar and management issue itself, built on top of a
+  correct availability calculation.
+
+### Phase 3 final UX correction pass — overflow menu positioning, copy shortcuts, confirmation wording, standalone clearing
+
+A further, bounded correction pass on the accepted weekly-grid design,
+addressing five review findings. No backend, migration, dependency,
+authentication, authorization, or tenant-isolation change; every previously
+accepted Phase 3 behavior (Monday-to-Sunday grid, compact chronological
+chips, immediate re-sorting, sorted atomic PUT payload, Add/Edit validation,
+copy-to-weekdays, the shared unsaved-changes guard including the dirty
+Add/Edit dialog, stale-version recovery, inactive/`SUSPENDED` read-only
+behavior, mobile/200%-zoom layouts, and token-based dialog spacing) is
+preserved.
+
+**Collision-aware weekday overflow menu** — The `⋯` menu previously used a
+fixed CSS offset (`position: absolute; top: 100%; right: 0`) that only
+avoided overlapping the day's own chips by coincidence for some grid
+columns, and could be clipped by the narrow weekday card. Replaced with:
+a new pure, unit-tested helper,
+`frontend/src/business/schedule/menuPosition.ts`'s `computeMenuPosition`,
+which decides the side (`right` preferred, flips to `left` when the
+viewport lacks room) and clamps the final position within the viewport,
+given real trigger/menu measurements; and `position: fixed` placement in
+`WorkingScheduleEditor.tsx`, computed via `getBoundingClientRect()` on both
+the trigger and the (already-rendered, natural-`width: max-content`) menu
+inside a `useLayoutEffect` (so there is no visible jump — the menu renders
+`visibility: hidden` for one frame, then is revealed at its measured
+position), re-run on `window resize` (which also covers the browser-zoom
+visual-verification technique used throughout this issue). `position: fixed`
+is positioned relative to the viewport, not any ancestor, so it is never
+clipped by the weekday card, the weekly grid, or another overflow
+container, regardless of which grid column the trigger belongs to.
+`.schedule-day-menu` sizes to its content (`width: max-content`, capped)
+instead of a fixed `min-width`, and `.schedule-day-menu-item` is
+`white-space: nowrap`, so a label is never truncated or ellipsized. The copy
+action was renamed from `Копирай към…` to the shorter, complete
+`Копирай графика`. A new durable rule for this pattern (collision-aware,
+measured, content-sized popup positioning; extract the side/flip decision
+as a pure testable function) was added to `docs/ui-design-guidelines.md` §6,
+since no existing rule covered popup/menu positioning.
+
+**Copy-dialog shortcuts as one coherent group** — The Copy-to-weekdays
+dialog panel gained a dedicated `.schedule-copy-dialog-panel` width
+(`min(100%, 30rem)`, wider than the other schedule modals' `26rem`) so its
+three shortcuts (`Понеделник–петък`, `Всички останали дни`,
+`Изчисти избора`) fit on one row at ordinary desktop width instead of
+wrapping two-plus-one; the flex-wrap fallback still applies predictably at
+mobile width and 200% zoom, with the same `gap` token in both axes so
+wrapped-row spacing matches single-row spacing. `Изчисти избора` was
+already a neutral outlined style (never destructive red — it only clears
+the pending checkbox selection, no data changes); it is now also `disabled`
+whenever no target weekday is selected. Shortcut behavior is otherwise
+unchanged: selection-only, never copies automatically, source weekday
+always excluded, existing replacement-warning disclosure and
+`Копирай`/`Копирай и замени` label switch preserved.
+
+**Destructive confirmation wording and layout** — Both the weekday-clear
+and whole-schedule-clear confirmations now render their two sentences as
+two separate `<p>` elements (spaced by the same `.schedule-dialog-panel`
+`gap` token already established, with no new CSS needed) instead of one
+merged paragraph. Headings shortened to `Изчистване на графика за
+{weekday}` / `Изчистване на графика` (lowercase sentence-form weekday).
+Action order and wording changed: the destructive action now appears first
+(`Изчисти графика за деня` / `Изчисти графика`), the safe action second,
+relabeled `Отказ` in both dialogs (never `Запази периодите`/`Запази
+графика` — the safe action cancels a destructive operation, it does not
+save anything). The safe `Отказ` button still receives initial focus
+regardless of its new visual position (focus is assigned by ref, not by
+DOM/visual order), Escape still behaves identically to clicking it, and
+focus still restores to the invoking control on cancel — all unchanged from
+the already-accepted guard/focus conventions.
+
+**Add/Edit dialog title wording** — Changed from `Добавяне на часове за
+{weekday}` / `Редактиране на часове за {weekday}` to the more precise
+`Добавяне на работно време за {weekday}` / `Редактиране на работно време за
+{weekday}`, still using the lowercase `WEEKDAY_SENTENCE_LABELS` mapping.
+Column headings and copy-target checkbox labels are unaffected (still the
+capitalized `WEEKDAY_LABELS`).
+
+**Whole-schedule clearing moved outside editing, as a standalone atomic
+operation** — Previously, "Изчисти графика" only existed inside edit mode
+and cleared the local `draft` optimistically (no request until the
+subsequent "Запази промените"). It is now a page-level, read-only-mode-only
+action, next to "Редактирай графика" in one `.action-group` (edit mode now
+shows only `Запази промените`/`Отказ`, with no clear-all action at all).
+Confirming it calls `replaceWorkingSchedule` directly — `{ expectedVersion:
+schedule.version, periods: [] }` — with no intermediate draft or `editing`
+state ever touched. A dedicated `clearingAll` boolean and `clearingInProgress`
+ref track this request independently of the edit-mode `saving`/
+`savingInProgress` used by the ordinary save flow, per the explicit
+requirement to keep the two request states separate. Matching the
+established `StaffDetail` deactivate-confirmation convention, the
+confirmation dialog stays open (both actions disabled, destructive button
+reading "Изчистване…") for the duration of the request rather than closing
+immediately, so a rapid double-click on the same button cannot fire a
+second request even before React re-renders the `disabled` attribute — the
+`clearingInProgress` ref is the actual guard; the dialog closes only once
+the outcome (success or failure) is known. On success: the authoritative
+response replaces `schedule` (version and timestamps included), `draft` is
+reset from it for a later editing session, the view remains read-only, and
+the existing success-feedback UI shows "Работният график е изчистен." On
+failure: the currently displayed schedule is left unchanged, the existing
+safe-error-feedback and (for a stale-version conflict) "Зареди актуалните
+данни" reload UI apply exactly as for the ordinary save flow. The action is
+disabled when the saved schedule already has no periods, and — being
+wrapped in the same `{canEdit && ...}` block as `Редактирай графика` — is
+not rendered at all for a `SUSPENDED` Business or an inactive StaffMember.
+
+**Test evidence** — New `menuPosition.test.ts` (6 tests: prefers right,
+flips left, opens right near the left edge, flips above when short on room
+below, clamps within a narrow viewport, respects a custom margin) —
+positioning logic tested as a pure function since real collision geometry
+is not reliable in jsdom; the actual rendered position was verified
+manually in the browser (see below).
+`WorkingScheduleEditor.test.tsx` grew from 48 to 58 tests: the former
+"clear day / clear all" describe block was split into "clear one weekday
+(inside editing)" (updated wording/order/focus assertions, plus a new
+cancel-restores-focus test) and a new "standalone whole-schedule clearing
+(outside editing)" block (10 tests: both actions present in read-only mode,
+edit mode shows only Save/Cancel, disabled when already empty, opening the
+confirmation does not enter edit mode or build a draft, cancelling performs
+no request, the exact `{expectedVersion, periods: []}` payload with
+duplicate-submission prevention and remaining read-only on success, failure
+preserves the displayed schedule, stale-version conflict with reload,
+hidden for an inactive StaffMember, hidden for a `SUSPENDED` Business); the
+"copy dialog shortcuts" block gained 2 tests (`Изчисти избора`
+disabled-then-enabled by selection state, and clearing the selection
+touches no weekday's draft). `presentation.test.ts`, `api.test.ts`, and
+`errors.test.ts` were unaffected (no changes to the logic they cover).
+`StaffWorkingSchedule.test.tsx` required no changes (mid-level selector
+behavior is unaffected by this pass). Full `npm run test`: 418 tests passed
+across 32 files (up from 402). `npm run lint`, `npm run build` (`tsc -b &&
+vite build`), and `git diff --check` all clean. No backend, migration,
+dependency, or unrelated file was modified.
+
+**Manual visual verification** — Performed in the browser against the same
+running local backend/frontend and Business-owner fixture used throughout
+this issue's Phase 3 reviews; see the report for this pass for the full
+step-by-step results (menu positioning for an early and a late weekday
+column at desktop/mobile/200% zoom, full unclipped menu labels, all three
+copy shortcuts on one row at desktop with predictable wrapping at mobile/
+200% zoom, the corrected Add/Edit title, the two-paragraph clear-weekday
+dialog with correct button order/focus, standalone whole-schedule clearing
+end-to-end including a real failed/stale-version path, read-only vs.
+edit-mode action rows, inactive StaffMember, and `SUSPENDED` Business). No
+existing local fixture data was mutated or destroyed for this review; any
+schedule mutated during a check (e.g. a test clear) was restored through
+the application's own "Откажи промените"/reload flows before moving to the
+next check.
+
+**Deviations / limitations** — None from the approved correction scope. The
+`window resize` listener that keeps an open overflow menu correctly
+positioned does not also listen for `scroll`; if the page is scrolled while
+the menu is open, the menu (being `position: fixed`) stays fixed on screen
+rather than following the trigger. This is a pre-existing category of gap
+(the menu also has no outside-click-to-close handler and no full ARIA
+focus trap, both already documented as accepted limitations in the prior
+redesign pass) rather than a regression introduced here, and was judged out
+of this bounded correction's scope.
+
+### Mandatory Phase 4 / final-hardening item — field-level backend validation mapping
+
+Confirmed existing UX defect, recorded during Phase 3 rather than fixed (out
+of Phase 3's approved scope): when the backend rejects a specific field —
+for example an invalid telephone such as `+3598881234561` — the UI currently
+shows only the generic message "Проверете въведените данни.", without
+identifying which field is invalid. The same generic-message limitation
+applies to the new working-schedule `VALIDATION_ERROR` responses (weekday/
+time/range/duplicate/overlap/period-count failures are all collapsed to one
+code by `BusinessStaffWorkingScheduleExceptionHandler`).
+
+This is a **required** Phase 4/final-hardening item for Issue #14, not an
+optional future idea:
+
+* Backend validation responses must identify the invalid field in a stable
+  machine-readable form where applicable.
+* Frontend forms for Services, StaffMembers, Profile, and working schedules
+  must map validation failures to the corresponding field.
+* The field must receive an accessible inline Bulgarian error.
+* `aria-invalid` and `aria-describedby` must be applied.
+* Focus must move to the first invalid field.
+* The page-level message may summarize that validation failed but must not
+  be the only information.
+* Entered values and dirty state must be preserved.
+* Unknown/general failures must remain safely sanitized.
 
 ## Notes
 
