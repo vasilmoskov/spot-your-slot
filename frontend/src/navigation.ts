@@ -25,6 +25,40 @@ export type PlatformRoute =
   | { kind: 'platform-business-new' }
   | { kind: 'platform-business-detail'; businessId: string }
 
+/** An inclusive Business-local date window, both bounds canonical `yyyy-MM-dd`. */
+export const EXCEPTION_SORT_FIELDS = ['kind', 'dates', 'staff', 'status'] as const
+export type ExceptionSortField = (typeof EXCEPTION_SORT_FIELDS)[number]
+
+export type DateWindow = { from: string; to: string }
+
+/**
+ * The complete route-owned state of the schedule-change list. It travels with
+ * every related route so create, detail, edit and delete return to exactly the
+ * page, size and ordering the user left.
+ */
+export type ExceptionListState = DateWindow & {
+  page: number
+  size: ListPageSize
+  sort: ExceptionSortField
+  direction: ListSortDirection
+}
+
+export const EXCEPTION_LIST_DEFAULTS = {
+  page: 0,
+  size: 10,
+  sort: 'dates',
+  direction: 'asc',
+} as const satisfies Omit<ExceptionListState, 'from' | 'to'>
+
+export function withListDefaults(window: DateWindow): ExceptionListState {
+  return { from: window.from, to: window.to, ...EXCEPTION_LIST_DEFAULTS }
+}
+
+/** Backend technical bounds and list-window size for schedule changes. */
+export const SCHEDULE_MIN_DATE = '2000-01-01'
+export const SCHEDULE_MAX_DATE = '2100-12-31'
+export const SCHEDULE_MAX_WINDOW_DATES = 93
+
 export type BusinessOwnerRoute =
   | { kind: 'business-services'; list: ListQueryState }
   | { kind: 'business-service-new' }
@@ -33,6 +67,14 @@ export type BusinessOwnerRoute =
   | { kind: 'business-staff-new' }
   | { kind: 'business-staff-detail'; staffMemberId: string }
   | { kind: 'business-schedule' }
+  | { kind: 'business-schedule-exceptions'; window: ExceptionListState | null }
+  // `returnWindow` is the list window to come back to; null means the default.
+  | { kind: 'business-schedule-exception-new'; returnWindow: ExceptionListState | null }
+  | {
+      kind: 'business-schedule-exception-detail'
+      exceptionId: string
+      returnWindow: ExceptionListState | null
+    }
 
 export type AuthenticatedRoute = { kind: 'profile' } | PlatformRoute | BusinessOwnerRoute
 
@@ -90,6 +132,77 @@ export const BUSINESS_STAFF_NEW_ROUTE: AuthenticatedRoute = {
 }
 export const BUSINESS_SCHEDULE_ROUTE: AuthenticatedRoute = {
   kind: 'business-schedule',
+}
+
+export const BUSINESS_SCHEDULE_EXCEPTIONS_ROUTE: AuthenticatedRoute = {
+  kind: 'business-schedule-exceptions',
+  window: null,
+}
+export const BUSINESS_SCHEDULE_EXCEPTION_NEW_ROUTE: AuthenticatedRoute = {
+  kind: 'business-schedule-exception-new',
+  returnWindow: null,
+}
+
+const CANONICAL_DATE = /^(\d{4})-(\d{2})-(\d{2})$/
+
+/** True for a real calendar date in the exact zero-padded `yyyy-MM-dd` form. */
+export function isCanonicalDate(value: string): boolean {
+  const match = CANONICAL_DATE.exec(value)
+  if (!match) return false
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const date = new Date(Date.UTC(year, month - 1, day))
+  return (
+    date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+  )
+}
+
+/** Inclusive number of dates from `from` through `to` (both canonical). */
+export function inclusiveDateCount(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000) + 1
+}
+
+/** A window is usable only when it is exactly what the backend list accepts. */
+export function isValidDateWindow(from: string, to: string): boolean {
+  return (
+    isCanonicalDate(from) &&
+    isCanonicalDate(to) &&
+    from >= SCHEDULE_MIN_DATE &&
+    to <= SCHEDULE_MAX_DATE &&
+    from <= to &&
+    inclusiveDateCount(from, to) <= SCHEDULE_MAX_WINDOW_DATES
+  )
+}
+
+function parseDateWindow(query: string): ExceptionListState | null {
+  const params = new URLSearchParams(query)
+  const from = params.get('from')
+  const to = params.get('to')
+  if (from === null || to === null || !isValidDateWindow(from, to)) return null
+  // Every other value falls back to its documented default, never an error.
+  return {
+    from,
+    to,
+    page: parsePage(params.get('page')) ?? EXCEPTION_LIST_DEFAULTS.page,
+    size: parseSize(params.get('size')) ?? EXCEPTION_LIST_DEFAULTS.size,
+    sort:
+      (parseSort(params.get('sort'), EXCEPTION_SORT_FIELDS) as ExceptionSortField | null) ??
+      EXCEPTION_LIST_DEFAULTS.sort,
+    direction: parseDirection(params.get('direction')) ?? EXCEPTION_LIST_DEFAULTS.direction,
+  }
+}
+
+function windowQuery(window: ExceptionListState | null): string {
+  if (!window) return ''
+  return `?${new URLSearchParams({
+    from: window.from,
+    to: window.to,
+    page: String(window.page),
+    size: String(window.size),
+    sort: window.sort,
+    direction: window.direction,
+  }).toString()}`
 }
 
 function parsePage(value: string | null): number | null {
@@ -176,6 +289,12 @@ export function readAuthenticatedRoute(hash = window.location.hash): Authenticat
   }
   if (path === '#/business/staff/new') return BUSINESS_STAFF_NEW_ROUTE
   if (path === '#/business/schedule') return BUSINESS_SCHEDULE_ROUTE
+  if (path === '#/business/schedule/exceptions') {
+    return { kind: 'business-schedule-exceptions', window: parseDateWindow(query) }
+  }
+  if (path === '#/business/schedule/exceptions/new') {
+    return { kind: 'business-schedule-exception-new', returnWindow: parseDateWindow(query) }
+  }
 
   const detail = path.match(/^#\/platform\/businesses\/([^/?#]+)$/)
   if (detail?.[1]) {
@@ -198,6 +317,19 @@ export function readAuthenticatedRoute(hash = window.location.hash): Authenticat
       }
     } catch {
       return BUSINESS_SERVICES_ROUTE
+    }
+  }
+
+  const exceptionDetail = path.match(/^#\/business\/schedule\/exceptions\/([^/?#]+)$/)
+  if (exceptionDetail?.[1]) {
+    try {
+      return {
+        kind: 'business-schedule-exception-detail',
+        exceptionId: decodeURIComponent(exceptionDetail[1]),
+        returnWindow: parseDateWindow(query),
+      }
+    } catch {
+      return BUSINESS_SCHEDULE_EXCEPTIONS_ROUTE
     }
   }
 
@@ -239,6 +371,17 @@ export function routeHref(route: AuthenticatedRoute): string {
     return `/#/business/staff/${encodeURIComponent(route.staffMemberId)}`
   }
   if (route.kind === 'business-schedule') return '/#/business/schedule'
+  if (route.kind === 'business-schedule-exceptions') {
+    return `/#/business/schedule/exceptions${windowQuery(route.window)}`
+  }
+  if (route.kind === 'business-schedule-exception-new') {
+    return `/#/business/schedule/exceptions/new${windowQuery(route.returnWindow)}`
+  }
+  if (route.kind === 'business-schedule-exception-detail') {
+    return `/#/business/schedule/exceptions/${encodeURIComponent(route.exceptionId)}${windowQuery(
+      route.returnWindow,
+    )}`
+  }
   return '/#/profile'
 }
 

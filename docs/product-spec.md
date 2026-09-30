@@ -156,7 +156,7 @@ version is separate from the StaffMember version, and inactive StaffMembers
 keep a readable but non-mutable schedule. Breaks remain a future capability.
 
 An authorized Business owner can also administer, through an authenticated
-backend API (there is no interface yet), four kinds of schedule exception: a
+backend API and the "Промени в графика" interface, four kinds of schedule exception: a
 Business closure, StaffMember time off, a working-day override (which may have no
 periods, removing that day's recurring periods), and additional working periods.
 Each is a versioned exception with a full-day date range for closures and time

@@ -61,13 +61,14 @@ describe('UnsavedChangesGuard', () => {
     expect(dialog).toHaveAttribute('aria-modal', 'true')
     expect(screen.queryByText('Отказ')).not.toBeInTheDocument()
     expect(dialog.querySelector('h1, h2, h3, h4, h5, h6')).toBeNull()
-    expect(dialog).toHaveTextContent(
-      'Направените промени няма да бъдат запазени. Сигурни ли сте, че искате да продължите?',
-    )
+    expect(Array.from(dialog.querySelectorAll('p')).map((line) => line.textContent)).toEqual([
+      'Имате незапазени промени.',
+      'Ако напуснете, те ще бъдат загубени.',
+    ])
     const buttons = within(dialog).getAllByRole('button')
     expect(buttons.map((button) => button.textContent)).toEqual([
-      'Продължи редактирането',
-      'Откажи промените',
+      'Остани',
+      'Напусни',
     ])
   })
 
@@ -87,7 +88,7 @@ describe('UnsavedChangesGuard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Друго действие' }))
 
     expect(screen.getAllByRole('alertdialog')).toHaveLength(1)
-    fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Напусни' }))
 
     expect(screen.getByLabelText('Поле')).toHaveValue('-navigated')
     expect(screen.getByLabelText('Поле')).not.toHaveValue('-navigated-again')
@@ -97,7 +98,7 @@ describe('UnsavedChangesGuard', () => {
     render(<Harness />)
     fireEvent.change(screen.getByLabelText('Поле'), { target: { value: 'чернова' } })
     fireEvent.click(screen.getByRole('button', { name: 'Придвижи се' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Продължи редактирането' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Остани' }))
 
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
     expect(screen.getByLabelText('Поле')).toHaveValue('чернова')
@@ -107,7 +108,7 @@ describe('UnsavedChangesGuard', () => {
     render(<Harness />)
     fireEvent.change(screen.getByLabelText('Поле'), { target: { value: 'чернова' } })
     fireEvent.click(screen.getByRole('button', { name: 'Придвижи се' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Напусни' }))
 
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
     expect(screen.getByLabelText('Поле')).toHaveValue('-navigated')
@@ -127,7 +128,7 @@ describe('UnsavedChangesGuard', () => {
     render(<Harness />)
     fireEvent.change(screen.getByLabelText('Поле'), { target: { value: 'чернова' } })
     fireEvent.click(screen.getByRole('button', { name: 'Придвижи се' }))
-    expect(screen.getByRole('button', { name: 'Продължи редактирането' })).toHaveFocus()
+    expect(screen.getByRole('button', { name: 'Остани' })).toHaveFocus()
   })
 
   it('restores focus to the control that triggered the guard when continuing to edit', () => {
@@ -136,9 +137,62 @@ describe('UnsavedChangesGuard', () => {
     const trigger = screen.getByRole('button', { name: 'Придвижи се' })
     trigger.focus()
     fireEvent.click(trigger)
-    fireEvent.click(screen.getByRole('button', { name: 'Продължи редактирането' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Остани' }))
 
     expect(trigger).toHaveFocus()
+  })
+
+  it('Escape restores focus to the triggering control, exactly like "Остани"', () => {
+    render(<Harness />)
+    fireEvent.change(screen.getByLabelText('Поле'), { target: { value: 'чернова' } })
+    const trigger = screen.getByRole('button', { name: 'Придвижи се' })
+    trigger.focus()
+    fireEvent.click(trigger)
+    fireEvent.keyDown(screen.getByRole('alertdialog'), { key: 'Escape' })
+
+    expect(trigger).toHaveFocus()
+    expect(screen.getByLabelText('Поле')).toHaveValue('чернова')
+  })
+
+  it('"Напусни" discards through the registered callback and runs the original action exactly once', () => {
+    const action = vi.fn()
+    const discard = vi.fn()
+    function Probe() {
+      const guard = useGuardedFormState(true, discard)
+      return (
+        <button type="button" onClick={() => guard.guard(action)}>
+          Излез
+        </button>
+      )
+    }
+    render(
+      <UnsavedChangesGuardProvider>
+        <Probe />
+      </UnsavedChangesGuardProvider>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Излез' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Напусни' }))
+
+    expect(discard).toHaveBeenCalledTimes(1)
+    expect(action).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  })
+
+  it('shows none of the retired dialog copy', () => {
+    render(<Harness />)
+    fireEvent.change(screen.getByLabelText('Поле'), { target: { value: 'чернова' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Придвижи се' }))
+
+    const text = screen.getByRole('alertdialog').textContent ?? ''
+    for (const old of [
+      'Продължи редактирането',
+      'Откажи промените',
+      'Сигурни ли сте, че искате да продължите?',
+      'Направените промени',
+    ]) {
+      expect(text).not.toContain(old)
+    }
   })
 
   it('registers beforeunload protection only while dirty and removes it afterward', () => {
@@ -177,7 +231,7 @@ describe('UnsavedChangesGuard', () => {
     render(<Harness />)
     fireEvent.change(screen.getByLabelText('Поле'), { target: { value: 'чернова' } })
     fireEvent.click(screen.getByRole('button', { name: 'Придвижи се' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Напусни' }))
 
     expect(screen.queryAllByRole('alertdialog')).toHaveLength(0)
     expect(screen.getByLabelText('Поле')).toHaveValue('-navigated')

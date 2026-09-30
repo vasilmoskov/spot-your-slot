@@ -365,6 +365,17 @@ combined Issue #14 Phase 2 review pass documented below — every Service page
 is now loaded before the editable list renders. Recurring working-schedule
 UI (Phase 3) was not started.
 
+### Recorded table-standard exception — `StaffServiceAssignments`
+
+`StaffServiceAssignments` is a bounded selection/editor table. Its purpose is
+choosing assignments from the complete Service catalog (every Service page is
+loaded before it renders), not browsing a pageable data list. Sorting and
+pagination are therefore intentionally not required for this component; it keeps
+its fixed name ordering. This is a deliberate, recorded exception to the table
+standard in `docs/ui-design-guidelines.md` section 15.1 and must not be read as
+applying to ordinary data-list tables such as Services, Staff, Platform Businesses
+or Schedule Changes.
+
 ## Combined Issue #14 Phase 2 correction pass
 
 A follow-up review of this phase's uncommitted work, before it was

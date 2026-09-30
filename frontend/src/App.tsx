@@ -31,6 +31,7 @@ import {
   subscribeToNavigation,
   type AuthenticatedRoute,
   type IdentityPage,
+  type ExceptionListState,
   type ListNavigationMode,
   type ListQueryState,
 } from './navigation'
@@ -46,6 +47,10 @@ import { StaffList } from './business/staff/StaffList'
 import { StaffCreate } from './business/staff/StaffCreate'
 import { StaffDetail } from './business/staff/StaffDetail'
 import { StaffWorkingSchedule } from './business/schedule/StaffWorkingSchedule'
+import { ScheduleTabs } from './business/schedule/ScheduleTabs'
+import { ScheduleExceptionList } from './business/schedule/exceptions/ScheduleExceptionList'
+import { ScheduleExceptionCreate } from './business/schedule/exceptions/ScheduleExceptionCreate'
+import { ScheduleExceptionDetail } from './business/schedule/exceptions/ScheduleExceptionDetail'
 
 const safeErrorDetail = (error: unknown): string =>
   error instanceof ApiError ? error.detail : 'Възникна грешка. Опитайте отново.'
@@ -527,6 +532,24 @@ export function AuthenticatedApplication({
     if (previousActiveBusinessId.current === session.activeBusinessId) return
     previousActiveBusinessId.current = session.activeBusinessId
     const current = routeRef.current
+    // A date window chosen for one Business is never carried to another: the
+    // list resolves its own canonical window from the new Business timezone.
+    if (current.kind === 'business-schedule-exceptions' && current.window) {
+      const reset: AuthenticatedRoute = { kind: 'business-schedule-exceptions', window: null }
+      replaceRoute(reset)
+      setRoute(reset)
+      return
+    }
+    if (
+      (current.kind === 'business-schedule-exception-new' ||
+        current.kind === 'business-schedule-exception-detail') &&
+      current.returnWindow
+    ) {
+      const reset: AuthenticatedRoute = { ...current, returnWindow: null }
+      replaceRoute(reset)
+      setRoute(reset)
+      return
+    }
     if (
       (current.kind !== 'business-services' && current.kind !== 'business-staff') ||
       current.list.page === 0
@@ -552,6 +575,20 @@ export function AuthenticatedApplication({
   const updateBusinessStaffList = (next: ListQueryState, mode: ListNavigationMode = 'push') => {
     if (route.kind !== 'business-staff') return
     const nextRoute: AuthenticatedRoute = { ...route, list: next }
+    if (mode === 'replace') {
+      replaceRoute(nextRoute)
+    } else {
+      pushRoute(nextRoute)
+    }
+    setRoute(nextRoute)
+  }
+
+  const updateScheduleExceptionWindow = (
+    next: ExceptionListState,
+    mode: ListNavigationMode = 'push',
+  ) => {
+    if (route.kind !== 'business-schedule-exceptions') return
+    const nextRoute: AuthenticatedRoute = { ...route, window: next }
     if (mode === 'replace') {
       replaceRoute(nextRoute)
     } else {
@@ -731,10 +768,65 @@ export function AuthenticatedApplication({
             onBack={() => navigate(BUSINESS_STAFF_ROUTE)}
           />
         ) : route.kind === 'business-schedule' ? (
-          <StaffWorkingSchedule
+          <>
+            <div className="platform-content">
+              <ScheduleTabs current="weekly" onNavigate={navigate} />
+            </div>
+            <StaffWorkingSchedule
+              key={businessKey}
+              readOnly={readOnly}
+              onAuthenticationRequired={authenticationRequired}
+            />
+          </>
+        ) : route.kind === 'business-schedule-exceptions' ? (
+          <>
+            <div className="platform-content">
+              <ScheduleTabs current="exceptions" onNavigate={navigate} />
+            </div>
+            <ScheduleExceptionList
+              key={businessKey}
+              readOnly={readOnly}
+              window={route.window}
+              onWindowChange={updateScheduleExceptionWindow}
+              onAuthenticationRequired={authenticationRequired}
+              onCreate={() =>
+                navigate({ kind: 'business-schedule-exception-new', returnWindow: route.window })
+              }
+              onOpen={(exceptionId) =>
+                navigate({
+                  kind: 'business-schedule-exception-detail',
+                  exceptionId,
+                  returnWindow: route.window,
+                })
+              }
+            />
+          </>
+        ) : route.kind === 'business-schedule-exception-new' ? (
+          <ScheduleExceptionCreate
             key={businessKey}
             readOnly={readOnly}
             onAuthenticationRequired={authenticationRequired}
+            onCancel={() => navigate(exceptionListRoute(route.returnWindow))}
+            onCreated={(exceptionId) => {
+              navigate({
+                kind: 'business-schedule-exception-detail',
+                exceptionId,
+                returnWindow: route.returnWindow,
+              })
+              setFeedback({ kind: 'success', text: 'Промяната е добавена.' })
+            }}
+          />
+        ) : route.kind === 'business-schedule-exception-detail' ? (
+          <ScheduleExceptionDetail
+            key={`${businessKey}-${route.exceptionId}`}
+            exceptionId={route.exceptionId}
+            readOnly={readOnly}
+            onAuthenticationRequired={authenticationRequired}
+            onBack={() => navigate(exceptionListRoute(route.returnWindow))}
+            onDeleted={() => {
+              navigate(exceptionListRoute(route.returnWindow))
+              setFeedback({ kind: 'success', text: 'Промяната е изтрита.' })
+            }}
           />
         ) : (
           <ComingSoon />
@@ -806,6 +898,12 @@ function ComingSoon() {
       </section>
     </div>
   )
+}
+
+// The list the create and detail routes return to: the window the user was
+// looking at, or the canonical default when none was carried.
+function exceptionListRoute(window: ExceptionListState | null): AuthenticatedRoute {
+  return { kind: 'business-schedule-exceptions', window }
 }
 
 function routeHrefMatchesCurrentLocation(route: AuthenticatedRoute): boolean {

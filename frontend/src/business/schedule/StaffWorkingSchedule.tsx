@@ -1,25 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '../../ui/Button'
 import { useUnsavedChangesGuard } from '../../ui/UnsavedChangesGuard'
-import { listStaffMembers, type StaffMemberSummary } from '../staff/api'
+import type { StaffMemberSummary } from '../staff/api'
+import { loadEveryStaffMember } from '../staff/fullCatalog'
 import { isAuthenticationRequired } from '../staff/errors'
 import { WorkingScheduleEditor } from './WorkingScheduleEditor'
-
-// Every StaffMember page is loaded (not only the first), the same
-// full-catalog pattern already used for the Service-assignment editor, so
-// the schedule selector is never silently limited to the first page.
-const STAFF_PAGE_SIZE = 50
-
-async function loadEveryStaffMember(signal: AbortSignal): Promise<StaffMemberSummary[]> {
-  const first = await listStaffMembers(0, STAFF_PAGE_SIZE, 'name', 'asc', signal)
-  const collected = [...first.staffMembers]
-  const totalPages = Math.ceil(first.totalElements / STAFF_PAGE_SIZE)
-  for (let page = 1; page < totalPages; page += 1) {
-    const next = await listStaffMembers(page, STAFF_PAGE_SIZE, 'name', 'asc', signal)
-    collected.push(...next.staffMembers)
-  }
-  return collected
-}
 
 type StaffWorkingScheduleProps = {
   readOnly: boolean

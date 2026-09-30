@@ -185,3 +185,226 @@ describe('application navigation', () => {
     expect(listener).toHaveBeenCalledTimes(2)
   })
 })
+
+describe('schedule change routes', () => {
+  it('maps the four schedule destinations and their canonical hrefs', () => {
+    expect(readAuthenticatedRoute('#/business/schedule')).toEqual(BUSINESS_SCHEDULE_ROUTE)
+    expect(readAuthenticatedRoute('#/business/schedule/exceptions')).toEqual({
+      kind: 'business-schedule-exceptions',
+      window: null,
+    })
+    expect(readAuthenticatedRoute('#/business/schedule/exceptions/new')).toEqual({
+      kind: 'business-schedule-exception-new',
+      returnWindow: null,
+    })
+    expect(readAuthenticatedRoute('#/business/schedule/exceptions/abc-1')).toEqual({
+      kind: 'business-schedule-exception-detail',
+      exceptionId: 'abc-1',
+      returnWindow: null,
+    })
+    expect(routeHref(readAuthenticatedRoute('#/business/schedule'))).toBe('/#/business/schedule')
+    expect(routeHref({ kind: 'business-schedule-exceptions', window: null })).toBe(
+      '/#/business/schedule/exceptions',
+    )
+    expect(routeHref({ kind: 'business-schedule-exception-new', returnWindow: null })).toBe(
+      '/#/business/schedule/exceptions/new',
+    )
+    expect(
+      routeHref({
+        kind: 'business-schedule-exception-detail',
+        exceptionId: 'a b',
+        returnWindow: null,
+      }),
+    ).toBe('/#/business/schedule/exceptions/a%20b')
+  })
+
+  const DEFAULTS = '&page=0&size=10&sort=dates&direction=asc'
+  const W = 'from=2026-10-01&to=2026-10-30'
+  const list = (query: string) =>
+    readAuthenticatedRoute(`#/business/schedule/exceptions?${W}${query}`)
+  const stateOf = (route: ReturnType<typeof readAuthenticatedRoute>) =>
+    'window' in route ? route.window : null
+
+  it('round-trips the complete list state on list, create and detail routes', () => {
+    const window = {
+      from: '2026-10-01',
+      to: '2026-10-30',
+      page: 2,
+      size: 25,
+      sort: 'status',
+      direction: 'desc',
+    }
+    const query = '?from=2026-10-01&to=2026-10-30&page=2&size=25&sort=status&direction=desc'
+
+    const parsed = readAuthenticatedRoute(`#/business/schedule/exceptions${query}`)
+    expect(parsed).toEqual({ kind: 'business-schedule-exceptions', window })
+    expect(routeHref(parsed)).toBe(`/#/business/schedule/exceptions${query}`)
+
+    const created = readAuthenticatedRoute(`#/business/schedule/exceptions/new${query}`)
+    expect(created).toEqual({ kind: 'business-schedule-exception-new', returnWindow: window })
+    expect(routeHref(created)).toBe(`/#/business/schedule/exceptions/new${query}`)
+
+    const detail = readAuthenticatedRoute(`#/business/schedule/exceptions/abc-1${query}`)
+    expect(detail).toEqual({
+      kind: 'business-schedule-exception-detail',
+      exceptionId: 'abc-1',
+      returnWindow: window,
+    })
+    expect(routeHref(detail)).toBe(`/#/business/schedule/exceptions/abc-1${query}`)
+  })
+
+  it('defaults missing pagination values to page 0, size 10, dates ascending and writes them all', () => {
+    const route = list('')
+    expect(stateOf(route)).toEqual({
+      from: '2026-10-01',
+      to: '2026-10-30',
+      page: 0,
+      size: 10,
+      sort: 'dates',
+      direction: 'asc',
+    })
+    expect(routeHref(route)).toBe(`/#/business/schedule/exceptions?${W}${DEFAULTS}`)
+  })
+
+  it.each([10, 25, 50])('accepts the page size %i', (size) => {
+    expect(stateOf(list(`&size=${size}`))).toMatchObject({ size })
+  })
+
+  it.each(['0', '1', '5', '7', '20', '37', '100', '-10', 'abc', '', '25.5'])(
+    'normalizes the unsupported size "%s" to 10',
+    (size) => {
+      expect(stateOf(list(`&size=${size}`))).toMatchObject({ size: 10 })
+    },
+  )
+
+  it.each(['-1', '-0', 'abc', '', '1.5', '99999999999999999999', '1e2'])(
+    'normalizes the invalid page "%s" to 0',
+    (page) => {
+      expect(stateOf(list(`&page=${page}`))).toMatchObject({ page: 0 })
+    },
+  )
+
+  it('keeps a valid page, however large; recovery happens after the data is known', () => {
+    expect(stateOf(list('&page=37'))).toMatchObject({ page: 37 })
+  })
+
+  it.each([
+    ['&sort=hours', { sort: 'dates', direction: 'asc' }],
+    ['&sort=constructor', { sort: 'dates', direction: 'asc' }],
+    ['&sort=&direction=', { sort: 'dates', direction: 'asc' }],
+    ['&direction=sideways', { sort: 'dates', direction: 'asc' }],
+    ['&sort=kind&direction=x', { sort: 'kind', direction: 'asc' }],
+    ['&sort=x&direction=desc', { sort: 'dates', direction: 'desc' }],
+  ])('normalizes the invalid sorting %s field by field', (extra, expected) => {
+    expect(stateOf(list(extra))).toMatchObject(expected)
+  })
+
+  it('does not let malformed values break route matching', () => {
+    expect(list('&page=%E0%A4%A&size=%&sort=%zz')).toMatchObject({
+      kind: 'business-schedule-exceptions',
+    })
+    expect(readAuthenticatedRoute(`#/business/schedule/exceptions/abc-1?${W}&page=-1&size=3`)).toMatchObject({
+      kind: 'business-schedule-exception-detail',
+      returnWindow: { page: 0, size: 10 },
+    })
+  })
+
+  it('carries the return window on the create and detail routes and round-trips it', () => {
+    const window = {
+      from: '2026-10-01',
+      to: '2026-10-30',
+      page: 0,
+      size: 10,
+      sort: 'dates',
+      direction: 'asc',
+    }
+    const query = '?from=2026-10-01&to=2026-10-30&page=0&size=10&sort=dates&direction=asc'
+
+    const created = readAuthenticatedRoute(`#/business/schedule/exceptions/new${query}`)
+    expect(created).toEqual({ kind: 'business-schedule-exception-new', returnWindow: window })
+    expect(routeHref(created)).toBe(`/#/business/schedule/exceptions/new${query}`)
+
+    const detail = readAuthenticatedRoute(`#/business/schedule/exceptions/abc-1${query}`)
+    expect(detail).toEqual({
+      kind: 'business-schedule-exception-detail',
+      exceptionId: 'abc-1',
+      returnWindow: window,
+    })
+    expect(routeHref(detail)).toBe(`/#/business/schedule/exceptions/abc-1${query}`)
+  })
+
+  it.each([
+    ['?from=2026-10-01'],
+    ['?to=2026-10-30'],
+    ['?from=2026-10-30&to=2026-10-01'],
+    ['?from=2026-02-30&to=2026-03-01'],
+    ['?from=2026-10-01&to=2027-01-02'],
+    ['?from=x&to=y'],
+    ['?from=&to='],
+  ])('discards the unusable return window %s on create and detail routes', (query) => {
+    expect(readAuthenticatedRoute(`#/business/schedule/exceptions/new${query}`)).toEqual({
+      kind: 'business-schedule-exception-new',
+      returnWindow: null,
+    })
+    expect(readAuthenticatedRoute(`#/business/schedule/exceptions/abc-1${query}`)).toEqual({
+      kind: 'business-schedule-exception-detail',
+      exceptionId: 'abc-1',
+      returnWindow: null,
+    })
+  })
+
+  it('round-trips a canonical window through the hash query', () => {
+    const route = readAuthenticatedRoute('#/business/schedule/exceptions?from=2026-10-01&to=2026-10-30')
+    expect(route).toEqual({
+      kind: 'business-schedule-exceptions',
+      window: {
+        from: '2026-10-01',
+        to: '2026-10-30',
+        page: 0,
+        size: 10,
+        sort: 'dates',
+        direction: 'asc',
+      },
+    })
+    expect(routeHref(route)).toBe(
+      '/#/business/schedule/exceptions?from=2026-10-01&to=2026-10-30&page=0&size=10&sort=dates&direction=asc',
+    )
+  })
+
+  it.each([
+    ['?from=2026-10-01'],
+    ['?to=2026-10-30'],
+    ['?from=2026-10-30&to=2026-10-01'],
+    ['?from=2026-02-30&to=2026-03-01'],
+    ['?from=2026-1-1&to=2026-10-30'],
+    ['?from=2026-10-01&to=2027-01-02'],
+    ['?from=1999-12-31&to=2000-01-02'],
+    ['?from=2100-12-30&to=2101-01-01'],
+    ['?from=x&to=y'],
+  ])('normalizes the unusable window %s to the default', (query) => {
+    expect(readAuthenticatedRoute(`#/business/schedule/exceptions${query}`)).toEqual({
+      kind: 'business-schedule-exceptions',
+      window: null,
+    })
+  })
+
+  it('accepts the maximum 93-date window', () => {
+    expect(
+      readAuthenticatedRoute('#/business/schedule/exceptions?from=2026-10-01&to=2026-12-31'),
+    ).toMatchObject({
+      kind: 'business-schedule-exceptions',
+      window: { from: '2026-10-01', to: '2026-12-31', page: 0, size: 10 },
+    })
+  })
+
+  it('treats every schedule route as a Business-owner route and recovers from a bad identifier', () => {
+    expect(isBusinessOwnerRoute({ kind: 'business-schedule-exceptions', window: null })).toBe(true)
+    expect(
+      isBusinessOwnerRoute({ kind: 'business-schedule-exception-new', returnWindow: null }),
+    ).toBe(true)
+    expect(readAuthenticatedRoute('#/business/schedule/exceptions/%E0%A4%A')).toEqual({
+      kind: 'business-schedule-exceptions',
+      window: null,
+    })
+  })
+})

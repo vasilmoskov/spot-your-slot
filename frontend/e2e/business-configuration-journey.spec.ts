@@ -595,16 +595,16 @@ test.describe('Working schedule, unsaved changes and lifecycle journey', () => {
     await navigation.getByRole('link', { name: 'Екип' }).click()
     const dialog = page.getByRole('alertdialog', { name: 'Незапазени промени' })
     await expect(dialog).toBeVisible()
-    await expect(dialog.getByRole('button', { name: 'Продължи редактирането' })).toBeFocused()
+    await expect(dialog.getByRole('button', { name: 'Остани' })).toBeFocused()
 
-    await dialog.getByRole('button', { name: 'Продължи редактирането' }).click()
+    await dialog.getByRole('button', { name: 'Остани' }).click()
     await expect(dialog).toHaveCount(0)
     await expect(page.getByLabel('Описание (по избор)')).toHaveValue('Незапазено описание')
     await expect(page).toHaveURL(new RegExp('#/business/services/'))
 
     await navigation.getByRole('link', { name: 'Екип' }).click()
     await expect(dialog).toBeVisible()
-    await dialog.getByRole('button', { name: 'Откажи промените' }).click()
+    await dialog.getByRole('button', { name: 'Напусни' }).click()
     await expect(page.getByRole('heading', { name: 'Екип', level: 1, exact: true })).toBeVisible()
     await expect(page).toHaveURL(/#\/business\/staff/)
 

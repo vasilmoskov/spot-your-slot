@@ -203,7 +203,7 @@ describe('StaffDetail', () => {
     expect(screen.getByRole('alertdialog', { name: 'Незапазени промени' })).toBeInTheDocument()
     expect(mockedUpdateStaffMember).not.toHaveBeenCalled()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Напусни' }))
     expect(screen.queryByLabelText('Име на члена на екипа')).not.toBeInTheDocument()
   })
 
@@ -230,11 +230,11 @@ describe('StaffDetail', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Зареди актуалните данни' }))
     expect(mockedGetStaffMember).toHaveBeenCalledTimes(1)
-    fireEvent.click(screen.getByRole('button', { name: 'Продължи редактирането' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Остани' }))
     expect(screen.getByLabelText('Име на члена на екипа')).toHaveValue('Ново име')
 
     fireEvent.click(screen.getByRole('button', { name: 'Зареди актуалните данни' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Напусни' }))
     await waitFor(() => expect(mockedGetStaffMember).toHaveBeenCalledTimes(2))
   })
 
@@ -585,7 +585,7 @@ describe('StaffDetail', () => {
         .closest('.action-group')!
       fireEvent.click(within(assignmentsCancel as HTMLElement).getByRole('button', { name: 'Отказ' }))
       expect(screen.getByRole('alertdialog', { name: 'Незапазени промени' })).toBeInTheDocument()
-      fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Напусни' }))
       // Confirming discard returns to read-only view mode with the
       // assignment untouched (the uncheck was discarded, not saved).
       expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
@@ -821,7 +821,7 @@ describe('StaffDetail', () => {
       expect(screen.getByRole('alertdialog', { name: 'Незапазени промени' })).toBeInTheDocument()
       expect(screen.queryByLabelText('Име на члена на екипа')).not.toBeInTheDocument()
 
-      fireEvent.click(screen.getByRole('button', { name: 'Продължи редактирането' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Остани' }))
       expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
       expect(screen.queryByLabelText('Име на члена на екипа')).not.toBeInTheDocument()
       expect(screen.getByRole('checkbox', { name: /Подстригване/ })).not.toBeChecked()
@@ -842,7 +842,7 @@ describe('StaffDetail', () => {
       fireEvent.click(await screen.findByRole('checkbox', { name: /Подстригване/ }))
 
       fireEvent.click(screen.getByRole('button', { name: 'Редактирай' }))
-      fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Напусни' }))
 
       expect(await screen.findByLabelText('Име на члена на екипа')).toBeInTheDocument()
       // The assignments editor unregistered cleanly: it is back in read-only
@@ -870,7 +870,7 @@ describe('StaffDetail', () => {
       expect(screen.getByRole('alertdialog', { name: 'Незапазени промени' })).toBeInTheDocument()
       expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
 
-      fireEvent.click(screen.getByRole('button', { name: 'Продължи редактирането' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Остани' }))
       expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
       expect(screen.getByLabelText('Име на члена на екипа')).toHaveValue('Незаписано')
     })
@@ -892,7 +892,7 @@ describe('StaffDetail', () => {
       })
 
       fireEvent.click(await screen.findByRole('button', { name: 'Редактирай услугите' }))
-      fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Напусни' }))
 
       expect(screen.queryByLabelText('Име на члена на екипа')).not.toBeInTheDocument()
       expect(await screen.findByRole('checkbox', { name: /Подстригване/ })).toBeChecked()
@@ -964,7 +964,7 @@ describe('StaffDetail', () => {
       fireEvent.click(await screen.findByRole('checkbox', { name: /Подстригване/ }))
 
       fireEvent.click(screen.getByRole('button', { name: 'Редактирай' }))
-      fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
+      fireEvent.click(screen.getByRole('button', { name: 'Напусни' }))
 
       // Profile editor is open; assignments editor is back in view mode —
       // never both open (and dirty) simultaneously.

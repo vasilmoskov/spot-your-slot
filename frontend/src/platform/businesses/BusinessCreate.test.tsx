@@ -1,9 +1,15 @@
 import '@testing-library/jest-dom/vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render as rtlRender, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../identity/api'
 import { BusinessCreate } from './BusinessCreate'
 import { createBusiness, type BusinessDetails } from './api'
+import type { ReactElement } from 'react'
+import { UnsavedChangesGuardProvider } from '../../ui/UnsavedChangesGuard'
+
+function render(ui: ReactElement) {
+  return rtlRender(ui, { wrapper: UnsavedChangesGuardProvider })
+}
 
 vi.mock('./api', async (importOriginal) => {
   const original = await importOriginal<typeof import('./api')>()

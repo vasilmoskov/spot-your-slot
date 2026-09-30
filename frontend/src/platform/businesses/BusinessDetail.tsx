@@ -10,6 +10,7 @@ import {
 } from 'react'
 import { useFeedback, errorCategory, type Feedback } from '../../ui/useFeedback'
 import { Button } from '../../ui/Button'
+import { useGuardedFormState } from '../../ui/UnsavedChangesGuard'
 import {
   changeBusinessStatus,
   getBusiness,
@@ -109,9 +110,25 @@ export function BusinessDetail({
   const [invitationBusy, setInvitationBusy] = useState(false)
   const [lastInvitedEmail, setLastInvitedEmail] = useState<string | null>(null)
   const [resendEmail, setResendEmail] = useState<string | null>(null)
+  const [profileDirty, setProfileDirty] = useState(false)
+  const [invitationDraft, setInvitationDraft] = useState('')
+  // Bumped when the shared guard discards, remounting the profile form.
+  const [formResetCount, setFormResetCount] = useState(0)
+  const invitationForm = useRef<HTMLFormElement>(null)
   const [profileOpen, setProfileOpen] = useState(false)
   const [invitationOpen, setInvitationOpen] = useState(false)
   const [lifecycleOpen, setLifecycleOpen] = useState(false)
+  // One registration for both editors: the profile form and the owner-email
+  // input. An email that was already sent is no longer an unsaved change.
+  const invitationDirty =
+    invitationDraft.trim() !== '' &&
+    invitationDraft.trim().toLowerCase() !== (lastInvitedEmail ?? '')
+  const guard = useGuardedFormState(profileDirty || invitationDirty, () => {
+    setProfileDirty(false)
+    setFormResetCount((current) => current + 1)
+    invitationForm.current?.reset()
+    setInvitationDraft('')
+  })
   const activeLoad = useRef<AbortController | null>(null)
   const updateInProgress = useRef(false)
   const lifecycleInProgress = useRef(false)
@@ -206,6 +223,8 @@ export function BusinessDetail({
     try {
       const updated = await updateBusiness(businessId, input)
       if (!publish(null)) return
+      guard.unregisterDirty()
+      setProfileDirty(false)
       setBusiness(updated)
       setEditing(false)
       setProfileFeedback({ kind: 'success', text: 'Промените са запазени.' })
@@ -379,17 +398,20 @@ export function BusinessDetail({
         <div className="feedback-action-layout">
           {editing ? (
             <BusinessForm
-              key={`${business.id}-${business.version}`}
+              key={`${business.id}-${business.version}-${formResetCount}`}
               business={business}
               busy={updating}
+              onDirtyChange={setProfileDirty}
               submitLabel="Запази промените"
               onChange={() => {
                 if (!profileFeedback?.reload) setProfileFeedback(null)
               }}
-              onCancel={() => {
-                setEditing(false)
-                setProfileFeedback(null)
-              }}
+              onCancel={() =>
+                guard.guard(() => {
+                  setEditing(false)
+                  setProfileFeedback(null)
+                })
+              }
               onSubmit={(input) => void update(input as UpdateBusinessInput)}
             />
           ) : (
@@ -459,7 +481,7 @@ export function BusinessDetail({
             </>
           )}
           <LocalFeedback feedback={profileFeedback} errorRef={profileError} />
-          <FeedbackReloadControl feedback={profileFeedback} onReload={load} />
+          <FeedbackReloadControl feedback={profileFeedback} onReload={() => guard.guard(() => void load())} />
         </div>
       </details>
 
@@ -476,6 +498,7 @@ export function BusinessDetail({
           </summary>
           <div className="feedback-action-layout">
             <form
+              ref={invitationForm}
               className="invitation-form"
               onChange={() => setInvitationFeedback(null)}
               onSubmit={submitInvitation}
@@ -495,7 +518,10 @@ export function BusinessDetail({
                         : 'Моля, въведете валиден имейл адрес.',
                     )
                   }}
-                  onInput={(event) => event.currentTarget.setCustomValidity('')}
+                  onInput={(event) => {
+                    event.currentTarget.setCustomValidity('')
+                    setInvitationDraft(event.currentTarget.value)
+                  }}
                 />
               </label>
               <Button disabled={invitationBusy}>
@@ -659,7 +685,7 @@ function FeedbackReloadControl({
   onReload,
 }: {
   feedback: Feedback | null
-  onReload: () => Promise<void>
+  onReload: () => void | Promise<void>
 }) {
   if (!feedback?.reload) return null
 

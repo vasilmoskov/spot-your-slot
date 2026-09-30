@@ -29,7 +29,12 @@ function sectionTitle(route: AuthenticatedRoute): string {
   if (route.kind === 'business-staff') return 'Екип'
   if (route.kind === 'business-staff-new') return 'Нов член на екипа'
   if (route.kind === 'business-staff-detail') return 'Член на екипа'
-  if (route.kind === 'business-schedule') return 'Работно време'
+  // Both schedule tabs share one heading; the active tab names the subsection.
+  if (route.kind === 'business-schedule' || route.kind === 'business-schedule-exceptions') {
+    return 'Работно време'
+  }
+  if (route.kind === 'business-schedule-exception-new') return 'Нова промяна в графика'
+  if (route.kind === 'business-schedule-exception-detail') return 'Промяна в графика'
   return 'Услуги'
 }
 
@@ -143,7 +148,14 @@ export function BusinessOwnerShell({
           <a
             className="navigation-link"
             href={routeHref(BUSINESS_SCHEDULE_ROUTE)}
-            aria-current={route.kind === 'business-schedule' ? 'page' : undefined}
+            aria-current={
+              route.kind === 'business-schedule' ||
+              route.kind === 'business-schedule-exceptions' ||
+              route.kind === 'business-schedule-exception-new' ||
+              route.kind === 'business-schedule-exception-detail'
+                ? 'page'
+                : undefined
+            }
             onClick={(event) => navigate(event, BUSINESS_SCHEDULE_ROUTE)}
           >
             Работно време
@@ -181,7 +193,7 @@ export function BusinessOwnerShell({
         </div>
         {suspended && (
           <div className="platform-content">
-            <p role="status">
+            <p className="shell-banner" role="status">
               Бизнесът е временно спрян. Данните са видими, но конфигурацията не може да бъде
               променяна.
             </p>

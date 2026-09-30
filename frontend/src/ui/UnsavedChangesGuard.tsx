@@ -115,11 +115,10 @@ export function UnsavedChangesGuardProvider({ children }: { children: ReactNode 
             role="alertdialog"
             aria-modal="true"
             aria-label="Незапазени промени"
-            aria-describedby="unsaved-changes-description"
+            aria-describedby="unsaved-changes-description-1 unsaved-changes-description-2"
           >
-            <p id="unsaved-changes-description">
-              Направените промени няма да бъдат запазени. Сигурни ли сте, че искате да продължите?
-            </p>
+            <p id="unsaved-changes-description-1">Имате незапазени промени.</p>
+            <p id="unsaved-changes-description-2">Ако напуснете, те ще бъдат загубени.</p>
             <div className="action-group unsaved-changes-actions">
               <Button
                 ref={continueButtonRef}
@@ -127,10 +126,10 @@ export function UnsavedChangesGuardProvider({ children }: { children: ReactNode 
                 variant="secondary"
                 onClick={continueEditing}
               >
-                Продължи редактирането
+                Остани
               </Button>
               <Button type="button" variant="destructive" onClick={confirmDiscard}>
-                Откажи промените
+                Напусни
               </Button>
             </div>
           </div>

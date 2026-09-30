@@ -218,7 +218,7 @@ describe('StaffWorkingSchedule', () => {
     expect(screen.getByRole('alertdialog', { name: 'Незапазени промени' })).toBeInTheDocument()
     expect(mockedGetWorkingSchedule).not.toHaveBeenCalledWith('staff-b', expect.anything())
 
-    fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Напусни' }))
     await waitFor(() =>
       expect(mockedGetWorkingSchedule).toHaveBeenCalledWith('staff-b', expect.anything()),
     )

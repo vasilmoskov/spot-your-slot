@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render as rtlRender, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '../../identity/api'
 import {
@@ -12,6 +12,12 @@ import {
   type LifecycleAction,
 } from './api'
 import { BusinessDetail } from './BusinessDetail'
+import type { ReactElement } from 'react'
+import { UnsavedChangesGuardProvider } from '../../ui/UnsavedChangesGuard'
+
+function render(ui: ReactElement) {
+  return rtlRender(ui, { wrapper: UnsavedChangesGuardProvider })
+}
 
 vi.mock('./api', async (importOriginal) => {
   const original = await importOriginal<typeof import('./api')>()
@@ -118,6 +124,9 @@ describe('BusinessDetail', () => {
       target: { value: 'Незаписано име' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Отказ' }))
+    // A dirty edit is confirmed through the shared unsaved-changes dialog.
+    expect(screen.getByRole('alertdialog', { name: 'Незапазени промени' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Напусни' }))
 
     expect(mockedUpdateBusiness).not.toHaveBeenCalled()
     expect(screen.getByRole('heading', { name: 'Студио А' })).toBeInTheDocument()

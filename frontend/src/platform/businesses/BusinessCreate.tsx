@@ -1,6 +1,7 @@
 import { useRef, useState, useLayoutEffect } from 'react'
 import { useFeedback, errorCategory } from '../../ui/useFeedback'
 import { Button } from '../../ui/Button'
+import { useGuardedFormState } from '../../ui/UnsavedChangesGuard'
 import { createBusiness, type CreateBusinessInput } from './api'
 import { BusinessForm } from './BusinessForm'
 import { isAuthenticationRequired, safeBusinessError } from './errors'
@@ -18,6 +19,13 @@ export function BusinessCreate({
 }: BusinessCreateProps) {
   const [busy, setBusy] = useState(false)
   const { feedback: error, setFeedback, beginFeedback } = useFeedback('business-create')
+  const [dirty, setDirty] = useState(false)
+  // Bumped when the shared guard discards the form, remounting it empty.
+  const [resetCount, setResetCount] = useState(0)
+  const guard = useGuardedFormState(dirty, () => {
+    setDirty(false)
+    setResetCount((current) => current + 1)
+  })
   const submitting = useRef(false)
   const errorMessage = useRef<HTMLParagraphElement>(null)
 
@@ -32,7 +40,12 @@ export function BusinessCreate({
     const publish = beginFeedback()
     try {
       const created = await createBusiness(input)
-      if (publish(null)) onCreated(created.id)
+      if (publish(null)) {
+        // Still registered dirty until it unmounts; clear it so navigating to
+        // the created Business shows no false unsaved-changes prompt.
+        guard.unregisterDirty()
+        onCreated(created.id)
+      }
     } catch (caught) {
       if (isAuthenticationRequired(caught)) {
         onAuthenticationRequired(caught.detail)
@@ -66,7 +79,9 @@ export function BusinessCreate({
           бизнеса.
         </p>
         <BusinessForm
+          key={resetCount}
           busy={busy}
+          onDirtyChange={setDirty}
           submitLabel="Създай бизнес"
           onChange={() => setFeedback(null)}
           onSubmit={(input) => void submit(input as CreateBusinessInput)}

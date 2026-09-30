@@ -401,6 +401,21 @@ label {
 .platform-main {
   min-width: 0;
   padding: var(--space-5) var(--space-4);
+  /* One vertical stack for the page header, the shell banner, page feedback and
+     the page content: `gap` is the single source of spacing between them, so
+     feedback is never stuck to what follows it. */
+  display: grid;
+  align-content: start;
+  gap: var(--space-4);
+}
+
+.platform-main > * {
+  margin-block: 0;
+}
+
+/* Reused for the SUSPENDED notice inside a stack item. */
+.shell-banner {
+  margin: 0;
 }
 
 .platform-page-header,
@@ -410,7 +425,7 @@ label {
 }
 
 .platform-page-header {
-  margin-bottom: var(--space-5);
+  margin-bottom: 0;
 }
 
 .business-identity-row {
@@ -671,11 +686,15 @@ label {
 }
 
 .form-field input[aria-invalid="true"],
+.form-field select[aria-invalid="true"],
 .form-field textarea[aria-invalid="true"] {
   border-color: var(--color-danger);
 }
 
 .confirmation-panel {
+  /* Sized to its message and actions, not stretched across its container. */
+  width: fit-content;
+  max-width: min(100%, 32rem);
   margin-top: var(--space-4);
   padding: var(--space-4);
   border: 1px solid var(--color-warning);
@@ -732,7 +751,10 @@ label {
 
 .unsaved-changes-overlay .confirmation-panel {
   margin-top: 0;
-  width: min(100%, 30rem);
+  /* Compact modal: as wide as its content needs, within readable bounds. */
+  width: fit-content;
+  min-width: min(100%, 18rem);
+  max-width: min(100%, 26rem);
   padding: var(--space-5);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
@@ -740,8 +762,19 @@ label {
   box-shadow: 0 1.5rem 3rem rgb(23 32 51 / 22%);
 }
 
-.unsaved-changes-panel p {
-  margin-bottom: var(--space-5);
+/* Two short message lines, then the actions; `gap` is the single source of
+   spacing so no element's default margin stacks on top of it. */
+.unsaved-changes-panel {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.unsaved-changes-panel > * {
+  margin: 0;
+}
+
+.unsaved-changes-panel .unsaved-changes-actions {
+  margin-top: var(--space-3);
 }
 
 .action-group {
@@ -817,6 +850,17 @@ label {
   background: var(--color-success-subtle);
 }
 
+.exception-table .status-badge {
+  justify-self: start;
+  align-self: start;
+  white-space: nowrap;
+}
+
+.status-badge-info {
+  color: var(--color-action-primary-hover);
+  background: var(--color-action-primary-subtle);
+}
+
 .status-badge-warning {
   color: var(--color-warning);
   background: var(--color-page-background);
@@ -844,6 +888,10 @@ label {
 .business-pagination-summary {
   flex-wrap: wrap;
   color: var(--color-text-secondary);
+}
+
+.business-pagination-summary p {
+  margin: 0;
 }
 
 .business-pagination-controls {
@@ -1235,7 +1283,7 @@ label {
 @media (min-width: 48rem) {
   .schedule-day-body {
     flex-direction: column;
-    align-items: stretch;
+    align-items: flex-start;
   }
 }
 
@@ -1246,11 +1294,18 @@ label {
 }
 
 .schedule-period-chip {
+  /* Sized to its time text and controls, never stretched by its column. */
+  width: fit-content;
+  max-width: 100%;
+  align-self: flex-start;
   display: inline-flex;
+  /* In a narrow weekday column the remove control wraps beneath the time
+     instead of being squeezed below a usable touch target. */
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-1);
   padding: var(--space-1) var(--space-2);
-  border-radius: 999px;
+  border-radius: 0.875rem;
   background: var(--color-action-primary-subtle);
   color: var(--color-text-primary);
   font-size: 0.8125rem;
@@ -1265,7 +1320,7 @@ label {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  min-height: auto;
+  min-height: 1.5rem;
   padding: 0;
   border: 0;
   background: transparent;
@@ -1279,12 +1334,13 @@ label {
 }
 
 .schedule-period-chip-remove {
+  flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 1.25rem;
-  width: 1.25rem;
-  height: 1.25rem;
+  min-height: 1.5rem;
+  width: 1.5rem;
+  height: 1.5rem;
   padding: 0;
   border: 0;
   border-radius: 999px;
@@ -1300,7 +1356,8 @@ label {
 }
 
 .schedule-add-period {
-  min-height: auto;
+  align-self: flex-start;
+  min-height: 1.5rem;
   padding: var(--space-1) var(--space-2);
   border: 1px dashed var(--color-border);
   border-radius: 999px;
@@ -1344,7 +1401,10 @@ label {
 .schedule-dialog-panel {
   display: grid;
   gap: var(--space-4);
-  width: min(100%, 26rem);
+  width: fit-content;
+  /* Wide enough for the two time fields to share a row. */
+  min-width: min(100%, 24rem);
+  max-width: min(100%, 26rem);
   margin-top: 0;
   padding: var(--space-5);
   border: 1px solid var(--color-border);
@@ -1358,7 +1418,7 @@ label {
    width lets all three shortcuts sit on one row at ordinary desktop width
    instead of accidentally wrapping two-plus-one. */
 .schedule-copy-dialog-panel {
-  width: min(100%, 34rem);
+  max-width: min(100%, 34rem);
 }
 
 /* Grid item margins are not collapsed and would stack on top of the
@@ -1435,5 +1495,255 @@ label {
   .button,
   .business-section summary::after {
     transition: none;
+  }
+}
+
+/* ---- Business-owner schedule changes ("Промени по дати") ---- */
+
+.schedule-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.schedule-tab {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 2px solid transparent;
+  color: var(--color-text-secondary);
+  font-weight: 650;
+  text-decoration: none;
+}
+
+/* Two short destinations must share one row on a phone rather than wrap. */
+@media (max-width: 30rem) {
+  .schedule-tabs {
+    flex-wrap: nowrap;
+    gap: 0;
+  }
+
+  .schedule-tab {
+    flex: 1 1 0;
+    padding: var(--space-2);
+    font-size: 0.9375rem;
+    text-align: center;
+  }
+}
+
+.schedule-tab:hover {
+  color: var(--color-action-primary-hover);
+}
+
+.schedule-tab[aria-current="page"] {
+  border-bottom-color: var(--color-action-primary);
+  color: var(--color-action-primary);
+}
+
+.exception-window-form {
+  margin: 0;
+}
+
+.exception-form {
+  margin: 0;
+  display: grid;
+  gap: var(--space-4);
+}
+
+.exception-form > * {
+  margin: 0;
+}
+
+.choice-group {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.choice-group legend {
+  padding: 0;
+  margin-bottom: var(--space-2);
+  font-weight: 650;
+}
+
+.choice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 500;
+}
+
+/* Native radios must not inherit the tall text-control sizing. */
+.choice input {
+  flex: none;
+  width: 1.125rem;
+  height: 1.125rem;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.form-field-label {
+  font-weight: 650;
+}
+
+.exception-hints {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.exception-hint {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+/* The shared date presentation: each labelled control has its label ABOVE the
+   input ("От" and "До" side by side when there is room, stacked when narrow); a
+   single date is one label above one input. Any trailing action (the list's
+   "Покажи") is bottom-aligned with the inputs, not with their labels. Labels stay
+   visible and programmatically associated; errors sit below the row. */
+.date-period {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.date-period > * {
+  margin: 0;
+}
+
+.date-period-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3) var(--space-4);
+}
+
+.date-period-field {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
+.date-period-field label {
+  font-weight: 650;
+}
+
+/* The shared button rule pins buttons to `flex-start`; here the action must line
+   up with the inputs (the bottom of the row), not with the labels. */
+.date-period-row > .button {
+  align-self: flex-end;
+}
+
+.date-period-field input {
+  width: 11rem;
+  max-width: 100%;
+}
+
+@media (max-width: 30rem) {
+  /* A single stacked column with no wrapping into a second column. */
+  .date-period-row {
+    align-items: stretch;
+    flex-direction: column;
+    flex-wrap: nowrap;
+  }
+
+  .date-period-field input {
+    width: 100%;
+    max-width: 16rem;
+  }
+
+  .date-period-row > .button {
+    align-self: flex-start;
+  }
+}
+
+.form-field input[aria-invalid="true"] {
+  border-color: var(--color-danger);
+}
+
+.kind-group {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.kind-group-heading {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+/* One period per row, like a weekday column of the weekly schedule. */
+.exception-periods {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+
+.exception-periods .schedule-add-period {
+  align-self: flex-start;
+  margin-top: var(--space-1);
+}
+
+@media (min-width: 48rem) and (max-width: 63.999rem) {
+  .exception-table-container {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+    overflow: visible;
+  }
+
+  .exception-table,
+  .exception-table tbody,
+  .exception-table tr,
+  .exception-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .exception-table thead {
+    display: none;
+  }
+
+  .exception-list-toolbar .responsive-sort-select {
+    display: flex;
+  }
+
+  .exception-table tr {
+    margin-bottom: var(--space-4);
+    padding: var(--space-4);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-card);
+    background: var(--color-surface);
+    box-shadow: var(--shadow-card);
+  }
+
+  .exception-table td,
+  .exception-table tbody tr:last-child td {
+    display: grid;
+    grid-template-columns: minmax(6.5rem, 0.4fr) minmax(0, 1fr);
+    gap: var(--space-3);
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--color-border);
+    overflow-wrap: anywhere;
+  }
+
+  .exception-table td:last-child {
+    border-bottom: 0;
+  }
+
+  .exception-table td::before {
+    content: attr(data-label);
+    color: var(--color-text-secondary);
+    font-size: 0.875rem;
+    font-weight: 700;
   }
 }

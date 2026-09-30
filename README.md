@@ -24,8 +24,9 @@ Business-owner configuration interface (Services, Team, assignments, and the
 recurring weekly working schedule). Browser end-to-end verification of that
 journey, Customers, Appointments, booking, production email, and hosting are
 not implemented. Business closures, StaffMember time off, working-day
-overrides, and additional working periods can be administered through an
-authenticated backend API but have no interface. An internal Scheduling
+overrides, and additional working periods ("Промени в графика") can be administered
+through an authenticated backend API and the Business-owner interface under
+"Работно време". An internal Scheduling
 contract combines them with the recurring schedules into a current availability
 view under fixed MVP values (15-minute grid, two-hour notice, 30 local dates,
 zero buffers, no breaks; Business configuration is a follow-up); there is no

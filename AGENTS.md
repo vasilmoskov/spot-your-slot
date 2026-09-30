@@ -112,7 +112,11 @@ over the default risk level.
   checkpoint when meaningful UI becomes available.
 - Authenticated, user-editable forms follow the shared unsaved-changes
   behavior defined in `docs/ui-design-guidelines.md`. User-facing paginated
-  tables follow the shared table standard in the same guide.
+  tables follow the shared table standard in the same guide. Before
+  implementing or modifying any user-facing data table, inspect and explicitly
+  account for the mandatory table standard (sections 15 and 15.1): sorting,
+  pagination (default size 10, options 10/25/50), URL/history ownership,
+  responsive behaviour, deterministic ordering and mutation recovery.
   Frontend work must read and follow that guide and perform its documented
   visual and error-state checks (wrapped validation errors, dialogs, and
   desktop, tablet, mobile, and 200% zoom review) before completion.

@@ -98,6 +98,25 @@ multiple lines. Prefer a parent grid/flex `gap`; use an explicit token-based
 margin only when `gap` is not appropriate, and never rely on browser-default
 element margins.
 
+### Content-sized elements and vertical rhythm
+
+- Dialogs, confirmation panels, badges, chips, and compact actions are sized to
+  their content (`width: fit-content`, with a readable minimum and a maximum such
+  as `min(100%, 26rem)`) and are not stretched by a parent grid or flex column
+  without a layout reason. Inputs, tables, cards, and responsive containers may
+  remain full-width where that is the intent.
+- A content-sized element keeps its accessible interactive target: controls inside
+  a chip stay at least 1.5rem (24 px) square and never shrink below it; the chip
+  wraps the control instead of squeezing it.
+- Logical sibling sections (page header, shell banner, page feedback, page
+  content) sit in one layout stack whose `gap` is the single source of spacing
+  (`.platform-main`); do not add per-message margins. Feedback, controls, cards,
+  and adjacent text must never appear visually stuck together.
+- Modal dialogs on narrow screens may use the available viewport width and stack
+  their actions, keeping comfortable button heights.
+- During visual review, inspect both excessive empty space and missing space
+  between adjacent elements.
+
 ## 6. Buttons and interactive controls
 
 Use the shared `Button` component and semantic variants; do not create page-specific
@@ -214,6 +233,13 @@ before sending a request, using `noValidate` and the shared
   also show the generic alert. Unknown field names are ignored. A
   `VALIDATION_ERROR` with no usable `fieldErrors` shows a safe form-level
   message; never guess a field.
+
+An inclusive date range always uses one shared presentation
+(`DatePeriodFields`): a labelled "От" control and a labelled "До" control, each
+label above its input, side by side when there is room and stacked when narrow
+(the group is named "Период" for assistive technology only); a single date shows
+only "Дата" above its input. A trailing action such as "Покажи" is bottom-aligned
+with the inputs. Do not invent per-screen wording such as "Първа дата".
 
 Browser constraint messages shown to Bulgarian users must use natural Bulgarian
 while preserving native validation, focus behavior, and keyboard submission
@@ -408,7 +434,8 @@ expand the MVP.
 
 ## 15. Paginated tables
 
-Every user-facing paginated table — the Business-owner Services table, the
+Section 15.1 makes sorting and pagination mandatory for every data-list table.
+Every user-facing server-paginated table — the Business-owner Services table, the
 Platform-admin Businesses table, and any later table — follows this shared
 standard rather than a page-specific pagination design:
 
@@ -468,6 +495,94 @@ standard rather than a page-specific pagination design:
 - Show a results summary (for example “1–10 от 24 услуги”, “Страница 1 от
   3”) using the correct noun for the entity being listed.
 
+### 15.1 Mandatory sorting and pagination for every data-list table
+
+Every user-facing application data-list table — paginated by the server or not —
+must be designed with both sorting and pagination before implementation. Small
+semantic or layout tables that are not data lists (for example a weekly grid or a
+definition table) may document, in their task record, why pagination and sorting
+do not apply; that exception is deliberate and recorded, never assumed silently.
+Example: the Staff service-assignment checkbox table (`StaffServiceAssignments`),
+recorded in `docs/tasks/04d-business-owner-configuration-frontend.md`.
+
+**Pre-implementation checklist.** Before implementing or modifying a data-list
+table, the task must state:
+
+- its deterministic default ordering;
+- its sortable columns, and why any data column is not sortable;
+- the deterministic tie-breakers, ending in a stable record ID;
+- its pagination ownership (server or client) and why;
+- its default page size and allowed page sizes;
+- how filtering, sorting and pagination are represented in the route;
+- its responsive desktop-table/mobile-card behaviour;
+- its empty-page recovery after a mutation.
+
+**Sorting.**
+
+- Meaningful data columns are sortable unless documented otherwise. Action
+  columns, where they genuinely exist, are never sortable.
+- Headers use the shared `SortableColumnHeader` two-arrow indicator (`▲▼`); the
+  active column and direction are visibly identifiable, sorting is keyboard
+  accessible, and `aria-sort` is correct. Do not create another implementation.
+- Tie-breakers are mandatory. Entities that may lack a value (for example
+  Business-wide records with no StaffMember) take one documented position that
+  holds in both directions.
+- Responsive card layouts use the same ordering as the desktop table and expose
+  it through the shared responsive sort select.
+
+**Pagination (approved standard, unless a task records an approved exception).**
+
+- Default size is `10`; allowed sizes are `10`, `25`, `50`. Internal page numbers
+  are zero-based, visible ones one-based.
+- The page-size selector is inside the pagination region beside `Предишна` /
+  `Следваща`, never duplicated above the table. The shared `ListPagination`
+  component provides the labelled region, the range summary
+  (`Показани 1–10 от 37`), the selector and the buttons.
+- Sorting happens before pagination. A paginated API sorts on the server before
+  paginating. Client-side pagination and sorting are permitted only when the
+  complete relevant dataset is loaded, and the task record says why.
+- Filter, sort and size changes reset to page zero; a page change keeps the rest.
+- Explicit user actions push history. Automatic canonicalization and empty-page
+  recovery (including after deleting the last item on the last page) replace it,
+  never leaving a broken intermediate entry.
+- Route-backed lists keep the complete state (filter, page, size, sort,
+  direction) in the URL through refresh and Back/Forward, and carry it through
+  related create/detail routes so a return lands on the same state. Invalid
+  values normalize field by field to the defaults.
+- Mobile cards render exactly the same sorted, paginated result as the desktop
+  table.
+- Do not add destructive table actions (trash icons, an actions column) when the
+  approved flow intentionally requires opening the detail view first.
+
+### 15.2 Schedule changes table
+
+The Business-owner "Промени в графика" table sorts `Вид`, `Дати`, `Член на екипа`
+and `Статус`; `Часове` is not sortable because one record may hold several
+periods, `Цял ден` or `Неработен ден`. The endpoint returns the complete selected
+window (at most 93 dates, no pagination), so sorting and pagination are
+client-side and never see a partial result: the whole window is loaded, statuses
+are derived, the result is sorted, and only then is the current page cut.
+
+Default order (`dates` ascending): first date, last date, kind, StaffMember name,
+record ID. `Дати` sorts by first date, last date and then those same tie-breakers;
+`Вид` by the Bulgarian display label; `Член на екипа` by Bulgarian locale order
+with Business-wide records always last in both directions; `Статус` orders
+`В сила`, `Предстояща`, `Минала` (descending reverses that primary order).
+
+Canonical route: `?from=…&to=…&page=0&size=10&sort=dates&direction=asc`. Invalid
+`page` (negative, non-numeric) becomes `0`, unsupported `size` becomes `10`,
+invalid `sort` becomes `dates`, invalid `direction` becomes `asc`. A page beyond the
+last valid page is rendered as the last page at once and the route is corrected by
+replacing history.
+
+The status is derived, never stored or read from the API: `Предстояща` when the
+first date is after the Business-local date, `В сила` when that date lies within
+first and last date inclusive, `Минала` when the last date is before it. The
+Business-local date comes from the timezone returned by the API. It appears as a
+compact badge in the table, the mobile cards and the detail view. Records are
+never deleted automatically; past ones stay reachable through the date filter.
+Deletion exists only in the detail view.
+
 ## 16. Authenticated mutable forms
 
 Every authenticated, user-editable form (profile, Business profile, Service
@@ -483,14 +598,20 @@ create/edit, and later forms) uses the shared `UnsavedChangesGuardProvider`/
   guarded action (Back/Forward, another link, a second logout) while a
   confirmation is already showing is dropped, never silently replacing the
   original request.
-- The confirmation dialog's safe action (“Продължи редактирането”) receives
-  initial focus; the destructive action (“Откажи промените”) is never the
+- The confirmation dialog says exactly “Имате незапазени промени.” and “Ако
+  напуснете, те ще бъдат загубени.” on two separate lines, with no visible title.
+  Its safe action (“Остани”, shown first) receives initial focus, closes the
+  dialog, and Escape does the same, restoring focus to the control that triggered
+  the attempt; the destructive action (“Напусни”, red, shown second) is never the
   default focus.
 - The browser's `beforeunload` prompt is armed only while the form is dirty.
 - Every transition that would discard a dirty editor goes through the guard:
   sidebar navigation, browser Back/Forward, Business switching, logout,
   switching between mutually exclusive editors, and reloading fresh data after
   an optimistic-concurrency conflict.
+- A confirmed discard that leaves the form mounted (for example Back/Forward to
+  the same route) really resets the form's values, so the guard's cleared dirty
+  flag never disagrees with a still-dirty form.
 - A dirty state that lives outside the form's own values (for example an open
   dialog with typed input) is included in the registered dirty state, and the
   registered discard callback resets all of it. Registration is removed on

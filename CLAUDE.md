@@ -127,6 +127,11 @@ material ambiguity.
 - Frontend work must read and follow `docs/ui-design-guidelines.md` and perform
   its documented visual and error-state checks, including wrapped validation
   errors, dialogs, and desktop, tablet, mobile, and 200% zoom review.
+- Before implementing or modifying a user-facing data table, read and
+  explicitly account for the table standard in `docs/ui-design-guidelines.md`
+  (sections 15 and 15.1): sorting, pagination (default size 10, options
+  10/25/50), URL/history ownership, responsive behaviour, deterministic
+  ordering and mutation recovery.
 - Explicitly notify the user when functionality becomes visually testable.
 - Provide concise manual verification steps for frontend, responsive,
   accessibility, browser, email-rendering, and other user-visible behavior.

@@ -118,7 +118,7 @@ Serial journey (continues the Phase 1 state):
   StaffMember's schedule is read-only in the UI and a forced PUT is rejected
   with `STAFF_MEMBER_INACTIVE`. No timezone text is asserted.
 - **Unsaved changes** — the dirty Service edit form: sidebar navigation opens
-  the shared dialog, `Продължи редактирането` is initially focused, continuing
+  the shared dialog, `Остани` is initially focused, continuing
   preserves the value and route, and discarding completes the original
   navigation without saving.
 - **Lifecycle** — DRAFT edits succeed (Phase 1); the admin context activates

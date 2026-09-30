@@ -356,6 +356,26 @@ prove the placeholder is the single implementation and that a second one fails
 startup. `AvailabilityModuleBoundaryTests` and `ModuleBoundaryTests` verify no
 `scheduling` dependency on `booking` and no reverse edges.
 
+## Schedule-changes interface verification
+
+Issue #16 Phase 5 adds only frontend Vitest/Testing Library coverage for
+"Промени в графика" (no backend or browser-automation change).
+`navigation.test.ts` covers the four routes, canonical hrefs, and the normalization
+of every unusable window. `presentation.test.ts` and `api.test.ts` cover labels,
+dates, the Business-timezone date, window and period validation, and the exact
+request shapes. `ScheduleExceptionList.test.tsx` covers the provisional-window
+bootstrap (replace, one refetch, no loop), manual filtering (push), populated,
+empty and failing lists, full StaffMember pagination, and stale-response discard.
+`ScheduleExceptionCreate.test.tsx` covers the progressive fields of all four
+kinds, the period dialog, inline validation policy, backend field errors,
+duplicate-submit protection, and the unsaved-changes guard.
+`ScheduleExceptionDetail.test.tsx` covers reading, editing with `expectedVersion`,
+conflicts with guarded reload, the delete confirmation, and SUSPENDED and
+inactive-StaffMember read-only behavior. `App.scheduleExceptions.test.tsx` covers
+routing, tabs, role access, history, guarded sidebar/Back/logout, Business
+switching, and the absence of browser-storage writes. A rendered-browser review
+against a disposable database is a separate, human-approved checkpoint.
+
 ## Browser E2E for Business onboarding and lifecycle
 
 Issue #7 adds a Playwright layer above the existing MockMvc/PostgreSQL and

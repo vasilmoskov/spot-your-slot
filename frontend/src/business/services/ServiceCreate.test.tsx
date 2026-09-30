@@ -191,7 +191,7 @@ describe('ServiceCreate', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Пробна навигация' }))
     expect(screen.getByRole('alertdialog')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Продължи редактирането' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Остани' }))
 
     fireEvent.click(screen.getByRole('button', { name: 'Създай услуга' }))
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith('service-a'))

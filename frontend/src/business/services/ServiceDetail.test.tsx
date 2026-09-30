@@ -139,13 +139,14 @@ describe('ServiceDetail', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Отказ' }))
 
     const confirmation = screen.getByRole('alertdialog', { name: 'Незапазени промени' })
-    expect(confirmation).toHaveTextContent(
-      'Направените промени няма да бъдат запазени. Сигурни ли сте, че искате да продължите?',
-    )
+    expect(Array.from(confirmation.querySelectorAll('p')).map((line) => line.textContent)).toEqual([
+      'Имате незапазени промени.',
+      'Ако напуснете, те ще бъдат загубени.',
+    ])
     expect(mockedUpdateService).not.toHaveBeenCalled()
     expect(screen.getByLabelText('Име на услугата')).toHaveValue('Незаписано')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Напусни' }))
 
     expect(mockedUpdateService).not.toHaveBeenCalled()
     expect(screen.queryByLabelText('Име на услугата')).not.toBeInTheDocument()
@@ -166,7 +167,7 @@ describe('ServiceDetail', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Редактирай' }))
     fireEvent.change(screen.getByLabelText('Име на услугата'), { target: { value: 'Незаписано' } })
     fireEvent.click(screen.getByRole('button', { name: 'Отказ' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Продължи редактирането' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Остани' }))
 
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
     expect(screen.getByLabelText('Име на услугата')).toHaveValue('Незаписано')
@@ -276,12 +277,12 @@ describe('ServiceDetail', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Зареди актуалните данни' }))
     expect(mockedGetService).toHaveBeenCalledTimes(1)
-    fireEvent.click(screen.getByRole('button', { name: 'Продължи редактирането' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Остани' }))
     expect(screen.getByLabelText('Име на услугата')).toHaveValue('Ново име')
     expect(mockedGetService).toHaveBeenCalledTimes(1)
 
     fireEvent.click(screen.getByRole('button', { name: 'Зареди актуалните данни' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Напусни' }))
     await waitFor(() => expect(mockedGetService).toHaveBeenCalledTimes(2))
   })
 

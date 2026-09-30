@@ -670,7 +670,7 @@ describe('identity application', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Смяна на парола' }))
     expect(screen.getByRole('alertdialog', { name: 'Незапазени промени' })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Напусни' }))
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Смяна на парола' })).toBeInTheDocument()
   })
@@ -777,18 +777,19 @@ describe('identity application', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Отказ' }))
 
     const confirmation = screen.getByRole('alertdialog', { name: 'Незапазени промени' })
-    expect(confirmation).toHaveTextContent(
-      'Направените промени няма да бъдат запазени. Сигурни ли сте, че искате да продължите?',
-    )
+    expect(Array.from(confirmation.querySelectorAll('p')).map((line) => line.textContent)).toEqual([
+      'Имате незапазени промени.',
+      'Ако напуснете, те ще бъдат загубени.',
+    ])
     expect(mockedRequest).toHaveBeenCalledTimes(1)
     expect(screen.getByLabelText('Име')).toHaveValue('Незаписано име')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Продължи редактирането' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Остани' }))
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
     expect(screen.getByLabelText('Име')).toHaveValue('Незаписано име')
 
     fireEvent.click(screen.getByRole('button', { name: 'Отказ' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Напусни' }))
 
     expect(mockedRequest).toHaveBeenCalledTimes(1)
     expect(screen.queryByLabelText('Име')).not.toBeInTheDocument()
@@ -1620,19 +1621,20 @@ describe('shared unsaved-changes guard', () => {
 
     fireEvent.click(screen.getByRole('link', { name: 'Екип' }))
     const dialog = screen.getByRole('alertdialog', { name: 'Незапазени промени' })
-    expect(dialog).toHaveTextContent(
-      'Направените промени няма да бъдат запазени. Сигурни ли сте, че искате да продължите?',
-    )
+    expect(Array.from(dialog.querySelectorAll('p')).map((line) => line.textContent)).toEqual([
+      'Имате незапазени промени.',
+      'Ако напуснете, те ще бъдат загубени.',
+    ])
     expect(screen.getByRole('heading', { name: 'Услуга' })).toBeInTheDocument()
     expect(screen.getByLabelText('Име на услугата')).toHaveValue('Ново име')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Продължи редактирането' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Остани' }))
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Услуга' })).toBeInTheDocument()
     expect(screen.getByLabelText('Име на услугата')).toHaveValue('Ново име')
 
     fireEvent.click(screen.getByRole('link', { name: 'Екип' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Напусни' }))
     expect(await screen.findByRole('heading', { name: 'Екип' })).toBeInTheDocument()
   })
 
@@ -1667,12 +1669,12 @@ describe('shared unsaved-changes guard', () => {
     expect(screen.getByRole('heading', { name: 'Профил' })).toBeInTheDocument()
     expect(screen.getByLabelText('Име')).toHaveValue('Ново име')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Продължи редактирането' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Остани' }))
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
     expect(screen.getByLabelText('Име')).toHaveValue('Ново име')
 
     fireEvent.click(screen.getByRole('link', { name: 'Услуги' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Напусни' }))
     expect(await screen.findByRole('heading', { name: 'Услуги' })).toBeInTheDocument()
   })
 
@@ -1691,7 +1693,7 @@ describe('shared unsaved-changes guard', () => {
       expect.anything(),
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Напусни' }))
     await waitFor(() =>
       expect(mockedRequest).toHaveBeenCalledWith(
         '/api/auth/business',
@@ -1708,7 +1710,7 @@ describe('shared unsaved-changes guard', () => {
     expect(screen.getByRole('alertdialog')).toBeInTheDocument()
     expect(mockedRequest).not.toHaveBeenCalledWith('/api/auth/logout', expect.anything())
 
-    fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Напусни' }))
     await waitFor(() =>
       expect(mockedRequest).toHaveBeenCalledWith('/api/auth/logout', { method: 'POST' }),
     )
@@ -1729,7 +1731,7 @@ describe('shared unsaved-changes guard', () => {
     expect(screen.getByRole('heading', { name: 'Услуга' })).toBeInTheDocument()
     expect(screen.getByLabelText('Име на услугата')).toHaveValue('Ново име')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Продължи редактирането' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Остани' }))
     expect(window.location.hash).toBe(dirtyHash)
     expect(screen.getByRole('heading', { name: 'Услуга' })).toBeInTheDocument()
 
@@ -1737,7 +1739,7 @@ describe('shared unsaved-changes guard', () => {
       history.pushState({}, '', '/#/business/services')
       window.dispatchEvent(new PopStateEvent('popstate'))
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Напусни' }))
     expect(await screen.findByRole('heading', { name: 'Услуги' })).toBeInTheDocument()
   })
 })
@@ -1768,7 +1770,7 @@ describe('Profile password guard', () => {
       'true',
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Напусни' }))
     expect(screen.getByRole('button', { name: 'Лични данни' })).toHaveAttribute(
       'aria-pressed',
       'true',
@@ -1788,11 +1790,11 @@ describe('Profile password guard', () => {
     expect(screen.getByRole('alertdialog', { name: 'Незапазени промени' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Профил' })).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Продължи редактирането' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Остани' }))
     expect(screen.getByLabelText('Нова парола')).toHaveValue('a-new-value')
 
     fireEvent.click(screen.getByRole('link', { name: 'Услуги' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Напусни' }))
     expect(await screen.findByRole('heading', { name: 'Услуги' })).toBeInTheDocument()
   })
 
@@ -1807,7 +1809,7 @@ describe('Profile password guard', () => {
     expect(screen.getByRole('alertdialog', { name: 'Незапазени промени' })).toBeInTheDocument()
     expect(mockedRequest).not.toHaveBeenCalledWith('/api/auth/logout', expect.anything())
 
-    fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Напусни' }))
     expect(await screen.findByRole('heading', { name: 'Вход' })).toBeInTheDocument()
   })
 
@@ -1905,7 +1907,7 @@ describe('Business-owner working-schedule route', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument()
     expect(within(dialog).getByLabelText('Начален час')).toHaveValue('09:00')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Продължи редактирането' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Остани' }))
     expect(window.location.hash).toBe(dirtyHash)
     expect(screen.getByRole('dialog')).toBeInTheDocument()
 
@@ -1913,7 +1915,7 @@ describe('Business-owner working-schedule route', () => {
       history.pushState({}, '', '/#/business/staff')
       window.dispatchEvent(new PopStateEvent('popstate'))
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Напусни' }))
     expect(await screen.findByRole('heading', { name: 'Екип' })).toBeInTheDocument()
   })
 })

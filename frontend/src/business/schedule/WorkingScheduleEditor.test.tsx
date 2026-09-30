@@ -587,7 +587,7 @@ describe('WorkingScheduleEditor — copy to weekdays', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Пробна навигация' }))
     expect(screen.getByRole('alertdialog', { name: 'Незапазени промени' })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Продължи редактирането' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Остани' }))
 
     fireEvent.click(screen.getByRole('button', { name: 'Запази промените' }))
     await waitFor(() =>
@@ -629,7 +629,7 @@ describe('WorkingScheduleEditor — page-level save/cancel and error handling', 
     fireEvent.click(screen.getByRole('button', { name: 'Отказ' }))
     expect(screen.getByRole('alertdialog', { name: 'Незапазени промени' })).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Напусни' }))
     expect(screen.queryByRole('button', { name: 'Запази промените' })).not.toBeInTheDocument()
     expect(await screen.findByText('09:00\u201312:00')).toBeInTheDocument()
   })
@@ -646,7 +646,7 @@ describe('WorkingScheduleEditor — page-level save/cancel and error handling', 
 
     fireEvent.click(screen.getByRole('button', { name: 'Пробна навигация' }))
     expect(screen.getByRole('alertdialog', { name: 'Незапазени промени' })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Продължи редактирането' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Остани' }))
 
     fireEvent.click(screen.getByRole('button', { name: 'Запази промените' }))
     await waitFor(() => expect(mockedReplaceWorkingSchedule).toHaveBeenCalled())
@@ -702,7 +702,7 @@ describe('WorkingScheduleEditor — page-level save/cancel and error handling', 
     mockedGetWorkingSchedule.mockResolvedValueOnce(splitSchedule)
     fireEvent.click(reloadButton)
     expect(mockedGetWorkingSchedule).toHaveBeenCalledTimes(1)
-    fireEvent.click(await screen.findByRole('button', { name: 'Откажи промените' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Напусни' }))
     expect(await screen.findByText('09:00\u201312:00')).toBeInTheDocument()
     expect(mockedGetWorkingSchedule).toHaveBeenCalledTimes(2)
   })
@@ -858,7 +858,7 @@ describe('WorkingScheduleEditor — immediate chronological ordering', () => {
     expect(chipOrder(monday, true)).toEqual(['06:00–07:00', '09:00–10:00', '14:00–15:00'])
 
     fireEvent.click(screen.getByRole('button', { name: 'Отказ' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Напусни' }))
     const restoredMonday = daySection('Понеделник')
     expect(chipOrder(restoredMonday, false)).toEqual(['09:00–10:00', '14:00–15:00'])
   })
@@ -1026,7 +1026,7 @@ describe('WorkingScheduleEditor — dirty Add/Edit dialog participates in the sh
     expect(screen.getByRole('alertdialog', { name: 'Незапазени промени' })).toBeInTheDocument()
   })
 
-  it('"Продължи редактирането" preserves the open dialog and its entered values', async () => {
+  it('"Остани" preserves the open dialog and its entered values', async () => {
     await renderEditing(emptySchedule)
     const monday = daySection('Понеделник')
     fireEvent.click(within(monday).getByRole('button', { name: '+ Добави' }))
@@ -1034,7 +1034,7 @@ describe('WorkingScheduleEditor — dirty Add/Edit dialog participates in the sh
     fireEvent.change(within(dialog).getByLabelText('Начален час'), { target: { value: '09:00' } })
 
     fireEvent.click(screen.getByRole('button', { name: 'Пробна навигация' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Продължи редактирането' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Остани' }))
 
     expect(screen.getByRole('dialog')).toBeInTheDocument()
     expect(within(dialog).getByLabelText('Начален час')).toHaveValue('09:00')
@@ -1055,7 +1055,7 @@ describe('WorkingScheduleEditor — dirty Add/Edit dialog participates in the sh
     fireEvent.change(within(dialog).getByLabelText('Начален час'), { target: { value: '15:00' } })
 
     fireEvent.click(screen.getByRole('button', { name: 'Пробна навигация' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Откажи промените' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Напусни' }))
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(within(daySection('Понеделник')).getByText('09:00–10:00')).toBeInTheDocument()

@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type InvalidEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type InvalidEvent } from 'react'
 import { Button } from '../../ui/Button'
 import {
   type BusinessDetails,
@@ -13,6 +13,9 @@ type BusinessFormProps = {
   busy: boolean
   submitLabel: string
   onChange?: () => void
+  // Reports whether the current values differ from the loaded/empty ones, so the
+  // owning page can register one shared unsaved-changes guard for it.
+  onDirtyChange?: (dirty: boolean) => void
   onCancel?: () => void
   onSubmit: (input: CreateBusinessInput | UpdateBusinessInput) => void
 }
@@ -80,6 +83,23 @@ function TextField({
   )
 }
 
+const TEXT_FIELD_NAMES = [
+  'displayName',
+  'slug',
+  'phone',
+  'contactEmail',
+  'street',
+  'streetNumber',
+  'postalCode',
+  'city',
+  'addressDetails',
+  'description',
+] as const
+
+function initialText(business: BusinessDetails | undefined, name: (typeof TEXT_FIELD_NAMES)[number]): string {
+  return business?.[name] ?? ''
+}
+
 function value(data: FormData, name: string): string {
   return String(data.get(name) ?? '')
 }
@@ -95,11 +115,29 @@ export function BusinessForm({
   submitLabel,
   onCancel,
   onChange,
+  onDirtyChange,
   onSubmit,
 }: BusinessFormProps) {
-  const [businessType, setBusinessType] = useState<BusinessType>(
-    business?.businessType ?? 'OTHER',
-  )
+  const initialType: BusinessType = business?.businessType ?? 'OTHER'
+  const [businessType, setBusinessType] = useState<BusinessType>(initialType)
+  const formRef = useRef<HTMLFormElement>(null)
+  const dirtyReporter = useRef(onDirtyChange)
+  dirtyReporter.current = onDirtyChange
+
+  // The inputs are uncontrolled, so dirtiness is measured from the live form
+  // values against the loaded (or empty) ones after every edit.
+  const reportDirty = (type: BusinessType) => {
+    const form = formRef.current
+    if (!form) return
+    const data = new FormData(form)
+    const changed =
+      type !== initialType ||
+      TEXT_FIELD_NAMES.some((name) => value(data, name) !== initialText(business, name))
+    dirtyReporter.current?.(changed)
+  }
+
+  // An unmounted form has nothing left to lose.
+  useEffect(() => () => dirtyReporter.current?.(false), [])
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -135,7 +173,16 @@ export function BusinessForm({
   }
 
   return (
-    <form onChange={onChange} className="business-form" onSubmit={submit}>
+    <form
+      ref={formRef}
+      onChange={() => {
+        reportDirty(businessType)
+        onChange?.()
+      }}
+      onInput={() => reportDirty(businessType)}
+      className="business-form"
+      onSubmit={submit}
+    >
       <div className="business-information-columns">
         <div className="business-information-column">
           <TextField
@@ -157,9 +204,11 @@ export function BusinessForm({
             <select
               name="businessType"
               value={businessType}
-              onChange={(event) =>
-                setBusinessType(event.target.value as BusinessType)
-              }
+              onChange={(event) => {
+                const next = event.target.value as BusinessType
+                setBusinessType(next)
+                reportDirty(next)
+              }}
             >
               {BUSINESS_TYPE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
