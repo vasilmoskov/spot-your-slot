@@ -134,6 +134,171 @@ describe('BusinessDetail', () => {
     expect(screen.getByLabelText('Име на бизнеса')).toHaveValue('Студио А')
   })
 
+  it('shows a backend slug field error inline while editing a DRAFT, without a form alert', async () => {
+    mockedUpdateBusiness.mockRejectedValueOnce(
+      new ApiError(400, 'VALIDATION_ERROR', 'Проверете въведените данни.', {
+        slug: 'Изберете друг публичен адрес на бизнеса.',
+      }),
+    )
+    renderDetail()
+    await screen.findByRole('heading', { name: 'Студио А' })
+    fireEvent.click(section('Данни за бизнеса').querySelector('summary')!)
+    fireEvent.click(screen.getByRole('button', { name: 'Редактирай' }))
+    const slug = screen.getByLabelText('Идентификатор в уеб адреса')
+    fireEvent.change(slug, { target: { value: 'studio-b' } })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Запази промените' }))
+
+    expect(await screen.findByText('Изберете друг публичен адрес на бизнеса.'))
+      .toBeInTheDocument()
+    expect(slug).toHaveFocus()
+    expect(slug).toHaveValue('studio-b')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('rejects a reserved DRAFT slug locally without calling the API', async () => {
+    renderDetail()
+    await screen.findByRole('heading', { name: 'Студио А' })
+    fireEvent.click(section('Данни за бизнеса').querySelector('summary')!)
+    fireEvent.click(screen.getByRole('button', { name: 'Редактирай' }))
+    fireEvent.change(screen.getByLabelText('Идентификатор в уеб адреса'), {
+      target: { value: 'admin' },
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Запази промените' }))
+
+    expect(mockedUpdateBusiness).not.toHaveBeenCalled()
+    expect(screen.getByText('Изберете друг публичен адрес на бизнеса.')).toBeInTheDocument()
+  })
+
+  it('keeps a grandfathered reserved DRAFT slug while another field is saved', async () => {
+    mockedGetBusiness.mockResolvedValue({ ...draftBusiness, slug: 'login' })
+    mockedUpdateBusiness.mockResolvedValue({
+      ...draftBusiness,
+      slug: 'login',
+      displayName: 'Студио Б',
+      version: 5,
+    })
+    renderDetail()
+    await screen.findByRole('heading', { name: 'Студио А' })
+    fireEvent.click(section('Данни за бизнеса').querySelector('summary')!)
+    fireEvent.click(screen.getByRole('button', { name: 'Редактирай' }))
+    fireEvent.change(screen.getByLabelText('Име на бизнеса'), { target: { value: 'Студио Б' } })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Запази промените' }))
+
+    await waitFor(() =>
+      expect(mockedUpdateBusiness).toHaveBeenCalledWith(
+        'business-a',
+        expect.objectContaining({ slug: 'login', displayName: 'Студио Б', expectedVersion: 4 }),
+      ),
+    )
+  })
+
+  it.each(['ACTIVE', 'SUSPENDED'] as const)(
+    'shows the %s slug read-only, keeps other fields editable and never submits a slug change',
+    async (status) => {
+      mockedGetBusiness.mockResolvedValue(businessWithStatus(status))
+      mockedUpdateBusiness.mockResolvedValue({
+        ...businessWithStatus(status),
+        displayName: 'Студио Б',
+        version: 5,
+      })
+      renderDetail()
+      await screen.findByRole('heading', { name: 'Студио А' })
+      fireEvent.click(section('Данни за бизнеса').querySelector('summary')!)
+      fireEvent.click(screen.getByRole('button', { name: 'Редактирай' }))
+
+      expect(screen.queryByRole('textbox', { name: /Идентификатор/ })).not.toBeInTheDocument()
+      expect(
+        screen.getByText('Публичният адрес не може да се променя след активиране.'),
+      ).toBeInTheDocument()
+      fireEvent.change(screen.getByLabelText('Име на бизнеса'), { target: { value: 'Студио Б' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Запази промените' }))
+
+      await waitFor(() =>
+        expect(mockedUpdateBusiness).toHaveBeenCalledWith(
+          'business-a',
+          expect.objectContaining({ slug: 'studio-a', displayName: 'Студио Б', expectedVersion: 4 }),
+        ),
+      )
+      expect(await screen.findByRole('status')).toHaveTextContent('Промените са запазени.')
+    },
+  )
+
+  it('keeps the shared unsaved-changes guard for an ACTIVE Business edit', async () => {
+    mockedGetBusiness.mockResolvedValue(businessWithStatus('ACTIVE'))
+    renderDetail()
+    await screen.findByRole('heading', { name: 'Студио А' })
+    fireEvent.click(section('Данни за бизнеса').querySelector('summary')!)
+    fireEvent.click(screen.getByRole('button', { name: 'Редактирай' }))
+    fireEvent.change(screen.getByLabelText('Име на бизнеса'), { target: { value: 'Незаписано' } })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Отказ' }))
+
+    expect(screen.getByRole('alertdialog', { name: 'Незапазени промени' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Напусни' }))
+    expect(mockedUpdateBusiness).not.toHaveBeenCalled()
+  })
+
+  it('does not raise a false unsaved-changes prompt when an ACTIVE edit is untouched', async () => {
+    mockedGetBusiness.mockResolvedValue(businessWithStatus('ACTIVE'))
+    renderDetail()
+    await screen.findByRole('heading', { name: 'Студио А' })
+    fireEvent.click(section('Данни за бизнеса').querySelector('summary')!)
+    fireEvent.click(screen.getByRole('button', { name: 'Редактирай' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Отказ' }))
+
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Редактирай' })).toBeInTheDocument()
+  })
+
+  it('directs the administrator to edit the address when activation hits a reserved slug', async () => {
+    mockedChangeBusinessStatus.mockRejectedValueOnce(
+      new ApiError(
+        409,
+        'BUSINESS_SLUG_RESERVED',
+        'Променете публичния адрес на бизнеса преди активиране.',
+      ),
+    )
+    renderDetail()
+    await screen.findByRole('heading', { name: 'Студио А' })
+    const lifecycleSection = section('Активиране')
+    fireEvent.click(lifecycleSection.querySelector('summary')!)
+    fireEvent.click(screen.getByRole('button', { name: 'Активирай' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Потвърди активирането' }))
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(
+      'Променете публичния адрес на бизнеса преди активиране. Редактирайте го в „Данни за бизнеса“.',
+    )
+    expect(alert).toHaveFocus()
+    expect(document.body).not.toHaveTextContent(/BUSINESS_SLUG_RESERVED|резервир/i)
+  })
+
+  it('shows the safe immutable-slug message without internals if the backend still refuses', async () => {
+    mockedGetBusiness.mockResolvedValue(businessWithStatus('ACTIVE'))
+    mockedUpdateBusiness.mockRejectedValueOnce(
+      new ApiError(
+        409,
+        'BUSINESS_SLUG_IMMUTABLE',
+        'Публичният адрес на активиран бизнес не може да бъде променян.',
+      ),
+    )
+    renderDetail()
+    await screen.findByRole('heading', { name: 'Студио А' })
+    fireEvent.click(section('Данни за бизнеса').querySelector('summary')!)
+    fireEvent.click(screen.getByRole('button', { name: 'Редактирай' }))
+    fireEvent.change(screen.getByLabelText('Име на бизнеса'), { target: { value: 'Студио Б' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Запази промените' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Публичният адрес на активиран бизнес не може да бъде променян.',
+    )
+    expect(document.body).not.toHaveTextContent(/BUSINESS_SLUG_IMMUTABLE/)
+  })
+
   it('renders approved details and updates only editable fields with expectedVersion', async () => {
     mockedUpdateBusiness.mockResolvedValue({
       ...draftBusiness,

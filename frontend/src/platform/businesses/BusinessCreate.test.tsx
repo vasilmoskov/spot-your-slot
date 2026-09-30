@@ -113,6 +113,56 @@ describe('BusinessCreate', () => {
     expect(screen.queryByText(/SQL|constraint|secret/)).not.toBeInTheDocument()
   })
 
+  it('rejects a reserved address locally, focusing the slug and sending nothing', () => {
+    render(
+      <BusinessCreate
+        onAuthenticationRequired={vi.fn()}
+        onCreated={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    )
+    completeRequiredFields()
+    const slug = screen.getByLabelText('Идентификатор в уеб адреса')
+    fireEvent.change(slug, { target: { value: 'platform' } })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Създай бизнес' }))
+
+    expect(mockedCreateBusiness).not.toHaveBeenCalled()
+    expect(screen.getByText('Изберете друг публичен адрес на бизнеса.')).toBeInTheDocument()
+    expect(slug).toHaveFocus()
+    expect(slug).toHaveValue('platform')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('shows a backend slug field error inline without a generic form alert', async () => {
+    const rejectReserved = rejectedCreation(
+      new ApiError(
+        400,
+        'VALIDATION_ERROR',
+        'Проверете въведените данни.',
+        { slug: 'Изберете друг публичен адрес на бизнеса.' },
+      ),
+    )
+    render(
+      <BusinessCreate
+        onAuthenticationRequired={vi.fn()}
+        onCreated={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    )
+    completeRequiredFields()
+    fireEvent.click(screen.getByRole('button', { name: 'Създай бизнес' }))
+    rejectReserved()
+
+    const slug = screen.getByLabelText('Идентификатор в уеб адреса')
+    expect(await screen.findByText('Изберете друг публичен адрес на бизнеса.'))
+      .toBeInTheDocument()
+    expect(slug).toHaveFocus()
+    expect(slug).toHaveValue('studio-a')
+    expect(screen.getByLabelText('Име на бизнеса')).toHaveValue('Студио А')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
   it('clears stale authentication when creation returns 401', async () => {
     const onAuthenticationRequired = vi.fn()
     const rejectAuthentication = rejectedCreation(

@@ -209,6 +209,7 @@ label {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  overflow-wrap: anywhere;
 }
 
 .wordmark {
@@ -564,6 +565,10 @@ label {
   gap: var(--space-4);
 }
 
+.business-detail-header > * {
+  min-width: 0;
+}
+
 .business-detail-header h2 {
   margin-bottom: var(--space-2);
   font-size: clamp(1.5rem, 5vw, 2rem);
@@ -586,7 +591,7 @@ label {
 
 .business-section summary {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: max-content minmax(0, 1fr) auto;
   align-items: baseline;
   gap: var(--space-3);
   list-style: none;
@@ -618,6 +623,12 @@ label {
 }
 
 .section-summary {
+  /* Repeats information shown elsewhere (for example a long display name), so it
+     truncates on one line rather than widening or stacking the summary row. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--color-text-secondary);
   font-size: 0.875rem;
   font-weight: 500;
@@ -681,6 +692,13 @@ label {
   color: var(--color-danger);
   font-size: 0.875rem;
   font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.field-note {
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
   line-height: 1.4;
   overflow-wrap: anywhere;
 }

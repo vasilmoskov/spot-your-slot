@@ -14,15 +14,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import bg.spotyourslot.business.domain.ReservedBusinessSlugs;
 import bg.spotyourslot.identity.domain.TokenCodec;
 import jakarta.servlet.http.Cookie;
 import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.UUID;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -310,6 +313,218 @@ class PlatformBusinessApiIntegrationTests extends PostgresIntegrationTest {
                 .cookie(adminSession)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"expectedVersion\":-1}")));
+    }
+
+    @ParameterizedTest
+    @MethodSource("reservedSlugs")
+    void createWithAReservedSlugReturnsAFieldSpecificValidationError(String reserved)
+            throws Exception {
+        var result = mvc.perform(post("/api/platform/businesses")
+                        .with(csrf())
+                        .cookie(adminSession)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createJson(reserved)))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.detail").value("Проверете въведените данни."))
+                .andExpect(jsonPath("$.fieldErrors", aMapWithSize(1)))
+                .andExpect(jsonPath("$.fieldErrors.slug")
+                        .value("Изберете друг публичен адрес на бизнеса."))
+                .andExpect(content().string(not(containsString("SQL"))))
+                .andExpect(content().string(not(containsString("constraint"))))
+                .andReturn();
+
+        assertDoesNotDiscloseTheReservedList(
+                result.getResponse().getContentAsString(), reserved);
+        assertThat(jdbc.sql("SELECT count(*) FROM business").query(Long.class).single()).isZero();
+    }
+
+    @Test
+    void createNormalizesCaseBeforeRejectingAReservedSlug() throws Exception {
+        mvc.perform(post("/api/platform/businesses")
+                        .with(csrf())
+                        .cookie(adminSession)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createJson("LOGIN")))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.fieldErrors.slug")
+                        .value("Изберете друг публичен адрес на бизнеса."));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"booking-studio", "my-book", "appointments-bg"})
+    void createAcceptsSlugsThatOnlyResembleReservedRoots(String slug) throws Exception {
+        createBusinessThroughApi(slug);
+    }
+
+    @Test
+    void draftUpdateToAReservedSlugIsRejectedAndToAValidSlugIsAccepted() throws Exception {
+        UUID businessId = createBusinessThroughApi("draft-rename");
+
+        mvc.perform(put("/api/platform/businesses/{businessId}", businessId)
+                        .with(csrf())
+                        .cookie(adminSession)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(updateJson("admin", 0)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
+                .andExpect(jsonPath("$.fieldErrors.slug")
+                        .value("Изберете друг публичен адрес на бизнеса."));
+        assertBusinessState(businessId, "DRAFT", 0);
+
+        mvc.perform(put("/api/platform/businesses/{businessId}", businessId)
+                        .with(csrf())
+                        .cookie(adminSession)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(updateJson("admin-studio", 0)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.slug").value("admin-studio"));
+    }
+
+    @Test
+    void grandfatheredReservedDraftKeepsItsSlugWhenOtherFieldsAreSaved() throws Exception {
+        UUID businessId = createBusinessRow("login", "DRAFT");
+
+        mvc.perform(put("/api/platform/businesses/{businessId}", businessId)
+                        .with(csrf())
+                        .cookie(adminSession)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(updateJson("login", 0)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.slug").value("login"))
+                .andExpect(jsonPath("$.displayName").value("Updated Integration Business"))
+                .andExpect(jsonPath("$.version").value(1));
+    }
+
+    @Test
+    void grandfatheredReservedDraftCannotBeActivatedUntilItsSlugIsChanged() throws Exception {
+        UUID businessId = createBusinessRow("booking", "DRAFT");
+        createMembership(adminUserId, businessId, "BUSINESS_OWNER", true);
+
+        var result = performLifecycle(businessId, "activate", 0)
+                .andExpect(status().isConflict())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.code").value("BUSINESS_SLUG_RESERVED"))
+                .andExpect(jsonPath("$.detail")
+                        .value("Променете публичния адрес на бизнеса преди активиране."))
+                .andExpect(jsonPath("$.fieldErrors").doesNotExist())
+                .andExpect(content().string(not(containsString("SQL"))))
+                .andExpect(content().string(not(containsString("constraint"))))
+                .andReturn();
+        assertDoesNotDiscloseTheReservedList(
+                result.getResponse().getContentAsString(), "booking");
+        assertBusinessState(businessId, "DRAFT", 0);
+
+        mvc.perform(put("/api/platform/businesses/{businessId}", businessId)
+                        .with(csrf())
+                        .cookie(adminSession)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(updateJson("booking-studio", 0)))
+                .andExpect(status().isOk());
+        performLifecycle(businessId, "activate", 1)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ACTIVE"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"ACTIVE", "SUSPENDED"})
+    void activatedBusinessesRejectAChangedSlugWithASafeConflict(String status) throws Exception {
+        UUID businessId = createBusinessRow("stable-address", status);
+        String changed = "changed-address-marker";
+
+        var result = mvc.perform(put("/api/platform/businesses/{businessId}", businessId)
+                        .with(csrf())
+                        .cookie(adminSession)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(updateJson(changed, 0)))
+                .andExpect(status().isConflict())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON))
+                .andExpect(jsonPath("$.code").value("BUSINESS_SLUG_IMMUTABLE"))
+                .andExpect(jsonPath("$.detail").value(
+                        "Публичният адрес на активиран бизнес не може да бъде променян."))
+                .andExpect(jsonPath("$.fieldErrors").doesNotExist())
+                .andReturn();
+
+        String body = withoutInstance(result.getResponse().getContentAsString());
+        assertThat(body)
+                .doesNotContain(changed)
+                .doesNotContain("stable-address")
+                .doesNotContain(businessId.toString())
+                .doesNotContain("SQL")
+                .doesNotContain("constraint");
+        assertBusinessState(businessId, status, 0);
+        assertThat(jdbc.sql("SELECT slug FROM business WHERE id=:id")
+                        .param("id", businessId)
+                        .query(String.class)
+                        .single())
+                .isEqualTo("stable-address");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"ACTIVE", "SUSPENDED"})
+    void activatedBusinessesAcceptAnUnchangedSlugWithOtherProfileChanges(String status)
+            throws Exception {
+        UUID businessId = createBusinessRow("kept-address", status);
+
+        mvc.perform(put("/api/platform/businesses/{businessId}", businessId)
+                        .with(csrf())
+                        .cookie(adminSession)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(updateJson("kept-address", 0)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.slug").value("kept-address"))
+                .andExpect(jsonPath("$.status").value(status))
+                .andExpect(jsonPath("$.displayName").value("Updated Integration Business"))
+                .andExpect(jsonPath("$.version").value(1));
+    }
+
+    @Test
+    void slugFailuresStayDistinctFromUniquenessAndVersionConflicts() throws Exception {
+        createBusinessThroughApi("taken-address");
+        UUID draftId = createBusinessThroughApi("free-address");
+        UUID activeId = createBusinessRow("active-address", "ACTIVE");
+
+        mvc.perform(put("/api/platform/businesses/{businessId}", draftId)
+                        .with(csrf())
+                        .cookie(adminSession)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(updateJson("taken-address", 0)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("BUSINESS_SLUG_CONFLICT"));
+        mvc.perform(put("/api/platform/businesses/{businessId}", activeId)
+                        .with(csrf())
+                        .cookie(adminSession)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(updateJson("taken-address", 0)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("BUSINESS_SLUG_IMMUTABLE"));
+        mvc.perform(put("/api/platform/businesses/{businessId}", activeId)
+                        .with(csrf())
+                        .cookie(adminSession)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(updateJson("other-address", 9)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("BUSINESS_CONCURRENT_UPDATE"));
+    }
+
+    static Stream<String> reservedSlugs() {
+        return ReservedBusinessSlugs.values().stream().sorted();
+    }
+
+    private static String withoutInstance(String body) {
+        return body.replaceAll("\"instance\":\"[^\"]*\",?", "");
+    }
+
+    private void assertDoesNotDiscloseTheReservedList(String body, String submitted) {
+        // The RFC 7807 "instance" is the request path, which legitimately contains roots such as
+        // "platform"; every other member of the problem body is checked.
+        String content = withoutInstance(body);
+        for (String reserved : ReservedBusinessSlugs.values()) {
+            if (reserved.length() > 1 && !reserved.equals(submitted)) {
+                assertThat(content).as("body must not name %s", reserved).doesNotContain(reserved);
+            }
+        }
     }
 
     @Test

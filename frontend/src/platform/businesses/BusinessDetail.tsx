@@ -11,6 +11,7 @@ import {
 import { useFeedback, errorCategory, type Feedback } from '../../ui/useFeedback'
 import { Button } from '../../ui/Button'
 import { useGuardedFormState } from '../../ui/UnsavedChangesGuard'
+import { backendFieldErrors, type SubmitOutcome } from '../../ui/formValidation'
 import {
   changeBusinessStatus,
   getBusiness,
@@ -30,6 +31,7 @@ import {
   BUSINESS_STATUS_PRESENTATION,
   businessTypeLabel,
 } from './presentation'
+import { BUSINESS_BACKEND_FIELDS, type BusinessField } from './validation'
 
 type BusinessDetailProps = {
   businessId: string
@@ -215,7 +217,9 @@ export function BusinessDetail({
     }
   }, [lifecycleFeedback])
 
-  const update = async (input: UpdateBusinessInput) => {
+  const update = async (
+    input: UpdateBusinessInput,
+  ): Promise<SubmitOutcome<BusinessField>> => {
     if (updateInProgress.current) return
     updateInProgress.current = true
     setUpdating(true)
@@ -233,6 +237,8 @@ export function BusinessDetail({
         onAuthenticationRequired(caught.detail)
         return
       }
+      const fieldErrors = backendFieldErrors(caught, BUSINESS_BACKEND_FIELDS)
+      if (fieldErrors) return { fieldErrors }
       publish({
         kind: 'error',
         category: errorCategory(caught),
@@ -412,7 +418,7 @@ export function BusinessDetail({
                   setProfileFeedback(null)
                 })
               }
-              onSubmit={(input) => void update(input as UpdateBusinessInput)}
+              onSubmit={(input) => update(input as UpdateBusinessInput)}
             />
           ) : (
             <>

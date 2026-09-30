@@ -63,7 +63,9 @@ Platform Business failures use stable safe codes and Bulgarian details:
 “Необходим е вход.”), `ACCESS_DENIED` (403, “Нямате достъп до тази операция.”),
 and `BUSINESS_NOT_FOUND` (404, “Бизнесът не е намерен.”). Conflict responses are
 `BUSINESS_SLUG_CONFLICT` (“Този адрес на бизнеса вече се използва.”),
-`BUSINESS_INVALID_LIFECYCLE` (“Промяната на статуса не е разрешена.”),
+`BUSINESS_SLUG_IMMUTABLE` (“Публичният адрес на активиран бизнес не може да бъде
+променян.”), `BUSINESS_SLUG_RESERVED` (“Променете публичния адрес на бизнеса преди
+активиране.”), `BUSINESS_INVALID_LIFECYCLE` (“Промяната на статуса не е разрешена.”),
 `BUSINESS_MISSING_ACTIVE_OWNER` (“За активиране е необходим активен
 собственик.”), and `BUSINESS_CONCURRENT_UPDATE` (“Бизнесът е променен. Обновете
 данните и опитайте отново.”), all with status 409. Arbitrary exception messages,
@@ -337,6 +339,16 @@ edge or CDN limiting and the public availability and booking endpoints are later
 work, and this limitation is documented rather than mitigated. After first
 activation a Business slug is immutable and reserved path roots cannot be slugs
 (ADR-0018), so a shared link cannot be re-pointed at a different Business.
+
+Reserved roots are enforced by the backend (`ReservedBusinessSlugs`, 19 values, exact
+match on the canonical lowercase slug); the frontend copy is a convenience mirror and
+never authoritative. A reserved slug on create or a DRAFT slug change is a
+`VALIDATION_ERROR` naming only the `slug` field (“Изберете друг публичен адрес на
+бизнеса.”); the list itself is never returned. A DRAFT that already holds a reserved
+slug keeps it while other fields change but cannot be activated. ACTIVE and SUSPENDED
+Businesses cannot change slug (`BUSINESS_SLUG_IMMUTABLE`); the version-guarded update
+makes a slug change racing an activation fail as `BUSINESS_CONCURRENT_UPDATE`. The
+error bodies contain no SQL, constraint names, identifiers, or submitted values.
 
 ## Public endpoint and booking controls
 

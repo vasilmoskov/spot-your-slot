@@ -15,6 +15,7 @@ import bg.spotyourslot.business.BusinessRecords.CreateBusinessCommand;
 import bg.spotyourslot.business.BusinessRecords.UpdateBusinessCommand;
 import bg.spotyourslot.business.domain.BusinessStatus;
 import bg.spotyourslot.business.domain.BusinessType;
+import bg.spotyourslot.business.domain.ReservedBusinessSlugs;
 import jakarta.validation.Validation;
 import jakarta.validation.ValidatorFactory;
 import java.lang.reflect.Method;
@@ -107,6 +108,34 @@ class BusinessInputValidatorTests {
     @ValueSource(strings = {"", " ", "business slug", "business--slug", "бизнес"})
     void rejectsInvalidSlugsWithoutRepairingThem(String slug) {
         assertInvalid(InputField.SLUG, () -> VALIDATOR.validateCreate(createWithSlug(slug)));
+    }
+
+    @Test
+    void rejectsEveryReservedSlugOnCreateWithADistinctField() {
+        for (String reserved : ReservedBusinessSlugs.values()) {
+            assertInvalid(
+                    InputField.RESERVED_SLUG,
+                    () -> VALIDATOR.validateCreate(createWithSlug(reserved)));
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"LOGIN", "  Booking ", "Forgot-Password"})
+    void rejectsReservedSlugsAfterCanonicalization(String slug) {
+        assertInvalid(InputField.RESERVED_SLUG, () -> VALIDATOR.validateCreate(createWithSlug(slug)));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"booking-studio", "my-book", "appointments-bg"})
+    void acceptsSlugsThatOnlyResembleReservedRoots(String slug) {
+        assertThat(VALIDATOR.validateCreate(createWithSlug(slug)).slug()).isEqualTo(slug);
+    }
+
+    @Test
+    void updateValidationLeavesReservedSlugDecisionsToTheLifecycleAwareService() {
+        var command = updateWithSlug("login");
+
+        assertThat(VALIDATOR.validateUpdate(command).slug()).isEqualTo("login");
     }
 
     @Test
@@ -362,6 +391,8 @@ class BusinessInputValidatorTests {
                 .containsExactlyInAnyOrder(
                         BusinessApplicationException.BusinessNotFound.class,
                         BusinessApplicationException.BusinessSlugConflict.class,
+                        BusinessApplicationException.BusinessSlugImmutable.class,
+                        BusinessApplicationException.BusinessSlugReserved.class,
                         BusinessApplicationException.InvalidLifecycleTransition.class,
                         BusinessApplicationException.ConcurrentUpdate.class,
                         BusinessApplicationException.InvalidInput.class);
@@ -478,6 +509,24 @@ class BusinessInputValidatorTests {
             case PHONE -> command.phone();
             case CONTACT_EMAIL -> command.contactEmail();
         };
+    }
+
+    private static UpdateBusinessCommand updateWithSlug(String slug) {
+        UpdateBusinessCommand command = updateWithTimezone("Europe/Sofia");
+        return new UpdateBusinessCommand(
+                slug,
+                command.displayName(),
+                command.businessType(),
+                command.timezone(),
+                command.description(),
+                command.city(),
+                command.postalCode(),
+                command.street(),
+                command.streetNumber(),
+                command.addressDetails(),
+                command.phone(),
+                command.contactEmail(),
+                command.expectedVersion());
     }
 
     private static UpdateBusinessCommand updateWithTimezone(String timezone) {

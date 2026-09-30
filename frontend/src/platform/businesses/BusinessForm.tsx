@@ -1,12 +1,24 @@
 import { useEffect, useRef, useState, type FormEvent, type InvalidEvent } from 'react'
 import { Button } from '../../ui/Button'
 import {
+  FieldError,
+  fieldControlProps,
+  useFieldValidation,
+  type SubmitOutcome,
+} from '../../ui/formValidation'
+import {
   type BusinessDetails,
   type BusinessType,
   type CreateBusinessInput,
   type UpdateBusinessInput,
 } from './api'
 import { BUSINESS_TYPE_OPTIONS } from './presentation'
+import {
+  BUSINESS_FIELD_ORDER,
+  IMMUTABLE_SLUG_NOTE,
+  validateBusinessSlug,
+  type BusinessField,
+} from './validation'
 
 type BusinessFormProps = {
   business?: BusinessDetails
@@ -17,7 +29,9 @@ type BusinessFormProps = {
   // owning page can register one shared unsaved-changes guard for it.
   onDirtyChange?: (dirty: boolean) => void
   onCancel?: () => void
-  onSubmit: (input: CreateBusinessInput | UpdateBusinessInput) => void
+  onSubmit: (
+    input: CreateBusinessInput | UpdateBusinessInput,
+  ) => Promise<SubmitOutcome<BusinessField>> | void
 }
 
 type FieldProps = {
@@ -123,6 +137,23 @@ export function BusinessForm({
   const formRef = useRef<HTMLFormElement>(null)
   const dirtyReporter = useRef(onDirtyChange)
   dirtyReporter.current = onDirtyChange
+  // After first activation (ACTIVE or SUSPENDED) the public address is fixed:
+  // it is shown, never offered for editing, and never submitted as a change.
+  const slugEditable = !business || business.status === 'DRAFT'
+  const storedSlug = business?.slug
+  const [slug, setSlug] = useState(storedSlug ?? '')
+  const { errors, controlRef, touch, edited, validateAll, applyServerErrors } =
+    useFieldValidation<BusinessField, { slug: string }>({
+      order: BUSINESS_FIELD_ORDER,
+      values: { slug },
+      validate: (current) => {
+        const message = slugEditable
+          ? validateBusinessSlug(current.slug, storedSlug)
+          : undefined
+        return message ? { slug: message } : {}
+      },
+      isEmpty: (_field, current) => current.slug.trim() === '',
+    })
 
   // The inputs are uncontrolled, so dirtiness is measured from the live form
   // values against the loaded (or empty) ones after every edit.
@@ -132,20 +163,25 @@ export function BusinessForm({
     const data = new FormData(form)
     const changed =
       type !== initialType ||
-      TEXT_FIELD_NAMES.some((name) => value(data, name) !== initialText(business, name))
+      TEXT_FIELD_NAMES.some(
+        (name) =>
+          (name !== 'slug' || slugEditable) &&
+          value(data, name) !== initialText(business, name),
+      )
     dirtyReporter.current?.(changed)
   }
 
   // An unmounted form has nothing left to lose.
   useEffect(() => () => dirtyReporter.current?.(false), [])
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (busy) return
+    if (!validateAll()) return
 
     const data = new FormData(event.currentTarget)
     const common = {
-      slug: value(data, 'slug'),
+      slug: slugEditable ? value(data, 'slug') : (storedSlug ?? ''),
       displayName: value(data, 'displayName'),
       businessType,
       description: optionalValue(data, 'description'),
@@ -158,18 +194,16 @@ export function BusinessForm({
       contactEmail: optionalValue(data, 'contactEmail'),
     }
 
-    if (business) {
-      onSubmit({
-        ...common,
-        timezone: business.timezone,
-        expectedVersion: business.version,
-      })
-      return
-    }
-
-    onSubmit({
-      ...common,
-    })
+    const outcome = await onSubmit(
+      business
+        ? {
+            ...common,
+            timezone: business.timezone,
+            expectedVersion: business.version,
+          }
+        : { ...common },
+    )
+    if (outcome?.fieldErrors) applyServerErrors(outcome.fieldErrors)
   }
 
   return (
@@ -192,13 +226,40 @@ export function BusinessForm({
             required
             maxLength={200}
           />
-          <TextField
-            name="slug"
-            label="Идентификатор в уеб адреса"
-            defaultValue={business?.slug}
-            required
-            maxLength={100}
-          />
+          {slugEditable ? (
+            <div className="form-field">
+              <label htmlFor="business-slug">Идентификатор в уеб адреса</label>
+              <input
+                {...fieldControlProps('business-slug', errors.slug)}
+                ref={controlRef('slug')}
+                name="slug"
+                type="text"
+                value={slug}
+                required
+                maxLength={100}
+                onBlur={() => touch('slug')}
+                onInvalid={validateField}
+                onInput={clearValidation}
+                onChange={(event) => {
+                  edited('slug')
+                  setSlug(event.target.value)
+                }}
+              />
+              <FieldError id="business-slug" error={errors.slug} />
+            </div>
+          ) : (
+            <div className="form-field">
+              <dl className="business-details-list">
+                <div>
+                  <dt>Идентификатор в уеб адреса</dt>
+                  <dd>{storedSlug}</dd>
+                </div>
+              </dl>
+              <p id="business-slug-note" className="field-note">
+                {IMMUTABLE_SLUG_NOTE}
+              </p>
+            </div>
+          )}
           <label>
             Дейност
             <select

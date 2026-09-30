@@ -2,10 +2,14 @@ package bg.spotyourslot.platform.web;
 
 import bg.spotyourslot.business.BusinessApplicationException.BusinessNotFound;
 import bg.spotyourslot.business.BusinessApplicationException.BusinessSlugConflict;
+import bg.spotyourslot.business.BusinessApplicationException.BusinessSlugImmutable;
+import bg.spotyourslot.business.BusinessApplicationException.BusinessSlugReserved;
 import bg.spotyourslot.business.BusinessApplicationException.ConcurrentUpdate;
+import bg.spotyourslot.business.BusinessApplicationException.InputField;
 import bg.spotyourslot.business.BusinessApplicationException.InvalidInput;
 import bg.spotyourslot.business.BusinessApplicationException.InvalidLifecycleTransition;
 import bg.spotyourslot.platform.MissingActiveOwner;
+import java.util.Map;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
@@ -17,11 +21,35 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice(assignableTypes = PlatformBusinessController.class)
 public class PlatformBusinessExceptionHandler {
     @ExceptionHandler(InvalidInput.class)
-    ProblemDetail invalidInput() {
-        return problem(
+    ProblemDetail invalidInput(InvalidInput exception) {
+        var problem = problem(
                 HttpStatus.BAD_REQUEST,
                 "VALIDATION_ERROR",
                 "Проверете въведените данни.");
+        // Only the reserved public address is named; every other failure stays generic.
+        // The reserved list itself is never disclosed.
+        if (exception.field() == InputField.RESERVED_SLUG) {
+            problem.setProperty(
+                    "fieldErrors",
+                    Map.of("slug", "Изберете друг публичен адрес на бизнеса."));
+        }
+        return problem;
+    }
+
+    @ExceptionHandler(BusinessSlugImmutable.class)
+    ProblemDetail slugImmutable() {
+        return problem(
+                HttpStatus.CONFLICT,
+                "BUSINESS_SLUG_IMMUTABLE",
+                "Публичният адрес на активиран бизнес не може да бъде променян.");
+    }
+
+    @ExceptionHandler(BusinessSlugReserved.class)
+    ProblemDetail slugReserved() {
+        return problem(
+                HttpStatus.CONFLICT,
+                "BUSINESS_SLUG_RESERVED",
+                "Променете публичния адрес на бизнеса преди активиране.");
     }
 
     @ExceptionHandler(BusinessNotFound.class)

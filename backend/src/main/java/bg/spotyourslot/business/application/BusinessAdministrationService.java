@@ -3,7 +3,11 @@ package bg.spotyourslot.business.application;
 import bg.spotyourslot.business.BusinessAdministration;
 import bg.spotyourslot.business.BusinessApplicationException.BusinessNotFound;
 import bg.spotyourslot.business.BusinessApplicationException.BusinessSlugConflict;
+import bg.spotyourslot.business.BusinessApplicationException.BusinessSlugImmutable;
+import bg.spotyourslot.business.BusinessApplicationException.BusinessSlugReserved;
 import bg.spotyourslot.business.BusinessApplicationException.ConcurrentUpdate;
+import bg.spotyourslot.business.BusinessApplicationException.InputField;
+import bg.spotyourslot.business.BusinessApplicationException.InvalidInput;
 import bg.spotyourslot.business.BusinessApplicationException.InvalidLifecycleTransition;
 import bg.spotyourslot.business.BusinessRecords.BusinessDetails;
 import bg.spotyourslot.business.BusinessRecords.BusinessPage;
@@ -19,6 +23,7 @@ import bg.spotyourslot.business.application.BusinessInputValidator.PageInput;
 import bg.spotyourslot.business.domain.BusinessSlug;
 import bg.spotyourslot.business.domain.BusinessStatus;
 import bg.spotyourslot.business.domain.BusinessTimezone;
+import bg.spotyourslot.business.domain.ReservedBusinessSlugs;
 import bg.spotyourslot.business.infrastructure.BusinessProfileUpdateRow;
 import bg.spotyourslot.business.infrastructure.BusinessRow;
 import bg.spotyourslot.business.infrastructure.BusinessStore;
@@ -133,6 +138,7 @@ public class BusinessAdministrationService
         UpdateBusinessCommand validated = validator.validateUpdate(command);
         BusinessRow current = requireBusiness(validatedId);
         requireCurrentVersion(current, validated.expectedVersion());
+        requireSlugChangeAllowed(current, validated.slug());
 
         var update = new BusinessProfileUpdateRow(
                 new BusinessSlug(validated.slug()),
@@ -192,6 +198,10 @@ public class BusinessAdministrationService
                 || !current.status().canTransitionTo(targetStatus)) {
             throw new InvalidLifecycleTransition(current.status(), targetStatus);
         }
+        if (requiredStatus == BusinessStatus.DRAFT
+                && ReservedBusinessSlugs.isReserved(current.slug())) {
+            throw new BusinessSlugReserved();
+        }
 
         return details(store.transition(
                         validatedId,
@@ -204,6 +214,24 @@ public class BusinessAdministrationService
 
     private BusinessRow requireBusiness(UUID businessId) {
         return store.findById(businessId).orElseThrow(BusinessNotFound::new);
+    }
+
+    /**
+     * The slug is stable once the Business leaves DRAFT: no lifecycle transition returns to
+     * DRAFT, and the version-guarded update statement makes a slug change racing an activation
+     * fail as a concurrent update. An unchanged slug is always accepted, so a grandfathered
+     * reserved DRAFT slug can be kept while other fields change.
+     */
+    private void requireSlugChangeAllowed(BusinessRow current, String requestedSlug) {
+        if (current.slug().value().equals(requestedSlug)) {
+            return;
+        }
+        if (current.status() != BusinessStatus.DRAFT) {
+            throw new BusinessSlugImmutable();
+        }
+        if (ReservedBusinessSlugs.isReserved(new BusinessSlug(requestedSlug))) {
+            throw new InvalidInput(InputField.RESERVED_SLUG);
+        }
     }
 
     private void requireCurrentVersion(BusinessRow current, long expectedVersion) {

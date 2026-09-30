@@ -480,6 +480,39 @@ re-runs file-level setup; because fixtures are unique per attempt, the first
 reported failure is the real one. After an interrupted run, use the exact
 cleanup command in `README.md`.
 
+## Reserved public roots and stable slug verification
+
+Issue #17 Phase 2A adds backend and frontend tests for the reserved-root and
+stable-slug rules (ADR-0018). Browser E2E for this behavior belongs to Phase 4.
+
+- **Definition** — `ReservedBusinessSlugsTests` pins the exact 19 values, canonical
+  matching, near-misses (`booking-studio`, `my-book`, `appointments-bg`) and
+  immutability; `reservedSlugs.test.ts` pins the frontend mirror to the same values,
+  because a filesystem-coupled parity check would be brittle.
+- **Validation and service** — `BusinessInputValidatorTests` and
+  `BusinessAdministrationServiceIntegrationTests` (PostgreSQL) cover every reserved
+  value on create and DRAFT update, unchanged grandfathered DRAFT slug, activation
+  rejection, ACTIVE and SUSPENDED rejection and unchanged-slug updates, and that
+  uniqueness, immutability, reserved and version failures stay distinct.
+- **Race** — activation holding the Business row lock while a slug change waits, and
+  the reverse, are proven with a `pg_stat_activity` lock-wait observation before
+  release (no sleeps), plus an unsynchronized concurrent run asserting that no ACTIVE
+  Business ever carries a changed slug.
+- **API contract** — `PlatformBusinessApiIntegrationTests` and
+  `PlatformBusinessExceptionHandlerTests` assert statuses, codes, Bulgarian details,
+  the single `fieldErrors.slug`, no reserved-list disclosure, and no SQL, constraint,
+  identifier or submitted value in errors.
+- **Form** — `BusinessForm`, `BusinessCreate` and `BusinessDetail` component tests
+  cover inline errors, focus, backend field-error mapping without a generic alert, the
+  read-only ACTIVE and SUSPENDED slug and its note, other fields staying editable, the
+  activation guidance, and the unchanged unsaved-changes behavior.
+- **Rendered review** — on a disposable stack (own PostgreSQL container, backend and
+  Vite on non-standard ports; fixtures created through the supported APIs) the platform
+  Business form was inspected as DRAFT, ACTIVE and SUSPENDED at 1280px, 640px (the CSS
+  width of a 200% zoom) and 375px. It found and fixed a pre-existing horizontal overflow
+  caused by a 100-character slug or long name in the detail header and section summary.
+  Human visual approval remains a separate gate.
+
 ## Browser E2E for the Business schedule-changes journey
 
 Issue #16 Phase 6 adds `frontend/e2e/schedule-changes-journey.spec.ts` and

@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { BusinessForm } from './BusinessForm'
 import type { BusinessDetails } from './api'
@@ -179,5 +179,215 @@ describe('BusinessForm', () => {
     )
 
     expect(screen.getByRole('button', { name: 'Запазване…' })).toBeDisabled()
+  })
+
+  describe('public address (slug)', () => {
+    const RESERVED = 'Изберете друг публичен адрес на бизнеса.'
+    const NOTE = 'Публичният адрес не може да се променя след активиране.'
+
+    function slugInput(): HTMLInputElement {
+      return screen.getByLabelText('Идентификатор в уеб адреса') as HTMLInputElement
+    }
+
+    it('shows the reserved-address error inline on create and keeps the value', () => {
+      render(<BusinessForm busy={false} submitLabel="Създай бизнес" onSubmit={vi.fn()} />)
+
+      fireEvent.change(slugInput(), { target: { value: 'Login' } })
+
+      expect(screen.getByText(RESERVED)).toBeInTheDocument()
+      expect(slugInput()).toHaveValue('Login')
+      expect(slugInput()).toHaveAttribute('aria-invalid', 'true')
+      expect(slugInput()).toHaveAccessibleDescription(RESERVED)
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    })
+
+    it('blocks submit for a reserved address, focuses the slug and sends nothing', () => {
+      const onSubmit = vi.fn()
+      render(<BusinessForm busy={false} submitLabel="Създай бизнес" onSubmit={onSubmit} />)
+      fireEvent.change(screen.getByLabelText('Име на бизнеса'), { target: { value: 'Студио' } })
+      fireEvent.change(slugInput(), { target: { value: 'booking' } })
+
+      fireEvent.click(screen.getByRole('button', { name: 'Създай бизнес' }))
+
+      expect(onSubmit).not.toHaveBeenCalled()
+      expect(slugInput()).toHaveFocus()
+      expect(slugInput()).toHaveValue('booking')
+      expect(screen.getByLabelText('Име на бизнеса')).toHaveValue('Студио')
+    })
+
+    it.each(['booking-studio', 'my-book', 'appointments-bg'])(
+      'accepts the near-miss %s',
+      async (slug) => {
+        const onSubmit = vi.fn()
+        render(<BusinessForm busy={false} submitLabel="Създай бизнес" onSubmit={onSubmit} />)
+        fireEvent.change(screen.getByLabelText('Име на бизнеса'), { target: { value: 'Студио' } })
+        fireEvent.change(slugInput(), { target: { value: slug } })
+
+        fireEvent.click(screen.getByRole('button', { name: 'Създай бизнес' }))
+
+        await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce())
+        expect(screen.queryByText(RESERVED)).not.toBeInTheDocument()
+      },
+    )
+
+    it('maps a backend slug field error under the slug field without a form alert', async () => {
+      const onSubmit = vi.fn().mockResolvedValue({ fieldErrors: { slug: RESERVED } })
+      render(<BusinessForm busy={false} submitLabel="Създай бизнес" onSubmit={onSubmit} />)
+      fireEvent.change(screen.getByLabelText('Име на бизнеса'), { target: { value: 'Студио' } })
+      fireEvent.change(slugInput(), { target: { value: 'studio' } })
+
+      fireEvent.click(screen.getByRole('button', { name: 'Създай бизнес' }))
+
+      expect(await screen.findByText(RESERVED)).toBeInTheDocument()
+      expect(slugInput()).toHaveFocus()
+      expect(slugInput()).toHaveValue('studio')
+      expect(slugInput()).toHaveAccessibleDescription(RESERVED)
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+
+      fireEvent.change(slugInput(), { target: { value: 'studio-2' } })
+      expect(screen.queryByText(RESERVED)).not.toBeInTheDocument()
+    })
+
+    it('rejects changing a DRAFT slug to a reserved value', () => {
+      const onSubmit = vi.fn()
+      render(
+        <BusinessForm
+          business={business}
+          busy={false}
+          submitLabel="Запази промените"
+          onSubmit={onSubmit}
+        />,
+      )
+
+      fireEvent.change(slugInput(), { target: { value: 'admin' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Запази промените' }))
+
+      expect(screen.getByText(RESERVED)).toBeInTheDocument()
+      expect(slugInput()).toHaveFocus()
+      expect(onSubmit).not.toHaveBeenCalled()
+    })
+
+    it('lets a grandfathered reserved DRAFT slug stay while another field is saved', async () => {
+      const onSubmit = vi.fn()
+      render(
+        <BusinessForm
+          business={{ ...business, slug: 'login' }}
+          busy={false}
+          submitLabel="Запази промените"
+          onSubmit={onSubmit}
+        />,
+      )
+      expect(screen.queryByText(RESERVED)).not.toBeInTheDocument()
+
+      fireEvent.change(screen.getByLabelText('Име на бизнеса'), { target: { value: 'Студио Б' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Запази промените' }))
+
+      await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce())
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ slug: 'login', displayName: 'Студио Б', expectedVersion: 4 }),
+      )
+    })
+
+    it('still rejects moving a grandfathered reserved DRAFT to another reserved value', () => {
+      render(
+        <BusinessForm
+          business={{ ...business, slug: 'login' }}
+          busy={false}
+          submitLabel="Запази промените"
+          onSubmit={vi.fn()}
+        />,
+      )
+
+      fireEvent.change(slugInput(), { target: { value: 'logout' } })
+
+      expect(screen.getByText(RESERVED)).toBeInTheDocument()
+    })
+
+    it.each(['ACTIVE', 'SUSPENDED'] as const)(
+      'shows the slug read-only for %s, with the explanation and no editable control',
+      (status) => {
+        const { container } = render(
+          <BusinessForm
+            business={{ ...business, status }}
+            busy={false}
+            submitLabel="Запази промените"
+            onSubmit={vi.fn()}
+          />,
+        )
+
+        expect(container.querySelector('input[name="slug"]')).toBeNull()
+        expect(screen.queryByRole('textbox', { name: /Идентификатор/ })).not.toBeInTheDocument()
+        expect(screen.getByText('Идентификатор в уеб адреса')).toBeInTheDocument()
+        expect(screen.getByText('studio-a')).toBeInTheDocument()
+        expect(screen.getByText(NOTE)).toBeInTheDocument()
+        expect(container.querySelector('[disabled]')).toBeNull()
+        expect(screen.getByLabelText('Име на бизнеса')).toBeEnabled()
+        expect(document.body).not.toHaveTextContent(/статус|SUSPENDED|ACTIVE|DRAFT/i)
+      },
+    )
+
+    it.each(['ACTIVE', 'SUSPENDED'] as const)(
+      'lets other fields change for %s and submits the stored slug unchanged',
+      async (status) => {
+        const onSubmit = vi.fn()
+        render(
+          <BusinessForm
+            business={{ ...business, status, slug: 'api' }}
+            busy={false}
+            submitLabel="Запази промените"
+            onSubmit={onSubmit}
+          />,
+        )
+
+        fireEvent.change(screen.getByLabelText('Име на бизнеса'), {
+          target: { value: 'Студио Б' },
+        })
+        fireEvent.click(screen.getByRole('button', { name: 'Запази промените' }))
+
+        await waitFor(() => expect(onSubmit).toHaveBeenCalledOnce())
+        expect(onSubmit).toHaveBeenCalledWith(
+          expect.objectContaining({ slug: 'api', displayName: 'Студио Б', expectedVersion: 4 }),
+        )
+        expect(screen.queryByText(RESERVED)).not.toBeInTheDocument()
+      },
+    )
+
+    it('measures unsaved changes without the read-only slug', () => {
+      const onDirtyChange = vi.fn()
+      render(
+        <BusinessForm
+          business={{ ...business, status: 'ACTIVE' }}
+          busy={false}
+          submitLabel="Запази промените"
+          onDirtyChange={onDirtyChange}
+          onSubmit={vi.fn()}
+        />,
+      )
+      const name = screen.getByLabelText('Име на бизнеса')
+
+      fireEvent.change(name, { target: { value: 'Друго име' } })
+      expect(onDirtyChange).toHaveBeenLastCalledWith(true)
+
+      fireEvent.change(name, { target: { value: 'Студио А' } })
+      expect(onDirtyChange).toHaveBeenLastCalledWith(false)
+    })
+
+    it('reports a changed DRAFT slug as an unsaved change', () => {
+      const onDirtyChange = vi.fn()
+      render(
+        <BusinessForm
+          business={business}
+          busy={false}
+          submitLabel="Запази промените"
+          onDirtyChange={onDirtyChange}
+          onSubmit={vi.fn()}
+        />,
+      )
+
+      fireEvent.change(slugInput(), { target: { value: 'studio-b' } })
+      expect(onDirtyChange).toHaveBeenLastCalledWith(true)
+      fireEvent.change(slugInput(), { target: { value: 'studio-a' } })
+      expect(onDirtyChange).toHaveBeenLastCalledWith(false)
+    })
   })
 })

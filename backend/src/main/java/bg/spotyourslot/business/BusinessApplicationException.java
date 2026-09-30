@@ -5,6 +5,8 @@ import bg.spotyourslot.business.domain.BusinessStatus;
 public abstract sealed class BusinessApplicationException extends RuntimeException
         permits BusinessApplicationException.BusinessNotFound,
                 BusinessApplicationException.BusinessSlugConflict,
+                BusinessApplicationException.BusinessSlugImmutable,
+                BusinessApplicationException.BusinessSlugReserved,
                 BusinessApplicationException.InvalidLifecycleTransition,
                 BusinessApplicationException.ConcurrentUpdate,
                 BusinessApplicationException.InvalidInput {
@@ -20,6 +22,7 @@ public abstract sealed class BusinessApplicationException extends RuntimeExcepti
         SORT,
         DIRECTION,
         SLUG,
+        RESERVED_SLUG,
         DISPLAY_NAME,
         BUSINESS_TYPE,
         TIMEZONE,
@@ -43,6 +46,18 @@ public abstract sealed class BusinessApplicationException extends RuntimeExcepti
     public static final class BusinessSlugConflict extends BusinessApplicationException {
         public BusinessSlugConflict() {
             super("Business slug is already in use");
+        }
+    }
+
+    public static final class BusinessSlugImmutable extends BusinessApplicationException {
+        public BusinessSlugImmutable() {
+            super("Business slug cannot be changed after activation");
+        }
+    }
+
+    public static final class BusinessSlugReserved extends BusinessApplicationException {
+        public BusinessSlugReserved() {
+            super("Business slug is reserved");
         }
     }
 

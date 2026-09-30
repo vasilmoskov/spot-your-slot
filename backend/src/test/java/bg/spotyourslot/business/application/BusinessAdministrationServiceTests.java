@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 
 import bg.spotyourslot.business.BusinessApplicationException.BusinessNotFound;
 import bg.spotyourslot.business.BusinessApplicationException.BusinessSlugConflict;
+import bg.spotyourslot.business.BusinessApplicationException.BusinessSlugImmutable;
 import bg.spotyourslot.business.BusinessApplicationException.ConcurrentUpdate;
 import bg.spotyourslot.business.BusinessApplicationException.InputField;
 import bg.spotyourslot.business.BusinessApplicationException.InvalidInput;
@@ -39,6 +40,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -167,8 +170,8 @@ class BusinessAdministrationServiceTests {
     void updatesFromValidatedCommandAfterRetrievalAndUsesFixedClock() {
         UpdateBusinessCommand raw = updateCommand(" Raw ", 4);
         UpdateBusinessCommand validated = updateCommand("updated-business", 4);
-        BusinessRow current = row(BusinessStatus.ACTIVE, 4, NOW.minusSeconds(60), NOW.minusSeconds(1));
-        BusinessRow persisted = row(BusinessStatus.ACTIVE, 5, current.createdAt(), NOW);
+        BusinessRow current = row(BusinessStatus.DRAFT, 4, NOW.minusSeconds(60), NOW.minusSeconds(1));
+        BusinessRow persisted = row(BusinessStatus.DRAFT, 5, current.createdAt(), NOW);
         when(validator.validateBusinessId(BUSINESS_ID)).thenReturn(BUSINESS_ID);
         when(validator.validateUpdate(raw)).thenReturn(validated);
         when(store.findById(BUSINESS_ID)).thenReturn(Optional.of(current));
@@ -207,10 +210,36 @@ class BusinessAdministrationServiceTests {
         verify(store, never()).updateProfile(any(), any());
     }
 
+    @ParameterizedTest
+    @EnumSource(
+            value = BusinessStatus.class,
+            names = {"ACTIVE", "SUSPENDED"})
+    void rejectsAChangedSlugAfterActivationBeforeMutation(BusinessStatus status) {
+        UpdateBusinessCommand command = updateCommand("changed-business", 4);
+        BusinessRow current = row(status, 4, NOW, NOW);
+        stubValidatedUpdate(command, current);
+
+        assertThatThrownBy(() -> service.update(BUSINESS_ID, command))
+                .isInstanceOf(BusinessSlugImmutable.class);
+        verify(store, never()).updateProfile(any(), any());
+    }
+
+    @ParameterizedTest
+    @EnumSource(BusinessStatus.class)
+    void acceptsAnUnchangedSlugInEveryStatus(BusinessStatus status) {
+        UpdateBusinessCommand command = updateCommand("stored-business", 4);
+        BusinessRow current = row(status, 4, NOW, NOW);
+        stubValidatedUpdate(command, current);
+        when(store.updateProfile(any(), any()))
+                .thenReturn(Optional.of(row(status, 5, NOW, NOW)));
+
+        assertThat(service.update(BUSINESS_ID, command).version()).isEqualTo(5);
+    }
+
     @Test
     void translatesEmptyAtomicProfileUpdateToConcurrentUpdate() {
         UpdateBusinessCommand command = updateCommand("updated", 4);
-        BusinessRow current = row(BusinessStatus.ACTIVE, 4, NOW, NOW);
+        BusinessRow current = row(BusinessStatus.DRAFT, 4, NOW, NOW);
         stubValidatedUpdate(command, current);
         when(store.updateProfile(any(), any())).thenReturn(Optional.empty());
 
@@ -221,7 +250,7 @@ class BusinessAdministrationServiceTests {
     @Test
     void mapsConfirmedUniqueViolationOnProfileUpdate() {
         UpdateBusinessCommand command = updateCommand("duplicate", 4);
-        BusinessRow current = row(BusinessStatus.ACTIVE, 4, NOW, NOW);
+        BusinessRow current = row(BusinessStatus.DRAFT, 4, NOW, NOW);
         var databaseFailure = new DataIntegrityViolationException(
                 "internal", new SQLException("database detail", "23505"));
         stubValidatedUpdate(command, current);
@@ -235,7 +264,7 @@ class BusinessAdministrationServiceTests {
     @Test
     void rethrowsUnrelatedIntegrityFailureOnProfileUpdateUnchanged() {
         UpdateBusinessCommand command = updateCommand("updated", 4);
-        BusinessRow current = row(BusinessStatus.ACTIVE, 4, NOW, NOW);
+        BusinessRow current = row(BusinessStatus.DRAFT, 4, NOW, NOW);
         var databaseFailure = new DataIntegrityViolationException(
                 "internal", new SQLException("database detail", "23514"));
         stubValidatedUpdate(command, current);

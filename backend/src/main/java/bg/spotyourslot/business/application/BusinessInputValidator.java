@@ -8,6 +8,7 @@ import bg.spotyourslot.business.BusinessRecords.UpdateBusinessCommand;
 import bg.spotyourslot.business.domain.BusinessSlug;
 import bg.spotyourslot.business.domain.BusinessTimezone;
 import bg.spotyourslot.business.domain.BusinessType;
+import bg.spotyourslot.business.domain.ReservedBusinessSlugs;
 import jakarta.validation.Validator;
 import jakarta.validation.constraints.Email;
 import java.text.Normalizer;
@@ -90,7 +91,7 @@ public class BusinessInputValidator {
         }
 
         return new CreateBusinessCommand(
-                slug(command.slug()),
+                creationSlug(command.slug()),
                 requiredText(
                         command.displayName(),
                         DISPLAY_NAME_MAX_LENGTH,
@@ -147,6 +148,14 @@ public class BusinessInputValidator {
                 optionalText(command.phone(), PHONE_MAX_LENGTH, InputField.PHONE),
                 contactEmail(command.contactEmail()),
                 validateExpectedVersion(command.expectedVersion()));
+    }
+
+    private String creationSlug(String value) {
+        String canonical = slug(value);
+        if (ReservedBusinessSlugs.isReserved(new BusinessSlug(canonical))) {
+            throw new InvalidInput(InputField.RESERVED_SLUG);
+        }
+        return canonical;
     }
 
     private String slug(String value) {

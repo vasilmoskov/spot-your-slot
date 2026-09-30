@@ -1,6 +1,7 @@
 # SpotYourSlot — Public Business Profile Pages
 
-Status: Phase 1 (decisions and documentation) complete pending review; no implementation exists
+Status: Phase 1 (decisions and documentation) committed. Phase 2A (reserved roots and stable slugs)
+implemented, awaiting review and not committed. Phases 2B, 3 and 4 not started.
 GitHub issue: #17 — Build public Business profile pages
 Depends on: #11, #12, #14, #16
 Decision records: [ADR-0017](../decisions/ADR-0017-expose-public-business-profile-through-an-allowlisted-read-only-contract.md),
@@ -115,19 +116,63 @@ Services. One read-only `REPEATABLE_READ` transaction gives a consistent snapsho
 
 ## Stable slug policy
 
-- DRAFT: slug editable (reserved roots rejected).
-- ACTIVE and SUSPENDED: slug immutable; a changed slug is rejected with a safe
-  conflict response (proposed `BUSINESS_SLUG_IMMUTABLE`, 409); an unchanged slug
-  in a profile update is allowed.
+- DRAFT: slug editable; a new or changed slug that is a reserved root is rejected.
+- ACTIVE and SUSPENDED: slug immutable. A changed canonical slug is rejected with
+  HTTP 409 `BUSINESS_SLUG_IMMUTABLE` and the detail «Публичният адрес на активиран
+  бизнес не може да бъде променян.» (the rule applies even when the requested value
+  is reserved or already taken). An update that keeps the same canonical slug is
+  allowed, and every other profile field stays editable. The optimistic version
+  check runs first and stays authoritative.
 - Enforceable without activation history: the lifecycle has no transition into
   DRAFT (`BusinessStatus.canTransitionTo`; create always yields DRAFT), and the
   update statement is version-guarded, so a racing activation makes a slug change
-  fail as a concurrent update. This is an application invariant, not a database
-  constraint. No slug history, redirects, or migration.
-- The platform form shows an immutable slug as read-only with an explanation.
-- Open item for Phase 2A: read-only inspection of existing slugs for reserved-root
-  collisions before enforcement, and the treatment of an unchanged reserved DRAFT
-  slug on save and activation.
+  fail as `BUSINESS_CONCURRENT_UPDATE`. This is an application invariant, not a
+  database constraint. No slug history, redirects, lock, or migration.
+- The platform form shows an immutable slug as read-only text (not a disabled
+  control) with the note «Публичният адрес не може да се променя след активиране.»
+  and submits the stored slug.
+
+## Reserved roots (final, Phase 2A)
+
+Exactly these 19 canonical lowercase values: `forgot-password`, `password-reset`,
+`invitation`, `login`, `logout`, `profile`, `platform`, `business`, `api`,
+`actuator`, `assets`, `admin`, `b`, `book`, `booking`, `cancel`, `cancellation`,
+`confirmation`, `appointments`. Matching is exact on the canonical slug (trimmed,
+lowercased), so `booking-studio`, `my-book` and `appointments-bg` stay valid.
+
+- **Ownership.** `business.domain.ReservedBusinessSlugs` is the single
+  authoritative definition. The frontend keeps a mirror,
+  `frontend/src/reservedSlugs.ts`, used only for immediate form feedback and, in
+  Phase 3, to route reserved paths away from the public page. The backend remains
+  final. No endpoint, code generation, dependency, or filesystem coupling exposes the
+  list; instead `ReservedBusinessSlugsTests` (Java) and `reservedSlugs.test.ts`
+  (TypeScript) each pin the same 19 values, so a change must be made in the
+  definition and both tests. This duplication is accepted and documented.
+- **Create.** A reserved slug is rejected: HTTP 400 `VALIDATION_ERROR` with
+  `fieldErrors.slug` = «Изберете друг публичен адрес на бизнеса.» The list is never
+  returned.
+- **DRAFT update.** Changing the slug to a reserved value is rejected with the same
+  field error. An unchanged reserved DRAFT slug (grandfathered) may be saved while
+  other fields change; moving it to another reserved value is still rejected.
+- **Activation.** A DRAFT whose slug is reserved cannot be activated: HTTP 409
+  `BUSINESS_SLUG_RESERVED`, detail «Променете публичния адрес на бизнеса преди
+  активиране.», no `fieldErrors`. The check follows the version, lifecycle and
+  active-owner checks. ACTIVE and SUSPENDED Businesses keep any slug they already
+  hold, including a reserved one, and SUSPENDED reactivation is unaffected.
+- **Platform form.** The slug shows the field error inline (create, DRAFT edit,
+  backend `fieldErrors`), focuses the slug on a failed submit, keeps the value, and
+  raises no generic alert. Activation failure with `BUSINESS_SLUG_RESERVED` shows the
+  backend detail plus «Редактирайте го в „Данни за бизнеса“.»
+
+### Collision inspection (2026-09-30, before enforcement)
+
+Read-only session (`default_transaction_read_only=on`) against the configured local
+development database (3 Businesses): no Business uses any of the 19 reserved slugs,
+so there is no ACTIVE, SUSPENDED or DRAFT collision and no grandfathered row exists
+locally. Committed fixtures, seeds, tests and E2E specs contain no exact reserved
+slug (only prefixed forms such as `business-<suffix>`). The grandfathered-DRAFT
+behavior above is therefore defensive and is proven with test-only rows in disposable
+PostgreSQL databases. No row was mutated.
 
 ## Module ownership
 
@@ -232,7 +277,11 @@ enumerate Businesses).
   no `Set-Cookie`; both published contracts; `ModuleBoundaryTests` acyclic.
 - Phase 2A: reserved-root and stable-slug tests, including DRAFT edit, ACTIVE and
   SUSPENDED rejection, unchanged-slug update, racing activation versus slug change,
-  and the platform form behavior.
+  and the platform form behavior. The race is proven on real PostgreSQL by holding
+  the Business row lock in one transaction, observing the second transaction in a
+  `pg_stat_activity` lock wait, then releasing the first (no sleeps), in both
+  directions, plus an unsynchronized concurrent run asserting the invariant
+  (see `BusinessAdministrationServiceIntegrationTests`).
 - Frontend (Vitest): exact-match routing including `/salon-invitation`, reserved
   paths, trailing slash and case; states; metadata hook and cleanup; formatting;
   telephone sanitizing; no `/api/auth/session` call; `credentials: 'omit'`; no
@@ -250,7 +299,7 @@ enumerate Businesses).
 | Phase | Scope | Risk | Gate |
 |---|---|---|---|
 | 1 | Decisions, this task record, ADR-0017, ADR-0018, and narrow documentation updates. Documentation only. | Strict (defines a public contract) | Review of this change |
-| 2A | Reserved roots and stable-slug enforcement in the platform Business API; the platform form shows an immutable slug and reserved-root feedback; read-only collision inspection of existing data first. Expected: `business` slug validation and update, `platform`, platform frontend form, tests. | Strict (changes an existing authenticated contract) | Own approval and commit; approved reserved list and inspection result |
+| 2A (implemented, awaiting review) | Reserved roots and stable-slug enforcement in the platform Business API; the platform form shows an immutable slug and reserved-root feedback; read-only collision inspection of existing data first. Expected: `business` slug validation and update, `platform`, platform frontend form, tests. | Strict (changes an existing authenticated contract) | Own approval and commit; approved reserved list and inspection result |
 | 2B | Published Business and Catalog contracts, `publicprofile` module, one security rule, allowlisted records, PostgreSQL integration tests. | Strict (first unauthenticated surface) | Own approval and commit; Phase 2A accepted |
 | 3 | Public application, exact-match routing, page and states, metadata hook, explanatory copy on the platform form for telephone and address, shared Business-type labels, component tests, human visual approval. | Standard | Human visual approval before Phase 4 |
 | 4 | Playwright acceptance, documentation reconciliation (README, roadmap, testing strategy, implementation plan, UI guide §13, stale status text), completion report, review archive. | Standard | Green verification; issue closure only with explicit approval |
@@ -289,3 +338,38 @@ ADR index, and narrow updates to `architecture.md`, `security.md`,
 API contract, security rule, validation, migration, test, fixture, dependency,
 service, database, or GitHub change was made. The complete reading of ADR-0001,
 ADR-0003, ADR-0016, and the task records found no conflict with these decisions.
+
+## Phase 2A record
+
+Phase 2A is implemented and awaiting review; it is not committed. It changes the
+existing authenticated Platform Business contract only: `ReservedBusinessSlugs`,
+the create/update/activation rules in `BusinessInputValidator` and
+`BusinessAdministrationService`, the new `BusinessSlugImmutable` and
+`BusinessSlugReserved` application exceptions and their mappings in
+`PlatformBusinessExceptionHandler`, the slug field of the platform Business form
+(`BusinessForm`, `BusinessCreate`, `BusinessDetail`), the frontend mirror
+`reservedSlugs.ts`, and tests. No migration, dependency, database constraint, public
+endpoint, security rule, or later-phase behavior was added; V1–V9 are unchanged.
+Concurrency evidence and error contracts are recorded above and in ADR-0018,
+`security.md`, and `testing-strategy.md`.
+
+### Phase 2A rendered review (before commit)
+
+The platform Business form was reviewed in a browser on a disposable stack at 1280px,
+640px (the CSS width of a 200% zoom) and 375px for DRAFT, ACTIVE and SUSPENDED with
+100-character slugs and long names. DRAFT: inline reserved-slug error directly under
+the field, cleared when corrected, no overflow, logical focus order. ACTIVE and
+SUSPENDED: the slug is read-only text with the note grouped beneath it, no disabled
+control, no duplicated explanation, other fields editable, and the unsaved-changes
+guard fires only for a real edit. The review found one pre-existing defect that long
+slugs and names expose (the detail header eyebrow and the section summary widened the
+page); it is fixed in `styles.css` (wrap the eyebrow, truncate the redundant summary
+text on one line). The `.field-note` class was checked against existing styles; no
+equivalent shared class exists (`.exception-hint` is schedule-specific), so it stays.
+This is a developer review, not the human visual approval gate.
+
+Focused frontend evidence uses two valid selections: the 8-file selection
+(`reservedSlugs.test.ts`, `src/platform/businesses`, `useFeedback.test.ts`) passes 124
+tests, and the wider 12-file affected-area selection (`src/platform`,
+`reservedSlugs.test.ts`, `src/ui`) passes 166. The full frontend suite passes 861 tests
+in 44 files.

@@ -2,9 +2,11 @@ import { useRef, useState, useLayoutEffect } from 'react'
 import { useFeedback, errorCategory } from '../../ui/useFeedback'
 import { Button } from '../../ui/Button'
 import { useGuardedFormState } from '../../ui/UnsavedChangesGuard'
+import { backendFieldErrors, type SubmitOutcome } from '../../ui/formValidation'
 import { createBusiness, type CreateBusinessInput } from './api'
 import { BusinessForm } from './BusinessForm'
 import { isAuthenticationRequired, safeBusinessError } from './errors'
+import { BUSINESS_BACKEND_FIELDS, type BusinessField } from './validation'
 
 type BusinessCreateProps = {
   onAuthenticationRequired: (detail: string) => void
@@ -33,7 +35,7 @@ export function BusinessCreate({
     if (error) errorMessage.current?.focus()
   }, [error])
 
-  const submit = async (input: CreateBusinessInput) => {
+  const submit = async (input: CreateBusinessInput): Promise<SubmitOutcome<BusinessField>> => {
     if (submitting.current) return
     submitting.current = true
     setBusy(true)
@@ -51,6 +53,8 @@ export function BusinessCreate({
         onAuthenticationRequired(caught.detail)
         return
       }
+      const fieldErrors = backendFieldErrors(caught, BUSINESS_BACKEND_FIELDS)
+      if (fieldErrors) return { fieldErrors }
       publish({
         kind: 'error',
         category: errorCategory(caught),
@@ -84,7 +88,7 @@ export function BusinessCreate({
           onDirtyChange={setDirty}
           submitLabel="Създай бизнес"
           onChange={() => setFeedback(null)}
-          onSubmit={(input) => void submit(input as CreateBusinessInput)}
+          onSubmit={(input) => submit(input as CreateBusinessInput)}
         />
         {error && (
           <p

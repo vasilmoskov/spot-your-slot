@@ -5,6 +5,8 @@ const SAFE_BUSINESS_CODES = new Set([
   'ACCESS_DENIED',
   'BUSINESS_NOT_FOUND',
   'BUSINESS_SLUG_CONFLICT',
+  'BUSINESS_SLUG_IMMUTABLE',
+  'BUSINESS_SLUG_RESERVED',
   'BUSINESS_INVALID_LIFECYCLE',
   'BUSINESS_MISSING_ACTIVE_OWNER',
   'BUSINESS_CONCURRENT_UPDATE',
@@ -16,6 +18,9 @@ export function safeBusinessError(error: unknown, fallback: string): string {
     error.code === 'BUSINESS_MISSING_ACTIVE_OWNER'
   ) {
     return 'За да активирате бизнеса, собственикът трябва първо да приеме поканата.'
+  }
+  if (error instanceof ApiError && error.code === 'BUSINESS_SLUG_RESERVED') {
+    return `${error.detail} Редактирайте го в „Данни за бизнеса“.`
   }
   if (error instanceof ApiError && SAFE_BUSINESS_CODES.has(error.code)) {
     return error.detail

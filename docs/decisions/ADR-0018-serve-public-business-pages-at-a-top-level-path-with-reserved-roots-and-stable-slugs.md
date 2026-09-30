@@ -98,27 +98,37 @@ slug. The minimum approved set is `forgot-password`, `password-reset`,
 root. The following are added defensively for the booking, confirmation, and
 cancellation routes the specification requires: `book`, `booking`, `cancel`,
 `cancellation`, `confirmation`, and `appointments`. The list is defined once in
-the backend; the frontend mirrors it only where routing must send a reserved path
-to the administration application, and a parity test keeps the two in step
-(mechanism chosen in Phase 2A). Phase 2A performs a read-only inspection of
-existing data before enforcement and reports any collision. Whether an unchanged
-DRAFT slug that is already reserved may be saved or activated is decided in Phase
-2A from that inspection; it is not guessed here.
+the backend (`ReservedBusinessSlugs`, 19 values, exact match on the canonical
+lowercase slug); the frontend mirrors it (`frontend/src/reservedSlugs.ts`) only for
+immediate form feedback and, later, routing, and the backend stays authoritative.
+Parity is kept by two pinned tests, one per language, each asserting the same 19
+values; no endpoint, code generation, dependency, or filesystem coupling was added.
+
+Phase 2A decisions (2026-09-30). A read-only inspection of the local development
+database found no Business using a reserved slug, and committed fixtures contain
+none. Enforcement: create and a DRAFT slug change to a reserved value fail with
+`VALIDATION_ERROR` and `fieldErrors.slug`; an unchanged reserved DRAFT slug
+(grandfathered) may be saved while other fields change; a DRAFT with a reserved slug
+cannot be activated (`BUSINESS_SLUG_RESERVED`, 409); ACTIVE and SUSPENDED Businesses
+keep whatever slug they hold and can still be reactivated.
 
 **Stable slug.**
 
 - A DRAFT Business may change its slug, subject to the reserved-root rule.
 - After first activation (status ACTIVE or SUSPENDED) the slug is immutable.
   The platform Business API rejects a changed slug with a safe conflict response
-  (proposed code `BUSINESS_SLUG_IMMUTABLE`, status 409, Bulgarian text stating that
-  the address of an activated Business cannot be changed; finalized in Phase 2A).
-  A profile update that leaves the normalized slug unchanged remains allowed.
+  (code `BUSINESS_SLUG_IMMUTABLE`, status 409, detail «Публичният адрес на активиран
+  бизнес не може да бъде променян.»; finalized in Phase 2A).
+  A profile update that leaves the normalized slug unchanged remains allowed. The
+  optimistic version check runs before the slug rule and stays authoritative.
 - The rule is an application invariant, not a database constraint, and needs no
   activation-history storage. It is reliable because the lifecycle has no
   transition into DRAFT and `update` runs a version-guarded statement: an
   activation that commits between the read and the write increments the version,
   so a concurrent slug change fails as a concurrent update rather than succeeding.
-  A future change that adds a transition to DRAFT must revisit this ADR.
+  A future change that adds a transition to DRAFT must revisit this ADR. Phase 2A
+  proves the race on PostgreSQL in both directions (row lock held, waiter observed in
+  `pg_stat_activity`, then released) and adds no lock or migration.
 - The platform form must show the slug as read-only with an explanation when it is
   immutable, instead of offering an edit that will fail.
 - Businesses already ACTIVE or SUSPENDED keep their current slugs, including any
@@ -176,6 +186,12 @@ hash routes); `InvitationService` and `RecoveryService` (email link paths);
 `BusinessAdministrationService` (lifecycle and version-guarded update);
 `SecurityConfiguration`; ADR-0007; `product-spec` (slug redirects and reserved
 words listed as an open decision).
+
+Phase 2A evidence: `ReservedBusinessSlugsTests`,
+`BusinessInputValidatorTests`, `BusinessAdministrationServiceIntegrationTests`
+(including the lock-wait races), `PlatformBusinessApiIntegrationTests`,
+`PlatformBusinessExceptionHandlerTests`, and the frontend `reservedSlugs`,
+`BusinessForm`, `BusinessCreate` and `BusinessDetail` tests.
 
 Inference: that a status other than DRAFT implies prior activation holds only
 while the transition table stays as it is; no test proves it against a direct

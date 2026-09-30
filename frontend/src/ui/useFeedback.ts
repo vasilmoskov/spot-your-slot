@@ -23,6 +23,8 @@ export function errorCategory(error: unknown): NonNullable<Feedback['category']>
   if ([
     'VALIDATION_ERROR',
     'BUSINESS_SLUG_CONFLICT',
+    'BUSINESS_SLUG_IMMUTABLE',
+    'BUSINESS_SLUG_RESERVED',
     'AUTH_FAILED',
     'CURRENT_PASSWORD_INVALID',
     'INVITATION_CREDENTIAL_MISMATCH',

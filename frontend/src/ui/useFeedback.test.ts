@@ -65,7 +65,7 @@ describe('shared feedback lifecycle', () => {
   })
 
   it('classifies public validation and reload failures separately from action failures', () => {
-    for (const code of ['VALIDATION_ERROR', 'CURRENT_PASSWORD_INVALID', 'AUTH_FAILED', 'BUSINESS_SLUG_CONFLICT', 'INVITATION_CREDENTIAL_MISMATCH', 'SERVICE_NAME_CONFLICT']) {
+    for (const code of ['VALIDATION_ERROR', 'CURRENT_PASSWORD_INVALID', 'AUTH_FAILED', 'BUSINESS_SLUG_CONFLICT', 'BUSINESS_SLUG_IMMUTABLE', 'BUSINESS_SLUG_RESERVED', 'INVITATION_CREDENTIAL_MISMATCH', 'SERVICE_NAME_CONFLICT']) {
       expect(errorCategory(new ApiError(400, code, 'Проверете данните'))).toBe('validation')
     }
     expect(errorCategory(new ApiError(409, 'BUSINESS_CONCURRENT_UPDATE', 'Заредете отново'))).toBe('blocking')
