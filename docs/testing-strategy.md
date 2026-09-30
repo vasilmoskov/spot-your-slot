@@ -358,7 +358,7 @@ startup. `AvailabilityModuleBoundaryTests` and `ModuleBoundaryTests` verify no
 
 ## Schedule-changes interface verification
 
-Issue #16 Phase 5 adds only frontend Vitest/Testing Library coverage for
+Issue #16 Phase 5 added only frontend Vitest/Testing Library coverage for
 "Промени в графика" (no backend or browser-automation change).
 `navigation.test.ts` covers the four routes, canonical hrefs, and the normalization
 of every unusable window. `presentation.test.ts` and `api.test.ts` cover labels,
@@ -374,7 +374,9 @@ conflicts with guarded reload, the delete confirmation, and SUSPENDED and
 inactive-StaffMember read-only behavior. `App.scheduleExceptions.test.tsx` covers
 routing, tabs, role access, history, guarded sidebar/Back/logout, Business
 switching, and the absence of browser-storage writes. A rendered-browser review
-against a disposable database is a separate, human-approved checkpoint.
+against a disposable database was a separate checkpoint; it received explicit
+human visual approval. Browser automation for the same journey was added in
+Phase 6 (see "Browser E2E for the Business schedule-changes journey").
 
 ## Browser E2E for Business onboarding and lifecycle
 
@@ -477,3 +479,53 @@ Troubleshooting: a serial-describe timeout restarts the Playwright worker and
 re-runs file-level setup; because fixtures are unique per attempt, the first
 reported failure is the real one. After an interrupted run, use the exact
 cleanup command in `README.md`.
+
+## Browser E2E for the Business schedule-changes journey
+
+Issue #16 Phase 6 adds `frontend/e2e/schedule-changes-journey.spec.ts` and
+`frontend/e2e/support/scheduleChanges.ts` to the Playwright layer, using the same
+isolated runner, migrations V1–V9, redaction, artifact and cleanup policy. The
+spec provisions its own DRAFT Business and owner (administrator UI, invitation
+flow, protected mailbox, random slug and email suffix) and a second Business for
+isolation; the administrator, both owners and the mobile session use separate
+browser contexts. Each test seeds the records it needs through the private API,
+uses a fresh owner page, and deletes its records in `finally`; nothing depends on
+another test except that the Business starts DRAFT and ends ACTIVE (every test
+works in either state, and the lifecycle test restores what it changes). Waits are
+on visible UI, HTTP responses or route state, never fixed sleeps. Business-local
+dates are computed for `Europe/Sofia`, not from the machine zone. API helpers
+return only status, the public problem code and the public response text, never
+cookies or CSRF values.
+
+- **Navigation and list state** — one page heading and the two tabs; the
+  provisional window is replaced by the canonical Business-local window, page 0,
+  size 10, dates ascending; with 27 records exactly ten appear on the first page,
+  Next and Previous, the range summary, kind sorting resetting to page 0, page-size
+  change, and detail → "Обратно към графика" restoring window, page, size, sort and
+  direction, each asserted on the visible rows as well as the route.
+- **Derived status** — `Минала`, `В сила`, `Предстояща` from the Business-local
+  date, sorting by status, and a past record surviving a reload (no automatic
+  deletion).
+- **CRUD and terminology** — a Business-wide non-working period and a
+  StaffMember absence with adjacent periods, persisted presentation after reload,
+  edit, and detail-only delete with the confirmation focusing "Отказ" first; no
+  internal word or enum name is shown.
+- **Conflict and validation** — the kind-specific overlap message for a closure and
+  for additional hours, entered values preserved, adjacent dates accepted, and the
+  precise overlap and duplicate period messages in the dialog.
+- **Lifecycle** — DRAFT/ACTIVE mutation; SUSPENDED keeps records readable, shows the
+  shared banner once, hides mutation controls and rejects forced create, replace
+  and delete with `BUSINESS_SUSPENDED`; reactivation restores editing.
+- **Authorization** — another Business owner reads an empty list and receives
+  `SCHEDULE_EXCEPTION_NOT_FOUND` or `STAFF_MEMBER_NOT_FOUND` without leakage; a
+  `PLATFORM_ADMIN` without a Membership receives 403 and no navigation.
+- **Mobile smoke** — Pixel 7: tabs, cards, sorting control, pagination, create
+  form, one confirmation dialog, and no horizontal overflow.
+
+Evidence boundaries: the browser proves the interface and the private HTTP
+boundary only. Precedence, half-open and adjacency behavior, the 15-minute grid,
+notice, horizon, DST, deterministic aggregation, optimistic versioning and lock
+order are proven by the backend unit and PostgreSQL integration tests listed
+above, and no browser test claims them. No public availability endpoint exists, so
+no browser test proves slot availability, and nothing reserves time. The automated
+mobile smoke does not replace the completed human visual approval.

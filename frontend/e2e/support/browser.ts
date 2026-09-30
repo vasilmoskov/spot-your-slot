@@ -103,7 +103,7 @@ export type ApiResult = {
  */
 export async function apiRequest(
   page: Page,
-  method: 'GET' | 'POST' | 'PUT',
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
   path: string,
   body?: unknown,
 ): Promise<ApiResult> {

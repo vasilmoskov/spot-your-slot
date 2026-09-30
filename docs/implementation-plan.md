@@ -90,8 +90,9 @@ issue #10. The Business-owner Services, StaffMember, assignment, and schedule
 interface was delivered by issue #14. The complete browser journey is
 implemented by issue #15
 (`docs/tasks/04e-business-configuration-e2e-verification.md`); the issue and
-parent remain open until that work is reviewed and closed. Exceptions, time off, breaks, working overrides, and
-availability inputs beyond these backend slices also remain pending.
+parent remain open until that work is reviewed and closed. Breaks remain pending;
+Business closures, StaffMember time off, working overrides, and additional
+working periods were delivered by issue #16 (see Phase 5).
 
 ## Phase 5 — availability engine
 
@@ -106,6 +107,13 @@ availability inputs beyond these backend slices also remain pending.
   Scheduling-owned busy-interval seam with a temporary placeholder. The public
   endpoint, StaffMember-exposure decision, and the real busy-interval source
   (Booking) remain later work.
+- Issue #16 Phases 5 and 6 deliver the Business-owner "Промени в графика"
+  interface (human visually approved) and its Playwright journey, and complete
+  the issue's implementation and acceptance record
+  (`docs/tasks/05a-availability-and-schedule-exceptions.md`). The issue itself
+  stays open until it is reviewed and closed. Business-configurable horizon,
+  notice, grid and buffers, confirmed-appointment impact warnings, and a
+  single-calendar date-range picker are recorded follow-ups.
 - Generic public Business/Profile/Service APIs and Bulgarian UI through slot
   selection.
 - Exit: DST/boundary/cancelled-slot/assignment and BusinessType parity pass.

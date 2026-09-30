@@ -1,6 +1,6 @@
 # SpotYourSlot — Availability, Schedule Exceptions, and Slot Calculation
 
-Status: In progress — Phases 1–4 committed; Phase 5 implemented, awaiting human visual review
+Status: Complete — Phases 1–6 implemented, verified and human-approved where visual review applies; ready to close (GitHub Issue #16 is not closed by this record)
 GitHub issue: #16 — Build availability, schedule exceptions, and slot calculation engine
 Depends on: #11, #12, #13
 Decision records: [ADR-0013](../decisions/ADR-0013-define-availability-interval-precedence-grid-and-dst-semantics.md),
@@ -39,12 +39,12 @@ Business-local dates today through today + 29, zero buffers.
 
 | Phase | Outcome | Status |
 |---|---|---|
-| 1 | Task record, ADR-0013, `scheduling` skeleton, pure engine, unit tests | Implemented; awaiting review |
-| 2 | Exception schema and persistence (V9, ADR-0014) | Implemented; awaiting review |
-| 3 | Exception administration API (ADR-0015) | Implemented; awaiting review |
+| 1 | Task record, ADR-0013, `scheduling` skeleton, pure engine, unit tests | Committed (`f0037d8`) |
+| 2 | Exception schema and persistence (V9, ADR-0014) | Committed (`db71348`) |
+| 3 | Exception administration API (ADR-0015) | Committed (`111aa7f`) |
 | 4 | Availability orchestration and published contracts (ADR-0016) | Committed (`dcd32d0`) |
-| 5 | Business-owner interface ("Промени в графика") | Implemented; awaiting human visual review |
-| 6 | Documentation and acceptance | Not started |
+| 5 | Business-owner interface ("Промени в графика") | Committed (`952356a`); human visual approval completed |
+| 6 | Final documentation, browser acceptance and issue-readiness validation | Implemented; see "Phase 6 scope and evidence" |
 
 Phase numbering follows the approved Phase 1 direction (persistence is Phase 2)
 and supersedes the earlier orientation numbering that placed Business settings
@@ -271,8 +271,67 @@ content share one layout-gap stack.
 Evidence: Vitest suites under `frontend/src/business/schedule/exceptions/`,
 `navigation.test.ts`, and `App.scheduleExceptions.test.tsx`; the real-browser
 review checklist was executed twice (initial pass and a UI/UX correction pass)
-against a disposable database (no development data touched). Human visual
-approval is pending. Phase 6 (documentation and acceptance) is not started.
+against a disposable database (no development data touched). The Business owner's
+visual review of the final terminology, layout, sorting, pagination, responsive
+behavior, dialogs and the documented StaffServiceAssignments table-standard
+exception is complete and approved. Browser automation was added in Phase 6.
+
+## Phase 6 scope and evidence
+
+Delivered: no product behavior, migration, dependency, workflow or API-contract
+change, and no production defect was found or fixed. Phase 6 adds the Playwright
+journey `frontend/e2e/schedule-changes-journey.spec.ts`, its support module
+`frontend/e2e/support/scheduleChanges.ts` (and `DELETE` in the shared
+`apiRequest` helper), the documentation reconciliation, and the acceptance audit
+below. The journey provisions its own DRAFT Business, owner and a second Business
+through the administrator UI, the invitation flow and the protected mailbox with
+random slug and email suffixes; tests are independent (each seeds records through
+the private API, uses a fresh owner page and deletes them in `finally`); the
+lifecycle test restores ACTIVE in `finally`. Nine scenarios (details in
+`docs/testing-strategy.md`): navigation and canonical list state; pagination,
+sorting, page size and detail round trip over 27 records; derived status and no
+automatic deletion; create/edit/detail-only delete with the approved terminology;
+kind-specific and period conflicts with preserved input and accepted adjacency;
+SUSPENDED read-only with forced API rejection and reactivation; another Business
+owner denied; a Platform Administrator without a Membership denied; a Pixel 7
+smoke.
+
+Verification executed for Phase 6 (real output): backend `./mvnw --batch-mode
+verify` — 1437 tests, 0 failures, 0 errors, 0 skipped, BUILD SUCCESS; frontend
+`npm ci`, `npm run test` — 43 files, 804 tests passed, `npm run lint` clean,
+`npm run build` succeeded; `./scripts/run-e2e.sh` — 35 tests passed in each of two
+consecutive complete runs (26 previously existing plus the nine new), with no E2E
+container, network or volume left afterwards.
+
+### Acceptance matrix and evidence level
+
+Levels: **U** backend unit, **I** PostgreSQL integration/MockMvc, **V** frontend
+Vitest, **B** Playwright browser, **H** human visual approval, **D** design/ADR
+(no automated proof claimed).
+
+| Requirement | Evidence |
+|---|---|
+| Precedence `(override or recurring) + additional − Business non-working − StaffMember absence − busy` | U engine and `ScheduleExceptionInputs` tests, I orchestration; ADR-0013. Not browser-proven |
+| Half-open intervals and adjacency | U engine; I database adjacency and overlap matrix (V9). B proves only that adjacent periods and dates are accepted in the UI |
+| 15-minute Business-local grid; inclusive two-hour notice; today–today+29 horizon | U `AvailabilityQueryServiceTimeTests`, engine tests; I orchestration. Not browser-proven |
+| DST gap and overlap | U time tests derived from `ZoneRules`. Not browser-proven |
+| Deterministic StaffMember aggregation | U engine and orchestration determinism tests |
+| Optimistic versioning | I store, service and locking tests; V `expectedVersion` and conflict recovery. Not browser-proven (the E2E edit and delete send the current version; no stale-version conflict is staged) |
+| Tenant isolation | I API, service and store tests; B second Business owner and Platform Administrator without Membership |
+| DRAFT / ACTIVE / SUSPENDED | I lifecycle tests; V read-only rendering; B DRAFT/ACTIVE mutation, SUSPENDED read-only and forced `BUSINESS_SUSPENDED` |
+| Derived `Предстояща` / `В сила` / `Минала` | V presentation tests; B Business-local badges and status sorting |
+| Sorting and pagination route state | V navigation and list tests; B route and visible-record assertions, round trip; H |
+| Detail-only deletion | V; B (no delete on list, safe-action-first confirmation); H |
+| No automatic deletion of past records | D (nothing deletes records); B a past record survives reload |
+| No public availability endpoint, no booking reservation behavior | D ADR-0016; I architecture tests (no `booking` dependency). No endpoint exists to test |
+
+### Final exclusions and follow-ups
+
+Excluded from Issue #16 and unchanged: public availability HTTP endpoint and rate
+limiting, public booking, Appointments and the Booking module, the real
+`BusyIntervalSource` (`NoBookingBusyIntervalSource` remains), Business-configurable
+horizon, notice, grid and buffers, breaks, confirmed-appointment warnings, and the
+date-range picker. See "Follow-ups" for the recorded list; Phase 6 adds none.
 
 ## Acceptance evidence (Phase 1)
 

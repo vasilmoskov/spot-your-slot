@@ -21,12 +21,13 @@ and active Business owners can administer Services, StaffMembers,
 StaffMember-to-Service assignments, and each StaffMember's recurring weekly
 working schedule through authenticated APIs and through the Bulgarian
 Business-owner configuration interface (Services, Team, assignments, and the
-recurring weekly working schedule). Browser end-to-end verification of that
-journey, Customers, Appointments, booking, production email, and hosting are
-not implemented. Business closures, StaffMember time off, working-day
-overrides, and additional working periods ("Промени в графика") can be administered
-through an authenticated backend API and the Business-owner interface under
-"Работно време". An internal Scheduling
+recurring weekly working schedule). Playwright browser journeys cover that
+configuration and the Business-owner schedule changes; Customers,
+Appointments, booking, production email, and hosting are not implemented.
+Business closures, StaffMember time off, working-day overrides, and additional
+working periods ("Промени в графика") can be administered through an
+authenticated backend API and the Business-owner interface under "Работно
+време". An internal Scheduling
 contract combines them with the recurring schedules into a current availability
 view under fixed MVP values (15-minute grid, two-hour notice, 30 local dates,
 zero buffers, no breaks; Business configuration is a follow-up); there is no
@@ -67,6 +68,7 @@ expand the MVP.
 - [Business Services backend task](docs/tasks/04a-business-services-backend.md)
 - [Staff management backend task](docs/tasks/04b-staff-management-and-service-assignments-backend.md)
 - [Recurring staff working schedules backend task](docs/tasks/04c-recurring-staff-working-schedules-backend.md)
+- [Availability and schedule exceptions task](docs/tasks/05a-availability-and-schedule-exceptions.md)
 - [Foundation task](docs/tasks/00-product-foundation.md)
 
 ## Selected toolchain
@@ -384,7 +386,11 @@ The suite contains the Business onboarding and lifecycle journey, the startup
 smoke check, and the Business-owner configuration journey (Services, Staff,
 Service assignments, recurring weekly schedules, unsaved-changes protection,
 DRAFT → ACTIVE → SUSPENDED → ACTIVE behavior, two-Business isolation, storage
-and browser-context isolation, and a focused Pixel 7 mobile smoke check). Each
+and browser-context isolation, and a focused Pixel 7 mobile smoke check) and the Business-owner schedule
+changes journey ("Промени в графика": canonical list state, sorting and
+pagination, create, edit and detail-only delete, kind-specific conflict
+feedback, lifecycle, cross-Business and platform-administrator denial, and a
+Pixel 7 smoke check). Each
 configuration setup attempt provisions its own Businesses and owners through
 the administrator UI, the invitation flow, and the protected development
 mailbox, using a random slug and email suffix, so a Playwright worker restart
