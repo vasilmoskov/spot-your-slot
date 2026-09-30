@@ -103,7 +103,7 @@ Bulgarian mobile-first flow is:
 6. submit and receive a confirmation page, email, and secure cancellation link.
 
 Issue #17 delivers only the profile part of this page (decisions in
-[task 06a](tasks/06a-public-business-profile.md), not yet implemented): display
+[task 06a](tasks/06a-public-business-profile.md); the backend read contract `GET /api/public/businesses/{slug}` is implemented, the page itself is not yet): display
 name, Business type, optional description, optional telephone and structured
 address (both public when entered), and active Services with duration and EUR
 price, at the top-level `/{businessSlug}`. It shows no StaffMember, no

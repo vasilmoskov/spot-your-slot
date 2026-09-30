@@ -1,7 +1,9 @@
 # SpotYourSlot — Public Business Profile Pages
 
-Status: Phase 1 (decisions and documentation) committed. Phase 2A (reserved roots and stable slugs)
-implemented, awaiting review and not committed. Phases 2B, 3 and 4 not started.
+Status: Phases 1 (decisions) and 2A (reserved roots and stable slugs) are committed. Phase 2B
+(the unauthenticated read-only backend contract) is implemented, awaiting review and not
+committed. The public frontend (Phase 3), browser acceptance (Phase 4), and issue #17 itself are
+not complete.
 GitHub issue: #17 — Build public Business profile pages
 Depends on: #11, #12, #14, #16
 Decision records: [ADR-0017](../decisions/ADR-0017-expose-public-business-profile-through-an-allowlisted-read-only-contract.md),
@@ -299,8 +301,8 @@ enumerate Businesses).
 | Phase | Scope | Risk | Gate |
 |---|---|---|---|
 | 1 | Decisions, this task record, ADR-0017, ADR-0018, and narrow documentation updates. Documentation only. | Strict (defines a public contract) | Review of this change |
-| 2A (implemented, awaiting review) | Reserved roots and stable-slug enforcement in the platform Business API; the platform form shows an immutable slug and reserved-root feedback; read-only collision inspection of existing data first. Expected: `business` slug validation and update, `platform`, platform frontend form, tests. | Strict (changes an existing authenticated contract) | Own approval and commit; approved reserved list and inspection result |
-| 2B | Published Business and Catalog contracts, `publicprofile` module, one security rule, allowlisted records, PostgreSQL integration tests. | Strict (first unauthenticated surface) | Own approval and commit; Phase 2A accepted |
+| 2A (committed) | Reserved roots and stable-slug enforcement in the platform Business API; the platform form shows an immutable slug and reserved-root feedback; read-only collision inspection of existing data first. Expected: `business` slug validation and update, `platform`, platform frontend form, tests. | Strict (changes an existing authenticated contract) | Own approval and commit; approved reserved list and inspection result |
+| 2B (implemented, awaiting review) | Published Business and Catalog contracts, `publicprofile` module, one security rule, allowlisted records, PostgreSQL integration tests. | Strict (first unauthenticated surface) | Own approval and commit; Phase 2A accepted |
 | 3 | Public application, exact-match routing, page and states, metadata hook, explanatory copy on the platform form for telephone and address, shared Business-type labels, component tests, human visual approval. | Standard | Human visual approval before Phase 4 |
 | 4 | Playwright acceptance, documentation reconciliation (README, roadmap, testing strategy, implementation plan, UI guide §13, stale status text), completion report, review archive. | Standard | Green verification; issue closure only with explicit approval |
 
@@ -373,3 +375,89 @@ Focused frontend evidence uses two valid selections: the 8-file selection
 tests, and the wider 12-file affected-area selection (`src/platform`,
 `reservedSlugs.test.ts`, `src/ui`) passes 166. The full frontend suite passes 861 tests
 in 44 files.
+
+## Phase 2B record (implemented, awaiting review, not committed)
+
+Phase 2B adds only the backend contract. No frontend, migration, dependency, workflow, booking,
+availability, or metadata change was made.
+
+**Endpoint.** `GET /api/public/businesses/{slug}`, unauthenticated, read-only.
+
+```json
+{
+  "slug": "example-studio",
+  "displayName": "Примерно студио",
+  "businessType": "HAIR_SALON",
+  "description": null,
+  "phone": "+359 88 000 0000",
+  "address": {"city": "София", "postalCode": "1000", "street": "Примерна улица",
+              "streetNumber": "1", "details": null},
+  "services": [{"name": "Примерна услуга", "description": null,
+                "durationMinutes": 45, "price": 25.00}]
+}
+```
+
+Absent optional values serialize as `null`; `address` is `null` when every part is empty;
+`services` is `[]` for an ACTIVE Business without active Services. Keys appear in this order and
+no other key exists. The 404 body, identical for every unavailable case, is:
+
+```json
+{"detail":"Страницата не е налична.","instance":"/api/public/businesses",
+ "status":404,"title":"Заявката не може да бъде изпълнена.","code":"BUSINESS_PAGE_UNAVAILABLE"}
+```
+
+**Allowlist reading.** `phone` and the structured `address` are in the allowlist because D2 of this
+record and ADR-0017 approve them as public when entered (there are no visibility flags and no
+schema change). Phase 3 adds the explanatory copy on the platform form, not the data.
+`contact_email`, timezone, status, every identifier, version, timestamp, owner and Membership
+data, StaffMembers, schedules and exceptions, inactive Services, and any currency or booking
+property are never serialized.
+
+**Lifecycle collapse.** An unknown, DRAFT, SUSPENDED, former, malformed, over-length, or reserved
+slug returns the one 404 above with `Cache-Control: no-store`, no cookie, and no slug, status, or
+identifier in the body. The RFC 7807 `instance` is fixed because Spring would otherwise echo the
+request path, including the submitted slug. A reserved slug is unavailable even if a
+grandfathered ACTIVE Business holds it (ADR-0018 lets ACTIVE Businesses keep such a slug; the
+public frontend cannot route it either).
+
+**Module ownership.** `publicprofile → business` and `publicprofile → catalog`; nothing depends
+on `publicprofile`, and `business` and `catalog` have no cycle. `business.PublicBusinessProfileAccess`
+(root package; `business.application.PublicBusinessProfileAccessService`) owns slug canonicalization
+and validation (`BusinessSlug`) and the reserved list, reads an explicit column list with an
+`ACTIVE`-only predicate, and returns purpose-built records that carry the Business ID for
+orchestration only. `catalog.PublicServiceAccess` (`catalog.application.PublicServiceAccessService`)
+returns name, description, duration and price of every active Service ordered
+`normalized_name ASC, id ASC`, unlimited. Both use `Propagation.MANDATORY, readOnly`. The response
+records live in `publicprofile.web`; the ID never leaves `publicprofile.application`.
+
+**Transaction and cost.** `PublicProfileService.findBySlug` is read-only `REPEATABLE_READ`. `REQUIRED`
+would silently join a weaker transaction, so the effective isolation (repeatable-read or
+serializable) is verified before any read and otherwise fails with no SQL (the ADR-0016 lesson).
+Statements: two for an ACTIVE Business (Business, then Services, whatever the number of
+Services), one for any other well-formed slug, none for a malformed or reserved slug. No write and
+no explicit lock is issued. The snapshot claim is limited to that transaction: a row committed on
+another connection between the two reads is not visible to the response.
+
+**Security.** `GET /api/public/businesses/{slug}` (one non-empty segment) is `permitAll`; every
+other verb or deeper path under `/api/public/businesses/**` is `denyAll` (401 anonymous, 403
+authenticated), so no other request reaches MVC. Without that rule an authenticated non-GET
+request reached the catch-all handler and returned 500. `/api/public/businesses/` and a trailing
+slash after a slug therefore require authentication. CSRF, CORS (exact origin), and every other
+route are unchanged; the endpoint neither needs nor creates a session.
+
+**Deviations from ADR-0017 wording** (clarifications, no product decision changed): the matcher
+is `{slug}` instead of `*` because `*` also matched an empty segment and returned 500; the
+`denyAll` rule and the fixed `instance` above; reserved slugs are unavailable.
+
+**Test evidence.** `PublicProfileApiIntegrationTests` (full servlet and security chain on
+PostgreSQL 18.4: exact keys, allowlist, ordering, isolation, privacy sentinels, lifecycle collapse,
+security, CORS, no data created), `PublicProfileTransactionIntegrationTests` (statement counts,
+statement shape, no write or lock, isolation and read-only, precondition, MANDATORY contracts,
+snapshot between reads), `PublicBusinessProfileAccessServiceTests`,
+`PublicServiceAccessServiceTests`, `PublicProfileControllerTests`,
+`PublicProfileModuleBoundaryTests`, and the existing module-boundary tests. Executed counts are in
+the completion report.
+
+**Remaining.** Phase 3: the public React page, exact-match routing, states, metadata hook, the
+explanatory telephone and address copy, shared Business-type labels, and human visual approval.
+Phase 4: browser acceptance and documentation reconciliation. Issue #18 owns booking.

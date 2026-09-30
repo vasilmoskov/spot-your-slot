@@ -36,7 +36,7 @@ All backend packages live below `bg.spotyourslot`.
 | `catalog` | Business-owned Services, prices, durations, lifecycle, and versioned administration |
 | `workforce` | StaffMembers, Service qualifications, recurring weekly hours |
 | `scheduling` | timezone-aware availability, Business closures, StaffMember time off, working-day overrides, additional working periods, and deterministic assignment (ADR-0013) |
-| `publicprofile` | planned (issue #17): read-only unauthenticated public Business profile orchestrated over published Business and Catalog contracts (ADR-0017) |
+| `publicprofile` | read-only unauthenticated public Business profile (`GET /api/public/businesses/{slug}`) orchestrated over the published `business.PublicBusinessProfileAccess` and `catalog.PublicServiceAccess` contracts (ADR-0017; backend implemented in issue #17 Phase 2B, frontend pending) |
 | `booking` | transactional Appointment lifecycle and conflicts |
 | `customer` | Business-scoped Customers and safe matching |
 | `notification` | outbox, delivery attempts, reminders, `EmailService` |
@@ -254,17 +254,18 @@ second implementation makes startup fail until the placeholder is deleted. The
 orchestration issues four application SQL statements regardless of team size.
 There is no public availability endpoint.
 
-Issue #17 (planned, decisions only; no code exists yet) adds the `publicprofile`
-module ([ADR-0017](decisions/ADR-0017-expose-public-business-profile-through-an-allowlisted-read-only-contract.md),
+Issue #17 adds the `publicprofile` module (backend implemented in Phase 2B; the
+public React page is Phase 3 and not started) ([ADR-0017](decisions/ADR-0017-expose-public-business-profile-through-an-allowlisted-read-only-contract.md),
 [ADR-0018](decisions/ADR-0018-serve-public-business-pages-at-a-top-level-path-with-reserved-roots-and-stable-slugs.md),
-[task 06a](tasks/06a-public-business-profile.md)). It will depend only on a
+[task 06a](tasks/06a-public-business-profile.md)). It depends only on a
 narrow published `business.PublicBusinessProfileAccess` (ACTIVE Business by slug,
-explicit public columns) and a `catalog.PublicServiceAccess` (every active Service
-in `normalized_name, id` order, no cap), never on their stores or private
-records, and no module will depend on it. `business` cannot own the page because
-`catalog` already depends on `business`. One read-only repeatable-read
-transaction will run two statements for an ACTIVE Business and one otherwise,
-independent of the number of Services. The public page will be a top-level
+explicit public columns, slug validation and reserved roots) and a
+`catalog.PublicServiceAccess` (every active Service in `normalized_name, id` order,
+no cap), never on their stores or private records, and no module depends on it.
+`business` cannot own the page because `catalog` already depends on `business`. One
+read-only repeatable-read transaction, whose isolation is verified before any read,
+runs two statements for an ACTIVE Business, one for any other well-formed slug, and
+none for a malformed or reserved slug, independent of the number of Services. The public page will be a top-level
 `/{businessSlug}` route in the React application, chosen before the
 administration application; the backend stays JSON-only. Reliable per-Business
 link previews and server-level SEO require later server-side, pre- or edge

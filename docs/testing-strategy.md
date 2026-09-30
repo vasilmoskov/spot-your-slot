@@ -513,6 +513,39 @@ stable-slug rules (ADR-0018). Browser E2E for this behavior belongs to Phase 4.
   caused by a 100-character slug or long name in the detail header and section summary.
   Human visual approval remains a separate gate.
 
+## Public Business profile backend verification
+
+Issue #17 Phase 2B tests the unauthenticated `GET /api/public/businesses/{slug}` contract
+(ADR-0017) on PostgreSQL 18.4 through Testcontainers. Browser acceptance belongs to Phase 4.
+
+- **Contract and privacy** — `PublicProfileApiIntegrationTests` drives the complete servlet and
+  security chain: exact key sets for the profile, address and Service, values and EUR price
+  scale, canonical slug, active-only and deterministic order, another Business absent, `null` for
+  absent optionals, an empty list for no active Services, identical repeated responses, and an
+  identical representation for anonymous, PLATFORM_ADMIN and owner callers without a cookie. A
+  sentinel test populates the contact email, timezone, version, timestamps, StaffMember name,
+  contact and schedule, Membership and identifiers, and asserts none appears.
+- **Lifecycle collapse** — unknown, DRAFT, SUSPENDED, former, malformed, over-length, and reserved
+  slugs (including a grandfathered ACTIVE reserved slug) return one byte-equivalent 404 with no
+  slug, status, identifier, SQL or exception text.
+- **Security** — anonymous access only to the one route; neighbouring private routes,
+  `/api/public/businesses/`, deeper paths and trailing slashes stay 401; every non-GET verb is
+  refused (401/403, never 500); firewall-rejected paths return an empty 400; CORS is the unchanged
+  exact-origin policy; viewing creates no business, service, membership, user, session or
+  invitation row.
+- **Transaction and cost** — `PublicProfileTransactionIntegrationTests` counts statements with the
+  DataSource-proxy approach used for availability: two for an ACTIVE Business with one, 25, or no
+  Services, one for an unavailable slug, none for a malformed or reserved slug; asserts explicit
+  public columns, no `SELECT *`, no write or lock keyword, `REPEATABLE_READ` and read-only on the
+  connection, failure before any SQL inside a READ_COMMITTED or default-isolation transaction,
+  success inside repeatable-read or serializable, MANDATORY behavior of both published contracts,
+  and, with a change committed on another connection between the two reads, a snapshot-consistent
+  response. There are no sleeps.
+- **Unit and boundary** — `PublicBusinessProfileAccessServiceTests`,
+  `PublicServiceAccessServiceTests`, `PublicProfileControllerTests`,
+  `PublicProfileModuleBoundaryTests` (`publicprofile → business, catalog` only, no reverse
+  dependency), and the existing module-boundary tests.
+
 ## Browser E2E for the Business schedule-changes journey
 
 Issue #16 Phase 6 adds `frontend/e2e/schedule-changes-journey.spec.ts` and

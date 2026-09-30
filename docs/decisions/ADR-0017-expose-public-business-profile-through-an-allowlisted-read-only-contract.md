@@ -108,8 +108,10 @@ the orchestrator gives both reads one snapshot.
 Never public: `contact_email`, timezone (in issue #17), lifecycle status, any
 identifier, version, or timestamp, owner data, Memberships, StaffMembers,
 inactive Services, normalized values, and operational metadata. `address` is
-`null` when every address part is empty; empty optional fields are omitted from
-the presentation. There is no `onlineBookingAvailable` field and no booking
+`null` when every address part is empty. The JSON API serializes a missing
+optional `description`, `phone`, address component, or Service description as
+`null`; it never omits the key. The future frontend omits absent values from the
+visible presentation. There is no `onlineBookingAvailable` field and no booking
 property; issue #18 introduces the real booking-entry contract.
 
 ```json
@@ -225,6 +227,17 @@ Inference: telephone and address were introduced for later public booking
 (roadmap row 3, task 03a) and are otherwise unused, which supports treating them
 as public. That is the product owner's approved decision for issue #17, not a
 historical fact.
+
+## Phase 2B implementation notes
+
+Clarifications from implementation, with no product decision changed: the permit rule is
+`GET /api/public/businesses/{slug}` because `*` also matched an empty segment and produced a 500;
+every other verb or deeper path under the prefix is denied in the security chain, because an
+authenticated non-GET request otherwise reached the catch-all handler and returned 500; the fixed
+RFC 7807 `instance` prevents the default request-path echo of the submitted slug; the
+`business` contract owns slug canonicalization and treats a reserved slug as unavailable without a
+query; and the orchestrator verifies the effective repeatable-read isolation before reading, since
+`REQUIRED` would otherwise join a weaker transaction silently (ADR-0016).
 
 ## Conditions for revisiting
 

@@ -316,22 +316,31 @@ incorrect existing-User password returns 400
 email prevents a second global User. Frontend password confirmation is
 local-only and is never sent or persisted.
 
-## Public Business profile (planned, issue #17)
+## Public Business profile (issue #17; backend implemented in Phase 2B)
 
-Decided in ADR-0017 and ADR-0018; not yet implemented. One unauthenticated
-`GET /api/public/businesses/{slug}` will be the only new public route; every other
-route and verb remains authenticated, CSRF and the exact-origin CORS policy are
+Decided in ADR-0017 and ADR-0018; the backend contract is implemented and the public
+frontend is not. One unauthenticated
+`GET /api/public/businesses/{slug}` (a single non-empty path segment) is the only new
+public route. Every other verb or deeper path under `/api/public/businesses/**` is
+denied (401 anonymous, 403 authenticated) before it reaches MVC, and every other
+route remains authenticated, CSRF and the exact-origin CORS policy are
 unchanged, and the response never depends on identity. Only an ACTIVE Business
 resolves. DRAFT, SUSPENDED, unknown, malformed, and formerly used slugs all return
 one identical 404 (`BUSINESS_PAGE_UNAVAILABLE`, «Страницата не е налична.») so
-lifecycle state and tenant existence are not revealed; a malformed slug is
-rejected before any query. The body is an allowlist: slug, display name, Business
+lifecycle state and tenant existence are not revealed; a malformed or reserved slug
+is rejected before any query. The RFC 7807 `instance` is a fixed value, because the
+default request path would echo the submitted slug. Path characters the servlet
+firewall rejects (encoded slash, semicolon, backslash, NUL) receive its bare empty
+400, which discloses nothing. The body is an allowlist: slug, display name, Business
 type, optional description, optional telephone, optional structured address, and
 each active Service's name, description, duration, and EUR price. `contact_email`,
 timezone, status, identifiers, versions, timestamps, owner and Membership data,
 StaffMembers, and inactive Services are never public. Responses keep the default
-`no-store` headers. The endpoint writes nothing and creates no Customer,
-Appointment, or session state.
+`no-store` headers and set no cookie. The endpoint writes nothing, takes no lock,
+and creates no Customer, Appointment, or session state; it issues two SQL statements
+for an ACTIVE Business (independent of the number of Services), one for any other
+well-formed slug, and none for a malformed or reserved slug, in a read-only
+repeatable-read transaction whose isolation is enforced before any read.
 
 There is deliberately no application-level rate limiter for this read-only,
 index-backed endpoint and no cap on the number of active Services returned;

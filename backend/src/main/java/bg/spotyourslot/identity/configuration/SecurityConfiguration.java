@@ -96,6 +96,14 @@ public class SecurityConfiguration {
                                 "/api/auth/password/reset",
                                 "/api/auth/invitations/accept")
                         .permitAll()
+                        // The only unauthenticated Business surface (ADR-0017): one path
+                        // segment, GET only. Every other verb and route stays authenticated.
+                        .requestMatchers(HttpMethod.GET, "/api/public/businesses/{slug}")
+                        .permitAll()
+                        // Any other verb or deeper path under the public prefix is refused
+                        // here (401 anonymous, 403 authenticated) rather than reaching MVC.
+                        .requestMatchers("/api/public/businesses/**")
+                        .denyAll()
                         .requestMatchers("/api/platform/**", "/api/dev/**")
                         .hasAuthority("PLATFORM_ADMIN")
                         .anyRequest().authenticated())

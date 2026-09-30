@@ -122,6 +122,28 @@ public class ServiceStore {
                 .list());
     }
 
+    /**
+     * One statement, independent of the number of Services, with an explicit public column list
+     * and no lock. Ordered by the canonical name and then the identifier so the order is
+     * deterministic; never limited.
+     */
+    public List<PublicServiceRow> findActivePublicServices(UUID businessId) {
+        return execute(() -> jdbc.sql("""
+                        SELECT name, description, duration_minutes, price
+                        FROM service
+                        WHERE business_id = :businessId
+                          AND active
+                        ORDER BY normalized_name ASC, id ASC
+                        """)
+                .param("businessId", businessId)
+                .query((resultSet, rowNumber) -> new PublicServiceRow(
+                        resultSet.getString("name"),
+                        resultSet.getString("description"),
+                        resultSet.getInt("duration_minutes"),
+                        resultSet.getBigDecimal("price")))
+                .list());
+    }
+
     public List<ServiceRow> lockReferences(
             UUID businessId, Collection<UUID> serviceIds) {
         if (serviceIds.isEmpty()) {

@@ -118,6 +118,34 @@ public class BusinessStore {
                 .optional();
     }
 
+    /**
+     * One statement with an explicit public column list and an ACTIVE-only predicate; no lock.
+     * A DRAFT, a SUSPENDED, and an unknown slug are indistinguishable.
+     */
+    public Optional<PublicBusinessProfileRow> findActivePublicProfileBySlug(BusinessSlug slug) {
+        return jdbc.sql("""
+                        SELECT id, slug, display_name, business_type, description,
+                               city, postal_code, street, street_number, address_details, phone
+                        FROM business
+                        WHERE slug = :slug
+                          AND status = 'ACTIVE'
+                        """)
+                .param("slug", slug.value())
+                .query((resultSet, rowNumber) -> new PublicBusinessProfileRow(
+                        resultSet.getObject("id", UUID.class),
+                        resultSet.getString("slug"),
+                        resultSet.getString("display_name"),
+                        resultSet.getString("business_type"),
+                        resultSet.getString("description"),
+                        resultSet.getString("city"),
+                        resultSet.getString("postal_code"),
+                        resultSet.getString("street"),
+                        resultSet.getString("street_number"),
+                        resultSet.getString("address_details"),
+                        resultSet.getString("phone")))
+                .optional();
+    }
+
     public BusinessRow create(NewBusinessRow business) {
         return jdbc.sql("""
                         INSERT INTO business(
