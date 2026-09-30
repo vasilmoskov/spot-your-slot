@@ -1,13 +1,8 @@
 import { request } from '../../identity/api'
 
-export type BusinessType =
-  | 'HAIR_SALON'
-  | 'BARBERSHOP'
-  | 'NAIL_STUDIO'
-  | 'MASSAGE_STUDIO'
-  | 'MAKEUP_STUDIO'
-  | 'BEAUTY_STUDIO'
-  | 'OTHER'
+import type { BusinessType } from '../../business/businessType'
+
+export type { BusinessType }
 
 export type BusinessStatus = 'DRAFT' | 'ACTIVE' | 'SUSPENDED'
 

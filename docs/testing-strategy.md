@@ -595,3 +595,33 @@ order are proven by the backend unit and PostgreSQL integration tests listed
 above, and no browser test claims them. No public availability endpoint exists, so
 no browser test proves slot availability, and nothing reserves time. The automated
 mobile smoke does not replace the completed human visual approval.
+
+## Public Business page frontend verification
+
+Issue #17 Phase 3 tests the unauthenticated React page with Vitest and jsdom; browser acceptance
+belongs to Phase 4. Fetch is stubbed or the API module mocked with promises the test settles,
+so races are deterministic and use no timers.
+
+- **Routing** — `route.test.ts` and `AppRoot.test.tsx`: exact `/{slug}`, uppercase and trailing-slash
+  canonicalization by `replaceState` (never `pushState`), 100/101-character slugs, invalid,
+  percent-encoded, deeper and reserved paths (every one of the 19 roots), valid slugs that contain
+  a reserved word, hash routes staying with administration, refresh keeping the Business, history
+  navigation between two slugs, the existing identity paths, and that a public path sends no
+  `/api/auth/*` request.
+- **API client** — `api.test.ts`: URL encoding, `credentials: 'omit'`, no body or CSRF header, exact
+  field decoding (extra properties dropped), the unavailable answer, malformed and unexpected
+  bodies, network failure and abort.
+- **Page** — `PublicBusinessPage.test.tsx`: loading, every approved field, one `h1` and heading
+  order, focus, missing and partial contacts, plain-text phone, unsafe phone text, empty and
+  many Services in backend order, text-not-markup, unknown Business type, unavailable and failure
+  states, exactly one request per retry, stale/aborted responses of a changed slug or attempt,
+  unmount, metadata for every state and its restoration, and no storage or cookie write.
+- **Shared and platform** — `businessType.test.ts` (one mapping, unknown value), the platform form
+  and detail tests (neither retired public-visibility sentence, empty note container, group or
+  dangling `aria-describedby` in create, DRAFT, ACTIVE and SUSPENDED; labels, no visibility
+  controls, dirty tracking unchanged), and CSS guards in `layoutRules.test.ts` for
+  the durable public layout rules jsdom cannot evaluate.
+
+Executed: focused selection 14 files, 259 tests; full frontend suite 50 files, 999 tests.
+Rendered developer review at 1280, 1024, 800, 640, 412 and 375 px is recorded in
+`docs/tasks/06a-public-business-profile.md`; it is not the human visual approval.

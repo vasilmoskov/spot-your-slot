@@ -1765,3 +1765,206 @@ label {
     font-weight: 700;
   }
 }
+
+/* Public Business page (issue #17). Mobile-first single column. `gap` on each
+   container is the only source of spacing between siblings, so their own
+   margins are zeroed. */
+.public-page {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-height: 100vh;
+}
+
+.public-topbar {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.public-wordmark {
+  color: var(--color-action-primary-hover);
+  font-weight: 800;
+  letter-spacing: 0.01em;
+}
+
+.public-main {
+  display: grid;
+  align-content: start;
+  gap: var(--space-5);
+  width: 100%;
+  max-width: 44rem;
+  min-width: 0;
+  margin-inline: auto;
+  padding: var(--space-5) var(--space-4) var(--space-6);
+}
+
+.public-profile,
+.public-state,
+.public-profile-header,
+.public-section {
+  display: grid;
+  min-width: 0;
+}
+
+.public-profile {
+  gap: var(--space-5);
+}
+
+.public-profile-header {
+  justify-items: start;
+  gap: var(--space-3);
+}
+
+.public-profile h1,
+.public-state h1 {
+  margin: 0;
+  font-size: clamp(1.75rem, 6vw, 2.5rem);
+  overflow-wrap: anywhere;
+}
+
+.public-profile-header > *,
+.public-section > *,
+.public-state > * {
+  margin: 0;
+  min-width: 0;
+}
+
+.public-type-chip {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 1.75rem;
+  padding: var(--space-1) var(--space-3);
+  border-radius: 999px;
+  color: var(--color-action-primary-hover);
+  background: var(--color-action-primary-subtle);
+  font-size: 0.875rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.public-description {
+  max-width: 65ch;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+
+.public-section,
+.public-state {
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+}
+
+.public-section h2 {
+  font-size: 1.25rem;
+}
+
+.public-facts,
+.public-service-facts {
+  display: grid;
+  gap: var(--space-4);
+  margin: 0;
+}
+
+.public-facts > div,
+.public-service-facts > div {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.public-facts dt,
+.public-service-facts dt {
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.public-facts dd,
+.public-service-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.public-address-line {
+  display: block;
+}
+
+.public-phone {
+  display: inline-block;
+  min-height: 1.5rem;
+}
+
+.public-services {
+  display: grid;
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.public-service {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+}
+
+.public-service > * {
+  margin: 0;
+  min-width: 0;
+}
+
+.public-service h3 {
+  font-size: 1.0625rem;
+  overflow-wrap: anywhere;
+}
+
+.public-service-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-5);
+}
+
+.public-service-facts dd {
+  font-weight: 700;
+}
+
+.public-empty,
+.public-status {
+  margin: 0;
+  color: var(--color-text-secondary);
+}
+
+.public-notice {
+  width: fit-content;
+  max-width: 100%;
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  color: var(--color-text-secondary);
+  background: var(--color-surface);
+  overflow-wrap: anywhere;
+}
+
+.public-state {
+  justify-items: start;
+}
+
+@media (min-width: 48rem) {
+  .public-main {
+    padding: var(--space-6) var(--space-5);
+  }
+
+  .public-section,
+  .public-state {
+    padding: var(--space-5);
+  }
+}

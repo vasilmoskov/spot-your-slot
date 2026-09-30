@@ -391,3 +391,96 @@ describe('BusinessForm', () => {
     })
   })
 })
+
+describe('BusinessForm without public-visibility copy', () => {
+  const retired = [
+    'Телефонът се показва на публичната страница на бизнеса само ако е попълнен.',
+    'Адресът се показва на публичната страница на бизнеса само ако е попълнено поне едно от адресните полета.',
+  ]
+
+  it.each([
+    ['create', undefined],
+    ['DRAFT', { ...business, status: 'DRAFT' as const }],
+    ['ACTIVE', { ...business, status: 'ACTIVE' as const }],
+    ['SUSPENDED', { ...business, status: 'SUSPENDED' as const }],
+  ])('shows no explanation, note container or visibility control in %s mode', (mode, current) => {
+    const { container } = render(
+      <BusinessForm
+        {...(current ? { business: current } : {})}
+        busy={false}
+        submitLabel="Запази"
+        onSubmit={vi.fn()}
+      />,
+    )
+
+    for (const sentence of retired) expect(container).not.toHaveTextContent(sentence)
+    expect(container).not.toHaveTextContent(/публичната страница/)
+    // Only the immutable-slug note may exist, and only after first activation.
+    expect(container.querySelectorAll('.field-note')).toHaveLength(
+      mode === 'ACTIVE' || mode === 'SUSPENDED' ? 1 : 0,
+    )
+    for (const note of container.querySelectorAll('.field-note')) {
+      expect(note.textContent?.trim()).not.toBe('')
+    }
+    expect(screen.queryByRole('group')).not.toBeInTheDocument()
+    for (const role of ['checkbox', 'switch', 'radio']) {
+      expect(screen.queryByRole(role)).not.toBeInTheDocument()
+    }
+  })
+
+  it('leaves no dangling aria-describedby reference', () => {
+    const { container } = render(
+      <BusinessForm
+        business={{ ...business, status: 'ACTIVE' }}
+        busy={false}
+        submitLabel="Запази"
+        onSubmit={vi.fn()}
+      />,
+    )
+    for (const element of container.querySelectorAll('[aria-describedby]')) {
+      for (const id of element.getAttribute('aria-describedby')!.split(' ')) {
+        expect(container.querySelector(`#${id}`), id).not.toBeNull()
+      }
+    }
+    expect(screen.getByLabelText('Телефон (по избор)')).not.toHaveAttribute('aria-describedby')
+    expect(screen.getByLabelText('Улица (по избор)')).not.toHaveAttribute('aria-describedby')
+  })
+
+  it('keeps the telephone, address and contact email fields labelled', () => {
+    render(<BusinessForm business={business} busy={false} submitLabel="Запази" onSubmit={vi.fn()} />)
+    expect(screen.getByLabelText('Телефон (по избор)')).toHaveValue('+359 2 000 0000')
+    expect(screen.getByLabelText('Имейл за контакт (по избор)')).toHaveValue('contact@example.invalid')
+    for (const label of [
+      'Улица (по избор)',
+      'Номер (по избор)',
+      'Пощенски код (по избор)',
+      'Град (по избор)',
+      'Допълнителни указания (по избор)',
+    ]) {
+      expect(screen.getByLabelText(label)).toBeInTheDocument()
+    }
+  })
+
+  it('still reports dirtiness and submits the telephone unchanged', () => {
+    const onDirtyChange = vi.fn()
+    const onSubmit = vi.fn()
+    render(
+      <BusinessForm
+        business={business}
+        busy={false}
+        submitLabel="Запази"
+        onDirtyChange={onDirtyChange}
+        onSubmit={onSubmit}
+      />,
+    )
+    const phone = screen.getByLabelText('Телефон (по избор)')
+    fireEvent.input(phone, { target: { value: '+359 88 111 1111' } })
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true)
+    fireEvent.input(phone, { target: { value: business.phone } })
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false)
+
+    fireEvent.input(phone, { target: { value: '+359 88 111 1111' } })
+    fireEvent.submit(phone.closest('form')!)
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ phone: '+359 88 111 1111' }))
+  })
+})

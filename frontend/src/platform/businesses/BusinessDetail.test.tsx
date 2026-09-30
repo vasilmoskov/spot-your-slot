@@ -195,6 +195,22 @@ describe('BusinessDetail', () => {
     )
   })
 
+  it.each(['DRAFT', 'ACTIVE', 'SUSPENDED'] as const)(
+    'shows no public-visibility explanation when editing a %s Business',
+    async (status) => {
+      mockedGetBusiness.mockResolvedValue(businessWithStatus(status))
+      renderDetail()
+      await screen.findByRole('heading', { name: 'Студио А' })
+      fireEvent.click(section('Данни за бизнеса').querySelector('summary')!)
+      fireEvent.click(screen.getByRole('button', { name: 'Редактирай' }))
+
+      expect(screen.getByLabelText('Телефон (по избор)')).not.toHaveAttribute('aria-describedby')
+      expect(screen.queryByText(/на публичната страница/)).not.toBeInTheDocument()
+      expect(screen.queryByRole('group', { name: 'Адрес' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+    },
+  )
+
   it.each(['ACTIVE', 'SUSPENDED'] as const)(
     'shows the %s slug read-only, keeps other fields editable and never submits a slug change',
     async (status) => {

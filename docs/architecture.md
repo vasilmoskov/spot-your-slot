@@ -254,8 +254,8 @@ second implementation makes startup fail until the placeholder is deleted. The
 orchestration issues four application SQL statements regardless of team size.
 There is no public availability endpoint.
 
-Issue #17 adds the `publicprofile` module (backend implemented in Phase 2B; the
-public React page is Phase 3 and not started) ([ADR-0017](decisions/ADR-0017-expose-public-business-profile-through-an-allowlisted-read-only-contract.md),
+Issue #17 adds the `publicprofile` module (backend committed in Phase 2B; the
+public React page is implemented in Phase 3 and awaits human visual review) ([ADR-0017](decisions/ADR-0017-expose-public-business-profile-through-an-allowlisted-read-only-contract.md),
 [ADR-0018](decisions/ADR-0018-serve-public-business-pages-at-a-top-level-path-with-reserved-roots-and-stable-slugs.md),
 [task 06a](tasks/06a-public-business-profile.md)). It depends only on a
 narrow published `business.PublicBusinessProfileAccess` (ACTIVE Business by slug,

@@ -1,9 +1,10 @@
 # SpotYourSlot — Public Business Profile Pages
 
-Status: Phases 1 (decisions) and 2A (reserved roots and stable slugs) are committed. Phase 2B
-(the unauthenticated read-only backend contract) is implemented, awaiting review and not
-committed. The public frontend (Phase 3), browser acceptance (Phase 4), and issue #17 itself are
-not complete.
+Status: Phases 1 (decisions), 2A (reserved roots and stable slugs) and 2B (the
+unauthenticated read-only backend contract) are committed. Phase 3 (the public React page) is
+implemented and awaiting the human visual review; it is not committed. The browser acceptance
+(Phase 4), the human visual approval and issue #17 itself are not complete, and booking remains
+issue #18.
 GitHub issue: #17 — Build public Business profile pages
 Depends on: #11, #12, #14, #16
 Decision records: [ADR-0017](../decisions/ADR-0017-expose-public-business-profile-through-an-allowlisted-read-only-contract.md),
@@ -24,7 +25,7 @@ persistent changes; Phases 2A and 2B are separate approval and commit gates.
 | # | Decision |
 |---|---|
 | D1 | Public URL is the documented top-level `/{businessSlug}`, matched exactly. |
-| D2 | Public: display name, slug, Business type, optional description, optional telephone, structured address as one optional unit. Not public: `contact_email`, timezone, status, IDs, versions, timestamps, owner data, Memberships, StaffMembers, operational metadata. The platform Business form states that telephone and address are shown publicly. No visibility flags or migration. |
+| D2 | Public: display name, slug, Business type, optional description, optional telephone, structured address as one optional unit. Not public: `contact_email`, timezone, status, IDs, versions, timestamps, owner data, Memberships, StaffMembers, operational metadata. The platform Business form shows no explanatory copy about it (final decision after human review of Phase 3). No visibility flags or migration. |
 | D3 | No booking route exists. No CTA, disabled button, Service-selection control, or dead link. A neutral notice is shown. No `onlineBookingAvailable` property. |
 | D4 | After first activation the slug is immutable; DRAFT slugs are editable; reserved roots are rejected for new or changed slugs. |
 | D5 | No application-level rate limiter in issue #17. |
@@ -302,8 +303,8 @@ enumerate Businesses).
 |---|---|---|---|
 | 1 | Decisions, this task record, ADR-0017, ADR-0018, and narrow documentation updates. Documentation only. | Strict (defines a public contract) | Review of this change |
 | 2A (committed) | Reserved roots and stable-slug enforcement in the platform Business API; the platform form shows an immutable slug and reserved-root feedback; read-only collision inspection of existing data first. Expected: `business` slug validation and update, `platform`, platform frontend form, tests. | Strict (changes an existing authenticated contract) | Own approval and commit; approved reserved list and inspection result |
-| 2B (implemented, awaiting review) | Published Business and Catalog contracts, `publicprofile` module, one security rule, allowlisted records, PostgreSQL integration tests. | Strict (first unauthenticated surface) | Own approval and commit; Phase 2A accepted |
-| 3 | Public application, exact-match routing, page and states, metadata hook, explanatory copy on the platform form for telephone and address, shared Business-type labels, component tests, human visual approval. | Standard | Human visual approval before Phase 4 |
+| 2B (committed) | Published Business and Catalog contracts, `publicprofile` module, one security rule, allowlisted records, PostgreSQL integration tests. | Strict (first unauthenticated surface) | Own approval and commit; Phase 2A accepted |
+| 3 (implemented, awaiting human visual review) | Public application, exact-match routing, page and states, metadata hook, shared Business-type labels, component tests, human visual approval. | Standard | Human visual approval before Phase 4 |
 | 4 | Playwright acceptance, documentation reconciliation (README, roadmap, testing strategy, implementation plan, UI guide §13, stale status text), completion report, review archive. | Standard | Green verification; issue closure only with explicit approval |
 
 Phases 2A and 2B are separate because 2A changes an existing administration
@@ -376,7 +377,7 @@ tests, and the wider 12-file affected-area selection (`src/platform`,
 `reservedSlugs.test.ts`, `src/ui`) passes 166. The full frontend suite passes 861 tests
 in 44 files.
 
-## Phase 2B record (implemented, awaiting review, not committed)
+## Phase 2B record (committed)
 
 Phase 2B adds only the backend contract. No frontend, migration, dependency, workflow, booking,
 availability, or metadata change was made.
@@ -408,7 +409,7 @@ no other key exists. The 404 body, identical for every unavailable case, is:
 
 **Allowlist reading.** `phone` and the structured `address` are in the allowlist because D2 of this
 record and ADR-0017 approve them as public when entered (there are no visibility flags and no
-schema change). Phase 3 adds the explanatory copy on the platform form, not the data.
+schema change). Phase 3 adds the public page, not the data; the platform form carries no explanation of public visibility.
 `contact_email`, timezone, status, every identifier, version, timestamp, owner and Membership
 data, StaffMembers, schedules and exceptions, inactive Services, and any currency or booking
 property are never serialized.
@@ -459,5 +460,85 @@ snapshot between reads), `PublicBusinessProfileAccessServiceTests`,
 the completion report.
 
 **Remaining.** Phase 3: the public React page, exact-match routing, states, metadata hook, the
-explanatory telephone and address copy, shared Business-type labels, and human visual approval.
+shared Business-type labels, and human visual approval.
 Phase 4: browser acceptance and documentation reconciliation. Issue #18 owns booking.
+
+## Phase 3 record (implemented, awaiting human visual review, not committed)
+
+Phase 3 adds only the public React page, its routing and metadata hook, shared Business-type
+labels and the platform-form explanations. No backend file, migration (V1–V9 unchanged),
+dependency, booking, availability, Customer or Playwright work was added.
+
+**Routing** (`frontend/src/public/route.ts`, `AppRoot.tsx`). The application is chosen once at load:
+an exact `/{slug}` path opens the public page, everything else the existing application. A slug
+is one ASCII segment matching `^[A-Za-z0-9]+(-[A-Za-z0-9]+)*$` of at most 100 characters,
+lowercased, and not one of the 19 reserved roots. An uppercase slug or a trailing slash is
+canonicalized with `history.replaceState` (query and hash kept); the public page never pushes
+history. The root, deeper paths (`/{slug}/book`), reserved roots, invalid slugs and percent-encoded
+paths are not public routes and stay with the existing application unchanged (the login page
+for an unknown path, as before). A valid slug that merely contains a reserved word
+(`/salon-invitation`) is a Business. The hash is never inspected, so `/#/business/...` and
+`/#/platform/...` stay with administration. A popstate re-reads the URL (switching slug aborts the
+old request); an entry that belongs to the other application forces a full reload, chosen again at
+load. The public page never calls `/api/auth/session` or the CSRF endpoint.
+
+**Request.** Exactly `GET {API}/api/public/businesses/{encodeURIComponent(slug)}` with
+`credentials: 'omit'`, an `Accept` header only, no body and no CSRF token; no browser storage or
+cookie is written. The response is decoded by copying only the documented fields; anything else is
+a load failure. The previous request is aborted on slug change and unmount, a response of a
+superseded slug or attempt is never rendered, nothing of the previous Business shows while another
+loads, there is no automatic retry, and one activation of «Опитайте отново» sends one request.
+
+**States** (Bulgarian, text as tabled above): loading (`role="status"`, no heading, shell metadata),
+profile, profile without active Services, the single unavailable page (no slug echo, no link) and the
+load failure (distinct text, one retry button, no raw detail). Focus moves to the `h1` after load or
+failure. Loading has no `h1`; every other state has exactly one. The page has a `header` (plain
+text wordmark, not a link) and a `main`.
+
+**Presentation.** `h1` display name, a content-sized Business-type chip (labels from the new shared
+`business/businessType.ts`, also used by the platform administration; an unknown value degrades to
+«Друг»), the description (line breaks kept, text only), «Контакти» only when a phone or address
+exists, «Услуги» as a semantic list of cards in backend order with the existing duration and EUR
+helpers, and the static booking notice. The phone is a `tel:` link only when at least three digits
+remain; the link keeps only an optional `+` and digits (arbitrary text never reaches the URL), else
+the value is plain text. The address is plain text lines (`street number`, `postal code city`,
+`details`), missing parts omitted, whole section omitted when there is none; no map link. No
+sorting, pagination or search (§15.1 does not apply: read-only list of cards). Long names wrap
+(`overflow-wrap: anywhere`, `min-width: 0`).
+
+**Metadata** (`public/usePageMetadata.ts`, one hook). Profile: title `{name} – SpotYourSlot`,
+description (the Business description collapsed and cut at a word boundary within 160 characters,
+otherwise «Информация и услуги на {name}.»), canonical `{origin}/{slug}`. Unavailable and failure:
+title `Страницата не е налична – SpotYourSlot`, `noindex`, no canonical, shell description kept. Loading uses
+the shell defaults (no distinct loading metadata was approved). Changing metadata or unmounting
+restores the previous values and removes elements the hook created. Values are written through
+attributes and `document.title` only. No Open Graph, structured data, sitemap or robots file.
+
+**Platform form.** Final product decision (human review correction): telephone and address are
+public when populated (D2), but the administration form shows no explanatory copy about it and
+no visibility control. The two notes first implemented in Phase 3 were removed again; the form,
+its labels, validation, ARIA and unsaved-changes guard are as before Phase 3 (only the
+immutable-slug note from Phase 2A remains). The contact email stays private. Tests prove that
+neither retired sentence nor an empty note container, group or dangling `aria-describedby`
+exists in create, DRAFT, ACTIVE and SUSPENDED modes.
+
+**Automated evidence.** Focused selection (public, `AppRoot`, `businessType`, platform Business,
+`reservedSlugs`, `layoutRules`): 14 files, 259 tests. Full frontend suite: 50 files, 999 tests (861 before). `npm run lint`, `npm run build` and `git diff --check` pass. The backend suite and
+Playwright were not run (no backend or E2E change).
+
+**Rendered developer review** (built-in browser; not the human approval). Disposable PostgreSQL
+18.4 container, backend and Vite on fresh ports; fixtures created only through the supported API
+(ACTIVE full, minimal, zero active Services, long text with a 100-character slug and ten
+Services, DRAFT, SUSPENDED, unknown slug, an inactive Service proven hidden). The temporary
+failure was simulated by a review-only proxy outside the repository. Reviewed at 1280, 1024, 800,
+640 (200% zoom equivalent), 412 (Pixel 7 width) and 375: no horizontal overflow measured at any
+of them for the long fixture, long text wraps, optional sections disappear cleanly, the three
+unavailable cases are identical, refresh keeps the Business, canonicalization replaces the URL,
+the failure state never showed the simulated internal detail and retry sent one request per
+click, and the phone link's focus ring is visible and clear of the labels. Review defects
+found and fixed: service facts stacked on narrow screens, heavy nested padding, and an oversized
+phone link box that made the focus ring overlap its label. Limitations: the Pixel 7 check used its width, not device emulation. Human visual approval is
+still required.
+
+**Remaining.** Human visual approval; Phase 4 (Playwright acceptance, documentation
+reconciliation, UI guide §13 composition rules); issue #18 owns booking.

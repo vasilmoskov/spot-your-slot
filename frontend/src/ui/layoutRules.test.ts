@@ -76,3 +76,38 @@ describe('schedule-change table', () => {
     expect(rule('.status-badge-info')).toContain('background: var(--color-action-primary-subtle)')
   })
 })
+
+describe('public Business page layout', () => {
+  it('keeps the page a single readable column that can never widen the viewport', () => {
+    const main = rule('.public-main')
+    expect(main).toContain('max-width: 44rem')
+    expect(main).toContain('min-width: 0')
+    expect(main).toContain('margin-inline: auto')
+    expect(main).toContain('gap: var(--space-5)')
+  })
+
+  it('wraps every user-supplied public text instead of overflowing', () => {
+    for (const selector of [
+      '.public-profile h1,\n.public-state h1',
+      '.public-description',
+      '.public-facts dd,\n.public-service-facts dd',
+      '.public-service h3',
+      '.public-type-chip',
+    ]) {
+      expect(rule(selector), selector).toContain('overflow-wrap: anywhere')
+    }
+    expect(rule('.public-description')).toContain('white-space: pre-line')
+  })
+
+  it('uses gap as the only spacing between siblings and sizes chips and notices to content', () => {
+    expect(css).toMatch(/\.public-profile-header > \*,\n\.public-section > \*,\n\.public-state > \* \{\s*margin: 0;/)
+    for (const selector of ['.public-type-chip', '.public-notice']) {
+      expect(rule(selector), selector).toContain('width: fit-content')
+      expect(rule(selector), selector).toContain('max-width: 100%')
+    }
+    // Standalone link: at least the 24px WCAG 2.2 target, without a taller box
+    // whose focus ring would overlap the neighbouring labels.
+    expect(rule('.public-phone')).toContain('min-height: 1.5rem')
+    expect(rule('.public-phone')).not.toContain('margin')
+  })
+})
