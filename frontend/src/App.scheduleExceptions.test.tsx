@@ -609,14 +609,17 @@ describe('list window preservation', () => {
     fireEvent.change(screen.getByLabelText('До'), { target: { value: '2026-11-10' } })
     fireEvent.click(screen.getByRole('button', { name: 'Добави' }))
     await screen.findByText('Промяната е добавена.')
+    // The feedback is shown before the detail finishes loading; wait for the
+    // loaded detail (its back button) before asserting the layout structure.
+    const backButton = await screen.findByRole('button', { name: 'Обратно към графика' })
 
     const main = document.querySelector('main.platform-main')!
     const children = Array.from(main.children)
     expect(children).toHaveLength(3)
     expect(children[0]).toHaveClass('platform-page-header')
     expect(children[1]).toHaveTextContent('Промяната е добавена.')
-    expect(children[1]).not.toContainElement(screen.getByRole('button', { name: 'Обратно към графика' }))
-    expect(children[2]).toContainElement(screen.getByRole('button', { name: 'Обратно към графика' }))
+    expect(children[1]).not.toContainElement(backButton)
+    expect(children[2]).toContainElement(backButton)
   })
 
   it('delete returns to the same window', async () => {
