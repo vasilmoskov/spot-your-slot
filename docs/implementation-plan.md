@@ -115,7 +115,11 @@ working periods were delivered by issue #16 (see Phase 5).
   notice, grid and buffers, confirmed-appointment impact warnings, and a
   single-calendar date-range picker are recorded follow-ups.
 - Generic public Business/Profile/Service APIs and Bulgarian UI through slot
-  selection.
+  selection. Issue #17 delivers the read-only public Business profile first
+  (Phase 1 decisions recorded in `docs/tasks/06a-public-business-profile.md`,
+  ADR-0017 and ADR-0018; implementation pending in Phases 2A, 2B, 3, and 4);
+  the public availability endpoint, Service and StaffMember selection, and slot
+  selection remain issue #18 work.
 - Exit: DST/boundary/cancelled-slot/assignment and BusinessType parity pass.
 
 ## Phase 6 — transactional booking and Customers

@@ -102,6 +102,15 @@ Bulgarian mobile-first flow is:
 5. accept privacy information and cancellation rules;
 6. submit and receive a confirmation page, email, and secure cancellation link.
 
+Issue #17 delivers only the profile part of this page (decisions in
+[task 06a](tasks/06a-public-business-profile.md), not yet implemented): display
+name, Business type, optional description, optional telephone and structured
+address (both public when entered), and active Services with duration and EUR
+price, at the top-level `/{businessSlug}`. It shows no StaffMember, no
+availability, and no booking action; issue #18 owns the flow below. Business
+contact email and timezone are not public. After first activation the slug is
+immutable, and reserved paths cannot be slugs.
+
 Each Business has one unique slug/URL. The backend revalidates availability in
 the booking transaction. A lost race returns HTTP 409 with a safe Bulgarian
 message asking the Customer to choose another time.
@@ -243,6 +252,7 @@ Approved Phase 2 decisions set server-managed session storage, a 12-hour maximum
 lifetime, and a two-hour idle timeout. Before launch, humans still decide
 retention periods, privacy/legal wording and roles, any audited PLATFORM_ADMIN
 support access, frontend/calendar libraries and styling, hosting vendors/region/
-budget/backups/recovery, email domain/templates/retry window, slug redirects and
-reserved words, and phone-normalization handling. Exact dependency/tool versions
+budget/backups/recovery, email domain/templates/retry window, slug redirects
+(reserved words and post-activation slug immutability are decided for
+issue #17 in ADR-0018), and phone-normalization handling. Exact dependency/tool versions
 are selected during bootstrap under the documented compatibility policy.

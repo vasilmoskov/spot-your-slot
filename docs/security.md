@@ -314,6 +314,30 @@ incorrect existing-User password returns 400
 email prevents a second global User. Frontend password confirmation is
 local-only and is never sent or persisted.
 
+## Public Business profile (planned, issue #17)
+
+Decided in ADR-0017 and ADR-0018; not yet implemented. One unauthenticated
+`GET /api/public/businesses/{slug}` will be the only new public route; every other
+route and verb remains authenticated, CSRF and the exact-origin CORS policy are
+unchanged, and the response never depends on identity. Only an ACTIVE Business
+resolves. DRAFT, SUSPENDED, unknown, malformed, and formerly used slugs all return
+one identical 404 (`BUSINESS_PAGE_UNAVAILABLE`, «Страницата не е налична.») so
+lifecycle state and tenant existence are not revealed; a malformed slug is
+rejected before any query. The body is an allowlist: slug, display name, Business
+type, optional description, optional telephone, optional structured address, and
+each active Service's name, description, duration, and EUR price. `contact_email`,
+timezone, status, identifiers, versions, timestamps, owner and Membership data,
+StaffMembers, and inactive Services are never public. Responses keep the default
+`no-store` headers. The endpoint writes nothing and creates no Customer,
+Appointment, or session state.
+
+There is deliberately no application-level rate limiter for this read-only,
+index-backed endpoint and no cap on the number of active Services returned;
+edge or CDN limiting and the public availability and booking endpoints are later
+work, and this limitation is documented rather than mitigated. After first
+activation a Business slug is immutable and reserved path roots cannot be slugs
+(ADR-0018), so a shared link cannot be re-pointed at a different Business.
+
 ## Public endpoint and booking controls
 
 Availability, booking, login, reset, invitation, and cancellation endpoints
