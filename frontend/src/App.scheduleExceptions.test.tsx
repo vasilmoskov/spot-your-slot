@@ -467,7 +467,7 @@ describe('Business-scoped state invalidation', () => {
     history.replaceState(
       {},
       '',
-      '/#/business/schedule/exceptions?from=2026-10-01&to=2026-10-30&page=0&size=10&sort=dates&direction=asc',
+      '/#/business/schedule/exceptions?from=2026-03-02&to=2026-03-31&page=0&size=10&sort=dates&direction=asc',
     )
     let resolveA!: (value: ScheduleExceptionWindow) => void
     mockedList.mockImplementationOnce(
@@ -483,7 +483,7 @@ describe('Business-scoped state invalidation', () => {
 
     rerender(<Harness session={businessB} />)
     await screen.findByRole('table')
-    expect(window.location.hash).not.toContain('from=2026-10-01')
+    expect(window.location.hash).not.toContain('from=2026-03-02')
     const today = localDateIn(new Date(), 'Europe/Sofia')!
     await waitFor(() =>
       expect(window.location.hash).toBe(
@@ -492,11 +492,11 @@ describe('Business-scoped state invalidation', () => {
     )
 
     await act(async () => {
-      resolveA(windowOf('2026-10-01', '2026-10-30', [record({ id: 'a-1', firstDate: '2026-10-05', lastDate: '2026-10-05' })]))
+      resolveA(windowOf('2026-03-02', '2026-03-31', [record({ id: 'a-1', firstDate: '2026-03-05', lastDate: '2026-03-05' })]))
       await Promise.resolve()
     })
 
-    expect(screen.queryByText('05.10.2026')).not.toBeInTheDocument()
+    expect(screen.queryByText('05.03.2026')).not.toBeInTheDocument()
     expect(screen.getAllByRole('row')).toHaveLength(2)
   })
 
