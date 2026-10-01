@@ -67,7 +67,9 @@ export function PublicBusinessPage({ slug }: { slug: string }) {
   return (
     <div className="public-page">
       <header className="public-topbar">
-        <span className="public-wordmark">{SITE_NAME}</span>
+        <div className="public-topbar-inner">
+          <span className="public-wordmark">{SITE_NAME}</span>
+        </div>
       </header>
       <main className="public-main">
         {!view && (
@@ -102,6 +104,22 @@ export function PublicBusinessPage({ slug }: { slug: string }) {
   )
 }
 
+function PhoneIcon() {
+  return (
+    <svg className="public-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25c1.1.37 2.3.57 3.6.57a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z" />
+    </svg>
+  )
+}
+
+function PinIcon() {
+  return (
+    <svg className="public-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M12 2a7 7 0 0 0-7 7c0 5.25 7 13 7 13s7-7.75 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z" />
+    </svg>
+  )
+}
+
 function PublicProfile({
   profile,
   headingRef,
@@ -112,53 +130,56 @@ function PublicProfile({
   const phone = profile.phone?.trim() ?? ''
   const dialable = phone === '' ? null : dialableNumber(phone)
   const lines = addressLines(profile.address)
-  const hasContacts = phone !== '' || lines.length > 0
 
   return (
     <div className="public-profile">
-      <header className="public-profile-header">
-        <h1 ref={headingRef} tabIndex={-1}>
-          {profile.displayName}
-        </h1>
-        <span className="public-type-chip">{businessTypeLabel(profile.businessType)}</span>
-        {profile.description && <p className="public-description">{profile.description}</p>}
-      </header>
+      <section className="public-hero">
+        <div className="public-hero-identity">
+          <span className="public-type-chip">{businessTypeLabel(profile.businessType)}</span>
+          <h1 ref={headingRef} tabIndex={-1}>
+            {profile.displayName}
+          </h1>
+          {profile.description && <p className="public-description">{profile.description}</p>}
+        </div>
 
-      {hasContacts && (
-        <section className="public-section" aria-labelledby="public-contacts-heading">
-          <h2 id="public-contacts-heading">Контакти</h2>
-          <dl className="public-facts">
+        {(phone !== '' || lines.length > 0) && (
+          <ul className="public-contacts">
             {phone !== '' && (
-              <div>
-                <dt>Телефон</dt>
-                <dd>
-                  {dialable ? (
-                    <a className="text-link public-phone" href={`tel:${dialable}`}>
-                      {phone}
-                    </a>
-                  ) : (
-                    phone
-                  )}
-                </dd>
-              </div>
+              <li>
+                <PhoneIcon />
+                <span className="visually-hidden">Телефон: </span>
+                {dialable ? (
+                  <a className="text-link public-phone" href={`tel:${dialable}`}>
+                    {phone}
+                  </a>
+                ) : (
+                  <span>{phone}</span>
+                )}
+              </li>
             )}
             {lines.length > 0 && (
-              <div>
-                <dt>Адрес</dt>
-                <dd>
+              <li>
+                <PinIcon />
+                <span className="visually-hidden">Адрес: </span>
+                <span className="public-address">
                   {lines.map((line) => (
                     <span key={line} className="public-address-line">
                       {line}
                     </span>
                   ))}
-                </dd>
-              </div>
+                </span>
+              </li>
             )}
-          </dl>
-        </section>
-      )}
+          </ul>
+        )}
 
-      <section className="public-section" aria-labelledby="public-services-heading">
+        {/* Booking entry: issue #18 replaces this message with, or adds, the real action. */}
+        <div className="public-booking">
+          <p>Онлайн запазването на час все още не е налично.</p>
+        </div>
+      </section>
+
+      <section className="public-services-section" aria-labelledby="public-services-heading">
         <h2 id="public-services-heading">Услуги</h2>
         {profile.services.length === 0 ? (
           <p className="public-empty">В момента няма налични услуги за онлайн записване.</p>
@@ -166,16 +187,18 @@ function PublicProfile({
           <ul className="public-services">
             {profile.services.map((service, index) => (
               <li key={`${index}-${service.name}`} className="public-service">
-                <h3>{service.name}</h3>
-                {service.description && (
-                  <p className="public-description">{service.description}</p>
-                )}
+                <div className="public-service-main">
+                  <h3>{service.name}</h3>
+                  {service.description && (
+                    <p className="public-description">{service.description}</p>
+                  )}
+                </div>
                 <dl className="public-service-facts">
                   <div>
                     <dt>Продължителност</dt>
                     <dd>{formatServiceDuration(service.durationMinutes)}</dd>
                   </div>
-                  <div>
+                  <div className="public-service-price">
                     <dt>Цена</dt>
                     <dd>{formatServicePrice(service.price)}</dd>
                   </div>
@@ -185,8 +208,6 @@ function PublicProfile({
           </ul>
         )}
       </section>
-
-      <p className="public-notice">Онлайн запазването на час все още не е налично.</p>
     </div>
   )
 }

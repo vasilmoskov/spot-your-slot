@@ -611,8 +611,8 @@ so races are deterministic and use no timers.
 - **API client** — `api.test.ts`: URL encoding, `credentials: 'omit'`, no body or CSRF header, exact
   field decoding (extra properties dropped), the unavailable answer, malformed and unexpected
   bodies, network failure and abort.
-- **Page** — `PublicBusinessPage.test.tsx`: loading, every approved field, one `h1` and heading
-  order, focus, missing and partial contacts, plain-text phone, unsafe phone text, empty and
+- **Page** — `PublicBusinessPage.test.tsx`: loading, the hero with identity, contacts and booking panel, Services as standalone
+  items, one `h1` and heading order, focus, missing and partial contacts, plain-text phone, unsafe phone text, empty and
   many Services in backend order, text-not-markup, unknown Business type, unavailable and failure
   states, exactly one request per retry, stale/aborted responses of a changed slug or attempt,
   unmount, metadata for every state and its restoration, and no storage or cookie write.
@@ -622,6 +622,6 @@ so races are deterministic and use no timers.
   controls, dirty tracking unchanged), and CSS guards in `layoutRules.test.ts` for
   the durable public layout rules jsdom cannot evaluate.
 
-Executed: focused selection 14 files, 259 tests; full frontend suite 50 files, 999 tests.
+Executed: focused selection 14 files, 264 tests; full frontend suite 50 files, 1004 tests.
 Rendered developer review at 1280, 1024, 800, 640, 412 and 375 px is recorded in
 `docs/tasks/06a-public-business-profile.md`; it is not the human visual approval.

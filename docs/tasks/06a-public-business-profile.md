@@ -207,12 +207,12 @@ redesign. No availability, slot, or reservation appears.
 | Loading (`role="status"`) | «Зареждане на страницата…» |
 | Unavailable (identical for every 404) | Heading «Страницата не е налична»; body «Проверете адреса или опитайте по-късно.»; no link |
 | Load failure | «Страницата не може да бъде заредена.» / «Проверете връзката си и опитайте отново.»; button «Опитайте отново» |
-| Header | `<h1>` display name; content-sized chip with the Business-type label |
+| Hero | One coherent section: content-sized Business-type chip, `<h1>` display name, optional description, compact contacts, booking message |
 | Description | Paragraph beneath the header (text only, wrapping) |
-| Contacts (only when data exists) | «Контакти»: «Телефон» (sanitized `tel:` link, plain text if nothing dialable remains), «Адрес» (plain structured text) |
-| Services | «Услуги»: card with name, description, «Продължителност», «Цена» (existing `formatServiceDuration` and `formatServicePrice`) |
+| Contacts (only when data exists) | Icon list inside the hero, no separate heading or card: the telephone (sanitized `tel:` link, plain text if nothing dialable remains) and the address (plain structured text); the labels «Телефон:» and «Адрес:» are visually hidden for assistive technology |
+| Services | «Услуги» heading directly above one standalone item per Service: name, description, «Продължителност» and «Цена» with the price emphasized (existing `formatServiceDuration` and `formatServicePrice`) |
 | No active Services | «В момента няма налични услуги за онлайн записване.» |
-| Booking notice | «Онлайн запазването на час все още не е налично.» |
+| Booking notice | «Онлайн запазването на час все още не е налично.», inside the hero, in its own content-sized panel that a future booking action (issue #18) can replace or accompany |
 
 Address is plain text (`street streetNumber`, `postalCode city`, `details`); no
 map SDK, embedded map, or third-party map link. Missing parts are omitted. Focus
@@ -495,16 +495,23 @@ load failure (distinct text, one retry button, no raw detail). Focus moves to th
 failure. Loading has no `h1`; every other state has exactly one. The page has a `header` (plain
 text wordmark, not a link) and a `main`.
 
-**Presentation.** `h1` display name, a content-sized Business-type chip (labels from the new shared
-`business/businessType.ts`, also used by the platform administration; an unknown value degrades to
-«Друг»), the description (line breaks kept, text only), «Контакти» only when a phone or address
-exists, «Услуги» as a semantic list of cards in backend order with the existing duration and EUR
-helpers, and the static booking notice. The phone is a `tel:` link only when at least three digits
-remain; the link keeps only an optional `+` and digits (arbitrary text never reaches the URL), else
-the value is plain text. The address is plain text lines (`street number`, `postal code city`,
-`details`), missing parts omitted, whole section omitted when there is none; no map link. No
-sorting, pagination or search (§15.1 does not apply: read-only list of cards). Long names wrap
-(`overflow-wrap: anywhere`, `min-width: 0`).
+**Presentation.** The functional page was committed as a savepoint first; a visual pass then
+replaced the administration-like stack of nested cards. The page is a `header` (plain-text
+wordmark, aligned to the content column) and a `main` of max 60rem. The hero is a single section
+with a restrained tinted background and one border: a content-sized Business-type chip (labels from
+the shared `business/businessType.ts`; an unknown value degrades to «Друг»), the `h1`, the
+description (line breaks kept, text only), a contacts list and the booking panel. The contacts
+list exists only when a telephone or address exists; it uses two small inline SVG icons (no
+library, `aria-hidden`), wraps to one column when narrow, and its hidden «Телефон:» / «Адрес:»
+labels keep the meaning for screen readers. The phone is a `tel:` link only when at least three
+digits remain and keeps only an optional `+` and digits; otherwise plain text. The address is plain
+text lines (`street number`, `postal code city`, `details`), missing parts omitted, no map link.
+«Услуги» is a heading plus a semantic list with one bordered item per Service (no surrounding
+card): name and description take the flexible column, duration and the emphasized EUR price form a
+compact right-aligned area from 48rem up and stack under the text below it. The empty state is
+plain muted text. There is no sorting, pagination or search (§15.1 does not apply: a read-only
+list). Long names wrap (`overflow-wrap: anywhere`, `min-width: 0`). The page has no «Контакти»
+section heading any more, so the heading hierarchy is `h1`, «Услуги» `h2`, Service `h3`.
 
 **Metadata** (`public/usePageMetadata.ts`, one hook). Profile: title `{name} – SpotYourSlot`,
 description (the Business description collapsed and cut at a word boundary within 160 characters,
@@ -523,22 +530,25 @@ neither retired sentence nor an empty note container, group or dangling `aria-de
 exists in create, DRAFT, ACTIVE and SUSPENDED modes.
 
 **Automated evidence.** Focused selection (public, `AppRoot`, `businessType`, platform Business,
-`reservedSlugs`, `layoutRules`): 14 files, 259 tests. Full frontend suite: 50 files, 999 tests (861 before). `npm run lint`, `npm run build` and `git diff --check` pass. The backend suite and
+`reservedSlugs`, `layoutRules`): 14 files, 264 tests. Full frontend suite: 50 files, 1004 tests (861 before Phase 3). `npm run lint`, `npm run build` and `git diff --check` pass. The backend suite and
 Playwright were not run (no backend or E2E change).
 
 **Rendered developer review** (built-in browser; not the human approval). Disposable PostgreSQL
 18.4 container, backend and Vite on fresh ports; fixtures created only through the supported API
-(ACTIVE full, minimal, zero active Services, long text with a 100-character slug and ten
-Services, DRAFT, SUSPENDED, unknown slug, an inactive Service proven hidden). The temporary
-failure was simulated by a review-only proxy outside the repository. Reviewed at 1280, 1024, 800,
-640 (200% zoom equivalent), 412 (Pixel 7 width) and 375: no horizontal overflow measured at any
-of them for the long fixture, long text wraps, optional sections disappear cleanly, the three
-unavailable cases are identical, refresh keeps the Business, canonicalization replaces the URL,
-the failure state never showed the simulated internal detail and retry sent one request per
-click, and the phone link's focus ring is visible and clear of the labels. Review defects
-found and fixed: service facts stacked on narrow screens, heavy nested padding, and an oversized
-phone link box that made the focus ring overlap its label. Limitations: the Pixel 7 check used its width, not device emulation. Human visual approval is
-still required.
+(ACTIVE full, minimal, zero active Services, long text with a 100-character slug and ten Services,
+DRAFT, SUSPENDED, unknown slug, an inactive Service proven hidden); the temporary failure was
+simulated by a review-only proxy outside the repository. Functional pass: 1280, 1024, 800, 640,
+412 and 375 px, no horizontal overflow on the long fixture. Visual redesign pass (screenshots by
+eye): full profile at 1280, 1024 (long fixture, including its contacts and Services after
+scrolling), 640 and 375; the minimal, no-Services, SUSPENDED (unavailable) and retryable-failure
+states at 375; keyboard focus on the telephone at 1280; one request per retry click; overflow
+measured at 1280, 1024, 640 and 375. Defects found and fixed across both passes: Service facts
+stacking on narrow screens, heavy nested padding, an oversized phone box whose focus ring
+overlapped its label, and a tall right-hand facts column (now side by side). Known limitations: on
+wide screens the hero's right side is empty by design (restrained, no invented content); the
+platform form was not viewed in a rendered browser in the redesign pass (unchanged since Phase 2A);
+the Pixel 7 check used its width, not device emulation; the two administration-form notes stay
+removed. Human visual approval is still required.
 
 **Remaining.** Human visual approval; Phase 4 (Playwright acceptance, documentation
 reconciliation, UI guide §13 composition rules); issue #18 owns booking.

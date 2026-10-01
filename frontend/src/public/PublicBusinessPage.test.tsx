@@ -88,27 +88,50 @@ describe('loading', () => {
 })
 
 describe('profile', () => {
-  it('presents every approved field', async () => {
-    await renderLoaded()
+  it('presents the identity, contacts and booking notice together in one hero', async () => {
+    const { container } = await renderLoaded()
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Примерно студио' })).toBeInTheDocument()
-    expect(screen.getByText('Фризьорски салон')).toBeInTheDocument()
-    expect(screen.getByText('Уютно студио в центъра.')).toBeInTheDocument()
+    const hero = container.querySelector('.public-hero') as HTMLElement
+    expect(hero).not.toBeNull()
+    expect(hero).toContainElement(screen.getByRole('heading', { level: 1, name: 'Примерно студио' }))
+    expect(hero).toContainElement(screen.getByText('Фризьорски салон'))
+    expect(hero).toContainElement(screen.getByText('Уютно студио в центъра.'))
 
     const phone = screen.getByRole('link', { name: '+359 88 000 0000' })
     expect(phone).toHaveAttribute('href', 'tel:+359880000000')
+    expect(hero).toContainElement(phone)
 
-    const contacts = screen.getByRole('region', { name: 'Контакти' })
-    expect(contacts).toHaveTextContent('Телефон')
-    expect(contacts).toHaveTextContent('Адрес')
-    expect(contacts).toHaveTextContent('Примерна улица 1')
+    const contacts = container.querySelector('.public-contacts') as HTMLElement
+    expect(hero).toContainElement(contacts)
+    expect(contacts).toHaveTextContent('Телефон: +359 88 000 0000')
+        expect(contacts).toHaveTextContent('Примерна улица 1')
     expect(contacts).toHaveTextContent('1000 София')
     expect(contacts).toHaveTextContent('вход Б')
+    // Decorative icons are hidden from assistive technology.
+    for (const icon of hero.querySelectorAll('svg')) {
+      expect(icon).toHaveAttribute('aria-hidden', 'true')
+    }
 
-    const services = screen.getByRole('list')
-    const items = screen.getAllByRole('listitem')
+    // The booking state is part of the main profile flow, not a detached box.
+    const notice = screen.getByText('Онлайн запазването на час все още не е налично.')
+    expect(hero).toContainElement(notice)
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+  })
+
+  it('lists the Services directly beneath their heading, each as one standalone item', async () => {
+    const { container } = await renderLoaded()
+
+    const section = screen.getByRole('region', { name: 'Услуги' })
+    expect(section).not.toContainElement(container.querySelector('.public-hero') as HTMLElement)
+    const items = screen.getAllByRole('listitem').filter((item) => section.contains(item))
     expect(items).toHaveLength(2)
-    expect(services).toContainElement(items[0]!)
+    // One bordered item per Service: no wrapping card around the collection and
+    // no nested list, article or section inside an item.
+    expect(section.parentElement?.className).toBe('public-profile')
+    for (const item of items) {
+      expect(item.parentElement?.tagName).toBe('UL')
+      expect(item.querySelector('ul, ol, section, article')).toBeNull()
+    }
     expect(items[0]).toHaveTextContent('Подстригване')
     expect(items[0]).toHaveTextContent('Измиване и оформяне.')
     expect(items[0]).toHaveTextContent('Продължителност45 мин.')
@@ -116,8 +139,6 @@ describe('profile', () => {
     expect(items[1]).toHaveTextContent('Боядисване')
     expect(items[1]).toHaveTextContent('Продължителност120 мин.')
     expect(items[1]).toHaveTextContent('Цена80.50 €')
-
-    expect(screen.getByText('Онлайн запазването на час все още не е налично.')).toBeInTheDocument()
   })
 
   it('has exactly one h1 and a logical heading order', async () => {
@@ -128,7 +149,6 @@ describe('profile', () => {
       screen.getAllByRole('heading').map((heading) => [heading.tagName, heading.textContent]),
     ).toEqual([
       ['H1', 'Примерно студио'],
-      ['H2', 'Контакти'],
       ['H2', 'Услуги'],
       ['H3', 'Подстригване'],
       ['H3', 'Боядисване'],
@@ -157,32 +177,37 @@ describe('profile', () => {
   it('omits the whole contacts section when neither telephone nor address exists', async () => {
     await renderLoaded({ phone: null, address: null, description: null })
 
-    expect(screen.queryByRole('region', { name: 'Контакти' })).not.toBeInTheDocument()
-    expect(screen.queryByText('Телефон')).not.toBeInTheDocument()
-    expect(screen.queryByText('Адрес')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Телефон/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Адрес/)).not.toBeInTheDocument()
     expect(screen.queryByRole('link')).not.toBeInTheDocument()
-    expect(document.querySelector('.public-profile-header .public-description')).toBeNull()
+    expect(document.querySelector('.public-contacts')).toBeNull()
+    expect(document.querySelector('.public-hero .public-description')).toBeNull()
+    expect(document.querySelector('.public-icon')).toBeNull()
+    // The hero still carries identity and the booking message without empty boxes.
+    for (const element of document.querySelectorAll('.public-hero *')) {
+      if (element.tagName !== 'svg') expect(element.textContent?.trim()).not.toBe('')
+    }
   })
 
   it('shows only the telephone when there is no address, and only the address otherwise', async () => {
     const { unmount } = await renderLoaded({ address: null })
-    expect(screen.getByText('Телефон')).toBeInTheDocument()
-    expect(screen.queryByText('Адрес')).not.toBeInTheDocument()
+    expect(screen.getByText(/Телефон/)).toBeInTheDocument()
+    expect(screen.queryByText(/Адрес/)).not.toBeInTheDocument()
     unmount()
     pending = []
 
     render(<PublicBusinessPage slug="example-studio" />)
     await settle(0, { kind: 'profile', profile: { ...profile, phone: null } })
-    expect(screen.queryByText('Телефон')).not.toBeInTheDocument()
-    expect(screen.getByText('Адрес')).toBeInTheDocument()
+    expect(screen.queryByText(/Телефон/)).not.toBeInTheDocument()
+    expect(screen.getByText(/Адрес/)).toBeInTheDocument()
   })
 
   it('renders a partial address without separators or placeholders', async () => {
     await renderLoaded({
       address: { city: 'Пловдив', postalCode: null, street: null, streetNumber: null, details: null },
     })
-    const contacts = screen.getByRole('region', { name: 'Контакти' })
-    expect(contacts).toHaveTextContent('АдресПловдив')
+    const contacts = document.querySelector('.public-contacts') as HTMLElement
+    expect(contacts).toHaveTextContent('Адрес: Пловдив')
     expect(contacts.textContent).not.toMatch(/[—–]|null|undefined|,\s*,/)
   })
 
@@ -204,13 +229,13 @@ describe('profile', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Примерно студио' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '+359 88 000 0000' })).toBeInTheDocument()
     expect(screen.getByText('В момента няма налични услуги за онлайн записване.')).toBeInTheDocument()
-    expect(screen.queryByRole('list')).not.toBeInTheDocument()
+    expect(document.querySelector('.public-services')).toBeNull()
     expect(screen.getByText('Онлайн запазването на час все още не е налично.')).toBeInTheDocument()
   })
 
   it('omits an empty Service description container', async () => {
     await renderLoaded()
-    const second = screen.getAllByRole('listitem')[1]!
+    const second = document.querySelectorAll('.public-service')[1]!
     expect(second.querySelector('.public-description')).toBeNull()
   })
 
@@ -233,6 +258,30 @@ describe('profile', () => {
     expect(document.querySelector('img')).toBeNull()
     expect(document.querySelector('.public-description b')).toBeNull()
     expect(screen.getByText('<b>смело</b>')).toBeInTheDocument()
+  })
+
+  it('keeps long names and descriptions whole and structurally contained', async () => {
+    const longName = 'Н'.repeat(180)
+    const longWord = 'Д'.repeat(400)
+    await renderLoaded({
+      displayName: longName,
+      description: longWord,
+      services: [{ name: longName, description: longWord, durationMinutes: 15, price: 1234.5 }],
+    })
+    const heading = screen.getByRole('heading', { level: 1 })
+    expect(heading).toHaveTextContent(longName)
+    expect(screen.getByRole('heading', { level: 3 })).toHaveTextContent(longName)
+    // Text is never truncated by the page; wrapping is left to CSS.
+    expect(document.body.textContent).toContain(longWord)
+    expect(document.querySelectorAll('.public-service')).toHaveLength(1)
+    expect(document.body.textContent).not.toContain('…')
+  })
+
+  it('does not bring back the retired administration-form explanations', async () => {
+    await renderLoaded()
+    expect(document.body).not.toHaveTextContent('се показва на публичната страница на бизнеса')
+    expect(document.body).not.toHaveTextContent('Телефонът се показва')
+    expect(document.body).not.toHaveTextContent('Адресът се показва')
   })
 
   it('degrades an unknown Business type without exposing it', async () => {

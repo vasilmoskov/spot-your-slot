@@ -78,36 +78,56 @@ describe('schedule-change table', () => {
 })
 
 describe('public Business page layout', () => {
-  it('keeps the page a single readable column that can never widen the viewport', () => {
-    const main = rule('.public-main')
-    expect(main).toContain('max-width: 44rem')
-    expect(main).toContain('min-width: 0')
-    expect(main).toContain('margin-inline: auto')
-    expect(main).toContain('gap: var(--space-5)')
+  it('keeps brand and content in one aligned column that cannot widen the viewport', () => {
+    const column = rule('.public-topbar-inner,\n.public-main')
+    expect(column).toContain('max-width: 60rem')
+    expect(column).toContain('min-width: 0')
+    expect(column).toContain('margin-inline: auto')
+    expect(column).toContain('padding-inline: var(--space-4)')
+    expect(css).toMatch(/\n\.public-main \{\s*display: grid;[^}]*gap: var\(--space-5\)/)
+    expect(rule('.public-profile')).toContain('gap: var(--space-6)')
   })
 
   it('wraps every user-supplied public text instead of overflowing', () => {
     for (const selector of [
       '.public-profile h1,\n.public-state h1',
       '.public-description',
-      '.public-facts dd,\n.public-service-facts dd',
       '.public-service h3',
       '.public-type-chip',
+      '.public-service-facts dd',
     ]) {
       expect(rule(selector), selector).toContain('overflow-wrap: anywhere')
     }
     expect(rule('.public-description')).toContain('white-space: pre-line')
+    expect(rule('.public-contacts > li')).toContain('overflow-wrap: anywhere')
+    expect(rule('.public-contacts > li')).toContain('min-width: 0')
   })
 
   it('uses gap as the only spacing between siblings and sizes chips and notices to content', () => {
-    expect(css).toMatch(/\.public-profile-header > \*,\n\.public-section > \*,\n\.public-state > \* \{\s*margin: 0;/)
-    for (const selector of ['.public-type-chip', '.public-notice']) {
+    expect(css).toMatch(
+      /\.public-hero > \*,\n\.public-hero-identity > \*,\n\.public-services-section > \*,\n\.public-state > \* \{\s*margin: 0;/,
+    )
+    for (const selector of ['.public-type-chip', '.public-booking']) {
       expect(rule(selector), selector).toContain('width: fit-content')
       expect(rule(selector), selector).toContain('max-width: 100%')
     }
     // Standalone link: at least the 24px WCAG 2.2 target, without a taller box
-    // whose focus ring would overlap the neighbouring labels.
+    // whose focus ring would overlap neighbouring content.
     expect(rule('.public-phone')).toContain('min-height: 1.5rem')
     expect(rule('.public-phone')).not.toContain('margin')
+  })
+
+  it('draws one border per Service and none around the collection', () => {
+    expect(rule('.public-service')).toContain('border: 1px solid var(--color-border)')
+    expect(rule('.public-services-section')).not.toContain('border')
+    expect(rule('.public-services-section')).not.toContain('background')
+    expect(rule('.public-services')).not.toContain('border')
+  })
+
+  it('only wraps the Service facts beside the text from the tablet breakpoint up', () => {
+    expect(rule('.public-service')).not.toContain('grid-template-columns')
+    expect(css).toMatch(
+      /@media \(min-width: 48rem\) \{[\s\S]*\.public-service \{\s*grid-template-columns: minmax\(0, 1fr\) auto;/,
+    )
   })
 })

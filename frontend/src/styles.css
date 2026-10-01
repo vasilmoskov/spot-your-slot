@@ -1775,10 +1775,34 @@ label {
   min-height: 100vh;
 }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .public-topbar {
-  padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--color-border);
   background: var(--color-surface);
+}
+
+/* The header shares the content column, so brand and content align. */
+.public-topbar-inner,
+.public-main {
+  width: 100%;
+  max-width: 60rem;
+  min-width: 0;
+  margin-inline: auto;
+  padding-inline: var(--space-4);
+}
+
+.public-topbar-inner {
+  padding-block: var(--space-3);
 }
 
 .public-wordmark {
@@ -1791,28 +1815,41 @@ label {
   display: grid;
   align-content: start;
   gap: var(--space-5);
-  width: 100%;
-  max-width: 44rem;
-  min-width: 0;
-  margin-inline: auto;
-  padding: var(--space-5) var(--space-4) var(--space-6);
+  padding-block: var(--space-5) var(--space-6);
 }
 
 .public-profile,
 .public-state,
-.public-profile-header,
-.public-section {
+.public-hero,
+.public-hero-identity,
+.public-services-section {
   display: grid;
   min-width: 0;
 }
 
 .public-profile {
-  gap: var(--space-5);
+  gap: var(--space-6);
 }
 
-.public-profile-header {
+.public-hero {
+  gap: var(--space-5);
+  padding: var(--space-5) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-action-primary-subtle);
+}
+
+.public-hero-identity {
   justify-items: start;
   gap: var(--space-3);
+}
+
+.public-hero > *,
+.public-hero-identity > *,
+.public-services-section > *,
+.public-state > * {
+  margin: 0;
+  min-width: 0;
 }
 
 .public-profile h1,
@@ -1820,13 +1857,6 @@ label {
   margin: 0;
   font-size: clamp(1.75rem, 6vw, 2.5rem);
   overflow-wrap: anywhere;
-}
-
-.public-profile-header > *,
-.public-section > *,
-.public-state > * {
-  margin: 0;
-  min-width: 0;
 }
 
 .public-type-chip {
@@ -1838,7 +1868,8 @@ label {
   padding: var(--space-1) var(--space-3);
   border-radius: 999px;
   color: var(--color-action-primary-hover);
-  background: var(--color-action-primary-subtle);
+  background: var(--color-surface);
+  border: 1px solid var(--color-action-primary);
   font-size: 0.875rem;
   font-weight: 700;
   overflow-wrap: anywhere;
@@ -1850,58 +1881,75 @@ label {
   white-space: pre-line;
 }
 
-.public-section,
-.public-state {
-  gap: var(--space-4);
-  padding: var(--space-4);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-card);
-  background: var(--color-surface);
-}
-
-.public-section h2 {
-  font-size: 1.25rem;
-}
-
-.public-facts,
-.public-service-facts {
-  display: grid;
-  gap: var(--space-4);
+.public-contacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-6);
   margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.public-facts > div,
-.public-service-facts > div {
-  display: grid;
+.public-contacts > li {
+  display: flex;
+  align-items: flex-start;
   gap: var(--space-2);
   min-width: 0;
-}
-
-.public-facts dt,
-.public-service-facts dt {
-  color: var(--color-text-secondary);
-  font-size: 0.875rem;
-  font-weight: 600;
-}
-
-.public-facts dd,
-.public-service-facts dd {
-  margin: 0;
+  max-width: 100%;
   overflow-wrap: anywhere;
+}
+
+.public-icon {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  /* Aligns the glyph with the first text line (line-height 1.6). */
+  margin-top: 0.15rem;
+  fill: var(--color-action-primary-hover);
+}
+
+.public-address {
+  display: grid;
+  min-width: 0;
 }
 
 .public-address-line {
   display: block;
+  line-height: 1.6;
 }
 
 .public-phone {
   display: inline-block;
   min-height: 1.5rem;
+  font-weight: 600;
+}
+
+.public-booking {
+  width: fit-content;
+  max-width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  color: var(--color-text-primary);
+  background: var(--color-surface);
+}
+
+.public-booking > * {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.public-services-section {
+  gap: var(--space-4);
+}
+
+.public-services-section h2 {
+  font-size: 1.5rem;
 }
 
 .public-services {
   display: grid;
-  gap: var(--space-4);
+  gap: var(--space-3);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -1914,57 +1962,108 @@ label {
   padding: var(--space-4);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
+  background: var(--color-surface);
 }
 
-.public-service > * {
+.public-service-main {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.public-service-main > *,
+.public-service-facts {
   margin: 0;
   min-width: 0;
 }
 
 .public-service h3 {
-  font-size: 1.0625rem;
+  font-size: 1.125rem;
   overflow-wrap: anywhere;
 }
 
 .public-service-facts {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-3) var(--space-5);
+  align-items: baseline;
+  gap: var(--space-2) var(--space-5);
+}
+
+.public-service-facts > div {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.public-service-facts dt {
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 600;
 }
 
 .public-service-facts dd {
-  font-weight: 700;
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
-.public-empty,
+.public-service-price dd {
+  color: var(--color-text-primary);
+  font-size: 1.25rem;
+  font-weight: 800;
+}
+
+.public-empty {
+  margin: 0;
+  color: var(--color-text-secondary);
+}
+
 .public-status {
   margin: 0;
   color: var(--color-text-secondary);
 }
 
-.public-notice {
-  width: fit-content;
-  max-width: 100%;
-  margin: 0;
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
-  color: var(--color-text-secondary);
-  background: var(--color-surface);
-  overflow-wrap: anywhere;
-}
-
 .public-state {
   justify-items: start;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
 }
 
 @media (min-width: 48rem) {
+  .public-topbar-inner,
   .public-main {
-    padding: var(--space-6) var(--space-5);
+    padding-inline: var(--space-5);
   }
 
-  .public-section,
+  .public-main {
+    padding-block: var(--space-6);
+  }
+
+  .public-hero,
   .public-state {
-    padding: var(--space-5);
+    padding: var(--space-6);
+  }
+
+  /* Duration and price form a compact aligned area to the right; the name and
+     description keep the flexible column. */
+  .public-service {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: var(--space-5);
+    padding: var(--space-4) var(--space-5);
+  }
+
+  .public-service-facts {
+    flex-wrap: nowrap;
+    align-items: flex-end;
+    justify-content: flex-end;
+    gap: var(--space-5);
+    text-align: right;
+  }
+
+  .public-service-facts dd {
+    white-space: nowrap;
   }
 }
