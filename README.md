@@ -22,8 +22,12 @@ StaffMember-to-Service assignments, and each StaffMember's recurring weekly
 working schedule through authenticated APIs and through the Bulgarian
 Business-owner configuration interface (Services, Team, assignments, and the
 recurring weekly working schedule). Playwright browser journeys cover that
-configuration and the Business-owner schedule changes; Customers,
-Appointments, booking, production email, and hosting are not implemented.
+configuration and the Business-owner schedule changes. Every ACTIVE Business
+also has a read-only, unauthenticated public profile page at `/{businessSlug}`
+(issue #17: name, type, optional description, telephone and address, and active
+Services, backed by `GET /api/public/businesses/{slug}`); it offers no booking
+action. Customers, Appointments, booking, production email, and hosting are
+not implemented.
 Business closures, StaffMember time off, working-day overrides, and additional
 working periods ("Промени в графика") can be administered through an
 authenticated backend API and the Business-owner interface under "Работно
@@ -386,7 +390,12 @@ The suite contains the Business onboarding and lifecycle journey, the startup
 smoke check, and the Business-owner configuration journey (Services, Staff,
 Service assignments, recurring weekly schedules, unsaved-changes protection,
 DRAFT → ACTIVE → SUSPENDED → ACTIVE behavior, two-Business isolation, storage
-and browser-context isolation, and a focused Pixel 7 mobile smoke check) and the Business-owner schedule
+and browser-context isolation, and a focused Pixel 7 mobile smoke check), the public Business profile
+journey (unauthenticated `/{slug}` access, the public allowlist, lifecycle and
+unknown-slug indistinguishability, two-Business isolation, owner and
+administrator changes reflected publicly, routing, metadata, failure and
+retry, desktop, Pixel 7 and 640px layout checks, and an administration
+regression boundary) and the Business-owner schedule
 changes journey ("Промени в графика": canonical list state, sorting and
 pagination, create, edit and detail-only delete, kind-specific conflict
 feedback, lifecycle, cross-Business and platform-administrator denial, and a

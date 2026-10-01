@@ -483,7 +483,9 @@ cleanup command in `README.md`.
 ## Reserved public roots and stable slug verification
 
 Issue #17 Phase 2A adds backend and frontend tests for the reserved-root and
-stable-slug rules (ADR-0018). Browser E2E for this behavior belongs to Phase 4.
+stable-slug rules (ADR-0018). Browser coverage of public routing for reserved roots is in
+"Browser E2E for the public Business profile" below; the stable-slug rules themselves stay
+proven by the backend and component tests.
 
 - **Definition** — `ReservedBusinessSlugsTests` pins the exact 19 values, canonical
   matching, near-misses (`booking-studio`, `my-book`, `appointments-bg`) and
@@ -516,7 +518,8 @@ stable-slug rules (ADR-0018). Browser E2E for this behavior belongs to Phase 4.
 ## Public Business profile backend verification
 
 Issue #17 Phase 2B tests the unauthenticated `GET /api/public/businesses/{slug}` contract
-(ADR-0017) on PostgreSQL 18.4 through Testcontainers. Browser acceptance belongs to Phase 4.
+(ADR-0017) on PostgreSQL 18.4 through Testcontainers. Browser acceptance is recorded under
+"Browser E2E for the public Business profile".
 
 - **Contract and privacy** — `PublicProfileApiIntegrationTests` drives the complete servlet and
   security chain: exact key sets for the profile, address and Service, values and EUR price
@@ -599,7 +602,7 @@ mobile smoke does not replace the completed human visual approval.
 ## Public Business page frontend verification
 
 Issue #17 Phase 3 tests the unauthenticated React page with Vitest and jsdom; browser acceptance
-belongs to Phase 4. Fetch is stubbed or the API module mocked with promises the test settles,
+is Phase 4 ("Browser E2E for the public Business profile"). Fetch is stubbed or the API module mocked with promises the test settles,
 so races are deterministic and use no timers.
 
 - **Routing** — `route.test.ts` and `AppRoot.test.tsx`: exact `/{slug}`, uppercase and trailing-slash
@@ -625,3 +628,59 @@ so races are deterministic and use no timers.
 Executed: focused selection 14 files, 264 tests; full frontend suite 50 files, 1004 tests.
 Rendered developer review at 1280, 1024, 800, 640, 412 and 375 px is recorded in
 `docs/tasks/06a-public-business-profile.md`; it is not the human visual approval.
+
+## Browser E2E for the public Business profile
+
+Issue #17 Phase 4 adds `frontend/e2e/public-business-profile.spec.ts` and
+`frontend/e2e/support/publicProfile.ts` to the Playwright layer, on the same isolated runner,
+Flyway migrations V1–V9 from an empty database and redaction, artifact and cleanup policy as above.
+It reuses `provisioning.ts`, `browser.ts` and the mailbox helper; it adds only public-page helpers
+(API reads through a request context, head metadata, request audit, layout assertions).
+
+Fixtures are created only through supported APIs and the invitation UI, with a random suffix per
+setup attempt: a full ACTIVE Business (description, telephone, structured address, three active and
+one inactive Service), a minimal ACTIVE Business, an ACTIVE Business with no active Services, a
+SUSPENDED Business, a DRAFT Business (its slug is changed once, which is allowed for a DRAFT, to
+obtain a former slug), a second ACTIVE Business with another owner, and a long-content Business
+(200-character name, near-2000-character description, ten long Services). The two scenarios that
+mutate data provision their own Business and restore what they change. Visitors, owners and the
+Platform Administrator always use separate browser contexts.
+
+- **Access and allowlist** — direct `/{slug}` access, reload and a fresh context; the visible
+  allowlist (name, Bulgarian type label, description, `tel:` link, address, Service name,
+  description, duration, EUR price, booking-unavailable notice); the inactive Service absent; the
+  JSON key set of the response checked key for key, and the raw body checked for identifiers,
+  contact email, owner data, status, version and timestamps; minimal and empty-catalog pages.
+- **Lifecycle and isolation** — DRAFT, SUSPENDED, unknown, former-slug and reserved-word slugs give
+  an identical page (same markup, title, `noindex`, no canonical) and an identical 404 body;
+  two Businesses never show each other's data; cross-Business identifiers and deeper API paths give
+  only the safe result; an owner and an administrator receive byte-identical public responses.
+- **Changes** — an administrator's profile edit and an owner's Service edit and deactivation appear
+  publicly only after the successful save.
+- **Routing and metadata** — uppercase and trailing-slash canonicalization by history replacement
+  (history length unchanged, Back leaves the page), Back/Forward between Businesses and the
+  administration application, deeper paths, reserved roots and hash routes staying with the
+  authenticated application; title, canonical, description and fallback, `noindex` states, and no
+  metadata leaking across a traversal of two Businesses and an unavailable page in one document.
+- **Failure and retry** — a forced network failure and server error through `page.route` (no
+  production change), keyboard retry sending one request per activation, and no stale Business
+  while another loads or fails.
+- **Responsive and accessibility** — desktop 1280px, Pixel 7 device emulation and 640px (the CSS
+  width of a 200% zoom): one `h1`, no heading level skipped, no horizontal overflow, no clipped
+  telephone, address, price or duration, real Tab focus on the telephone with a visible focus
+  ring, text labels for every fact, and usable unavailable and failure states.
+- **Administration boundary** — administration, the Business form without the retired notes, the
+  owner shell and hash routes still work after a public visit; a public visit creates no cookie,
+  storage entry or `/api/auth/*` request.
+
+Evidence boundary: no safe public endpoint counts Customers, Memberships or Appointments, so the
+claim that a public read creates none is proven by the backend integration tests
+(`PublicProfileApiIntegrationTests`), while the browser tests prove the observable part (only the
+public GET, sent without cookies, and no session or storage state). The Vite development server
+renders under React `StrictMode`, which can send the first public read twice with the first
+aborted by the page; the request audit ignores client-aborted requests, and retries are measured
+as a delta, so the claim "one activation sends one request" is independent of that.
+
+Not covered by design: real browser zoom (640px is the CSS-width equivalent), hosting and production
+SPA fallback, server-rendered metadata (the page is client-rendered), and the human visual approval,
+which Phase 3 recorded separately.

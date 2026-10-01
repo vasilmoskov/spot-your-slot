@@ -1,10 +1,10 @@
 # SpotYourSlot — Public Business Profile Pages
 
-Status: Phases 1 (decisions), 2A (reserved roots and stable slugs) and 2B (the
-unauthenticated read-only backend contract) are committed. Phase 3 (the public React page) is
-implemented and awaiting the human visual review; it is not committed. The browser acceptance
-(Phase 4), the human visual approval and issue #17 itself are not complete, and booking remains
-issue #18.
+Status: Phases 1 (decisions), 2A (reserved roots and stable slugs), 2B (the
+unauthenticated read-only backend contract) and 3 (the public React page, including the
+human-approved visual redesign) are committed. Phase 4 (browser acceptance, documentation
+reconciliation and completion evidence) is implemented and verified and awaits review and commit;
+issue #17 is closed only on explicit approval. Booking remains issue #18.
 GitHub issue: #17 — Build public Business profile pages
 Depends on: #11, #12, #14, #16
 Decision records: [ADR-0017](../decisions/ADR-0017-expose-public-business-profile-through-an-allowlisted-read-only-contract.md),
@@ -304,8 +304,8 @@ enumerate Businesses).
 | 1 | Decisions, this task record, ADR-0017, ADR-0018, and narrow documentation updates. Documentation only. | Strict (defines a public contract) | Review of this change |
 | 2A (committed) | Reserved roots and stable-slug enforcement in the platform Business API; the platform form shows an immutable slug and reserved-root feedback; read-only collision inspection of existing data first. Expected: `business` slug validation and update, `platform`, platform frontend form, tests. | Strict (changes an existing authenticated contract) | Own approval and commit; approved reserved list and inspection result |
 | 2B (committed) | Published Business and Catalog contracts, `publicprofile` module, one security rule, allowlisted records, PostgreSQL integration tests. | Strict (first unauthenticated surface) | Own approval and commit; Phase 2A accepted |
-| 3 (implemented, awaiting human visual review) | Public application, exact-match routing, page and states, metadata hook, shared Business-type labels, component tests, human visual approval. | Standard | Human visual approval before Phase 4 |
-| 4 | Playwright acceptance, documentation reconciliation (README, roadmap, testing strategy, implementation plan, UI guide §13, stale status text), completion report, review archive. | Standard | Green verification; issue closure only with explicit approval |
+| 3 (committed) | Public application, exact-match routing, page and states, metadata hook, shared Business-type labels, component tests, human visual approval. | Standard | Human visual approval before Phase 4 (given) |
+| 4 (implemented, awaiting review) | Playwright acceptance, documentation reconciliation (README, roadmap, testing strategy, implementation plan, product spec, stale status text), completion report, review archive. | Standard | Green verification; issue closure only with explicit approval |
 
 Phases 2A and 2B are separate because 2A changes an existing administration
 contract and 2B introduces the first public surface.
@@ -463,7 +463,7 @@ the completion report.
 shared Business-type labels, and human visual approval.
 Phase 4: browser acceptance and documentation reconciliation. Issue #18 owns booking.
 
-## Phase 3 record (implemented, awaiting human visual review, not committed)
+## Phase 3 record (committed; evidence as recorded at implementation time)
 
 Phase 3 adds only the public React page, its routing and metadata hook, shared Business-type
 labels and the platform-form explanations. No backend file, migration (V1–V9 unchanged),
@@ -552,3 +552,99 @@ removed. Human visual approval is still required.
 
 **Remaining.** Human visual approval; Phase 4 (Playwright acceptance, documentation
 reconciliation, UI guide §13 composition rules); issue #18 owns booking.
+
+## Phase 4 record (implemented and verified, awaiting review and commit)
+
+Phase 4 adds only browser acceptance and documentation. **No production code changed and no
+production defect was found.** New files: `frontend/e2e/public-business-profile.spec.ts` (19 tests)
+and `frontend/e2e/support/publicProfile.ts`. Documentation reconciled: this record, `README.md`,
+`docs/testing-strategy.md`, `docs/implementation-plan.md`, `docs/product-spec.md`,
+`docs/product-roadmap.md`, `docs/architecture.md` and `docs/ui-design-guidelines.md` §13. Migrations V1–V9, workflows and dependencies are unchanged.
+
+A date-dependent unit test was fixed first, in a separate commit (`467ee41`): the Business-switch
+schedule-exception test hardcoded 2026-10-01 for Business A's window, which equals today's default
+window on that date, so it failed on 2026-10-01 only. CI on the preceding commit showed it. The
+test now uses a fixed past window; the assertions are unchanged.
+
+### Scenarios and fixtures
+
+The setup provisions only through supported APIs and the invitation UI, with a random suffix per
+attempt (safe across worker restarts): full ACTIVE, minimal ACTIVE, ACTIVE with no active Services,
+SUSPENDED, DRAFT (slug changed once while DRAFT to obtain a former slug, so immutability is not
+violated), a second ACTIVE Business with another owner, and a long-content Business. Mutating
+scenarios provision their own Business and restore it in `finally`. Businesses cannot be deleted
+through any supported API; they live in the disposable database that the runner removes. Visitors,
+owners and the administrator use separate contexts. No sleeps, no database access.
+
+| # | Test | Evidence |
+|---|---|---|
+| 1 | Stable URL, reload, fresh context | Same Business each time; only `GET /api/public/businesses/{slug}` sent, without a cookie; no cookie or storage |
+| 2 | Visible allowlist and API keys | Exact key sets (profile, address, Service); no identifier, status, version, timestamp, contact email, owner data or inactive Service in page or body |
+| 3 | Minimal Business | No contacts list, telephone, address or description; headings `1,2,3`; booking notice shown |
+| 4 | No active Services | Approved empty state; no alert, card, button or link |
+| 5 | Unavailable | DRAFT, SUSPENDED, unknown, former and reserved-word slugs: identical markup, title, `noindex`, no canonical, identical 404 body |
+| 6 | Tenant isolation | A and B never show each other's data; foreign identifiers and deeper API paths give only the safe result; owner and administrator receive byte-identical responses |
+| 7 | Changes reflected publicly | Administrator profile edit and owner Service edit appear only after the save; a deactivated Service disappears and the other stays; a suspension is visible and restored |
+| 8 | Routing | Uppercase and trailing slash canonicalize with `replaceState` (history length unchanged, Back leaves the page); Back/Forward between Businesses and the administration application; deeper paths, reserved roots and hash routes stay with the authenticated application |
+| 9 | Metadata | Title, canonical, description and fallback; `noindex` and shell description for unavailable and failure; no leakage across a history traversal of two Businesses and an unavailable page |
+| 10 | Failure and retry | Network failure then server error then success: safe copy, keyboard activation, one request per activation; no stale Business while loading or failing |
+| 11 | Responsive and accessibility | Desktop 1280px, Pixel 7 emulation, 640px: one `h1`, no skipped level, no overflow or clipping, real Tab focus ring on the telephone, text labels, usable unavailable and failure states |
+| 12 | Administration boundary | Administrator and owner shells reachable; retired notes absent in create and edit; hash routes and session unaffected by a public visit; a public visitor gets no cookie, storage or `/api/auth/*` request |
+
+### Executed evidence (2026-10-01)
+
+- New spec alone: 19 passed (after correcting two test-side assumptions, below).
+- `./scripts/run-e2e.sh`, twice consecutively: 54 of 54 passed both times (35 existing + 19 new).
+- `cd backend && ./mvnw --batch-mode verify`: 1586 tests, 0 failures, 0 errors, 0 skipped; BUILD SUCCESS.
+- `npm ci`, frontend tests: 50 files, 1004 tests passed; lint clean; production build succeeds;
+  `git diff --check` clean.
+- V1–V9 checksums recorded in the review archive; no migration file changed.
+- After the runs no disposable E2E container, network or volume remained.
+
+Test-side corrections during development (no product change): the Vite development server renders
+under React `StrictMode`, so the first public read can be sent twice with the first aborted by the
+page. The request audit now ignores client-aborted requests and retries are measured as a delta, so
+"one activation sends one request" is asserted independently of that.
+
+### Acceptance matrix
+
+| Acceptance criterion | Evidence level | Evidence |
+|---|---|---|
+| Public stable URL `/{slug}`, no login, survives reload | Browser E2E | Test 1; routing tests (`route.test.ts`, `AppRoot.test.tsx`) |
+| Only ACTIVE Businesses are public | Backend integration; Browser E2E | `PublicProfileApiIntegrationTests`; tests 5, 7 |
+| DRAFT, SUSPENDED, unknown, former, malformed indistinguishable | Backend integration; Browser E2E | One 404 body (`PublicProfileApiIntegrationTests`); test 5 compares markup, metadata and bodies |
+| Public allowlist exactly as ADR-0017 | Backend integration; Browser E2E | Exact keys and sentinel leakage tests; test 2 |
+| Inactive Services hidden; every active Service shown, deterministic order | Backend integration; Browser E2E | Ordering and exclusion tests; tests 2, 7, 11 (ten Services) |
+| Tenant isolation | Backend integration; Browser E2E | A/B isolation tests; test 6 |
+| No session, Customer, Membership or Appointment side effect | Backend integration (data); Browser E2E (session, cookies, storage, request audit) | `PublicProfileApiIntegrationTests`, `PublicProfileTransactionIntegrationTests` (no write); tests 1, 12. The browser cannot count rows; the evidence for "no rows created" is backend only |
+| Slugs stable after activation; reserved roots protected | Backend integration; Frontend unit; Browser E2E (routing only) | Phase 2A tests; `route.test.ts`; test 8 |
+| Exact-match routing and canonicalization, hash routes unchanged | Frontend unit; Browser E2E | Tests 8, 12 |
+| Unavailable, empty-catalog and failure states, one retry per activation | Frontend unit; Browser E2E | `PublicBusinessPage.test.tsx`; tests 4, 5, 10 |
+| Metadata and `noindex` per state; no cross-route leakage | Frontend unit; Browser E2E | `usePageMetadata` tests; test 9 |
+| Honest booking message; no booking entry | Frontend unit; Browser E2E | Tests 2–4: no button, no extra link |
+| Mobile-first, keyboard accessible, no overflow | Browser E2E; Rendered developer review; Human visual approval | Test 11; Phase 3 review; the Phase 3 redesign was approved by the human reviewer |
+| Administration unchanged; retired form notes absent | Frontend unit; Browser E2E | Platform form tests; test 12 |
+| Documentation reconciled | Review | This phase's documentation changes |
+
+### Privacy and tenant-isolation evidence
+
+Browser: exact JSON key sets; no identifier, status, version, timestamp, contact email, owner email,
+inactive Service, timezone or currency in page text or response body; unavailable cases share one
+presentation and one body with no slug or name echoed; Business B's identifier as a slug is
+unavailable; owner and administrator contexts get byte-identical responses; the public request
+carries no cookie. Backend: sentinel leakage, key-set, statement-count and no-write tests (see the
+Phase 2B record).
+
+### Limitations and unchanged exclusions
+
+- Business profile fields can be edited only by the Platform Administrator (ADR-0017); no owner
+  editor exists, so scenario 7 changes the description as the administrator and Services as the
+  owner.
+- 200% zoom is covered by its 640px CSS-width equivalent, not browser zoom. The Pixel 7 check now
+  uses device emulation.
+- The page is client-rendered; metadata is not visible to non-JavaScript scrapers (see
+  Metadata and discoverability). The Vite fallback is not production hosting evidence.
+- `docs/architecture.md` and UI guide §13 were reconciled in a final documentation-only correction
+  (no code or test change); the Phase 4 results above are unchanged.
+- Exclusions of this issue are unchanged: no booking, availability, Customers, Appointments,
+  Staff exposure, maps, images, analytics, migrations or dependencies. Issue #18 owns booking.

@@ -36,7 +36,7 @@ All backend packages live below `bg.spotyourslot`.
 | `catalog` | Business-owned Services, prices, durations, lifecycle, and versioned administration |
 | `workforce` | StaffMembers, Service qualifications, recurring weekly hours |
 | `scheduling` | timezone-aware availability, Business closures, StaffMember time off, working-day overrides, additional working periods, and deterministic assignment (ADR-0013) |
-| `publicprofile` | read-only unauthenticated public Business profile (`GET /api/public/businesses/{slug}`) orchestrated over the published `business.PublicBusinessProfileAccess` and `catalog.PublicServiceAccess` contracts (ADR-0017; backend implemented in issue #17 Phase 2B, frontend pending) |
+| `publicprofile` | read-only unauthenticated public Business profile (`GET /api/public/businesses/{slug}`) orchestrated over the published `business.PublicBusinessProfileAccess` and `catalog.PublicServiceAccess` contracts (ADR-0017; backend contract, public React page and browser E2E verification implemented in issue #17; booking is not part of it) |
 | `booking` | transactional Appointment lifecycle and conflicts |
 | `customer` | Business-scoped Customers and safe matching |
 | `notification` | outbox, delivery attempts, reminders, `EmailService` |
@@ -254,8 +254,9 @@ second implementation makes startup fail until the placeholder is deleted. The
 orchestration issues four application SQL statements regardless of team size.
 There is no public availability endpoint.
 
-Issue #17 adds the `publicprofile` module (backend committed in Phase 2B; the
-public React page is implemented in Phase 3 and awaits human visual review) ([ADR-0017](decisions/ADR-0017-expose-public-business-profile-through-an-allowlisted-read-only-contract.md),
+Issue #17 adds the `publicprofile` module (the backend public read contract, the
+public React page and its browser E2E verification are implemented; booking, availability
+selection and Appointments are not and belong to later issues) ([ADR-0017](decisions/ADR-0017-expose-public-business-profile-through-an-allowlisted-read-only-contract.md),
 [ADR-0018](decisions/ADR-0018-serve-public-business-pages-at-a-top-level-path-with-reserved-roots-and-stable-slugs.md),
 [task 06a](tasks/06a-public-business-profile.md)). It depends only on a
 narrow published `business.PublicBusinessProfileAccess` (ACTIVE Business by slug,

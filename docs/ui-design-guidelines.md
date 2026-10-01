@@ -428,9 +428,13 @@ accessibility rules, and feedback patterns. They must not automatically copy the
 platform-admin sidebar or administrative page composition. Customer journeys
 should remain simpler and focused on selecting and booking a suitable time.
 
-The exact composition of public pages and booking steps will be approved in
-their own future task. This guide does not authorize public booking work or
-expand the MVP.
+The composition of the read-only public Business profile was approved in issue #17
+([task 06a](tasks/06a-public-business-profile.md)): one coherent Business hero with the
+public identity and the optional approved contact data, an honest booking-unavailable
+state, standalone Service cards without redundant outer card nesting, and a responsive,
+accessible presentation on desktop and mobile. The composition of the actual booking
+journey is a future issue #18 decision. This guide does not authorize public booking work
+or expand the MVP.
 
 ## 15. Paginated tables
 

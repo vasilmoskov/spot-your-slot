@@ -117,8 +117,9 @@ working periods were delivered by issue #16 (see Phase 5).
 - Generic public Business/Profile/Service APIs and Bulgarian UI through slot
   selection. Issue #17 delivers the read-only public Business profile first
   (Phase 1 decisions recorded in `docs/tasks/06a-public-business-profile.md`,
-  ADR-0017 and ADR-0018; Phases 1, 2A and 2B committed; Phase 3, the public React page, implemented and
-  awaiting human visual review; Phase 4 pending);
+  ADR-0017 and ADR-0018; Phases 1, 2A, 2B and 3 committed, including the human-approved visual
+  redesign; Phase 4 browser acceptance and documentation reconciliation complete, pending
+  review and closure of the issue);
   the public availability endpoint, Service and StaffMember selection, and slot
   selection remain issue #18 work.
 - Exit: DST/boundary/cancelled-slot/assignment and BusinessType parity pass.
