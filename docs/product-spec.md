@@ -50,8 +50,9 @@ Customers, Appointments, cancellations, notifications, roles, and tenant model.
   support metadata—not passwords, raw tokens, or routine Customer content.
 - **BUSINESS_OWNER:** manages settings, Services, StaffMembers, schedules,
   Appointments, Customers, and Memberships within an authorized Business.
-- **MANAGER:** manages operations, Services, Customers, Appointments, and
-  StaffMember schedules, but not platform-level settings.
+- **MANAGER:** manages operations, Services, Appointments, and StaffMember
+  schedules, but not platform-level settings. Customer administration is
+  owner-only until a separate approved MANAGER design exists (ADR-0021).
 - **STAFF:** sees and manages Appointments and schedule belonging to the linked
   StaffMember, creates manual Appointments, and marks them complete/no-show.
 - **Customer:** books as an unauthenticated guest; no Customer account exists.
@@ -207,11 +208,16 @@ A future Appointment may be cancelled after the deadline but is marked late;
 past Appointments cannot be Customer-cancelled. Staff cancellation may include
 a reason.
 
-A Business-owned Customer stores name, phone, email, private staff note,
-active/blocked state, and Appointment-derived history. Match conservatively
-within one Business by normalized phone, then normalized email; ambiguous cases
-remain separate. Never merge across Businesses. Do not solicit health or other
-special-category data.
+A Business-owned Customer stores one display name and a canonical phone and/or
+email (at least one), with no account, note, or status (ADR-0019). A normalized
+phone or email is unique within one Business and never shared across Businesses.
+Matching is conservative and deterministic (ADR-0020): when both identifiers are
+supplied, a Customer is found only if both match the same Customer, and a new
+Customer is created only if neither matches; any partial match or conflict is
+rejected for explicit owner correction, and nothing is merged, moved, or added
+automatically. A guest sees a generic message that does not reveal which
+identifier matched. Appointment history belongs to Appointment issues #18 and #21,
+not to the Customer record. Do not solicit health or other special-category data.
 
 ## Administration and notifications
 

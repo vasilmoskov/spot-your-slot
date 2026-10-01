@@ -171,10 +171,23 @@ date_range)`.
 
 ## Customers and Appointments
 
-- **customer:** `business_id`, name, original/normalized phone and email,
-  private staff note, active/blocked state, audit fields. History metrics derive
-  from Appointments.
-- **appointment:** `business_id`, `staff_member_id`, `service_id`, `customer_id`,
+- **customer** (decided in ADR-0019, issue #20; `V10__add_customers.sql` is planned and
+  not yet written): UUID `id`, immutable `business_id` (restrictive foreign key to
+  `business`), required `display_name` (`varchar(200)`, canonical NFKC/whitespace form), a
+  generated stored `normalized_display_name` (sorting and search only), optional canonical
+  E.164 `phone` (`varchar(16)`), optional canonical lowercase `email` (`varchar(320)`),
+  nonnegative `version`, and UTC `created_at`/`updated_at`. One canonical value is stored per
+  identifier; no original text, staff note, status, account or Membership link, or
+  Appointment-derived column exists. Checks require at least one of phone and email.
+  `UNIQUE (business_id, phone)` and `UNIQUE (business_id, email)` (NULLs are distinct) make
+  each identifier unique within one Business only; `UNIQUE (business_id, id)` prepares the
+  future composite foreign key from Appointments. An index on `(business_id,
+  normalized_display_name, id)` serves the default sort. Customers have no lifecycle and are
+  never hard-deleted in the MVP; retention, export, anonymization, merge, and legal deletion
+  are deferred. Updates are versioned and increment `version` once per accepted update.
+  History metrics derive from Appointments in later issues.
+- **appointment** (issue #18; whether it snapshots the submitted Customer name, phone, or
+  email is deferred to #18, ADR-0020): `business_id`, `staff_member_id`, `service_id`, `customer_id`,
   UTC `start_at`/`occupied_until`, captured Service facts, status, source
   (`ONLINE`/`STAFF`), Customer booking note, private staff note, cancellation
   metadata, `late_cancellation`, audit fields.

@@ -49,6 +49,25 @@ Prove one StaffMember cannot link to multiple Memberships, one Membership cannot
 link to multiple StaffMembers, cross-Business links fail, and StaffMembers
 without accounts remain valid.
 
+### Customer identity, uniqueness, and privacy (issue #20)
+
+Against real PostgreSQL, cover: per-Business uniqueness of normalized phone and email, NULL
+multiplicity, the same identifier at another Business, and each canonical check; races with
+deterministic coordination and no sleeps (two creates with the same phone, two with the same
+email, two updates claiming one identifier, a stale version, find-or-create races, and an
+outer-transaction rollback preserving the previous record); the complete find-or-create truth
+table in `docs/tasks/07a-business-customer-records.md`, including that a partial match is an
+`IdentityConflict`, nothing is written, and the Customer is never merged or changed;
+behavior under `READ_COMMITTED`; serialization (`40001`) and deadlock (`40P01`) failures
+producing the sanitized typed `CustomerConcurrentConflict`, the caller transaction rolling
+back with no Customer or partial consumer write remaining, and a completely new outer
+transaction retrying successfully, while ordinary identical-create races still resolve to one
+created and one existing Customer without a duplicate; Business A/B isolation, guessed IDs, and `PLATFORM_ADMIN` alone; DRAFT,
+ACTIVE, and SUSPENDED behavior; golden vectors shared by JUnit and Vitest for phone and email
+canonicalization; and privacy using unique sentinel values that must never appear in public
+responses, errors, captured logs, URLs, browser storage, test names, failure output, or review
+archives. Fixtures are generated at run time with synthetic data.
+
 ### Time, lifecycle, tokens, and notifications
 
 Test Service plus buffer, breaks/time off/overrides, minimum-notice and

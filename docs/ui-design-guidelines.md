@@ -553,6 +553,14 @@ table, the task must state:
   direction) in the URL through refresh and Back/Forward, and carry it through
   related create/detail routes so a return lands on the same state. Invalid
   values normalize field by field to the defaults.
+  **Recorded exception (ADR-0021, issue #20):** a filter whose value is personal data, such as
+  the Customer search term, is not stored in the URL, history, or browser storage. It lives in
+  component state, is sent in a POST body, resets the page to 0 when it changes, and is
+  cleared on Business switch and logout. Page, size, sort, and direction remain in the URL.
+- The Customer list (planned, issue #20) has Name, Phone, and Email sortable columns with
+  default `name` ascending and the tie-breakers normalized name, then id, empty phone and
+  email last in both directions, server-side pagination, no actions column, and mobile cards.
+  Its fields use `autocomplete="off"` because they describe other people.
 - Mobile cards render exactly the same sorted, paginated result as the desktop
   table.
 - Do not add destructive table actions (trash icons, an actions column) when the

@@ -126,10 +126,14 @@ working periods were delivered by issue #16 (see Phase 5).
 
 ## Phase 6 — transactional booking and Customers
 
-- Customer, Appointment/event, and cancellation-token migrations with
-  `business_id` and `staff_member_id`.
+- Business-scoped Customer records are delivered first by issue #20 (decisions in
+  `docs/tasks/07a-business-customer-records.md` and ADR-0019 to ADR-0021; `V10` Customer
+  schema, conservative matching, and private owner administration; Phase 1 documentation
+  is complete, implementation not started). Issues #18 and #21 are future consumers, not
+  prerequisites; they add Appointment, event, and cancellation-token migrations with
+  `business_id` and `staff_member_id` and decide any Appointment contact snapshot.
 - Add GiST exclusion on `staff_member_id`, transactional revalidation, online
-  booking, conservative Business-scoped Customer matching, automatic
+  booking through the published Customer matching contract delivered by issue #20, automatic
   `CONFIRMED`, cancellation/late flag, audit, and Bulgarian 409 recovery.
 - Use only `CONFIRMED`, `CANCELLED_BY_CUSTOMER`, `CANCELLED_BY_BUSINESS`,
   `COMPLETED`, and `NO_SHOW`.

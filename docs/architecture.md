@@ -38,10 +38,10 @@ All backend packages live below `bg.spotyourslot`.
 | `scheduling` | timezone-aware availability, Business closures, StaffMember time off, working-day overrides, additional working periods, and deterministic assignment (ADR-0013) |
 | `publicprofile` | read-only unauthenticated public Business profile (`GET /api/public/businesses/{slug}`) orchestrated over the published `business.PublicBusinessProfileAccess` and `catalog.PublicServiceAccess` contracts (ADR-0017; backend contract, public React page and browser E2E verification implemented in issue #17; booking is not part of it) |
 | `booking` | transactional Appointment lifecycle and conflicts |
-| `customer` | Business-scoped Customers and safe matching |
+| `customer` | Business-scoped Customers, conservative find-or-create matching, and private owner-only Customer administration (decisions in ADR-0019 to ADR-0021, issue #20; not yet implemented). Publishes `CustomerIdentification` and `CustomerReferenceAccess`; depends only on `identity`, `business`, and `shared.contact`; never depends on `booking` |
 | `notification` | outbox, delivery attempts, reminders, `EmailService` |
 | `audit` | immutable security/business audit events |
-| `shared` | small cross-cutting primitives, errors, clocks, configuration |
+| `shared` | small cross-cutting primitives, errors, clocks, configuration, and (planned in issue #20) the small `shared.contact` text, phone, and email canonicalization policy used by `workforce` and `customer` |
 
 Controllers call application use cases; authorization and transactions are not
 controller concerns. Entities/repositories remain module-internal. Modules use
@@ -86,6 +86,22 @@ not constrain that horizon.
 `StaffMember` remains the internal English term, while generic Bulgarian
 administration uses “Екип” and “Член на екипа” and public booking may use
 contextual wording instead of a fixed performer label.
+
+## Customer boundary
+
+Issue #20 precedes issues #18 and #21, which are future consumers, not prerequisites. The
+`customer` module owns the Customer table, conservative matching, and private
+administration. `booking` will call the published `CustomerIdentification.findOrCreate`
+inside its own caller-owned transaction and receive only an existing or created Customer ID,
+an invalid-identity outcome, or an identity-conflict outcome (ADR-0020). A PostgreSQL
+serialization failure, deadlock, or unrecoverable race is not an outcome: it raises the
+sanitized typed `CustomerConcurrentConflict`, which marks the caller's transaction for
+rollback; the caller retries the whole outer transaction after rollback, finalized by
+issue #18. `CustomerReferenceAccess.find` supplies a same-Business reference; the future
+Appointment `(business_id, customer_id)` foreign key is the persistence guarantee. Whether an
+Appointment snapshots submitted contact data is deferred to issue #18. Customer appointment
+history will be a Booking-owned query added by issue #21; no Customer-to-Booking dependency
+exists. `publicprofile` and every other existing module must not depend on `customer`.
 
 ## Conflict-safe booking
 

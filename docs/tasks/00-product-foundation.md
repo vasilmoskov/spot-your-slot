@@ -138,6 +138,12 @@ not. Customers belong to one Business, with name/phone/email, private staff note
 active/blocked state, and derived history. Match conservatively within the same
 Business; never across Businesses. Do not collect health/special-category data.
 
+> **Superseded (historical record only):** the Customer note, active/blocked lifecycle, and
+> original/normalized contact model above were superseded by
+> [ADR-0019](../decisions/ADR-0019-model-business-scoped-customers-with-canonical-contact-identifiers-and-no-lifecycle.md)
+> and [task 07a](07a-business-customer-records.md). This foundation task is not the current
+> implementation contract for Customers.
+
 Future `EmailService` events cover invitations/account flows, confirmation,
 cancellation, changes, roughly 24-hour reminders, and new online booking. A
 transactional outbox, delivery records, bounded retry, and idempotency prevent

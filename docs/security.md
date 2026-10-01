@@ -397,6 +397,39 @@ links use example origin `https://spotyourslot.bg` and Business pages use
 `https://spotyourslot.bg/{businessSlug}`. Development/tests do not send. The
 domain is not configured and its availability has not been legally verified.
 
+### Customer administration and privacy (decisions for issue #20; not yet implemented)
+
+The private Customer API (`/api/business/customers`, ADR-0021) derives the user and the
+selected Business only from the server-managed security context; no path, query, or body field
+supplies an authoritative `businessId`. Access requires an active `BUSINESS_OWNER` Membership
+for that exact user and selected Business. `PLATFORM_ADMIN` alone, `MANAGER`, `STAFF`,
+inactive Memberships, and Memberships in another Business do not grant access. DRAFT and
+ACTIVE Businesses permit reads and mutations; SUSPENDED permits reads (including the
+body-based search) and rejects create and update with `BUSINESS_SUSPENDED`. Each mutation
+locks the Business lifecycle row, then the user's Membership row, then performs the
+optimistic write, and every POST and PUT remains CSRF-protected. A missing and a foreign
+Customer ID both return the identical `CUSTOMER_NOT_FOUND` (404).
+
+Customer failures use `VALIDATION_ERROR` (400, with `fieldErrors` for `displayName`,
+`phone`, `email`, and `contact`), `AUTH_REQUIRED`, `ACTIVE_BUSINESS_REQUIRED`,
+`ACCESS_DENIED`, `CUSTOMER_NOT_FOUND`, `CUSTOMER_CONTACT_CONFLICT`,
+`CUSTOMER_CONCURRENT_UPDATE`, `CUSTOMER_CONCURRENT_CONFLICT`, `BUSINESS_SUSPENDED`, and
+`INTERNAL_ERROR`, with the Bulgarian wording recorded in
+`docs/tasks/07a-business-customer-records.md`. No response echoes submitted data, a constraint
+name, or a SQL diagnostic.
+
+Customer names, phone numbers, email addresses, and appointment history never appear on
+public pages, in URLs, browser storage, safe errors, normal application logs, screenshots,
+generated test artifacts, or review archives. Only opaque UUIDs appear in paths. The search
+term is sent in a POST body and held only in component state. The Customer persistence layer
+translates unique violations by SQLState and exact constraint name and rethrows without the
+original cause, because PostgreSQL's server message contains the offending value; matching
+avoids raising unique violations on its normal path. PostgreSQL's own server log can still
+contain a key value for a rare administrative unique violation, a recorded operational
+limitation. Matching is conservative (ADR-0020): it never writes to an existing Customer, and
+the guest-facing identity-conflict message does not reveal which identifier matched or that a
+Customer exists. Customer creation never creates credentials, a session, or a Membership.
+
 ## Privacy and verification
 
 Collect only name, phone, email, optional booking note, and Appointment data.

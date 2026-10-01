@@ -26,8 +26,10 @@ configuration and the Business-owner schedule changes. Every ACTIVE Business
 also has a read-only, unauthenticated public profile page at `/{businessSlug}`
 (issue #17: name, type, optional description, telephone and address, and active
 Services, backed by `GET /api/public/businesses/{slug}`); it offers no booking
-action. Customers, Appointments, booking, production email, and hosting are
-not implemented.
+action. Business-scoped Customer records (issue #20) are in progress: the
+decisions are documented (`docs/tasks/07a-business-customer-records.md`,
+ADR-0019 to ADR-0021) and no Customer code, migration, or interface exists yet.
+Appointments, booking, production email, and hosting are not implemented.
 Business closures, StaffMember time off, working-day overrides, and additional
 working periods ("Промени в графика") can be administered through an
 authenticated backend API and the Business-owner interface under "Работно

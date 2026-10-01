@@ -26,7 +26,7 @@ not partial implementation work.
 | 6 | Working schedules and exceptions | Lets each Staff member work multiple weekdays and split periods while accounting for required time off and exceptional working dates. | ✅ Implemented | 2026-09-30 | [#13](https://github.com/vasilmoskov/spot-your-slot/issues/13), [#14](https://github.com/vasilmoskov/spot-your-slot/issues/14), [#15](https://github.com/vasilmoskov/spot-your-slot/issues/15), [#16](https://github.com/vasilmoskov/spot-your-slot/issues/16) |
 | 7 | Availability and booking horizon | Shows valid slots using Service duration, configurable booking buffers, qualified Staff, working schedules, schedule exceptions and time off, existing appointments, and each Business's configurable future booking horizon. | 🚧 In progress | — | [#16](https://github.com/vasilmoskov/spot-your-slot/issues/16) |
 | 8 | Public Business booking page | Gives each Business a mobile-friendly page where Customers can view Services and choose a Service, Staff preference, date, and available slot. Issue #17 delivers only its read-only profile part, which is implemented and browser-verified: stable public slugs, the unauthenticated read API and the public profile page at `/{slug}` with Services. Service and Staff selection, availability, slot choice and booking are not implemented and belong to later issues (#18 onward), so the capability stays in progress. | 🚧 In progress | — | [#17](https://github.com/vasilmoskov/spot-your-slot/issues/17) |
-| 9 | Customer records | Maintains the minimum Business-scoped Customer information needed for appointments and safe recognition of returning Customers. | ⬜ Todo | — | — |
+| 9 | Customer records | Maintains the minimum Business-scoped Customer information needed for appointments and safe recognition of returning Customers. Phase 1 decisions are documented (ADR-0019 to ADR-0021); nothing is implemented yet. Issues #18 and #21 are future consumers, not prerequisites. | 🚧 In progress | — | [#20](https://github.com/vasilmoskov/spot-your-slot/issues/20) |
 | 10 | Appointment conflict protection | Prevents double booking and gives the Customer a safe, understandable response when a selected slot is no longer available. | ⬜ Todo | — | — |
 | 11 | Guest booking | Lets a Customer book without an account using only required contact information and an optional note, with appropriate protection from repeated abusive submissions. | ⬜ Todo | — | — |
 | 12 | Business calendar and appointment management | Lets authorized Business users view schedules and create, move, or cancel appointments received online, by phone, or in person. | ⬜ Todo | — | — |
@@ -49,8 +49,9 @@ not partial implementation work.
 
 ## Open product decisions
 
-- Define exact Customer identity matching when phone or email is missing, shared,
-  or changed, while keeping Customers isolated by Business.
+- Customer identity matching is decided for issue #20 (ADR-0020): any partial match is
+  rejected for explicit owner correction. Whether a Customer's contact data is snapshotted on
+  an Appointment is deferred to issue #18.
 - Decide whether the approved 24-hour cancellation default and late-cancellation
   marking need different Business-configurable cutoff or fairness rules.
 - Define how no-shows affect future booking and what restrictions a Business may
