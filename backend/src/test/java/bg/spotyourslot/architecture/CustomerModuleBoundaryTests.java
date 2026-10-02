@@ -3,11 +3,22 @@ package bg.spotyourslot.architecture;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import bg.spotyourslot.SpotYourSlotApplication;
+import bg.spotyourslot.architecture.customerconsumer.CustomerConsumerProbe;
+import bg.spotyourslot.customer.CustomerConcurrentConflict;
+import bg.spotyourslot.customer.CustomerIdentification;
+import bg.spotyourslot.customer.CustomerIdentity;
+import bg.spotyourslot.customer.CustomerMatchOutcome;
+import bg.spotyourslot.customer.CustomerOperationFailure;
+import bg.spotyourslot.customer.CustomerReferenceAccess;
+import bg.spotyourslot.customer.IdentityField;
 import bg.spotyourslot.shared.contact.ContactEmailPolicy;
 import bg.spotyourslot.shared.contact.ContactPhoneNumbers;
 import bg.spotyourslot.shared.contact.ContactTextCanonicalizer;
 import bg.spotyourslot.shared.web.ApiExceptionHandler;
+import com.tngtech.archunit.core.domain.Dependency;
 import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.core.importer.ClassFileImporter;
+import com.tngtech.archunit.core.importer.ImportOption;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -18,7 +29,10 @@ import org.springframework.modulith.core.ApplicationModules;
 import org.springframework.modulith.core.NamedInterface;
 
 /**
- * Phase 2 boundaries of the Customer module (ADR-0019): it depends only on the small shared contact
+ * Boundaries of the Customer module: Phase 2 (ADR-0019) and Phase 3 (ADR-0020), which publishes the
+ * {@code CustomerIdentification} and {@code CustomerReferenceAccess} contracts from its root package.
+ *
+ * <p>Phase 2 boundaries of the Customer module (ADR-0019): it depends only on the small shared contact
  * policy through the {@code shared::contact} named interface only, never on Workforce, and nothing
  * depends on it yet. The other {@code shared} sub-packages stay internal.
  */
@@ -99,6 +113,117 @@ class CustomerModuleBoundaryTests {
             assertThat(sharedTypesUsed).as(consumer).isNotEmpty();
             assertThat(sharedTypesUsed).as(consumer).allMatch(contact::contains);
         }
+    }
+
+    @Test
+    void theRootPackageIsTheOnlyPublishedCustomerApiAndHoldsExactlyTheApprovedTypes() {
+        ApplicationModule customer = modules.getModuleByName("customer").orElseThrow();
+
+        Set<String> published = customer.getNamedInterfaces().getUnnamedInterface()
+                .asJavaClasses()
+                .map(JavaClass::getName)
+                .collect(Collectors.toSet());
+
+        assertThat(published).allMatch(name -> name.startsWith("bg.spotyourslot.customer.")
+                && name.lastIndexOf('.') == "bg.spotyourslot.customer".length());
+        assertThat(published).contains(
+                CustomerIdentification.class.getName(),
+                CustomerIdentity.class.getName(),
+                CustomerMatchOutcome.class.getName(),
+                CustomerMatchOutcome.ExistingCustomer.class.getName(),
+                CustomerMatchOutcome.CreatedCustomer.class.getName(),
+                CustomerMatchOutcome.InvalidIdentity.class.getName(),
+                CustomerMatchOutcome.IdentityConflict.class.getName(),
+                IdentityField.class.getName(),
+                CustomerReferenceAccess.class.getName(),
+                CustomerReferenceAccess.CustomerReference.class.getName(),
+                CustomerConcurrentConflict.class.getName(),
+                CustomerOperationFailure.class.getName());
+        assertThat(published).noneMatch(name -> name.contains("CustomerStore")
+                || name.contains("CustomerPersistenceException")
+                || name.contains("CustomerProfile")
+                || name.contains("CustomerField")
+                || name.contains("CustomerIdentificationService"));
+        assertThat(CustomerMatchOutcome.class.getPermittedSubclasses()).hasSize(4);
+    }
+
+    @Test
+    void thePublishedTypesDependOnlyOnTheJdkAndTheirOwnPackage() {
+        var imported = new ClassFileImporter()
+                .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
+                .importPackages("bg.spotyourslot.customer");
+
+        for (JavaClass type : imported) {
+            if (!type.getPackageName().equals("bg.spotyourslot.customer")) {
+                continue;
+            }
+            for (Dependency dependency : type.getDirectDependenciesFromSelf()) {
+                String target = dependency.getTargetClass().getPackageName();
+                assertThat(target).as(type.getName() + " -> " + dependency.getTargetClass().getName())
+                        .satisfiesAnyOf(
+                                name -> assertThat(name).startsWith("java."),
+                                name -> assertThat(name).isEqualTo("bg.spotyourslot.customer"));
+            }
+        }
+    }
+
+    @Test
+    void theTestOnlyConsumerUsesThePublishedRootPackageAndNothingInternal() {
+        var consumerClasses = new ClassFileImporter().importPackages(
+                CustomerConsumerProbe.class.getPackageName());
+
+        assertThat(consumerClasses.contain(CustomerConsumerProbe.class)).isTrue();
+        Set<String> customerTargets = consumerClasses.stream()
+                .flatMap(type -> type.getDirectDependenciesFromSelf().stream())
+                .map(dependency -> dependency.getTargetClass())
+                .filter(target -> target.getPackageName().startsWith("bg.spotyourslot.customer"))
+                .map(JavaClass::getName)
+                .collect(Collectors.toSet());
+
+        assertThat(customerTargets).isNotEmpty();
+        assertThat(customerTargets)
+                .allMatch(name -> name.startsWith("bg.spotyourslot.customer.")
+                        && name.indexOf('.', "bg.spotyourslot.customer.".length()) < 0
+                        || name.equals("bg.spotyourslot.customer"));
+        assertThat(customerTargets).noneMatch(name -> name.contains(".domain.")
+                || name.contains(".infrastructure.")
+                || name.contains(".application."));
+    }
+
+    @Test
+    void theTestOnlyConsumerCanUseEveryPublishedContract() {
+        // Compiles only because the contracts are public: the identity, the outcomes, and the two
+        // unchecked failures are all reachable from outside the module.
+        CustomerIdentity identity = new CustomerIdentity("Name", "+359895555777", null);
+        CustomerMatchOutcome outcome = new CustomerMatchOutcome.IdentityConflict();
+
+        assertThat(identity.displayName()).isEqualTo("Name");
+        assertThat(outcome).isInstanceOf(CustomerMatchOutcome.class);
+        assertThat(new CustomerConcurrentConflict()).isInstanceOf(RuntimeException.class);
+        assertThat(new CustomerOperationFailure()).isInstanceOf(RuntimeException.class);
+    }
+
+    @Test
+    void theCustomerCapabilityHasNoLoggingAtAll() throws java.io.IOException {
+        // Privacy by construction: with no logger, no name, phone, email, ID, or SQL can be logged.
+        try (var sources = java.nio.file.Files.walk(java.nio.file.Path.of("src/main/java/bg/spotyourslot/customer"))) {
+            for (java.nio.file.Path source : sources.filter(path -> path.toString().endsWith(".java")).toList()) {
+                String text = java.nio.file.Files.readString(source);
+                assertThat(text).as(source.toString())
+                        .doesNotContain("org.slf4j")
+                        .doesNotContain("java.util.logging")
+                        .doesNotContain("System.out")
+                        .doesNotContain("System.err")
+                        .doesNotContain("printStackTrace");
+            }
+        }
+    }
+
+    @Test
+    void noBookingModuleOrClassExistsYetAndCustomerNeverDependsOnIt() {
+        assertThat(modules.getModuleByName("booking")).isEmpty();
+        assertThat(new ClassFileImporter().importPackages("bg.spotyourslot.booking")).isEmpty();
+        assertThat(dependenciesOf("customer")).doesNotContain("booking", "workforce");
     }
 
     @Test

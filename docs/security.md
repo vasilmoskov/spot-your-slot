@@ -397,7 +397,7 @@ links use example origin `https://spotyourslot.bg` and Business pages use
 `https://spotyourslot.bg/{businessSlug}`. Development/tests do not send. The
 domain is not configured and its availability has not been legally verified.
 
-### Customer administration and privacy (decisions for issue #20; only persistence is implemented)
+### Customer administration and privacy (decisions for issue #20; persistence and matching are implemented)
 
 The private Customer API (`/api/business/customers`, ADR-0021) derives the user and the
 selected Business only from the server-managed security context; no path, query, or body field
@@ -432,6 +432,13 @@ contain a key value for a rare administrative unique violation, a recorded opera
 limitation. Matching is conservative (ADR-0020): it never writes to an existing Customer, and
 the guest-facing identity-conflict message does not reveal which identifier matched or that a
 Customer exists. Customer creation never creates credentials, a session, or a Membership.
+
+The implemented matching capability logs nothing, so no name, phone, email, ID, or SQL can be logged
+by it. `CustomerIdentity.toString()` is redacted, and the published outcomes and the two sanitized
+exceptions (`CustomerConcurrentConflict` for a retryable concurrency failure and
+`CustomerOperationFailure` for any other persistence failure) carry no submitted value, ID, SQL,
+constraint text, cause, or suppressed exception. Every operation requires a caller-owned transaction
+and is scoped by Business, so a foreign-Business Customer is treated as nonexistent.
 
 ## Privacy and verification
 

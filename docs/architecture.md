@@ -38,7 +38,7 @@ All backend packages live below `bg.spotyourslot`.
 | `scheduling` | timezone-aware availability, Business closures, StaffMember time off, working-day overrides, additional working periods, and deterministic assignment (ADR-0013) |
 | `publicprofile` | read-only unauthenticated public Business profile (`GET /api/public/businesses/{slug}`) orchestrated over the published `business.PublicBusinessProfileAccess` and `catalog.PublicServiceAccess` contracts (ADR-0017; backend contract, public React page and browser E2E verification implemented in issue #17; booking is not part of it) |
 | `booking` | transactional Appointment lifecycle and conflicts |
-| `customer` | Business-scoped Customers, conservative find-or-create matching, and private owner-only Customer administration (decisions in ADR-0019 to ADR-0021, issue #20). Implemented so far: the domain model and internal persistence (V10); matching, the published contracts, and administration follow. Will publish `CustomerIdentification` and `CustomerReferenceAccess`; today depends only on `shared`, later also on `identity` and `business`; never depends on `workforce` or `booking` |
+| `customer` | Business-scoped Customers, conservative find-or-create matching, and private owner-only Customer administration (decisions in ADR-0019 to ADR-0021, issue #20). Implemented so far: the domain model and internal persistence (V10), and conservative matching published as `CustomerIdentification` and `CustomerReferenceAccess` (with the sanitized `CustomerConcurrentConflict` and `CustomerOperationFailure`) from its root package; administration follows. Today depends only on `shared`, later also on `identity` and `business`; never depends on `workforce` or `booking` |
 | `notification` | outbox, delivery attempts, reminders, `EmailService` |
 | `audit` | immutable security/business audit events |
 | `shared` | small cross-cutting primitives, errors, clocks, configuration, and the small contact text, phone, and email canonicalization policy (`ContactTextCanonicalizer`, `ContactPhoneNumbers`, `ContactEmailPolicy`) in the `shared.contact` package, declared the `shared::contact` named interface and the only part of `shared` other modules may use; `workforce` and `customer` both use it (ADR-0019) |
@@ -97,7 +97,10 @@ an invalid-identity outcome, or an identity-conflict outcome (ADR-0020). A Postg
 serialization failure, deadlock, or unrecoverable race is not an outcome: it raises the
 sanitized typed `CustomerConcurrentConflict`, which marks the caller's transaction for
 rollback; the caller retries the whole outer transaction after rollback, finalized by
-issue #18. `CustomerReferenceAccess.find` supplies a same-Business reference; the future
+issue #18. Any other persistence failure raises the equally sanitized `CustomerOperationFailure`;
+no persistence type crosses the boundary. Both operations are `MANDATORY` (a missing transaction
+fails before any work), `findOrCreate` runs at most three Customer statements (lookup, one
+`INSERT ... ON CONFLICT DO NOTHING`, one re-read), and `READ_COMMITTED` is the tested baseline. `CustomerReferenceAccess.find` supplies a same-Business reference; the future
 Appointment `(business_id, customer_id)` foreign key is the persistence guarantee. Whether an
 Appointment snapshots submitted contact data is deferred to issue #18. Customer appointment
 history will be a Booking-owned query added by issue #21; no Customer-to-Booking dependency

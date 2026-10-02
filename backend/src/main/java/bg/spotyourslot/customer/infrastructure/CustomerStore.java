@@ -11,9 +11,11 @@ import bg.spotyourslot.customer.infrastructure.CustomerPersistenceException.Unex
 import bg.spotyourslot.customer.infrastructure.CustomerPersistenceException.UnknownBusiness;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Types;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -92,6 +94,57 @@ public class CustomerStore {
                 .param("createdAt", databaseTime(customer.createdAt()))
                 .query(this::customer)
                 .single());
+    }
+
+    /**
+     * Inserts a new Customer at version 0 unless a unique constraint already holds a conflicting
+     * row ({@code ON CONFLICT DO NOTHING}, no conflict target, so a held phone, a held email, and
+     * an ID collision alike). A conflict returns empty and, unlike a plain insert, neither raises
+     * nor aborts the caller's transaction; the caller re-reads to learn the holder. Foreign-key and
+     * check violations are still translated failures.
+     */
+    public Optional<Customer> insertIfAbsent(NewCustomer customer) {
+        CustomerProfile profile = customer.profile();
+        return execute(() -> jdbc.sql("""
+                        INSERT INTO customer(
+                            id, business_id, display_name, phone, email,
+                            version, created_at, updated_at)
+                        VALUES (
+                            :id, :businessId, :displayName, :phone, :email,
+                            0, :createdAt, :createdAt)
+                        ON CONFLICT DO NOTHING
+                        RETURNING
+                        """ + RETURNING_COLUMNS)
+                .param("id", customer.id())
+                .param("businessId", customer.businessId())
+                .param("displayName", profile.displayName())
+                .param("phone", profile.phone())
+                .param("email", profile.email())
+                .param("createdAt", databaseTime(customer.createdAt()))
+                .query(this::customer)
+                .optional());
+    }
+
+    /**
+     * One statement returning the Customers of the Business that hold the supplied phone or the
+     * supplied email: at most two rows, because each identifier is unique per Business, and a
+     * single row when both identifiers belong to the same Customer. A null identifier matches
+     * nothing. The order is unspecified and callers must not depend on it. No lock is taken, and
+     * another Business's holder is never returned.
+     */
+    public List<Customer> findHolders(UUID businessId, String phone, String email) {
+        return execute(() -> jdbc.sql("""
+                        SELECT
+                        """ + RETURNING_COLUMNS + """
+                        FROM customer
+                        WHERE business_id = :businessId
+                          AND (phone = :phone OR email = :email)
+                        """)
+                .param("businessId", businessId)
+                .param("phone", phone, Types.VARCHAR)
+                .param("email", email, Types.VARCHAR)
+                .query(this::customer)
+                .list());
     }
 
     public Optional<Customer> findById(UUID businessId, UUID customerId) {

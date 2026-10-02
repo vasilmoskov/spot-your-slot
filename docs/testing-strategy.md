@@ -82,8 +82,24 @@ agreement with Java, every constraint, same-Business uniqueness, cross-Business 
 distinctness, and the 200/201-character boundary. `CustomerStoreIntegrationTests` and
 `CustomerStoreFailureTranslationTests` cover every store operation, tenant isolation, versioned
 updates, rollback preservation, single-statement and no-lock evidence, and structural, sanitized
-failure translation. `CustomerModuleBoundaryTests` pin the module dependencies and the `shared::contact` named interface. No concurrency race is
-tested yet; those belong to Phase 3.
+failure translation. `CustomerModuleBoundaryTests` pin the module dependencies and the `shared::contact` named interface. The races belong to Phase 3.
+
+### Customer matching verification (issue #20 Phase 3)
+
+`CustomerIdentificationServiceTests` (unit, mocked store) cover every truth-table row, all invalid-field
+combinations and the immutable field set, no SQL, clock, or UUID work for invalid, existing, or
+conflicting input, canonicalization before lookup, the bounded re-read, the failure mapping, and
+redaction. `CustomerIdentificationIntegrationTests` (PostgreSQL) cover the rows with unchanged matched
+Customers, same-Business isolation, the caller-owned transaction, `READ_COMMITTED` and stronger
+isolation, rollback and rollback-only behavior, and the statement bounds (0, 1, 1, 2, and 3 for a race
+loser, counted by a recording `DataSource` that records only SQL naming the `customer` table).
+`CustomerIdentificationConcurrencyIntegrationTests` cover the creation races without sleeps (latches
+plus `pg_stat_activity` lock-wait evidence), a real `40001` from a `REPEATABLE_READ` snapshot, a real
+`40P01` from opposite-order inserts, rollback with no leftover Customer or probe row, and a retry in a
+new transaction. A test-only consumer (`CustomerConsumerProbe`) uses only the published contracts and
+writes into a test-created probe table that is never part of Flyway. `CustomerModuleBoundaryTests` also
+pin the published root-package types, their dependencies, the consumer's use of the root package only,
+the absence of any Booking module, and the absence of logging.
 
 ### Time, lifecycle, tokens, and notifications
 

@@ -243,6 +243,29 @@ foreign key, the snapshot decision, retry policy, rate limiting, and the generic
 response. Issue #21 adds history. `architecture.md`, `security.md`, `data-model.md`,
 and the task record describe the contract.
 
+## Implementation clarifications (Phase 3)
+
+- **Bounded resolution.** Row 15's "two attempts" means the initial resolution followed by one
+  bounded re-read and resolution, not two insert attempts. `findOrCreate` runs one holder lookup,
+  at most one `INSERT ... ON CONFLICT DO NOTHING`, and, only when that returns no row, one final
+  lookup: at most three Customer statements and no loop. A final lookup that finds nobody (for
+  example an ID collision) throws `CustomerConcurrentConflict`; it never becomes a match.
+- **A second sanitized exception.** Non-concurrency persistence failures (an unavailable database,
+  an unknown SQLState, an unknown Business, rejected data, an unresolved duplicate, a corrupt stored
+  row) must neither leak `customer.infrastructure` types nor be confused with the retryable conflict.
+  The root package therefore also publishes the sanitized unchecked `CustomerOperationFailure`: a
+  fixed message, no reason, no cause or suppressed exception, its own stack trace, and a rollback-only
+  caller transaction. It is never returned as an outcome and does not change the four outcomes. Only
+  SQLStates `40001` and `40P01` and the bounded inconsistent re-read produce
+  `CustomerConcurrentConflict`, so a later phase can map the two differently without inspecting an
+  infrastructure exception. Both exceptions invalidate the current transaction. Only
+  `CustomerConcurrentConflict` is declared retryable, in a completely new transaction;
+  `CustomerOperationFailure` is not declared retryable by this capability, and the caller abandons
+  the transaction and applies its own higher-level failure policy.
+- **Published shape.** The successful outcomes and `CustomerReference` reject a null ID. `IdentityField` mirrors the internal field enum; `InvalidIdentity.fields()` is
+  an unmodifiable, nonempty set; the outcome and reference records are nested in their interfaces;
+  `CustomerIdentity.toString()` is redacted.
+
 ## Evidence
 
 Direct evidence: issue #20 identity and uniqueness rules; ADR-0016 (published

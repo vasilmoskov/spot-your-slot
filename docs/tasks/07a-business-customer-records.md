@@ -1,9 +1,11 @@
 # SpotYourSlot — Business-scoped Customer Records
 
-Status: Phase 1 (decisions, ADRs, and plan) is committed. Phase 2 (shared contact policy,
-Customer domain, `V10` schema, and internal persistence) is implemented and verified and awaits
-review and commit. Issue #20 is in progress; matching, the published contracts, administration,
-and the interface are not started, and each later phase needs separate explicit approval.
+Status: Phase 1 (decisions, ADRs, and plan) and Phase 2 (shared contact policy, Customer domain,
+`V10` schema, and internal persistence) are committed. Phase 3 (conservative matching, the published
+`CustomerIdentification` and `CustomerReferenceAccess` contracts, caller-owned transaction semantics,
+and PostgreSQL concurrency evidence) is implemented and verified and awaits review and commit.
+Issue #20 is in progress; administration, list and search, the interface, and E2E are not started, and
+each later phase needs separate explicit approval.
 GitHub issue: #20 — Build Business-scoped customer records
 Depends on: the approved identity, authorization, and Business-isolation foundation,
 and the Business-owner configuration and navigation where Customer administration is
@@ -327,8 +329,8 @@ zoom review are required, with explicit human visual approval.
 | Phase | Scope | Risk | Gate |
 |---|---|---|---|
 | 1 | Decisions, this task record, ADR-0019 to ADR-0021, and narrow documentation reconciliation. Documentation only. | Strict | Review of this change |
-| 2 (implemented, awaiting review) | **First** extract the shared contact policy (backend and frontend module), add golden vectors, make StaffMember delegate, and verify existing StaffMember behavior. **Then** the `customer` domain, `V10__add_customers.sql`, repository/store, uniqueness and concurrency tests, and the boundary test. No controller or frontend Customer UI. Internal checkpoints are allowed within this one phase. | Strict | Own approval and commit; Phase 1 accepted |
-| 3 | `CustomerIdentification` and `CustomerReferenceAccess`, normalization, typed outcomes, transaction and race tests, test-only consumer. No Appointment. | Strict (cross-module contract) | Own approval and commit |
+| 2 (committed) | **First** extract the shared contact policy (backend and frontend module), add golden vectors, make StaffMember delegate, and verify existing StaffMember behavior. **Then** the `customer` domain, `V10__add_customers.sql`, repository/store, uniqueness and concurrency tests, and the boundary test. No controller or frontend Customer UI. Internal checkpoints are allowed within this one phase. | Strict | Own approval and commit; Phase 1 accepted |
+| 3 (implemented, awaiting review) | `CustomerIdentification` and `CustomerReferenceAccess`, normalization, typed outcomes, transaction and race tests, test-only consumer. No Appointment. | Strict (cross-module contract) | Own approval and commit |
 | 4 | Private administration backend: authorization, list, search, detail, create, update, lifecycle behavior, tenant-isolation and privacy tests, `EXPLAIN` evidence. | Strict | Own approval and commit |
 | 5 | Business-owner interface: navigation, list and search **first**, then create, detail, and edit; validation, guards, SUSPENDED mode, rendered desktop, tablet, mobile, and zoom review. Two human visual checkpoints are allowed within this one phase. | Standard (human visual approval) | Human visual approval |
 | 6 | Playwright administration journey, tenant isolation, lifecycle, privacy evidence, Booking-seam evidence, full gates, documentation completion, roadmap update, review archive. | Standard | Green verification; closure only with explicit approval |
@@ -422,7 +424,7 @@ though the Project board reported `Todo` when this phase was prepared.
 | C14 | A concurrent database failure was modeled as an ordinary matching outcome although it aborts the PostgreSQL transaction | Four normal outcomes; the failure is the typed `CustomerConcurrentConflict` exception that rolls back the caller's transaction (ADR-0020) |
 | C12 | Existing constraint translation inspects the error message, which contains the value for Customer | Exact constraint name and a sanitized exception without cause |
 
-## Phase 2 record (implemented and verified; awaiting review and commit)
+## Phase 2 record (implemented, verified, and committed)
 
 Phase 2 delivered the shared contact policy, the Customer domain model, `V10`, and internal
 persistence. It did **not** start Phase 3: there is no `findOrCreate`, no matching truth table, no
@@ -573,3 +575,141 @@ message text is never parsed. `40001` and `40P01` are `UnexpectedFailure` for no
 - **Not done (Phase 3 onward):** matching and its truth table, `CustomerIdentification`,
   `CustomerReferenceAccess`, `CustomerConcurrentConflict`, administration API, search, frontend
   screens, E2E.
+
+## Phase 3 record (implemented and verified; awaiting review and commit)
+
+Phase 3 delivered conservative matching, the published Customer contracts, caller-owned transaction
+semantics, and PostgreSQL concurrency evidence. It did **not** start Phase 4: there is no HTTP
+endpoint, controller advice, authorization, list or search, Customer administration service,
+frontend, Appointment, Booking class, history, snapshot, merge, delete, lifecycle, E2E test, or
+migration beyond `V10`. No file in `pom.xml`, `db/migration`, the frontend, or the security
+configuration changed.
+
+### Published types (all in the public root package `bg.spotyourslot.customer`)
+
+| Type | Shape |
+|---|---|
+| `CustomerIdentification` | `CustomerMatchOutcome findOrCreate(UUID businessId, CustomerIdentity identity)` |
+| `CustomerIdentity` | `record(displayName, phone, email)`: raw input only; `toString()` is the constant `CustomerIdentity[redacted]` |
+| `CustomerMatchOutcome` | sealed interface with exactly four nested records: `ExistingCustomer(customerId)` and `CreatedCustomer(customerId)` (both reject a null ID), `InvalidIdentity(Set<IdentityField> fields)` (copied into a private unmodifiable `EnumSet`, never empty), and `IdentityConflict()` (no components) |
+| `IdentityField` | `DISPLAY_NAME`, `PHONE`, `EMAIL`, `CONTACT`; mirrors the internal `CustomerField` through an exhaustive switch (tested one to one) |
+| `CustomerReferenceAccess` | `Optional<CustomerReference> find(UUID businessId, UUID customerId)` with nested `CustomerReference(UUID id)` (rejects a null ID) |
+| `CustomerConcurrentConflict` | final unchecked; fixed message; no cause, no suppressed exceptions, own stack trace; retryable |
+| `CustomerOperationFailure` | final unchecked; fixed message; no cause, no suppressed exceptions, own stack trace; non-concurrency failure |
+
+The outcome and reference records are nested in their interfaces (the repository precedent for
+`ServiceReferenceAccess`), which does not change the contract. Internal and not published:
+`CustomerIdentificationService` (`customer.application`, implements both interfaces),
+`CustomerStore`, `CustomerPersistenceException`, the domain types, the clock, and the ID supplier.
+Nothing outside `customer` depends on it; the test-only consumer is not a Modulith module.
+
+### Matching algorithm and query bounds
+
+The display name is validated and canonicalized but never matches. Input is canonicalized once by
+`CustomerProfile.fromInput` (the Phase 2 shared policy). Invalid input returns `InvalidIdentity`
+with every invalid field of that pass and runs no SQL, reads no clock, and generates no UUID.
+`CONTACT` is reported only when neither a phone nor an email was supplied; a supplied but invalid
+phone or email is reported as `PHONE` or `EMAIL` and not as `CONTACT`, so a client can map each field
+without duplicating the policy.
+
+1. One statement, `findHolders` (`WHERE business_id = ? AND (phone = ? OR email = ?)`, no lock, at
+   most two rows, order never relied on). The holder of the phone is the row whose phone equals the
+   supplied phone and the holder of the email the row whose email equals the supplied email. A
+   holder in another Business is never returned.
+2. The approved truth table (rows 3 to 11) decides. One identifier supplied: holder, then
+   `ExistingCustomer`; nobody, then create. Both supplied: the same Customer holds both, then
+   `ExistingCustomer`; nobody holds either, then create; every other combination (two different
+   holders, or one holder and a free other identifier, even when the holder has no value for it) is
+   `IdentityConflict`. Nothing is attached, updated, renamed, moved, or merged.
+3. Only when nobody holds a supplied identifier: read the clock once, generate one UUID, and run at
+   most one `INSERT ... ON CONFLICT DO NOTHING ... RETURNING` (no conflict target, so a held phone,
+   a held email, and an ID collision all return no row instead of raising). A returned row is
+   `CreatedCustomer`.
+4. When the insert returns no row: one final `findHolders`, evaluated by the same truth table. If it
+   finds nobody, or cannot decide, the call throws `CustomerConcurrentConflict`. An ID collision can
+   therefore never become a match: a result comes only from the supplied identifiers.
+
+ADR-0020's "two attempts" means the initial resolution followed by this one bounded re-read, not two
+insert attempts. There is no second insert and no loop. **Bounds** (tested by counting only SQL that
+names the `customer` table, through a recording `DataSource`): invalid input 0 statements, an
+existing match or an immediate conflict 1, a creation 2 (`SELECT`, then the insert), a race loser 3,
+and never more than 3 (one initial lookup, at most one insert, at most one re-read). `find` runs one
+`SELECT` by Business and ID.
+
+### Transactions, isolation, and failures
+
+Both operations are `@Transactional(propagation = MANDATORY)` (`find` also `readOnly`), the narrowest
+Spring semantics, matching `ServiceReferenceAccess`. A call without a transaction fails in the
+proxy (`IllegalTransactionStateException`) before the clock, the ID supplier, or persistence is
+touched, even for input that would be invalid. Neither operation opens a transaction, uses
+`REQUIRES_NEW`, or uses a savepoint, and no global transaction setting changed. `findOrCreate` joins
+the caller's read-write transaction and `find` the caller's transaction, with no write and no
+explicit lock. `READ_COMMITTED` is supported and tested; `REPEATABLE_READ` and `SERIALIZABLE` are
+accepted and tested. The four normal outcomes return normally and do not mark the transaction
+rollback-only.
+
+Any thrown exception crosses the transactional proxy and marks the caller's transaction
+rollback-only even if the caller catches it. Persistence failures are classified in the application
+service and discarded, so no `customer.infrastructure` type crosses the boundary:
+
+| Internal failure | Published exception |
+|---|---|
+| `UnexpectedFailure` with SQLState `40001` or `40P01` | `CustomerConcurrentConflict` |
+| a re-read that finds nobody or is inconsistent | `CustomerConcurrentConflict` |
+| every other `CustomerPersistenceException` (unavailable database, unknown SQLState, `UnknownBusiness`, `InvalidData`, an unresolved duplicate, a corrupt stored row) | `CustomerOperationFailure` |
+
+Both exceptions invalidate the current transaction. `CustomerConcurrentConflict` is retryable in a
+completely new outer transaction. `CustomerOperationFailure` is the sanitized internal failure and is
+not declared retryable by this capability: the caller abandons the transaction and applies its own
+higher-level failure policy; a connection outage is never classified
+as concurrency merely because it is unexpected. Neither exception holds a value, ID, SQL, constraint
+text, reason, cause, or suppressed exception, and each keeps its own application stack trace. A caller
+that catches either inside its transaction can neither continue an Appointment-like write (PostgreSQL has
+aborted the transaction) nor commit (`UnexpectedRollbackException`).
+
+### Privacy
+
+The capability has no logger at all (a test scans its sources), so no name, phone, email, Customer ID,
+Business ID, SQL, or constraint text is logged. `CustomerIdentity.toString()` is redacted, and tests
+with sentinel values prove the identity, every outcome, and both exceptions (message, cause,
+suppressed, `toString()`) carry no submitted value.
+
+### Verification evidence (executed 2026-10-02)
+
+- Focused: `CustomerIdentificationServiceTests` 30 (every truth-table row, 100 or more invalid
+  combinations, immutability, field mapping, bounds with a mocked store, failure mapping, sanitized
+  exceptions, redaction), `CustomerIdentificationIntegrationTests` 27 (PostgreSQL rows, no mutation,
+  isolation, reference lookup, no transaction, the three isolation levels, rollback and rollback-only,
+  and the statement bounds), `CustomerIdentificationConcurrencyIntegrationTests` 11 (races, a real
+  `40001`, a real `40P01`), `CustomerModuleBoundaryTests` 13.
+- Races (latches plus `pg_stat_activity` lock-wait evidence, no sleeps; timeouts are only ceilings):
+  identical phone-only, email-only, and phone-and-email submissions give one `CreatedCustomer`, one
+  `ExistingCustomer` of the same ID, and no duplicate; a broader racer, a narrower racer, and a racer
+  holding a different phone resolve by the truth table; a race revealing phone A and email B returns
+  `IdentityConflict`; a rolled-back winner lets the waiting insert create the Customer itself. The
+  race loser runs exactly three Customer statements.
+- Real `40001`: a `REPEATABLE_READ` transaction whose snapshot predates a committed insert of the same
+  phone raises `CustomerConcurrentConflict` through the public operation; the Customer and the probe
+  row of the failed transaction do not remain; a new transaction then returns `ExistingCustomer`. A
+  caller that catches it cannot write or commit.
+- Real `40P01`: two transactions create a Customer each, then each inserts the other's phone, so the
+  unique-index waits deadlock (second transaction proven blocked through PostgreSQL first). Exactly one
+  gets `CustomerConcurrentConflict`, the other `CreatedCustomer`, and either victim is accepted.
+  Two Customers and two probe rows remain, with no duplicates, and a new transaction can retry.
+- The Appointment-like probe table is created and dropped by test code inside each test class, is not
+  in Flyway or production resources, and every probe row has a composite foreign key to
+  `customer(business_id, id)`.
+- Full backend `./mvnw --batch-mode verify`: 1,922 tests, 0 failures, 0 errors, 0 skipped (BUILD SUCCESS); the previous total was 1,848.
+
+### Deviations, limitations, and remaining work
+
+- The new `Customer` exceptions are two (`CustomerConcurrentConflict` and `CustomerOperationFailure`);
+  ADR-0020 named only the first, and its implementation clarification records the second.
+- `findOrCreate` canonicalizes with `CustomerProfile.fromInput`; a stored row that violates a domain
+  invariant surfaces as `CustomerOperationFailure`.
+- Rate limiting, the guest-facing message, retry policy, and Appointment snapshots stay with #18.
+- Statement counting uses a recording `DataSource` in tests only. A conflicting row that is deleted
+  between the insert and the re-read cannot be produced because no Customer deletion exists; if it
+  could occur the call would throw `CustomerConcurrentConflict`.
+- **Not done (Phase 4 onward):** private administration API and authorization, list, search,
+  `EXPLAIN` evidence, frontend screens, E2E, Booking, Appointments.
