@@ -33,7 +33,10 @@ describe('validateStaff', () => {
   it('accepts a blank email and validates a non-blank one', () => {
     const email = (value: string) => validateStaffField('contactEmail', { ...valid, contactEmail: value })
     expect(email('')).toBeUndefined()
-    expect(email(`${'a'.repeat(300)}@x.bg`)).toBeUndefined()
+    // The shared policy limits the local part to 64 characters, so a long address is built from
+    // valid 63-character domain labels (64 + 1 + 238 = 303 characters in total).
+    const longDomain = `${'b'.repeat(63)}.${'b'.repeat(63)}.${'b'.repeat(63)}.${'b'.repeat(43)}.bg`
+    expect(email(`${'a'.repeat(64)}@${longDomain}`)).toBeUndefined()
     expect(email(`${'a'.repeat(320)}@x.bg`)).toBe('Имейлът може да съдържа най-много 320 знака.')
   })
 

@@ -14,14 +14,11 @@ import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberPage;
 import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberSortField;
 import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberVersionCommand;
 import bg.spotyourslot.workforce.StaffMemberRecords.UpdateStaffMemberCommand;
-import jakarta.validation.Validation;
-import jakarta.validation.ValidatorFactory;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Stream;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -29,15 +26,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 class StaffMemberInputValidatorTests {
-    private static final ValidatorFactory VALIDATOR_FACTORY =
-            Validation.buildDefaultValidatorFactory();
-    private static final StaffMemberInputValidator VALIDATOR =
-            new StaffMemberInputValidator(VALIDATOR_FACTORY.getValidator());
-
-    @AfterAll
-    static void closeValidatorFactory() {
-        VALIDATOR_FACTORY.close();
-    }
+    private static final StaffMemberInputValidator VALIDATOR = new StaffMemberInputValidator();
 
     @Test
     void canonicalizesBeforeValidatingCreateAndUpdateCommands() {

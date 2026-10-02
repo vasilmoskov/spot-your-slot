@@ -38,10 +38,10 @@ All backend packages live below `bg.spotyourslot`.
 | `scheduling` | timezone-aware availability, Business closures, StaffMember time off, working-day overrides, additional working periods, and deterministic assignment (ADR-0013) |
 | `publicprofile` | read-only unauthenticated public Business profile (`GET /api/public/businesses/{slug}`) orchestrated over the published `business.PublicBusinessProfileAccess` and `catalog.PublicServiceAccess` contracts (ADR-0017; backend contract, public React page and browser E2E verification implemented in issue #17; booking is not part of it) |
 | `booking` | transactional Appointment lifecycle and conflicts |
-| `customer` | Business-scoped Customers, conservative find-or-create matching, and private owner-only Customer administration (decisions in ADR-0019 to ADR-0021, issue #20; not yet implemented). Publishes `CustomerIdentification` and `CustomerReferenceAccess`; depends only on `identity`, `business`, and `shared.contact`; never depends on `booking` |
+| `customer` | Business-scoped Customers, conservative find-or-create matching, and private owner-only Customer administration (decisions in ADR-0019 to ADR-0021, issue #20). Implemented so far: the domain model and internal persistence (V10); matching, the published contracts, and administration follow. Will publish `CustomerIdentification` and `CustomerReferenceAccess`; today depends only on `shared`, later also on `identity` and `business`; never depends on `workforce` or `booking` |
 | `notification` | outbox, delivery attempts, reminders, `EmailService` |
 | `audit` | immutable security/business audit events |
-| `shared` | small cross-cutting primitives, errors, clocks, configuration, and (planned in issue #20) the small `shared.contact` text, phone, and email canonicalization policy used by `workforce` and `customer` |
+| `shared` | small cross-cutting primitives, errors, clocks, configuration, and the small contact text, phone, and email canonicalization policy (`ContactTextCanonicalizer`, `ContactPhoneNumbers`, `ContactEmailPolicy`) in the `shared.contact` package, declared the `shared::contact` named interface and the only part of `shared` other modules may use; `workforce` and `customer` both use it (ADR-0019) |
 
 Controllers call application use cases; authorization and transactions are not
 controller concerns. Entities/repositories remain module-internal. Modules use

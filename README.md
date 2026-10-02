@@ -28,7 +28,9 @@ also has a read-only, unauthenticated public profile page at `/{businessSlug}`
 Services, backed by `GET /api/public/businesses/{slug}`); it offers no booking
 action. Business-scoped Customer records (issue #20) are in progress: the
 decisions are documented (`docs/tasks/07a-business-customer-records.md`,
-ADR-0019 to ADR-0021) and no Customer code, migration, or interface exists yet.
+ADR-0019 to ADR-0021) and Phase 2 has delivered the shared contact policy, the
+`customer` table (V10) and internal persistence. There is no Customer matching
+contract, API, or interface yet.
 Appointments, booking, production email, and hosting are not implemented.
 Business closures, StaffMember time off, working-day overrides, and additional
 working periods ("Промени в графика") can be administered through an
@@ -75,6 +77,7 @@ expand the MVP.
 - [Staff management backend task](docs/tasks/04b-staff-management-and-service-assignments-backend.md)
 - [Recurring staff working schedules backend task](docs/tasks/04c-recurring-staff-working-schedules-backend.md)
 - [Availability and schedule exceptions task](docs/tasks/05a-availability-and-schedule-exceptions.md)
+- [Business Customer records task](docs/tasks/07a-business-customer-records.md)
 - [Foundation task](docs/tasks/00-product-foundation.md)
 
 ## Selected toolchain
@@ -90,6 +93,7 @@ downloaded by the committed wrapper. Production hosting remains unconfigured.
 spot-your-slot/
 ├── backend/
 ├── frontend/
+├── shared-test-data/   (golden vectors shared by backend and frontend tests)
 ├── docs/
 │   ├── tasks/
 │   ├── product-spec.md
@@ -148,7 +152,7 @@ export POSTGRES_PASSWORD='the-value-from-your-local-env-file'
 ```
 
 Health is public at `http://localhost:8080/actuator/health`. Flyway applies the
-nine current migrations (V1–V9) on startup and Hibernate validates the schema.
+ten current migrations (V1–V10) on startup and Hibernate validates the schema.
 
 To create the first local `PLATFORM_ADMIN`, explicitly opt in for one startup:
 
@@ -384,7 +388,7 @@ values and reduce the delay if a local observation run times out.
 The runner creates only the validated `spotyourslot-e2e` Compose project. It
 uses PostgreSQL on port `55432`, Spring Boot on `18080`, and Vite on `15173`.
 Every run recreates the dedicated database volume, starts Spring Boot so Flyway
-applies all current Flyway migrations (V1–V9), generates local test credentials in
+applies all current Flyway migrations (V1–V10), generates local test credentials in
 memory, and removes the E2E containers, network, and volume on exit. It neither
 reuses nor removes the ordinary development Compose project or its volume.
 

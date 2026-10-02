@@ -205,3 +205,29 @@ Revisit for verified or international Customer identity, internationalized email
 extensions as part of an identifier, a retention, anonymization, merge, or deletion
 capability, Customer accounts, or a shared phone that must identify several
 Customers.
+
+## Phase 2 implementation notes
+
+Clarifications from implementation (2026-10-01), with no decision changed:
+
+- **Package and boundary.** The shared policy lives in `bg.spotyourslot.shared.contact`
+  (`ContactTextCanonicalizer`, `ContactPhoneNumbers`, `ContactEmailPolicy`), declared a
+  `@NamedInterface("contact")` of the `shared` module. The build adds the BOM-managed
+  `spring-modulith-api` artifact (no version pinned) so the annotation compiles. Only
+  `shared::contact` is exposed; `shared.web` and the other sub-packages stay internal, and
+  `customer` and `workforce` reach `shared` only through it. Boundary tests pin this.
+- **Email rules, final.** In addition to the rules above, the local part is at most 64 characters and
+  each domain label at most 63. The approved local-part characters are the RFC 5322 `atext` set
+  `A-Z a-z 0-9 ! # $ % & ' * + / = ? ^ _ ` { | } ~ -`, separated by single dots. Quoted-string local
+  parts are not supported (the removed Jakarta `@Email` check allowed them); this is the only
+  intentional narrowing. The Jakarta check is no longer applied to StaffMember: the shared policy is
+  authoritative and sufficient.
+- **Persistence classification.** The PostgreSQL driver (already a dependency, now compile scope)
+  is used directly: `PSQLException`, `ServerErrorMessage`, `getConstraint()`, `getTable()`, and
+  `getColumn()`, with the standard SQLState. Message text is never read, missing structured data is
+  unexpected, and no translated exception retains the original throwable. Expected classifications
+  are lightweight; `UnexpectedFailure` keeps its own normal stack trace (application frames only).
+- **Application versus database email checks.** Email syntax (the rules above) is enforced only by
+  the authoritative application policy `ContactEmailPolicy`. The database `customer_email_canonical`
+  check enforces only the approved stored representation: non-blank, equal to its own lower-case NFKC
+  form, and without leading or trailing approved whitespace. It does not validate address syntax.

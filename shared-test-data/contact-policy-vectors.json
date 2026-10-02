@@ -1,0 +1,420 @@
+{
+  "description": "Authoritative golden vectors for the shared contact policy (ADR-0019). Exercised by the backend ContactPolicyVectorTests and the frontend contactPolicy.test.ts. The backend is authoritative; every vector has exactly one expected result for both implementations. canonical=null means rejected. All values are fictional.",
+  "version": 1,
+  "phone": {
+    "accepted": [
+      {
+        "id": "bg-mobile-national",
+        "input": "0895555777",
+        "canonical": "+359895555777"
+      },
+      {
+        "id": "bg-mobile-national-spaced",
+        "input": "0888 123 456",
+        "canonical": "+359888123456"
+      },
+      {
+        "id": "bg-mobile-national-punctuated",
+        "input": "(088) 812-34.56",
+        "canonical": "+359888123456"
+      },
+      {
+        "id": "bg-mobile-international-plus",
+        "input": "+359 88 123 4567",
+        "canonical": "+359881234567"
+      },
+      {
+        "id": "bg-mobile-international-compact",
+        "input": "+359881234567",
+        "canonical": "+359881234567"
+      },
+      {
+        "id": "bg-mobile-international-double-zero",
+        "input": "00359881234567",
+        "canonical": "+359881234567"
+      },
+      {
+        "id": "bg-landline-national",
+        "input": "02 123 4567",
+        "canonical": "+35921234567"
+      },
+      {
+        "id": "bg-international-parenthesized",
+        "input": "+359 (895) 555-777",
+        "canonical": "+359895555777"
+      },
+      {
+        "id": "bg-international-with-parenthesized-trunk-zero",
+        "input": "+359 (0) 888 123 456",
+        "canonical": "+359888123456"
+      },
+      {
+        "id": "bg-international-dotted",
+        "input": "+359.895.555.777",
+        "canonical": "+359895555777"
+      },
+      {
+        "id": "de-international-plus",
+        "input": "+49 151 23456789",
+        "canonical": "+4915123456789"
+      },
+      {
+        "id": "de-international-double-zero",
+        "input": "0049 151 23456789",
+        "canonical": "+4915123456789"
+      },
+      {
+        "id": "gb-international-plus",
+        "input": "+44 20 7946 0958",
+        "canonical": "+442079460958"
+      },
+      {
+        "id": "nbsp-separators",
+        "input": "+359\u00a0895\u00a0555\u00a0777",
+        "canonical": "+359895555777"
+      },
+      {
+        "id": "ideographic-and-nel-edges",
+        "input": "\u0085 0895555777\u3000",
+        "canonical": "+359895555777"
+      },
+      {
+        "id": "fullwidth-digits-nfkc",
+        "input": "\uff10\uff18\uff19\uff15\uff15\uff15\uff15\uff17\uff17\uff17",
+        "canonical": "+359895555777"
+      }
+    ],
+    "rejected": [
+      {
+        "id": "no-prefix-ambiguous",
+        "input": "895555777"
+      },
+      {
+        "id": "no-prefix-nine-digits",
+        "input": "123456789"
+      },
+      {
+        "id": "letters-after-plus",
+        "input": "+359 abc"
+      },
+      {
+        "id": "underscore",
+        "input": "+359_123456"
+      },
+      {
+        "id": "symbol-prefix",
+        "input": "\u260e359123456"
+      },
+      {
+        "id": "arabic-indic-digits",
+        "input": "\u0661\u0662\u0663\u0664\u0665\u0666\u0667\u0668"
+      },
+      {
+        "id": "leading-zero-after-plus",
+        "input": "+0895555777"
+      },
+      {
+        "id": "double-plus",
+        "input": "++359123456"
+      },
+      {
+        "id": "bg-too-short",
+        "input": "+35921"
+      },
+      {
+        "id": "de-too-short",
+        "input": "+491"
+      },
+      {
+        "id": "extension-ext",
+        "input": "+359895555777 ext 5"
+      },
+      {
+        "id": "extension-x",
+        "input": "+359895555777x5"
+      },
+      {
+        "id": "extension-dotted",
+        "input": "+359 2 981 1234 ext. 12"
+      },
+      {
+        "id": "vanity-letters",
+        "input": "+359-888-FLOWERS"
+      },
+      {
+        "id": "trailing-letters",
+        "input": "0888 123 456 abc"
+      },
+      {
+        "id": "letters-only",
+        "input": "abc"
+      },
+      {
+        "id": "single-zero",
+        "input": "0"
+      },
+      {
+        "id": "plus-only",
+        "input": "+"
+      },
+      {
+        "id": "double-zero-only",
+        "input": "00"
+      },
+      {
+        "id": "bg-too-long",
+        "input": "+3598881234561"
+      },
+      {
+        "id": "bg-too-short-national",
+        "input": "0888 12"
+      },
+      {
+        "id": "bg-unassigned-range",
+        "input": "+359 100 000 000"
+      },
+      {
+        "id": "gb-too-short",
+        "input": "+44 20 7946 095"
+      },
+      {
+        "id": "bg-service-prefix",
+        "input": "0800"
+      },
+      {
+        "id": "national-prefix-twice",
+        "input": "0359888123456"
+      },
+      {
+        "id": "e164-too-long",
+        "input": "+3598881234567890"
+      },
+      {
+        "id": "bom-prefix",
+        "input": "\ufeff0895555777"
+      }
+    ],
+    "blank": [
+      "",
+      " ",
+      "   ",
+      "\u00a0\u3000\u0085\t"
+    ]
+  },
+  "email": {
+    "accepted": [
+      {
+        "id": "plain",
+        "input": "ime@primer.bg",
+        "canonical": "ime@primer.bg"
+      },
+      {
+        "id": "uppercase-lowercased",
+        "input": "Ime.Prezime@Primer.BG",
+        "canonical": "ime.prezime@primer.bg"
+      },
+      {
+        "id": "trimmed",
+        "input": "  ime@primer.bg  ",
+        "canonical": "ime@primer.bg"
+      },
+      {
+        "id": "dot-and-plus-tag",
+        "input": "ime.prezime+tag@sub.primer.co.uk",
+        "canonical": "ime.prezime+tag@sub.primer.co.uk"
+      },
+      {
+        "id": "one-letter-local",
+        "input": "a@ab.bg",
+        "canonical": "a@ab.bg"
+      },
+      {
+        "id": "subdomain",
+        "input": "ime@mail.primer.bg",
+        "canonical": "ime@mail.primer.bg"
+      },
+      {
+        "id": "fullwidth-nfkc",
+        "input": "\uff49\uff4d\uff45\uff20\uff50\uff52\uff49\uff4d\uff45\uff52\uff0e\uff42\uff47",
+        "canonical": "ime@primer.bg"
+      },
+      {
+        "id": "all-approved-special-characters",
+        "input": "a!b#c$d%e&f'g*h+i/j=k?l^m_n`o{p|q}r~s-t@primer.bg",
+        "canonical": "a!b#c$d%e&f'g*h+i/j=k?l^m_n`o{p|q}r~s-t@primer.bg"
+      },
+      {
+        "id": "hyphen-inside-label",
+        "input": "ime@pri-mer.bg",
+        "canonical": "ime@pri-mer.bg"
+      },
+      {
+        "id": "digit-label",
+        "input": "ime@primer1.bg",
+        "canonical": "ime@primer1.bg"
+      },
+      {
+        "id": "local-64-characters",
+        "input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@primer.bg",
+        "canonical": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@primer.bg"
+      },
+      {
+        "id": "domain-label-63-characters",
+        "input": "ime@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bg",
+        "canonical": "ime@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bg"
+      },
+      {
+        "id": "total-320-characters",
+        "input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "canonical": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    ],
+    "rejected": [
+      {
+        "id": "single-label-domain",
+        "input": "a@a"
+      },
+      {
+        "id": "cyrillic-single-label",
+        "input": "a@\u0430"
+      },
+      {
+        "id": "punycode-single-label",
+        "input": "a@xn--80a"
+      },
+      {
+        "id": "missing-local",
+        "input": "@primer.bg"
+      },
+      {
+        "id": "missing-domain",
+        "input": "a@"
+      },
+      {
+        "id": "domain-leading-dot",
+        "input": "a@.bg"
+      },
+      {
+        "id": "domain-trailing-dot",
+        "input": "a@primer."
+      },
+      {
+        "id": "domain-empty-label",
+        "input": "a@primer..bg"
+      },
+      {
+        "id": "label-leading-hyphen",
+        "input": "a@-primer.bg"
+      },
+      {
+        "id": "label-trailing-hyphen",
+        "input": "a@primer-.bg"
+      },
+      {
+        "id": "tld-leading-hyphen",
+        "input": "a@primer.-bg"
+      },
+      {
+        "id": "tld-trailing-hyphen",
+        "input": "a@primer.bg-"
+      },
+      {
+        "id": "space-in-local",
+        "input": "a b@primer.bg"
+      },
+      {
+        "id": "space-in-domain",
+        "input": "a@pri mer.bg"
+      },
+      {
+        "id": "tab-in-local",
+        "input": "a\tb@primer.bg"
+      },
+      {
+        "id": "two-at-adjacent",
+        "input": "a@@primer.bg"
+      },
+      {
+        "id": "two-at",
+        "input": "a@b@primer.bg"
+      },
+      {
+        "id": "local-consecutive-dots",
+        "input": "a..b@primer.bg"
+      },
+      {
+        "id": "local-leading-dot",
+        "input": ".ab@primer.bg"
+      },
+      {
+        "id": "local-trailing-dot",
+        "input": "ab.@primer.bg"
+      },
+      {
+        "id": "cyrillic-local",
+        "input": "\u0438\u0432\u0430\u043d@primer.bg"
+      },
+      {
+        "id": "cyrillic-local-and-domain",
+        "input": "\u0438\u0432\u0430\u043d@\u043f\u0440\u0438\u043c\u0435\u0440.\u0431\u0433"
+      },
+      {
+        "id": "cyrillic-domain",
+        "input": "ime@\u043f\u0440\u0438\u043c\u0435\u0440.\u0431\u0433"
+      },
+      {
+        "id": "no-at",
+        "input": "anna"
+      },
+      {
+        "id": "quoted-local-part",
+        "input": "\"ab\"@primer.bg"
+      },
+      {
+        "id": "parenthesis-in-local",
+        "input": "a(b@primer.bg"
+      },
+      {
+        "id": "comma-in-local",
+        "input": "a,b@primer.bg"
+      },
+      {
+        "id": "semicolon-in-local",
+        "input": "a;b@primer.bg"
+      },
+      {
+        "id": "angle-in-local",
+        "input": "a<b@primer.bg"
+      },
+      {
+        "id": "backslash-in-local",
+        "input": "a\\b@primer.bg"
+      },
+      {
+        "id": "underscore-in-domain",
+        "input": "ab@pri_mer.bg"
+      },
+      {
+        "id": "ip-literal-domain",
+        "input": "ab@[127.0.0.1]"
+      },
+      {
+        "id": "local-65-characters",
+        "input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@primer.bg"
+      },
+      {
+        "id": "domain-label-64-characters",
+        "input": "ime@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bg"
+      },
+      {
+        "id": "total-321-characters",
+        "input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.ab"
+      }
+    ],
+    "blank": [
+      "",
+      " ",
+      "\u00a0\u3000\u0085\t"
+    ]
+  }
+}

@@ -397,7 +397,7 @@ links use example origin `https://spotyourslot.bg` and Business pages use
 `https://spotyourslot.bg/{businessSlug}`. Development/tests do not send. The
 domain is not configured and its availability has not been legally verified.
 
-### Customer administration and privacy (decisions for issue #20; not yet implemented)
+### Customer administration and privacy (decisions for issue #20; only persistence is implemented)
 
 The private Customer API (`/api/business/customers`, ADR-0021) derives the user and the
 selected Business only from the server-managed security context; no path, query, or body field
@@ -422,8 +422,11 @@ Customer names, phone numbers, email addresses, and appointment history never ap
 public pages, in URLs, browser storage, safe errors, normal application logs, screenshots,
 generated test artifacts, or review archives. Only opaque UUIDs appear in paths. The search
 term is sent in a POST body and held only in component state. The Customer persistence layer
-translates unique violations by SQLState and exact constraint name and rethrows without the
-original cause, because PostgreSQL's server message contains the offending value; matching
+translates failures by SQLState and the exact structured constraint, table, or column name the
+driver reports, using the driver's types directly (message text is never parsed), and rethrows
+fixed exceptions that retain neither the cause nor a suppressed exception, because PostgreSQL's server
+message contains the offending value; an unexpected failure keeps its own application-only stack trace
+(implemented in `CustomerStore`); matching
 avoids raising unique violations on its normal path. PostgreSQL's own server log can still
 contain a key value for a rare administrative unique violation, a recorded operational
 limitation. Matching is conservative (ADR-0020): it never writes to an existing Customer, and

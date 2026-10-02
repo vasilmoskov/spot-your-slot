@@ -68,6 +68,23 @@ canonicalization; and privacy using unique sentinel values that must never appea
 responses, errors, captured logs, URLs, browser storage, test names, failure output, or review
 archives. Fixtures are generated at run time with synthetic data.
 
+### Customer persistence verification (issue #20 Phase 2)
+
+Phase 2 tests the shared contact policy, the Customer domain, `V10`, and `CustomerStore` against
+PostgreSQL 18.4 through Testcontainers (details and counts in
+`docs/tasks/07a-business-customer-records.md`). `ContactPolicyVectorTests` (backend) and
+`contactPolicy.test.ts` (frontend) run the single golden-vector file
+`shared-test-data/contact-policy-vectors.json`; `ContactEmailPolicyTests`,
+`ContactPhoneNumbersTests`, and a Jakarta characterization test cover every rule directly.
+`CustomerSchemaIntegrationTests` cover V1–V10 order, V1–V9 byte integrity, a V9-to-V10 upgrade,
+exact columns, constraints, definitions, and indexes, the generated normalized-name expression and its
+agreement with Java, every constraint, same-Business uniqueness, cross-Business reuse, NULL
+distinctness, and the 200/201-character boundary. `CustomerStoreIntegrationTests` and
+`CustomerStoreFailureTranslationTests` cover every store operation, tenant isolation, versioned
+updates, rollback preservation, single-statement and no-lock evidence, and structural, sanitized
+failure translation. `CustomerModuleBoundaryTests` pin the module dependencies and the `shared::contact` named interface. No concurrency race is
+tested yet; those belong to Phase 3.
+
 ### Time, lifecycle, tokens, and notifications
 
 Test Service plus buffer, breaks/time off/overrides, minimum-notice and
@@ -451,7 +468,7 @@ performs validated cleanup of only the disposable E2E Compose project.
 Issue #15 extends the Playwright layer above with
 `frontend/e2e/business-configuration-journey.spec.ts` and the shared
 `frontend/e2e/support/` helpers, using the same isolated runner, Flyway
-migrations V1–V9 from an empty database, and redaction, artifact, and cleanup
+all current Flyway migrations (V1–V10) from an empty database, and redaction, artifact, and cleanup
 policy described above. It covers the journey delivered by issues #11–#14; it
 does not repeat their validation, concurrency, or tenant-isolation matrices,
 which remain in the backend PostgreSQL integration tests and the Vitest
@@ -572,7 +589,7 @@ Issue #17 Phase 2B tests the unauthenticated `GET /api/public/businesses/{slug}`
 
 Issue #16 Phase 6 adds `frontend/e2e/schedule-changes-journey.spec.ts` and
 `frontend/e2e/support/scheduleChanges.ts` to the Playwright layer, using the same
-isolated runner, migrations V1–V9, redaction, artifact and cleanup policy. The
+isolated runner, all current migrations (V1–V10), redaction, artifact and cleanup policy. The
 spec provisions its own DRAFT Business and owner (administrator UI, invitation
 flow, protected mailbox, random slug and email suffix) and a second Business for
 isolation; the administrator, both owners and the mobile session use separate
@@ -652,7 +669,7 @@ Rendered developer review at 1280, 1024, 800, 640, 412 and 375 px is recorded in
 
 Issue #17 Phase 4 adds `frontend/e2e/public-business-profile.spec.ts` and
 `frontend/e2e/support/publicProfile.ts` to the Playwright layer, on the same isolated runner,
-Flyway migrations V1–V9 from an empty database and redaction, artifact and cleanup policy as above.
+all current Flyway migrations (V1–V10) from an empty database and redaction, artifact and cleanup policy as above.
 It reuses `provisioning.ts`, `browser.ts` and the mailbox helper; it adds only public-page helpers
 (API reads through a request context, head metadata, request audit, layout assertions).
 

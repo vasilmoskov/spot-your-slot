@@ -1,4 +1,4 @@
-package bg.spotyourslot.workforce.domain;
+package bg.spotyourslot.shared.contact;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
-class StaffMemberTextCanonicalizerTests {
+class ContactTextCanonicalizerTests {
     private static final int[] APPROVED_WHITESPACE_CODE_POINTS = {
         0x0009, 0x000A, 0x000B, 0x000C, 0x000D, 0x0020, 0x0085, 0x00A0,
         0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005, 0x2006,
@@ -21,10 +21,10 @@ class StaffMemberTextCanonicalizerTests {
     void collapsesEveryApprovedDisplayNameWhitespaceCodePoint(int codePoint) {
         String whitespace = Character.toString(codePoint);
 
-        assertThat(StaffMemberTextCanonicalizer.canonicalDisplayName(
+        assertThat(ContactTextCanonicalizer.canonicalDisplayName(
                         whitespace + "Анна" + whitespace + whitespace + "Иванова" + whitespace))
                 .isEqualTo("Анна Иванова");
-        assertThat(StaffMemberTextCanonicalizer.isApprovedWhitespace(codePoint)).isTrue();
+        assertThat(ContactTextCanonicalizer.isApprovedWhitespace(codePoint)).isTrue();
     }
 
     @ParameterizedTest
@@ -32,64 +32,54 @@ class StaffMemberTextCanonicalizerTests {
     void removesEveryApprovedContactBoundaryWhitespaceCodePoint(int codePoint) {
         String whitespace = Character.toString(codePoint);
 
-        assertThat(StaffMemberTextCanonicalizer.canonicalContactEmail(
+        assertThat(ContactTextCanonicalizer.canonicalTrimmed(
                         whitespace + "TEAM@EXAMPLE.INVALID" + whitespace))
-                .isEqualTo("team@example.invalid");
-        assertThat(StaffMemberTextCanonicalizer.canonicalTrimmed(
+                .isEqualTo("TEAM@EXAMPLE.INVALID");
+        assertThat(ContactTextCanonicalizer.canonicalTrimmed(
                         whitespace + "+359 (2) 123-45-67" + whitespace))
                 .isEqualTo("+359 (2) 123-45-67");
     }
 
     @Test
     void appliesNfkcBeforeFieldSpecificWhitespaceAndCaseHandling() {
-        assertThat(StaffMemberTextCanonicalizer.canonicalDisplayName("  ﬃ  é  "))
+        assertThat(ContactTextCanonicalizer.canonicalDisplayName("  ﬃ  é  "))
                 .isEqualTo("ffi é");
-        assertThat(StaffMemberTextCanonicalizer.canonicalContactEmail(
+        assertThat(ContactTextCanonicalizer.canonicalTrimmed(
                         " ＴＥＡＭ@ＥＸＡＭＰＬＥ.INVALID "))
-                .isEqualTo("team@example.invalid");
-        assertThat(StaffMemberTextCanonicalizer.canonicalTrimmed(" ＋３５９ "))
+                .isEqualTo("TEAM@EXAMPLE.INVALID");
+        assertThat(ContactTextCanonicalizer.canonicalTrimmed(" ＋３５９ "))
                 .isEqualTo("+359");
     }
 
     @Test
     void preservesMeaningfulDisplayNameCase() {
-        assertThat(StaffMemberTextCanonicalizer.canonicalDisplayName(
+        assertThat(ContactTextCanonicalizer.canonicalDisplayName(
                         "  Anna ИВАНОВА Straße  "))
                 .isEqualTo("Anna ИВАНОВА Straße");
     }
 
     @Test
-    void lowercasesEmailWithLocaleRootSemantics() {
-        assertThat(StaffMemberTextCanonicalizer.canonicalContactEmail(
-                        "I@İ.EXAMPLE"))
-                .isEqualTo("i@i̇.example");
-    }
-
-    @Test
     void convertsBlankOptionalContactsToNull() {
-        assertThat(StaffMemberTextCanonicalizer.canonicalContactEmail(null)).isNull();
-        assertThat(StaffMemberTextCanonicalizer.canonicalTrimmed(null)).isNull();
-        assertThat(StaffMemberTextCanonicalizer.canonicalContactEmail("\u2003\n\u3000"))
-                .isNull();
-        assertThat(StaffMemberTextCanonicalizer.canonicalTrimmed("\u2003\n\u3000"))
+        assertThat(ContactTextCanonicalizer.canonicalTrimmed(null)).isNull();
+        assertThat(ContactTextCanonicalizer.canonicalTrimmed("\u2003\n\u3000"))
                 .isNull();
     }
 
     @Test
     void leavesNonApprovedBoundaryCharactersUntouched() {
-        assertThat(StaffMemberTextCanonicalizer.canonicalDisplayName("A\u200BB"))
+        assertThat(ContactTextCanonicalizer.canonicalDisplayName("A\u200BB"))
                 .isEqualTo("A\u200BB");
-        assertThat(StaffMemberTextCanonicalizer.canonicalContactEmail(
+        assertThat(ContactTextCanonicalizer.canonicalTrimmed(
                         "\u200BTEAM@EXAMPLE.INVALID\u200B"))
-                .isEqualTo("\u200Bteam@example.invalid\u200B");
-        assertThat(StaffMemberTextCanonicalizer.canonicalTrimmed("\u200B123\u200B"))
+                .isEqualTo("\u200BTEAM@EXAMPLE.INVALID\u200B");
+        assertThat(ContactTextCanonicalizer.canonicalTrimmed("\u200B123\u200B"))
                 .isEqualTo("\u200B123\u200B");
-        assertThat(StaffMemberTextCanonicalizer.isApprovedWhitespace(0x200B)).isFalse();
+        assertThat(ContactTextCanonicalizer.isApprovedWhitespace(0x200B)).isFalse();
     }
 
     @Test
     void preservesSupplementaryCharacters() {
-        assertThat(StaffMemberTextCanonicalizer.canonicalDisplayName("  😀  Екип  "))
+        assertThat(ContactTextCanonicalizer.canonicalDisplayName("  😀  Екип  "))
                 .isEqualTo("😀 Екип");
     }
 

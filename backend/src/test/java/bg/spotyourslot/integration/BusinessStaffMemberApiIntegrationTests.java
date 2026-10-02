@@ -473,6 +473,45 @@ class BusinessStaffMemberApiIntegrationTests extends PostgresIntegrationTest {
         assertStaffState(active, "Активен", true, 2);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "+359895555777 ext 5",
+        "+359895555777x5",
+        "+359 2 981 1234 ext. 12",
+        "+359-888-FLOWERS",
+        "0888 123 456 abc",
+    })
+    void phoneExtensionsAndLettersAreRejectedAsContactPhoneErrorsAndNeverPersisted(String phone)
+            throws Exception {
+        Actor owner = actor("ACTIVE", "BUSINESS_OWNER", true, false, true);
+        UUID active = insertStaff(owner.businessId(), "Активен", true, 2);
+
+        ResultActions created = create(owner, "Valid", null, phone, null, true);
+        assertFieldError(created, "contactPhone");
+        created.andExpect(content().string(not(containsString(phone))));
+        ResultActions updated = update(owner, active, "Valid", null, phone, 2, true);
+        assertFieldError(updated, "contactPhone");
+        updated.andExpect(content().string(not(containsString(phone))));
+
+        assertStaffState(active, "Активен", true, 2);
+        assertThat(jdbc.sql("SELECT count(*) FROM staff_member WHERE business_id = :business")
+                        .param("business", owner.businessId())
+                        .query(Long.class)
+                        .single())
+                .isEqualTo(1L);
+    }
+
+    @Test
+    void quotedLocalPartsAndOverlongLocalPartsAreRejectedAsContactEmailErrors() throws Exception {
+        Actor owner = actor("ACTIVE", "BUSINESS_OWNER", true, false, true);
+
+        assertFieldError(create(owner, "Valid", "\"ab\"@primer.bg", null, null, true), "contactEmail");
+        assertFieldError(
+                create(owner, "Valid", "a".repeat(65) + "@primer.bg", null, null, true),
+                "contactEmail");
+        assertFieldError(create(owner, "Valid", "a(b@primer.bg", null, null, true), "contactEmail");
+    }
+
     @Test
     void csrfProtectsEveryPostAndPutEndpoint() throws Exception {
         Actor owner = actor("ACTIVE", "BUSINESS_OWNER", true, false, true);

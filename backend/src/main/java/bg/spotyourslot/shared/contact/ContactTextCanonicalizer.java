@@ -1,10 +1,13 @@
-package bg.spotyourslot.workforce.domain;
+package bg.spotyourslot.shared.contact;
 
 import java.text.Normalizer;
-import java.util.Locale;
 
-public final class StaffMemberTextCanonicalizer {
-    private StaffMemberTextCanonicalizer() {
+/**
+ * Text canonicalization shared by StaffMember and Customer: Unicode NFKC, the approved
+ * whitespace set, and trimming. Display names additionally collapse internal whitespace runs.
+ */
+public final class ContactTextCanonicalizer {
+    private ContactTextCanonicalizer() {
     }
 
     public static String canonicalDisplayName(String value) {
@@ -33,18 +36,13 @@ public final class StaffMemberTextCanonicalizer {
         return canonical.toString();
     }
 
-    public static String canonicalContactEmail(String value) {
-        String canonical = canonicalOptionalContact(value);
-        return canonical == null ? null : canonical.toLowerCase(Locale.ROOT);
-    }
-
     /**
      * Trims and NFKC-normalizes an optional free-text contact value (email or
      * telephone), returning {@code null} for a blank value. This is the only
      * shared preprocessing step for contact fields; the caller is
      * responsible for any further field-specific canonicalization and
-     * validation. {@link bg.spotyourslot.workforce.domain.StaffMemberPhoneNumbers}
-     * is the single place that interprets and validates a trimmed telephone
+     * validation. {@link ContactPhoneNumbers} and {@link ContactEmailPolicy} are the
+     * single places that interpret and validate a trimmed telephone or email
      * candidate, so there is exactly one canonicalization implementation for
      * writes.
      */

@@ -128,7 +128,7 @@ class WorkingScheduleSchemaIntegrationTests extends PostgresIntegrationTest {
                 .query(String.class)
                 .list();
 
-        assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9");
+        assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10");
     }
 
     @Test
@@ -523,8 +523,7 @@ class WorkingScheduleSchemaIntegrationTests extends PostgresIntegrationTest {
                         "time_off",
                         "working_override",
                         "availability",
-                        "appointment",
-                        "customer");
+                        "appointment");
         assertThat(staffColumns)
                 .noneMatch(column -> column.startsWith("membership_id:"));
     }

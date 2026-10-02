@@ -1,5 +1,8 @@
 package bg.spotyourslot.workforce.application;
 
+import bg.spotyourslot.shared.contact.ContactEmailPolicy;
+import bg.spotyourslot.shared.contact.ContactPhoneNumbers;
+import bg.spotyourslot.shared.contact.ContactTextCanonicalizer;
 import bg.spotyourslot.workforce.StaffMemberApplicationException.InputField;
 import bg.spotyourslot.workforce.StaffMemberApplicationException.InvalidInput;
 import bg.spotyourslot.workforce.StaffMemberRecords.CreateStaffMemberCommand;
@@ -7,11 +10,6 @@ import bg.spotyourslot.workforce.StaffMemberRecords.ReplaceServiceAssignmentsCom
 import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberSortField;
 import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberVersionCommand;
 import bg.spotyourslot.workforce.StaffMemberRecords.UpdateStaffMemberCommand;
-import bg.spotyourslot.workforce.domain.StaffMemberEmailPolicy;
-import bg.spotyourslot.workforce.domain.StaffMemberPhoneNumbers;
-import bg.spotyourslot.workforce.domain.StaffMemberTextCanonicalizer;
-import jakarta.validation.Validator;
-import jakarta.validation.constraints.Email;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -24,13 +22,7 @@ public class StaffMemberInputValidator {
     public static final int MAX_PAGE_SIZE = 50;
     public static final Set<Integer> ALLOWED_PAGE_SIZES = Set.of(10, 25, 50);
     static final int DISPLAY_NAME_MAX_LENGTH = 200;
-    static final int CONTACT_EMAIL_MAX_LENGTH = 320;
 
-    private final Validator validator;
-
-    public StaffMemberInputValidator(Validator validator) {
-        this.validator = validator;
-    }
 
     public PageInput validatePage(int page, int size) {
         if (page < 0) {
@@ -124,7 +116,7 @@ public class StaffMemberInputValidator {
     }
 
     private String displayName(String value) {
-        String canonical = StaffMemberTextCanonicalizer.canonicalDisplayName(value);
+        String canonical = ContactTextCanonicalizer.canonicalDisplayName(value);
         if (canonical == null
                 || canonical.isEmpty()
                 || codePointLength(canonical) > DISPLAY_NAME_MAX_LENGTH) {
@@ -134,28 +126,26 @@ public class StaffMemberInputValidator {
     }
 
     private String contactEmail(String value) {
-        String canonical = StaffMemberTextCanonicalizer.canonicalContactEmail(value);
-        if (canonical != null
-                && (codePointLength(canonical) > CONTACT_EMAIL_MAX_LENGTH
-                        || !StaffMemberEmailPolicy.isAcceptable(canonical)
-                        || !validator.validate(new ContactEmailCandidate(canonical)).isEmpty())) {
-            throw new InvalidInput(InputField.CONTACT_EMAIL);
+        String trimmed = ContactTextCanonicalizer.canonicalTrimmed(value);
+        if (trimmed == null) {
+            return null;
         }
-        return canonical;
+        return ContactEmailPolicy.canonicalize(trimmed)
+                .orElseThrow(() -> new InvalidInput(InputField.CONTACT_EMAIL));
     }
 
     private String contactPhone(String value) {
-        String trimmed = StaffMemberTextCanonicalizer.canonicalTrimmed(value);
+        String trimmed = ContactTextCanonicalizer.canonicalTrimmed(value);
         if (trimmed == null) {
             return null;
         }
 
-        return StaffMemberPhoneNumbers.canonicalize(trimmed)
+        return ContactPhoneNumbers.canonicalize(trimmed)
                 .orElseThrow(() -> new InvalidInput(InputField.CONTACT_PHONE));
     }
 
     /*
-     * StaffMemberPhoneNumbers is the single backend component that
+     * ContactPhoneNumbers is the single backend component that
      * interprets a telephone candidate's prefix ('+', '00', or a bare '0'
      * with the default BG region), parses it with libphonenumber, and
      * requires full validity (not merely a possible-length check) before
@@ -176,8 +166,5 @@ public class StaffMemberInputValidator {
     }
 
     public record PageInput(int page, int size) {
-    }
-
-    private record ContactEmailCandidate(@Email String value) {
     }
 }

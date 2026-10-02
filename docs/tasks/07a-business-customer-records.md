@@ -1,8 +1,9 @@
 # SpotYourSlot — Business-scoped Customer Records
 
-Status: Phase 1 (decisions, ADRs, and plan) is documented and awaits review. Issue #20
-is in progress; no implementation exists. Phase 2 and later phases need separate
-explicit approval.
+Status: Phase 1 (decisions, ADRs, and plan) is committed. Phase 2 (shared contact policy,
+Customer domain, `V10` schema, and internal persistence) is implemented and verified and awaits
+review and commit. Issue #20 is in progress; matching, the published contracts, administration,
+and the interface are not started, and each later phase needs separate explicit approval.
 GitHub issue: #20 — Build Business-scoped customer records
 Depends on: the approved identity, authorization, and Business-isolation foundation,
 and the Business-owner configuration and navigation where Customer administration is
@@ -97,8 +98,8 @@ Recorded from inspection of the existing StaffMember policy:
 3. The policy classes live in `workforce.domain`. `customer` must not depend on
    `workforce` for contact policy.
 
-Resolution (ADR-0019): a small `bg.spotyourslot.shared.contact` package holds the text
-canonicalizer, phone policy, and email policy. In Phase 2, StaffMember delegates to it
+Resolution (ADR-0019): a small shared package holds the text canonicalizer, phone policy, and
+email policy (implemented in `bg.spotyourslot.shared.contact`, exposed as the `shared::contact` named interface; see the Phase 2 record). In Phase 2, StaffMember delegates to it
 and its existing behavior is verified before any Customer persistence is added. The
 extension and letter rejection is a behavior change for API-only StaffMember input.
 On the frontend, a shared contact-validation module replaces the StaffMember-specific
@@ -326,7 +327,7 @@ zoom review are required, with explicit human visual approval.
 | Phase | Scope | Risk | Gate |
 |---|---|---|---|
 | 1 | Decisions, this task record, ADR-0019 to ADR-0021, and narrow documentation reconciliation. Documentation only. | Strict | Review of this change |
-| 2 | **First** extract the shared contact policy (backend and frontend module), add golden vectors, make StaffMember delegate, and verify existing StaffMember behavior. **Then** the `customer` domain, `V10__add_customers.sql`, repository/store, uniqueness and concurrency tests, and the boundary test. No controller or frontend Customer UI. Internal checkpoints are allowed within this one phase. | Strict | Own approval and commit; Phase 1 accepted |
+| 2 (implemented, awaiting review) | **First** extract the shared contact policy (backend and frontend module), add golden vectors, make StaffMember delegate, and verify existing StaffMember behavior. **Then** the `customer` domain, `V10__add_customers.sql`, repository/store, uniqueness and concurrency tests, and the boundary test. No controller or frontend Customer UI. Internal checkpoints are allowed within this one phase. | Strict | Own approval and commit; Phase 1 accepted |
 | 3 | `CustomerIdentification` and `CustomerReferenceAccess`, normalization, typed outcomes, transaction and race tests, test-only consumer. No Appointment. | Strict (cross-module contract) | Own approval and commit |
 | 4 | Private administration backend: authorization, list, search, detail, create, update, lifecycle behavior, tenant-isolation and privacy tests, `EXPLAIN` evidence. | Strict | Own approval and commit |
 | 5 | Business-owner interface: navigation, list and search **first**, then create, detail, and edit; validation, guards, SUSPENDED mode, rendered desktop, tablet, mobile, and zoom review. Two human visual checkpoints are allowed within this one phase. | Standard (human visual approval) | Human visual approval |
@@ -420,3 +421,155 @@ though the Project board reported `Todo` when this phase was prepared.
 | C13 | The historical foundation task still described the note, active/blocked, and original/normalized Customer model | Annotated as superseded by ADR-0019 and this record; not the current contract |
 | C14 | A concurrent database failure was modeled as an ordinary matching outcome although it aborts the PostgreSQL transaction | Four normal outcomes; the failure is the typed `CustomerConcurrentConflict` exception that rolls back the caller's transaction (ADR-0020) |
 | C12 | Existing constraint translation inspects the error message, which contains the value for Customer | Exact constraint name and a sanitized exception without cause |
+
+## Phase 2 record (implemented and verified; awaiting review and commit)
+
+Phase 2 delivered the shared contact policy, the Customer domain model, `V10`, and internal
+persistence. It did **not** start Phase 3: there is no `findOrCreate`, no matching truth table, no
+`CustomerIdentification`, no `CustomerReferenceAccess`, no `CustomerConcurrentConflict`, no HTTP
+endpoint, no list or search, no frontend screen, and no booking or Appointment behavior.
+
+### Shared contact policy (ownership and behavior)
+
+Owned by the `shared` module, in `bg.spotyourslot.shared.contact`, declared `@NamedInterface("contact")` (the build adds the BOM-managed `spring-modulith-api` dependency, no version pinned): `ContactTextCanonicalizer`
+(display name, trimmed contact text, the approved whitespace set), `ContactPhoneNumbers`, and
+`ContactEmailPolicy`. StaffMember delegates to it; the three former `workforce.domain` classes are
+removed and their tests moved. `customer` uses it directly and has no `workforce` dependency.
+
+- **Phone:** unchanged prefix rules (`+`, `00`, `0` with default region BG), full
+  `isValidNumber`, canonical compact E.164. **New:** after separator removal only ASCII digits with
+  an optional leading `+` are accepted, and a parsed extension is also rejected, so letters,
+  vanity text, and extensions are rejected rather than silently dropped. `+359 (0) 888 123 456`
+  stays accepted (canonical `+359888123456`) because it is recorded as a golden vector that the
+  backend and frontend treat identically.
+- **Email (final rules):** trim, NFKC, ASCII only, no whitespace, total length at most 320, exactly
+  one `@`, non-empty parts, local part at most 64 characters made of single-dot-separated atoms of
+  the RFC 5322 `atext` characters (`A-Z a-z 0-9 ! # $ % & ' * + / = ? ^ _ ` { | } ~ -`), no leading,
+  trailing, or repeated dot, domain of at least two labels of at most 63 characters of ASCII
+  letters, digits, and `-` without edge hyphens, and the whole address lower-cased. No IDN,
+  Punycode, or SMTPUTF8. The policy is self-contained: the Jakarta `@Email` check was removed from
+  the StaffMember path.
+- **StaffMember behavior change:** phone extensions and letters (previously accepted with the
+  extension dropped) are now rejected as a `contactPhone` field error; quoted-string email local parts
+  (previously accepted by the Jakarta check) and local parts over 64 characters are now rejected as a
+  `contactEmail` field error. Everything else is unchanged and covered by the existing StaffMember
+  tests. One existing frontend test used a 300-character local part; it now uses a valid long address.
+- **Frontend mirror:** `frontend/src/contact/contactPolicy.ts` (`checkPhone`, `canonicalPhone`,
+  `canonicalEmail`); `business/staff/validation.ts` delegates and keeps its Bulgarian wording. The
+  approved whitespace character class is exported from `business/text.ts` so separators and trimming
+  cannot drift.
+- **Golden vectors:** one file, `shared-test-data/contact-policy-vectors.json` (16 accepted and 27
+  rejected phones, 13 accepted and 35 rejected emails, blank inputs; one expected result each, no
+  backend-only or frontend-only flags). The backend `ContactPolicyVectorTests` and the frontend
+  `contactPolicy.test.ts` both run it; Maven (working directory `backend/`), Vitest, `tsc -b`,
+  ESLint, and `vite build` consume the root-level file with no dependency or build change. The Java
+  and JavaScript phone libraries agreed on every vector; the backend remains authoritative.
+- **Differential check:** a characterization test of the former StaffMember path (old dotted-domain
+  rules plus Jakarta `@Email`) proves every address the shared policy accepts was previously accepted
+  and that the only rejected vector previously accepted is the quoted-string local part.
+
+### V10 (`V10__add_customers.sql`)
+
+One new table; V1–V9 are byte-for-byte unchanged (SHA-256 verified against `HEAD` and pinned in
+`CustomerSchemaIntegrationTests`); V10's SHA-256 is pinned there too. `customer`:
+`id uuid PRIMARY KEY`, `business_id uuid NOT NULL`, `display_name varchar(200) NOT NULL`,
+`normalized_display_name text COLLATE pg_unicode_fast GENERATED ALWAYS AS (…) STORED` (the exact
+`staff_member` expression), `phone varchar(16)`, `email varchar(320)`, `version bigint NOT NULL
+DEFAULT 0`, `created_at` and `updated_at timestamptz NOT NULL`.
+
+| Constraint or index | Definition |
+|---|---|
+| `customer_pkey` | primary key `(id)` |
+| `customer_business_fk` | `FOREIGN KEY (business_id) REFERENCES business(id) ON DELETE RESTRICT` |
+| `customer_display_name_canonical` | name equals its NFKC, whitespace-collapsed, trimmed form (as `staff_member`) |
+| `customer_display_name_not_blank` | `char_length(display_name) > 0` |
+| `customer_phone_canonical` | `phone IS NULL OR phone ~ '^\+[1-9][0-9]{7,14}$'` |
+| `customer_email_canonical` | database-level canonical *storage* only: NULL, or non-blank, equal to its own lower-case NFKC form, no leading or trailing approved whitespace. It does not validate address syntax |
+| `customer_contact_present` | `phone IS NOT NULL OR email IS NOT NULL` |
+| `customer_version_nonnegative` | `version >= 0` |
+| `customer_timestamps_finite_ordered` | both timestamps finite and `updated_at >= created_at` |
+| `customer_business_phone_unique` | `UNIQUE (business_id, phone)` |
+| `customer_business_email_unique` | `UNIQUE (business_id, email)` |
+| `customer_business_id_id_unique` | `UNIQUE (business_id, id)` |
+| `customer_business_normalized_display_name_id_idx` | btree `(business_id, normalized_display_name, id)` |
+
+No lifecycle, note, account, Membership, Appointment, raw-contact, or deletion column; no
+Appointment table or foreign key; no extension or speculative index. Upgrade V9 to V10 with a
+Business, StaffMember, and Service present preserves all data and adds an empty usable table.
+
+### Customer domain (`customer.domain`)
+
+`CustomerProfile(displayName, phone, email)` accepts only canonical values and enforces: canonical
+non-blank display name of at most 200 code points, canonical E.164 phone, canonical lower-case email,
+at least one contact. `CustomerProfile.fromInput` canonicalizes raw input with the shared policy.
+Violations raise `InvalidCustomerData`, which carries an immutable `Set<CustomerField>`
+(`DISPLAY_NAME`, `PHONE`, `EMAIL`, `CONTACT`) listing every invalid field of one pass, with a fixed
+message, no cause, and no value. `Customer` (id, businessId, profile, version at least 0, createdAt,
+updatedAt not before createdAt) and `NewCustomer` are deeply immutable records; there is no wither
+that changes the Business. Names are never identifiers and are not unique.
+
+### Persistence (`CustomerStore`, internal to `customer.infrastructure`)
+
+Returns domain `Customer` values rather than row records, an intentional Customer-module design
+choice. It opens no transaction (it joins the caller's), every operation is one statement, reads take
+no lock, and every statement filters by `business_id`.
+
+| Operation | Behavior |
+|---|---|
+| `insert(NewCustomer)` | plain `INSERT … RETURNING`; version 0, equal instants; duplicates are translated, never matched or merged |
+| `findById`, `findByPhone`, `findByEmail` | `Optional<Customer>`; another Business behaves like missing |
+| `update(businessId, id, profile, expectedVersion, updatedAt)` | one guarded `UPDATE … WHERE business_id AND id AND version`; version plus one; `updated_at = GREATEST(updated_at, :updatedAt)` so it never moves backwards; returns empty for missing, cross-Business, and stale alike, with no preliminary query; the Business is never a `SET` value |
+
+Removing one contact is allowed while the other remains (a contactless profile cannot be built, and
+the database also rejects it). Updating onto another Customer's phone or email raises
+`DuplicatePhone` or `DuplicateEmail` and leaves the previous state; an outer rollback restores the
+previous record and removes an insert.
+
+### Failure translation and privacy
+
+`CustomerPersistenceException` is sealed: `DuplicatePhone`, `DuplicateEmail`, `UnknownBusiness`,
+`InvalidData`, `UnexpectedFailure` (optionally keeping only the five-character SQLState, so Phase 3 can
+recognize `40001` and `40P01` later). Every message is fixed and no instance retains a cause or a
+suppressed exception, so the original database exception is not reachable. Stack traces: the expected
+classifications are lightweight (none), while `UnexpectedFailure` keeps its own normal stack trace so a
+production failure identifies the Customer operation and call path; a stack trace holds application
+class and method names only. Classification uses the driver's types directly (`PSQLException`,
+`ServerErrorMessage`: `getConstraint()`, `getTable()`, `getColumn()`) plus the SQLState, found by safely
+traversing the cause chain (`23505` approved unique constraints, `23503` the Business foreign key,
+`23514` the seven check constraints, `23502` NOT NULL of a `customer` column, `22001`); an unknown
+constraint, table, column, or SQLState, or a missing `ServerErrorMessage`, is an `UnexpectedFailure`, and
+message text is never parsed. `40001` and `40P01` are `UnexpectedFailure` for now; the typed
+`CustomerConcurrentConflict` belongs to Phase 3.
+
+**Email validity is application-level.** Address syntax is enforced only by the authoritative
+`ContactEmailPolicy`; the `customer_email_canonical` constraint proves only the stored representation
+(see the table above).
+
+### Verification evidence (executed 2026-10-01)
+
+- Full backend `./mvnw --batch-mode verify`: 1,848 tests, 0 failures, 0 errors.
+- New backend tests: `ContactPolicyVectorTests` 94, `ContactEmailPolicyTests` 29,
+  `ContactPhoneNumbersTests` 15, `ContactTextCanonicalizerTests` 55,
+  `ContactEmailPolicyJakartaDifferentialTests` 2, `CustomerProfileTests` 33, `CustomerTests` 8,
+  `CustomerSchemaIntegrationTests` 34, `CustomerStoreIntegrationTests` 23,
+  `CustomerStoreFailureTranslationTests` 27, `CustomerModuleBoundaryTests` 7; plus 2 new StaffMember
+  API regression tests (extensions and letters, quoted and overlong local parts) in
+  `BusinessStaffMemberApiIntegrationTests`. `ModuleBoundaryTests` passes.
+- Existing tests edited mechanically for V10 and the new table: the Flyway version lists in three
+  schema tests, the V9-upgrade `max(version)`, four "no `customer` table yet" absence checks, and
+  test names that said "nine" or "V9 newest".
+- Full frontend suite: 51 files, 1,103 tests; ESLint and `vite build` (including `tsc -b`) clean.
+
+### Deviations, limitations, and remaining work
+
+- **Dependencies:** two existing entries in `backend/pom.xml` changed, both version-managed with no
+  version pinned: `org.springframework.modulith:spring-modulith-api` was added at compile scope
+  (BOM 2.1.0) for `@NamedInterface`, and `org.postgresql:postgresql` (42.7.11, Spring Boot managed)
+  moved from runtime to compile scope for the direct driver types. No new library and no duplicate
+  version appears in the dependency tree.
+- **Email label limit:** the 63-character label limit is added to preserve the former Jakarta
+  behavior; the quoted-string local-part narrowing is the only intentional loss.
+- **No concurrency tests:** the races (same phone, same email, find-or-create) belong to Phase 3.
+- **Not done (Phase 3 onward):** matching and its truth table, `CustomerIdentification`,
+  `CustomerReferenceAccess`, `CustomerConcurrentConflict`, administration API, search, frontend
+  screens, E2E.

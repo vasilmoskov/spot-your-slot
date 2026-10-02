@@ -128,8 +128,9 @@ working periods were delivered by issue #16 (see Phase 5).
 
 - Business-scoped Customer records are delivered first by issue #20 (decisions in
   `docs/tasks/07a-business-customer-records.md` and ADR-0019 to ADR-0021; `V10` Customer
-  schema, conservative matching, and private owner administration; Phase 1 documentation
-  is complete, implementation not started). Issues #18 and #21 are future consumers, not
+  schema, conservative matching, and private owner administration; Phase 1 documentation and
+  Phase 2 (shared contact policy, `V10` schema, domain model, and persistence) are complete;
+  matching, administration, and the interface are not started). Issues #18 and #21 are future consumers, not
   prerequisites; they add Appointment, event, and cancellation-token migrations with
   `business_id` and `staff_member_id` and decide any Appointment contact snapshot.
 - Add GiST exclusion on `staff_member_id`, transactional revalidation, online

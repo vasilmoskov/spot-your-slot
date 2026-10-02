@@ -1,20 +1,21 @@
-package bg.spotyourslot.workforce.domain;
+package bg.spotyourslot.shared.contact;
 
 import com.google.i18n.phonenumbers.NumberParseException;
 import com.google.i18n.phonenumbers.PhoneNumberUtil;
 import com.google.i18n.phonenumbers.PhoneNumberUtil.PhoneNumberFormat;
 import com.google.i18n.phonenumbers.Phonenumber.PhoneNumber;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 /**
- * The single backend component that knows StaffMember contact-telephone
- * numbering rules. It centralizes prefix interpretation, country-aware
+ * The single backend component that knows contact-telephone numbering rules for
+ * StaffMembers and Customers. It centralizes prefix interpretation, country-aware
  * parsing, full validity checking, and canonical E.164 formatting using
  * Google's libphonenumber, so no other component (validator, store,
  * controller) duplicates a country's numbering rules.
  *
  * <p>The input is expected to already be trimmed of leading/trailing
- * whitespace (see {@link StaffMemberTextCanonicalizer#canonicalTrimmed});
+ * whitespace (see {@link ContactTextCanonicalizer#canonicalTrimmed});
  * this class only strips internal visual separators ({@code (}, {@code )},
  * {@code -}, {@code .}, and any approved whitespace) before interpreting the
  * remaining digits by their prefix:
@@ -30,6 +31,12 @@ import java.util.Optional;
  *       assumed to be Bulgarian.
  * </ul>
  *
+ * <p>After separator removal only ASCII digits with an optional leading {@code +} are
+ * accepted. Letters, vanity text, and extensions ("ext", "x") are rejected, never silently
+ * stripped, because libphonenumber would otherwise parse the number and discard the extension,
+ * collapsing two different values into one canonical identifier. A parsed extension is also
+ * rejected as a second line of defence.
+ *
  * <p>A value that survives prefix interpretation is only accepted when
  * libphonenumber's full validity check ({@link
  * PhoneNumberUtil#isValidNumber(PhoneNumber)}, not merely a possible-length
@@ -37,11 +44,12 @@ import java.util.Optional;
  * numbering plan; it never proves the number is active, reachable, or owned
  * by the StaffMember.
  */
-public final class StaffMemberPhoneNumbers {
+public final class ContactPhoneNumbers {
     private static final String DEFAULT_REGION = "BG";
+    private static final Pattern DIGITS_WITH_OPTIONAL_PLUS = Pattern.compile("^\\+?[0-9]+$");
     private static final PhoneNumberUtil PHONE_NUMBER_UTIL = PhoneNumberUtil.getInstance();
 
-    private StaffMemberPhoneNumbers() {
+    private ContactPhoneNumbers() {
     }
 
     /**
@@ -55,7 +63,7 @@ public final class StaffMemberPhoneNumbers {
      */
     public static Optional<String> canonicalize(String trimmedValue) {
         String stripped = stripVisualSeparators(trimmedValue);
-        if (stripped.isEmpty()) {
+        if (!DIGITS_WITH_OPTIONAL_PLUS.matcher(stripped).matches()) {
             return Optional.empty();
         }
 
@@ -71,7 +79,7 @@ public final class StaffMemberPhoneNumbers {
                 return Optional.empty();
             }
 
-            if (!PHONE_NUMBER_UTIL.isValidNumber(parsed)) {
+            if (parsed.hasExtension() || !PHONE_NUMBER_UTIL.isValidNumber(parsed)) {
                 return Optional.empty();
             }
             return Optional.of(PHONE_NUMBER_UTIL.format(parsed, PhoneNumberFormat.E164));
@@ -93,7 +101,7 @@ public final class StaffMemberPhoneNumbers {
     }
 
     private static boolean isVisualSeparator(int codePoint) {
-        return StaffMemberTextCanonicalizer.isApprovedWhitespace(codePoint)
+        return ContactTextCanonicalizer.isApprovedWhitespace(codePoint)
                 || codePoint == '('
                 || codePoint == ')'
                 || codePoint == '-'

@@ -225,7 +225,10 @@ before sending a request, using `noValidate` and the shared
 - Mirror only rules that are deterministic in the browser. The telephone is
   checked with `libphonenumber-js` (full metadata; Bulgaria as the default
   region for a leading `0`, `+` and `00` as explicit international numbers),
-  never with a hand-written prefix list. The backend stays authoritative.
+  never with a hand-written prefix list; letters and extensions are rejected, not
+  stripped. The shared `src/contact/contactPolicy.ts` module holds the phone and email
+  rules and is kept aligned with the backend by the golden vectors in
+  `shared-test-data/contact-policy-vectors.json`. The backend stays authoritative.
 - The backend names an invalid body field in an optional `fieldErrors` object
   of the `VALIDATION_ERROR` problem response (public field name to fixed
   Bulgarian message). Show each known field's message inline under its

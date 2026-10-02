@@ -1,4 +1,4 @@
-package bg.spotyourslot.workforce.domain;
+package bg.spotyourslot.shared.contact;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -8,13 +8,13 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
-class StaffMemberPhoneNumbersTests {
+class ContactPhoneNumbersTests {
 
     @ParameterizedTest
     @MethodSource("validPhones")
     void canonicalizesApprovedPhoneFormsToCompactE164UsingLibphonenumber(
             String rawPhone, String expectedCanonical) {
-        assertThat(StaffMemberPhoneNumbers.canonicalize(rawPhone)).contains(expectedCanonical);
+        assertThat(ContactPhoneNumbers.canonicalize(rawPhone)).contains(expectedCanonical);
     }
 
     @ParameterizedTest
@@ -37,7 +37,7 @@ class StaffMemberPhoneNumbersTests {
             "+491",
     })
     void rejectsAmbiguousMalformedAndStructurallyInvalidNumbers(String phone) {
-        assertThat(StaffMemberPhoneNumbers.canonicalize(phone)).isEmpty();
+        assertThat(ContactPhoneNumbers.canonicalize(phone)).isEmpty();
     }
 
     private static Stream<Arguments> validPhones() {

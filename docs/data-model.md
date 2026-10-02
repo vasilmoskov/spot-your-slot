@@ -171,8 +171,7 @@ date_range)`.
 
 ## Customers and Appointments
 
-- **customer** (decided in ADR-0019, issue #20; `V10__add_customers.sql` is planned and
-  not yet written): UUID `id`, immutable `business_id` (restrictive foreign key to
+- **customer** (ADR-0019, issue #20; implemented by `V10__add_customers.sql`): UUID `id`, immutable `business_id` (restrictive foreign key to
   `business`), required `display_name` (`varchar(200)`, canonical NFKC/whitespace form), a
   generated stored `normalized_display_name` (sorting and search only), optional canonical
   E.164 `phone` (`varchar(16)`), optional canonical lowercase `email` (`varchar(320)`),
@@ -185,6 +184,14 @@ date_range)`.
   normalized_display_name, id)` serves the default sort. Customers have no lifecycle and are
   never hard-deleted in the MVP; retention, export, anonymization, merge, and legal deletion
   are deferred. Updates are versioned and increment `version` once per accepted update.
+  Stable constraint names: `customer_business_fk`, `customer_display_name_canonical`,
+  `customer_display_name_not_blank`, `customer_phone_canonical`, `customer_email_canonical`
+  (database-level canonical storage only, not address syntax, which the application's shared
+  `ContactEmailPolicy` enforces),
+  `customer_contact_present`, `customer_version_nonnegative`,
+  `customer_timestamps_finite_ordered` (finite timestamps, `updated_at >= created_at`),
+  `customer_business_phone_unique`, `customer_business_email_unique`,
+  `customer_business_id_id_unique`; index `customer_business_normalized_display_name_id_idx`.
   History metrics derive from Appointments in later issues.
 - **appointment** (issue #18; whether it snapshots the submitted Customer name, phone, or
   email is deferred to #18, ADR-0020): `business_id`, `staff_member_id`, `service_id`, `customer_id`,
