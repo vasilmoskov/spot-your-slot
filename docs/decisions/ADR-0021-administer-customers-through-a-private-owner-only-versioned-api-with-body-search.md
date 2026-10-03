@@ -208,6 +208,22 @@ ADR-0015, ADR-0017.
 Inference: that request URLs reach edge or request logs in a hosted deployment is a
 general operational assumption that has not been verified for the eventual provider.
 
+## Implementation notes (Phase 4)
+
+The API is implemented as decided; the decisions above are unchanged. Clarifications recorded
+from the implementation (details in `docs/tasks/07a-business-customer-records.md`):
+
+- `PLATFORM_ADMIN` alone, an inactive Membership, and a Membership in another Business leave the
+  session without a usable Business selection, so they receive `ACTIVE_BUSINESS_REQUIRED` as on every
+  private API; `ACCESS_DENIED` is returned when a selection exists and the role is not owner. No
+  Customer is read or written either way.
+- Every Customer problem carries a fixed `instance`, and malformed bodies, parameters, and path IDs are
+  mapped by the Customer advice, so a Customer ID in the path is never echoed.
+- The administration service is internal to `customer.application`; the published root package is
+  unchanged.
+- The `EXPLAIN` evidence at about 10,000 Customers did not fail the criterion above, so no index was
+  added.
+
 ## Conditions for revisiting
 
 Revisit for MANAGER or STAFF Customer access, a CRM-style or fuzzy search, a measured

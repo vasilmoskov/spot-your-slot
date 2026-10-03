@@ -101,6 +101,34 @@ writes into a test-created probe table that is never part of Flyway. `CustomerMo
 pin the published root-package types, their dependencies, the consumer's use of the root package only,
 the absence of any Booking module, and the absence of logging.
 
+### Customer administration verification (issue #20 Phase 4)
+
+`BusinessCustomerAuthorizationApiIntegrationTests` (MockMvc and PostgreSQL) cover authentication, the
+absent selection, `MANAGER` and `STAFF`, platform-only, inactive, missing, and foreign Memberships,
+Business A/B isolation, byte-identical 404 bodies for foreign and unknown IDs, an ignored client
+`businessId`, the DRAFT, ACTIVE, and SUSPENDED matrix, CSRF on every POST and PUT, and an enumeration of
+every Spring MVC mapping (exactly five Customer endpoints, none public).
+`BusinessCustomerReadApiIntegrationTests` cover the exact key allowlists, `no-store`, the allowed sizes,
+invalid paging, sort, and direction, every sort in both directions, stable pages of identical names,
+empty and partial pages, the search matrix (name, email, phone exact and prefix, wildcard and malformed
+terms, the length limit, a malformed body), the absence of the term from the URI, and a constant two
+Customer statements whatever the page or result size.
+`BusinessCustomerMutationApiIntegrationTests` cover canonical create and update, validation of every
+field, the shared golden vectors through the API, duplicate phone and email (alone and together),
+cross-Business reuse, no account side effect, version and timestamp, stale versions, contact removal
+rules, explicit two-step identifier moves, and four concurrent races decided by the database.
+`BusinessCustomerPrivacyApiIntegrationTests` cover sentinel values in Problem Details and DEBUG logs,
+the fixed `instance`, injected persistence failures (`XX000`, `40001`, `40P01`, unknown Business, invalid
+data) with a rollback proved after a real `UPDATE`, and the public profile. Unit tests:
+`CustomerSearchCriteriaTests`, `CustomerInputValidatorTests`, `CustomerAdministrationServiceTests` (lock
+order, translation, hygiene), and `BusinessCustomerExceptionHandlerTests`. Store and database:
+`CustomerStoreListIntegrationTests` (ordering, tie-breakers, paging, search, scoping, statement counts),
+`CustomerAdministrationLockingIntegrationTests` (a mutation blocked behind a Business or Membership row
+lock, then decided by the committed state; reads unblocked), and
+`CustomerSearchExplainIntegrationTests` (`EXPLAIN ANALYZE` of the production SQL at about 10,000 rows).
+`CustomerModuleBoundaryTests` pin the approved dependencies on `shared`, `identity`, and `business`,
+the layer directions, the single private controller, and the unchanged published root types.
+
 ### Time, lifecycle, tokens, and notifications
 
 Test Service plus buffer, breaks/time off/overrides, minimum-notice and

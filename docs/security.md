@@ -397,7 +397,7 @@ links use example origin `https://spotyourslot.bg` and Business pages use
 `https://spotyourslot.bg/{businessSlug}`. Development/tests do not send. The
 domain is not configured and its availability has not been legally verified.
 
-### Customer administration and privacy (decisions for issue #20; persistence and matching are implemented)
+### Customer administration and privacy (issue #20; persistence, matching, and the private API are implemented)
 
 The private Customer API (`/api/business/customers`, ADR-0021) derives the user and the
 selected Business only from the server-managed security context; no path, query, or body field
@@ -409,6 +409,16 @@ body-based search) and rejects create and update with `BUSINESS_SUSPENDED`. Each
 locks the Business lifecycle row, then the user's Membership row, then performs the
 optimistic write, and every POST and PUT remains CSRF-protected. A missing and a foreign
 Customer ID both return the identical `CUSTOMER_NOT_FOUND` (404).
+
+Implemented behavior (Phase 4): a session without a usable owner selection (`PLATFORM_ADMIN`
+alone, an inactive Membership, a Membership of another Business) is rejected with
+`ACTIVE_BUSINESS_REQUIRED` like every private API, `MANAGER` and `STAFF` of the selected
+Business with `ACCESS_DENIED`, and a SUSPENDED Business rejects create and update with
+`BUSINESS_SUSPENDED` before validation or lookup. Responses carry `no-store`; every problem has a
+fixed `instance` so a Customer ID in the path is never echoed; no endpoint exists under
+`/api/public`; all Customer commands, requests, and responses redact `toString()`; the search
+term travels only in the POST body. Search uses `strpos` and `starts_with` on bound parameters, so
+a wildcard character is literal and malformed phone-like text never widens the search.
 
 Customer failures use `VALIDATION_ERROR` (400, with `fieldErrors` for `displayName`,
 `phone`, `email`, and `contact`), `AUTH_REQUIRED`, `ACTIVE_BUSINESS_REQUIRED`,

@@ -2,6 +2,8 @@ package bg.spotyourslot.customer.infrastructure;
 
 import bg.spotyourslot.customer.domain.Customer;
 import bg.spotyourslot.customer.domain.CustomerProfile;
+import bg.spotyourslot.customer.domain.CustomerSearchCriteria;
+import bg.spotyourslot.customer.domain.CustomerSortField;
 import bg.spotyourslot.customer.domain.InvalidCustomerData;
 import bg.spotyourslot.customer.domain.NewCustomer;
 import bg.spotyourslot.customer.infrastructure.CustomerPersistenceException.DuplicateEmail;
@@ -15,6 +17,7 @@ import java.sql.Types;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -223,6 +226,118 @@ public class CustomerStore {
                 .param("expectedVersion", expectedVersion)
                 .query(this::customer)
                 .optional());
+    }
+
+    /**
+     * One page of the Business's Customers matching the criteria, in the requested order. Every
+     * ORDER BY and WHERE fragment is a closed, trusted constant selected by the enum or by which
+     * criteria are present; the term itself is only ever a bound parameter. The statement count is
+     * constant: this query and {@link #count}.
+     */
+    public List<Customer> list(
+            UUID businessId,
+            CustomerSearchCriteria criteria,
+            int page,
+            int size,
+            CustomerSortField sort,
+            boolean ascending) {
+        if (page < 0 || size < 1) {
+            throw new IllegalArgumentException("Invalid Customer page request");
+        }
+        long offset = Math.multiplyExact((long) page, size);
+        String sql = listSql(criteria, sort, ascending);
+        return execute(() -> bind(jdbc.sql(sql), businessId, criteria)
+                .param("size", size)
+                .param("offset", offset)
+                .query(this::customer)
+                .list());
+    }
+
+    /** The number of the Business's Customers matching the criteria. */
+    public long count(UUID businessId, CustomerSearchCriteria criteria) {
+        String sql = countSql(criteria);
+        return execute(() -> bind(jdbc.sql(sql), businessId, criteria)
+                .query(Long.class)
+                .single());
+    }
+
+    /** The exact list statement; package-private so the {@code EXPLAIN} evidence runs the real SQL. */
+    static String listSql(CustomerSearchCriteria criteria, CustomerSortField sort, boolean ascending) {
+        return "SELECT " + RETURNING_COLUMNS
+                + " FROM customer WHERE business_id = :businessId"
+                + searchPredicate(criteria)
+                + " ORDER BY " + orderClause(sort, ascending)
+                + " LIMIT :size OFFSET :offset";
+    }
+
+    /** The exact count statement; package-private for the same reason. */
+    static String countSql(CustomerSearchCriteria criteria) {
+        return "SELECT count(*) FROM customer WHERE business_id = :businessId"
+                + searchPredicate(criteria);
+    }
+
+    private static JdbcClient.StatementSpec bind(
+            JdbcClient.StatementSpec statement, UUID businessId, CustomerSearchCriteria criteria) {
+        JdbcClient.StatementSpec bound = statement.param("businessId", businessId);
+        if (criteria.nameFragment() != null) {
+            bound = bound.param("nameFragment", criteria.nameFragment());
+        }
+        if (criteria.emailFragment() != null) {
+            bound = bound.param("emailFragment", criteria.emailFragment());
+        }
+        if (criteria.phoneExact() != null) {
+            bound = bound.param("phoneExact", criteria.phoneExact());
+        }
+        if (criteria.phonePrefix() != null) {
+            bound = bound.param("phonePrefix", criteria.phonePrefix());
+        }
+        return bound;
+    }
+
+    /**
+     * The name needle gets the same case folding and normalization as the generated
+     * {@code normalized_display_name} column (the caller has already applied NFKC and whitespace
+     * collapsing). {@code strpos} and {@code starts_with} have no wildcard syntax, so {@code %},
+     * {@code _}, and {@code \} in a term are literal characters.
+     */
+    private static String searchPredicate(CustomerSearchCriteria criteria) {
+        List<String> alternatives = new ArrayList<>();
+        if (criteria.nameFragment() != null) {
+            alternatives.add("""
+                    pg_catalog.strpos(
+                        normalized_display_name,
+                        pg_catalog.normalize(
+                            pg_catalog.casefold(
+                                CAST(:nameFragment AS text) COLLATE pg_catalog.pg_unicode_fast),
+                            'NFKC')) > 0""");
+        }
+        if (criteria.emailFragment() != null) {
+            alternatives.add("pg_catalog.strpos(email, CAST(:emailFragment AS text)) > 0");
+        }
+        if (criteria.phoneExact() != null) {
+            alternatives.add("phone = :phoneExact");
+        }
+        if (criteria.phonePrefix() != null) {
+            alternatives.add("pg_catalog.starts_with(phone, CAST(:phonePrefix AS text))");
+        }
+        if (alternatives.isEmpty()) {
+            return "";
+        }
+        return " AND (" + String.join(" OR ", alternatives) + ")";
+    }
+
+    /**
+     * The primary criterion follows {@code ascending} literally. Phone and email put a missing value
+     * last in both directions. {@code normalized_display_name ASC, id ASC} are fixed tie-breakers,
+     * so paging never duplicates or skips a row.
+     */
+    private static String orderClause(CustomerSortField sort, boolean ascending) {
+        String direction = ascending ? "ASC" : "DESC";
+        return switch (sort) {
+            case NAME -> "normalized_display_name " + direction + ", id ASC";
+            case PHONE -> "phone " + direction + " NULLS LAST, normalized_display_name ASC, id ASC";
+            case EMAIL -> "email " + direction + " NULLS LAST, normalized_display_name ASC, id ASC";
+        };
     }
 
     private <T> T execute(Supplier<T> operation) {

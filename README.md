@@ -31,7 +31,9 @@ decisions are documented (`docs/tasks/07a-business-customer-records.md`,
 ADR-0019 to ADR-0021) and Phase 2 has delivered the shared contact policy, the
 `customer` table (V10) and internal persistence, and Phase 3 the conservative matching
 contracts (`CustomerIdentification`, `CustomerReferenceAccess`) used internally by future
-booking. There is no Customer API or interface yet.
+booking. Phase 4 adds the private owner-only backend API under `/api/business/customers` (list,
+body-based search, detail, explicit create, and version-guarded update). There is no Customer
+interface yet.
 Appointments, booking, production email, and hosting are not implemented.
 Business closures, StaffMember time off, working-day overrides, and additional
 working periods ("Промени в графика") can be administered through an

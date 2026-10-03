@@ -1,11 +1,12 @@
 # SpotYourSlot — Business-scoped Customer Records
 
-Status: Phase 1 (decisions, ADRs, and plan) and Phase 2 (shared contact policy, Customer domain,
-`V10` schema, and internal persistence) are committed. Phase 3 (conservative matching, the published
+Status: Phase 1 (decisions, ADRs, and plan), Phase 2 (shared contact policy, Customer domain,
+`V10` schema, and internal persistence), and Phase 3 (conservative matching, the published
 `CustomerIdentification` and `CustomerReferenceAccess` contracts, caller-owned transaction semantics,
-and PostgreSQL concurrency evidence) is implemented and verified and awaits review and commit.
-Issue #20 is in progress; administration, list and search, the interface, and E2E are not started, and
-each later phase needs separate explicit approval.
+and PostgreSQL concurrency evidence) are committed. Phase 4 (the private owner-only administration
+backend: list, body-based search, detail, explicit create, and version-guarded update) is implemented
+and verified and awaits review and commit. Issue #20 is in progress; the Business-owner interface (Phase 5)
+and the browser E2E (Phase 6) are not started, and each later phase needs separate explicit approval.
 GitHub issue: #20 — Build Business-scoped customer records
 Depends on: the approved identity, authorization, and Business-isolation foundation,
 and the Business-owner configuration and navigation where Customer administration is
@@ -330,8 +331,8 @@ zoom review are required, with explicit human visual approval.
 |---|---|---|---|
 | 1 | Decisions, this task record, ADR-0019 to ADR-0021, and narrow documentation reconciliation. Documentation only. | Strict | Review of this change |
 | 2 (committed) | **First** extract the shared contact policy (backend and frontend module), add golden vectors, make StaffMember delegate, and verify existing StaffMember behavior. **Then** the `customer` domain, `V10__add_customers.sql`, repository/store, uniqueness and concurrency tests, and the boundary test. No controller or frontend Customer UI. Internal checkpoints are allowed within this one phase. | Strict | Own approval and commit; Phase 1 accepted |
-| 3 (implemented, awaiting review) | `CustomerIdentification` and `CustomerReferenceAccess`, normalization, typed outcomes, transaction and race tests, test-only consumer. No Appointment. | Strict (cross-module contract) | Own approval and commit |
-| 4 | Private administration backend: authorization, list, search, detail, create, update, lifecycle behavior, tenant-isolation and privacy tests, `EXPLAIN` evidence. | Strict | Own approval and commit |
+| 3 (committed) | `CustomerIdentification` and `CustomerReferenceAccess`, normalization, typed outcomes, transaction and race tests, test-only consumer. No Appointment. | Strict (cross-module contract) | Own approval and commit |
+| 4 (implemented, awaiting review) | Private administration backend: authorization, list, search, detail, create, update, lifecycle behavior, tenant-isolation and privacy tests, `EXPLAIN` evidence. | Strict | Own approval and commit |
 | 5 | Business-owner interface: navigation, list and search **first**, then create, detail, and edit; validation, guards, SUSPENDED mode, rendered desktop, tablet, mobile, and zoom review. Two human visual checkpoints are allowed within this one phase. | Standard (human visual approval) | Human visual approval |
 | 6 | Playwright administration journey, tenant isolation, lifecycle, privacy evidence, Booking-seam evidence, full gates, documentation completion, roadmap update, review archive. | Standard | Green verification; closure only with explicit approval |
 
@@ -576,7 +577,7 @@ message text is never parsed. `40001` and `40P01` are `UnexpectedFailure` for no
   `CustomerReferenceAccess`, `CustomerConcurrentConflict`, administration API, search, frontend
   screens, E2E.
 
-## Phase 3 record (implemented and verified; awaiting review and commit)
+## Phase 3 record (implemented, verified, and committed)
 
 Phase 3 delivered conservative matching, the published Customer contracts, caller-owned transaction
 semantics, and PostgreSQL concurrency evidence. It did **not** start Phase 4: there is no HTTP
@@ -713,3 +714,190 @@ suppressed, `toString()`) carry no submitted value.
   could occur the call would throw `CustomerConcurrentConflict`.
 - **Not done (Phase 4 onward):** private administration API and authorization, list, search,
   `EXPLAIN` evidence, frontend screens, E2E, Booking, Appointments.
+
+## Phase 4 record (implemented and verified; awaiting review and commit)
+
+Phase 4 delivered the private, owner-only Customer administration backend of ADR-0021. It did **not**
+start Phase 5: there is no frontend screen, route, navigation entry, or Vitest/Playwright test, no
+Booking or Appointment behavior, no public Customer endpoint, no Customer deletion, lifecycle, note,
+history, anonymization, or merge, no new matching semantics, and no migration beyond `V10`
+(V1 to V10 are byte-for-byte unchanged). `pom.xml`, the frontend, and the security configuration did
+not change.
+
+### Final HTTP contract (`/api/business/customers`, session-authenticated, CSRF on POST and PUT)
+
+| Method and path | Request | Response |
+|---|---|---|
+| `GET /` | query `page` (default 0), `size` (10, 25, 50; default 10), `sort` (`name` default, `phone`, `email`), `direction` (`asc` default, `desc`) | 200 `{items, page, size, total}`; item `{id, displayName, phone, email}` |
+| `POST /search` | body `{search, page, size, sort, direction}`, every key optional | the same page response |
+| `GET /{customerId}` | | 200 `{id, displayName, phone, email, version, createdAt, updatedAt}` |
+| `POST /` | body `{displayName, phone, email}` | 201, `Location: /api/business/customers/{id}`, the detail body |
+| `PUT /{customerId}` | body `{displayName, phone, email, expectedVersion}` | 200, the detail body |
+
+`businessId`, the normalized name, version and timestamps in list rows, and every internal value are
+never returned; a `businessId` in a body or query is ignored. There is no delete, merge, deactivate,
+or public operation. Customer responses carry Spring Security's `no-store` headers, including errors.
+Every Customer problem carries the fixed `instance` `/api/business/customers`, so a Customer ID in the
+request path is never echoed; the malformed body, parameter, and path-ID failures are handled by the
+Customer advice for the same reason.
+
+### Authorization and lifecycle matrix
+
+The Business is the authenticated selection. Reads use the non-locking `findLifecycle` and `authorize`
+checks. Each mutation runs in one transaction and takes the shared Business lifecycle lock, then the
+shared Membership lock (`lockLifecycle`, `lockAndAuthorize`), then performs the optimistic write; the
+lock order is proved against PostgreSQL (below).
+
+| Caller | Read and search | Create and update |
+|---|---|---|
+| Unauthenticated | 401 `AUTH_REQUIRED` | 401 `AUTH_REQUIRED` |
+| Session without a selected Business | 403 `ACTIVE_BUSINESS_REQUIRED` | 403 `ACTIVE_BUSINESS_REQUIRED` |
+| `PLATFORM_ADMIN` alone, inactive Membership, Membership in another Business | 403 `ACTIVE_BUSINESS_REQUIRED` | 403 `ACTIVE_BUSINESS_REQUIRED` |
+| `MANAGER`, `STAFF` of the selected Business | 403 `ACCESS_DENIED` | 403 `ACCESS_DENIED` |
+| `BUSINESS_OWNER` (also when `PLATFORM_ADMIN`) of a DRAFT or ACTIVE Business | allowed | allowed |
+| `BUSINESS_OWNER` of a SUSPENDED Business | allowed | 409 `BUSINESS_SUSPENDED` (before validation and lookup) |
+
+Note on ADR-0021: the ADR says `PLATFORM_ADMIN` alone, inactive, and other-Business Memberships
+receive `ACCESS_DENIED`. In the implemented session model (identical for the Service and StaffMember
+APIs) a session whose Membership is not an active one of the selected Business has no usable selection,
+so those cases are rejected earlier with `ACTIVE_BUSINESS_REQUIRED`; `ACCESS_DENIED` is returned when a
+selection exists but the role is not owner. In both cases no Customer is read or written and no
+existence is revealed. The tests pin the implemented behavior.
+
+### Validation and safe errors
+
+| Status | Code | Condition |
+|---:|---|---|
+| 400 | `VALIDATION_ERROR` with `fieldErrors` | invalid `displayName`, `phone`, `email`; `contact` when neither is supplied (every invalid field is named together) |
+| 400 | `VALIDATION_ERROR` without `fieldErrors` | invalid `page`, `size`, `sort`, `direction`, a search term over 100 code points, missing or negative `expectedVersion`, a malformed body, or a malformed path ID |
+| 404 | `CUSTOMER_NOT_FOUND` | unknown or foreign ID (byte-identical bodies) |
+| 409 | `CUSTOMER_CONTACT_CONFLICT` | `fieldErrors.phone` and/or `fieldErrors.email`; reported from a holder lookup, with the unique indexes as final arbiter |
+| 409 | `CUSTOMER_CONCURRENT_UPDATE` | stale `expectedVersion`, or a lost guarded write |
+| 409 | `CUSTOMER_CONCURRENT_CONFLICT` | SQLState `40001` or `40P01` |
+| 409 | `BUSINESS_SUSPENDED` | create or update in a SUSPENDED Business |
+| 500 | `INTERNAL_ERROR` | `CustomerOperationFailure` (any other persistence failure) |
+
+The messages are exactly those of the error taxonomy above. A duplicate on update or create reports the
+conflicting field only and never says which Customer holds the identifier.
+
+### List and search semantics
+
+The list is `GET` with paging and sorting only. `POST /search` takes the term in the JSON body only:
+trimmed with the approved whitespace set; blank or absent means no filter; at most 100 code points after
+trimming, otherwise a generic `VALIDATION_ERROR`. The criteria are OR-ed: the term canonicalized like a
+display name is a `strpos` substring of the generated `normalized_display_name` (the needle gets the same
+`casefold` and `NFKC`); the lower-case term is a `strpos` substring of `email`; a term that is a full valid
+phone matches `phone` exactly; otherwise a term of digits with a leading `+`, `00`, or `0` becomes a
+canonical prefix (`0` becomes `+359`) matched with `starts_with(phone, ...)`. `%`, `_`, and `\` are literal
+because `strpos` and `starts_with` have no wildcard syntax; a term such as `+`, `00`, `+%`, `0_89`, or
+`123` adds no phone criterion, so malformed phone-like input never broadens the search. No fuzzy,
+accent-folding, transliterating, name-identity, trigram, or full-text matching exists.
+
+Paging is server-side and zero-based; sizes 10, 25, and 50 only. Ordering: `normalized_display_name`
+then `id` for `name`; `phone` or `email` with `NULLS LAST` in both directions, then
+`normalized_display_name ASC, id ASC`. The statement count is constant: one page statement and one
+count statement per list or search, whatever the page or result size (proved with a recording
+`DataSource` through MockMvc). The `CustomerStore` SQL fragments are closed constants selected by an enum
+or by which criteria exist; the term is only ever a bound parameter.
+
+### Create and update
+
+Create is the explicit administration operation, not `findOrCreate`: it canonicalizes with the shared
+policy, rejects an already held phone or email (even an identical submission) with the safe conflict,
+creates exactly one `customer` row, and writes no User, Membership, session, Appointment, or other
+record (table counts compared in a test). Update replaces name, phone, and email atomically behind
+`expectedVersion`; the Customer's own identifiers are ignored in the holder check; an unchanged update
+still advances the version once and `updated_at` (from the injected clock, never backwards); removing a
+contact is allowed only while the other remains; an identifier moves only through two explicit
+operations, never implicitly; no merge exists. A failed update keeps the previous row exactly (verified
+for validation, conflict, stale version, and a failure injected after the real `UPDATE` statement).
+
+### Transaction and persistence behavior
+
+`CustomerAdministrationService` (package `customer.application`; an internal class, not a published
+contract, so the published root package is unchanged) uses `@Transactional(readOnly = true)` for reads and
+`@Transactional` for mutations, no `REQUIRES_NEW`, no savepoint, and no global change. Persistence
+failures are classified in the service and discarded: `DuplicatePhone` and `DuplicateEmail` become
+`ContactConflict`, SQLState `40001` and `40P01` become the published `CustomerConcurrentConflict`, and
+everything else the published `CustomerOperationFailure`; Phase 3 matching, outcomes, and rollback
+semantics are untouched. `CustomerStore` gained `list`, `count`, and the package-private `listSql` and
+`countSql` (so the `EXPLAIN` evidence runs the production SQL); classification still uses SQLState and
+the structured driver fields only. Controllers and HTTP records live in `customer.web` and see only
+`customer.application` types; persistence records stay internal. The module now depends on `shared`
+(`contact`), `identity` (`AuthenticatedBusinessContext`, `SelectedBusinessOwnerAccess`,
+`SelectedBusinessRequired`), and `business` (`BusinessLifecycleAccess`), as ADR-0021 approved, and on
+nothing else.
+
+### Privacy and tenant-isolation evidence
+
+Business A/B isolation is tested for list, search, detail, create, and update, including guessed IDs, a
+client-supplied `businessId`, and byte-identical 404 bodies for foreign and unknown IDs. Exact key
+allowlists are asserted for list rows, detail, and page. Sentinel names, phones, emails, IDs, and
+Business IDs never appear in Problem Details, in Logback events captured at DEBUG around searches,
+conflicts, validation errors, stale updates, suspension, and injected failures, in exception messages,
+causes, suppressed exceptions, or `toString()` (all Customer commands, requests, and responses redact
+theirs). The Customer source tree still contains no logger (scanned by `CustomerModuleBoundaryTests`).
+The search term is absent from the URL, query string, and redirects. A public-profile request for a
+Business with a sentinel Customer, and anonymous Customer requests, contain no sentinel. A test
+enumerates every Spring MVC mapping: exactly the five approved Customer endpoints exist, none under
+`/api/public`. One recorded observation: Spring's own DEBUG request line (off by default) prints the
+request path, which can contain an opaque Customer ID; nothing at INFO or above carries it.
+
+### `EXPLAIN` evidence (about 10,000 Customers in one Business, 20,000 in the table; PostgreSQL 18.4)
+
+Executed by `CustomerSearchExplainIntegrationTests` against the production SQL. The default first page
+reads `customer_business_normalized_display_name_id_idx` with no sort (about 0.02 ms); name descending
+reads it backward (about 0.04 ms); a search page filters the Business through that index in 1.3 to 2.0 ms
+and its count by one scan of the Business's rows in 1.3 to 1.9 ms; sorting by phone or email scans the
+Business's rows with a top-N sort in about 3 to 12 ms; the last page (offset 9,990) chooses a scan and a
+sort in about 4 ms. Every statement filters by `business_id`. Timings are recorded here and are not
+asserted by the test. No trigram, full-text, or extra index is added: the evidence does not fail the
+ADR-0021 criterion, and an index remains a follow-up only if later measurement fails.
+
+### Verification evidence (executed 2026-10-03)
+
+- Full backend `./mvnw --batch-mode verify`: 2,217 tests, 0 failures, 0 errors, 0 skipped (BUILD
+  SUCCESS); the previous total was 1,922 (+295: 289 new tests in new classes, 4 new boundary tests, and
+  2 new tests in the shared `ApiExceptionHandlerTests`, now 6).
+- New tests (executed counts): `BusinessCustomerAuthorizationApiIntegrationTests` 21 (including the exact routing-error tests),
+  `BusinessCustomerReadApiIntegrationTests` 39, `BusinessCustomerMutationApiIntegrationTests` 119 (including
+  the shared golden vectors through the API), `BusinessCustomerPrivacyApiIntegrationTests` 10,
+  `CustomerStoreListIntegrationTests` 16, `CustomerSearchExplainIntegrationTests` 3,
+  `CustomerAdministrationLockingIntegrationTests` 3, `CustomerAdministrationServiceTests` 24,
+  `CustomerInputValidatorTests` 25, `CustomerSearchCriteriaTests` 22,
+  `BusinessCustomerExceptionHandlerTests` 7; `CustomerModuleBoundaryTests` 17 (was 13).
+- Regressions green in the same run: `CustomerSchemaIntegrationTests` 34, `CustomerStoreIntegrationTests` 23,
+  `CustomerStoreFailureTranslationTests` 27, `CustomerProfileTests` 33, `CustomerTests` 8,
+  `CustomerIdentificationServiceTests` 30, `CustomerIdentificationIntegrationTests` 27,
+  `CustomerIdentificationConcurrencyIntegrationTests` 11, `ContactPolicyVectorTests` 94, and the global
+  `ModuleBoundaryTests`, `PublicProfileModuleBoundaryTests`, and `AvailabilityModuleBoundaryTests`.
+- No sleeps: races use latches, `pg_stat_activity` lock-wait evidence, and database-decided outcomes
+  (exactly one winner); timeouts are only ceilings.
+- Migration SHA-256 comparison of V1 to V10 against `HEAD`: identical. No frontend, `pom.xml`, migration,
+  Booking, or Appointment file changed. The frontend suite was not rerun because no frontend file changed.
+
+### Deviations, limitations, and remaining Phase 5 work
+
+- The ADR's `ACCESS_DENIED` for platform-only, inactive, and other-Business Memberships is returned as
+  `ACTIVE_BUSINESS_REQUIRED`, as for every private API (see the matrix note). Not an ADR redesign.
+- Routing errors (post-review correction): the shared `ApiExceptionHandler` now maps Spring's
+  `HttpRequestMethodNotSupportedException` to 405 `METHOD_NOT_ALLOWED` ("Методът не е разрешен за този
+  адрес.", with the `Allow` header) and `NoResourceFoundException`/`NoHandlerFoundException` to 404
+  `ROUTE_NOT_FOUND` ("Адресът не е намерен."), both with the fixed `instance` `/api`; they previously fell
+  to the generic 500. Final decisions, pinned by exact tests: `DELETE /{validId}` is 405;
+  `POST /{validId}/merge` is 404; `GET` and `PUT /search` are 405 with `Allow: POST` because the ID
+  mappings exclude the literal segment `search` (regex `^(?!search$).+`); every other malformed ID
+  (`not-a-uuid`, `searching`) stays a generic 400 `VALIDATION_ERROR`. No delete, merge, or catch-all
+  operation exists, the five-endpoint inventory is unchanged (the two ID patterns now carry the regex),
+  and anonymous callers still get 401 and missing CSRF still 403 before routing. The Customer row and
+  count are asserted unchanged.
+- The lock order is proved with mocks (`InOrder`) and, against PostgreSQL, by two transactions that hold
+  the Business and Membership row locks while a mutation is blocked (lock-wait evidence from
+  `pg_stat_activity`); it is not a full Service-style pausing-bean matrix.
+- Retry policy for `CUSTOMER_CONCURRENT_CONFLICT` stays with the caller (the interface) and issue #18.
+- PostgreSQL's server log can contain a key value for a rare administrative unique violation (recorded
+  operational limitation, unchanged).
+- Not done (Phase 5 and 6): the Business-owner navigation, list and search interface, create, detail and
+  edit screens, validation and guards in the browser, SUSPENDED read-only mode, rendered review at
+  desktop, tablet, mobile, and 200% zoom with human approval, the shared frontend table behavior, and the
+  Playwright journey.

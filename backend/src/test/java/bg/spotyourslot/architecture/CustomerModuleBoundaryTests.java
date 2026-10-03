@@ -29,27 +29,106 @@ import org.springframework.modulith.core.ApplicationModules;
 import org.springframework.modulith.core.NamedInterface;
 
 /**
- * Boundaries of the Customer module: Phase 2 (ADR-0019) and Phase 3 (ADR-0020), which publishes the
- * {@code CustomerIdentification} and {@code CustomerReferenceAccess} contracts from its root package.
+ * Boundaries of the Customer module: Phase 2 (ADR-0019), Phase 3 (ADR-0020), which publishes the
+ * {@code CustomerIdentification} and {@code CustomerReferenceAccess} contracts from its root package,
+ * and Phase 4 (ADR-0021), which adds the private owner-only administration API.
  *
- * <p>Phase 2 boundaries of the Customer module (ADR-0019): it depends only on the small shared contact
- * policy through the {@code shared::contact} named interface only, never on Workforce, and nothing
- * depends on it yet. The other {@code shared} sub-packages stay internal.
+ * <p>The module depends on the shared contact policy through the {@code shared::contact} named
+ * interface only, and since Phase 4 on the published owner-access types of {@code identity} and
+ * {@code business}, exactly like the other owner APIs. It never depends on Workforce, Catalog,
+ * Scheduling, Platform, Public Profile, or Booking, and nothing depends on it. The other
+ * {@code shared} sub-packages stay internal.
  */
 class CustomerModuleBoundaryTests {
     private final ApplicationModules modules = ApplicationModules.of(SpotYourSlotApplication.class);
 
     @Test
-    void customerIsADetectedModuleThatDependsOnlyOnShared() {
+    void customerIsADetectedModuleThatDependsOnlyOnSharedIdentityAndBusiness() {
         assertThat(modules.getModuleByName("customer")).isPresent();
-        assertThat(dependenciesOf("customer")).containsExactly("shared");
+        assertThat(dependenciesOf("customer")).containsExactlyInAnyOrder("shared", "identity", "business");
     }
 
     @Test
     void customerDoesNotDependOnWorkforceOrAnyOtherBusinessModule() {
         assertThat(dependenciesOf("customer"))
-                .doesNotContain("workforce", "identity", "business", "catalog", "scheduling", "platform",
-                        "publicprofile");
+                .doesNotContain("workforce", "catalog", "scheduling", "platform", "publicprofile", "booking");
+    }
+
+    @Test
+    void customerReachesIdentityAndBusinessOnlyThroughTheOwnerAccessTypes() {
+        ApplicationModule customer = modules.getModuleByName("customer").orElseThrow();
+
+        Set<String> targets = customer.getDirectDependencies(modules).stream()
+                .filter(dependency -> Set.of("identity", "business")
+                        .contains(dependency.getTargetModule().getIdentifier().toString()))
+                .map(dependency -> dependency.getTargetType().getName())
+                .collect(Collectors.toSet());
+
+        assertThat(targets).isNotEmpty();
+        assertThat(targets).isSubsetOf(
+                "bg.spotyourslot.identity.AuthenticatedBusinessContext",
+                "bg.spotyourslot.identity.SelectedBusinessOwnerAccess",
+                "bg.spotyourslot.identity.SelectedBusinessOwnerAccess$Authorization",
+                "bg.spotyourslot.identity.SelectedBusinessRequired",
+                "bg.spotyourslot.business.BusinessLifecycleAccess",
+                "bg.spotyourslot.business.BusinessLifecycleAccess$BusinessLifecycle",
+                "bg.spotyourslot.business.BusinessLifecycleAccess$LifecycleStatus");
+    }
+
+    @Test
+    void identityAndBusinessNeverDependOnCustomer() {
+        assertThat(dependenciesOf("identity")).doesNotContain("customer");
+        assertThat(dependenciesOf("business")).doesNotContain("customer");
+        assertThat(dependenciesOf("publicprofile")).doesNotContain("customer");
+    }
+
+    @Test
+    void layersStayInOneDirectionWebToApplicationToDomainAndInfrastructure() {
+        var imported = new ClassFileImporter()
+                .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
+                .importPackages("bg.spotyourslot.customer");
+
+        for (JavaClass type : imported) {
+            String layer = type.getPackageName();
+            for (Dependency dependency : type.getDirectDependenciesFromSelf()) {
+                String target = dependency.getTargetClass().getPackageName();
+                String description = type.getName() + " -> " + dependency.getTargetClass().getName();
+                if (layer.equals("bg.spotyourslot.customer.web")) {
+                    assertThat(target).as(description).isNotEqualTo("bg.spotyourslot.customer.infrastructure");
+                    assertThat(target).as(description).isNotEqualTo("bg.spotyourslot.customer.domain");
+                }
+                if (layer.equals("bg.spotyourslot.customer.domain")) {
+                    assertThat(target).as(description).doesNotStartWith("bg.spotyourslot.customer.web")
+                            .doesNotStartWith("bg.spotyourslot.customer.application")
+                            .doesNotStartWith("bg.spotyourslot.customer.infrastructure");
+                }
+                if (layer.equals("bg.spotyourslot.customer.infrastructure")) {
+                    assertThat(target).as(description).doesNotStartWith("bg.spotyourslot.customer.web")
+                            .doesNotStartWith("bg.spotyourslot.customer.application");
+                }
+            }
+        }
+    }
+
+    @Test
+    void theOnlyCustomerControllerIsThePrivateOwnerApiUnderTheBusinessPrefix() throws java.io.IOException {
+        var imported = new ClassFileImporter()
+                .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
+                .importPackages("bg.spotyourslot.customer");
+
+        List<String> controllers = imported.stream()
+                .filter(type -> type.isAnnotatedWith(org.springframework.web.bind.annotation.RestController.class)
+                        || type.isAnnotatedWith(org.springframework.stereotype.Controller.class))
+                .map(JavaClass::getName)
+                .toList();
+        assertThat(controllers).containsExactly("bg.spotyourslot.customer.web.BusinessCustomerController");
+
+        String source = java.nio.file.Files.readString(java.nio.file.Path.of(
+                "src/main/java/bg/spotyourslot/customer/web/BusinessCustomerController.java"));
+        assertThat(source).contains("@RequestMapping(\"/api/business/customers\")")
+                .doesNotContain("/api/public")
+                .doesNotContain("@DeleteMapping")
+                .doesNotContain("@PatchMapping");
     }
 
     @Test
@@ -139,6 +218,11 @@ class CustomerModuleBoundaryTests {
                 CustomerReferenceAccess.CustomerReference.class.getName(),
                 CustomerConcurrentConflict.class.getName(),
                 CustomerOperationFailure.class.getName());
+        assertThat(published).noneMatch(name -> name.contains("Administration")
+                || name.contains("BusinessCustomer")
+                || name.contains("InputValidator")
+                || name.contains("SearchCriteria")
+                || name.contains("SortField"));
         assertThat(published).noneMatch(name -> name.contains("CustomerStore")
                 || name.contains("CustomerPersistenceException")
                 || name.contains("CustomerProfile")

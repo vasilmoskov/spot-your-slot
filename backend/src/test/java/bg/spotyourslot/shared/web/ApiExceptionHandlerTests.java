@@ -47,4 +47,28 @@ class ApiExceptionHandlerTests {
         assertThat(problem.getProperties()).containsEntry("code", "VALIDATION_ERROR");
         assertThat(problem.getDetail()).doesNotContain("list.page", "rejected-value");
     }
+
+    @Test
+    void anUnsupportedMethodIsAFixedMethodNotAllowedProblemWithAllowHeader() {
+        var response = handler.methodNotAllowed(
+                new org.springframework.web.HttpRequestMethodNotSupportedException(
+                        "DELETE", java.util.List.of("GET", "PUT")));
+        var problem = response.getBody();
+
+        assertThat(response.getStatusCode().value()).isEqualTo(405);
+        assertThat(response.getHeaders().getAllow()).hasSize(2);
+        assertThat(problem.getProperties()).containsEntry("code", "METHOD_NOT_ALLOWED");
+        assertThat(problem.getDetail()).isEqualTo("Методът не е разрешен за този адрес.");
+        assertThat(String.valueOf(problem.getInstance())).isEqualTo("/api");
+    }
+
+    @Test
+    void anUnmappedPathIsAFixedNotFoundProblem() {
+        var problem = handler.routeNotFound();
+
+        assertThat(problem.getStatus()).isEqualTo(404);
+        assertThat(problem.getProperties()).containsEntry("code", "ROUTE_NOT_FOUND");
+        assertThat(problem.getDetail()).isEqualTo("Адресът не е намерен.");
+        assertThat(String.valueOf(problem.getInstance())).isEqualTo("/api");
+    }
 }
