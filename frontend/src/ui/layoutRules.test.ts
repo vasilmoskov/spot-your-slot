@@ -131,3 +131,84 @@ describe('public Business page layout', () => {
     )
   })
 })
+
+describe('Customer administration layout', () => {
+  it('sizes the live search field to its content within a readable width and spaces it by gap', () => {
+    expect(rule('.customer-search')).toContain('display: grid')
+    expect(rule('.customer-search')).toContain('gap: var(--space-2)')
+    expect(rule('.customer-search-field')).toContain('width: min(100%, 32rem)')
+    expect(css).not.toContain('.customer-search-actions')
+  })
+
+  it('dims, but does not hide, the previous result while a newer one loads', () => {
+    expect(rule('.customer-results')).toContain('display: grid')
+    expect(rule('.customer-results.is-refreshing')).toContain('opacity: 0.6')
+    expect(css).toMatch(/prefers-reduced-motion: reduce\) \{\s*\.customer-results \{[^}]*transition: none/)
+  })
+
+  it('spaces the contact group by gap alone, without browser fieldset chrome', () => {
+    const block = rule('.contact-group')
+    expect(block).toContain('display: grid')
+    expect(block).toContain('gap: var(--space-4)')
+    expect(block).toContain('border: 0')
+    expect(block).toContain('padding: 0')
+    expect(rule('.contact-group > *')).toContain('margin: 0')
+  })
+
+  it('makes the form and detail sections one gap-spaced stack', () => {
+    expect(rule('.customer-form-section,\n.customer-detail-section')).toContain('gap: var(--space-4)')
+    expect(css).toMatch(/\.customer-detail-section > button \{[^}]*justify-self: start/)
+  })
+
+  it('wraps long names, phones and e-mail addresses inside their cells and the detail header', () => {
+    expect(rule('.customer-table td')).toContain('overflow-wrap: anywhere')
+    expect(rule('.customer-detail-header h2')).toContain('overflow-wrap: anywhere')
+  })
+
+  it('turns the Customer table into cards at the same widths as the other owner tables', () => {
+    expect(css).toMatch(
+      /@media \(min-width: 48rem\) and \(max-width: 63\.999rem\) \{[\s\S]*?\.customer-table td::before/,
+    )
+    const midRange = css.slice(
+      css.indexOf('@media (min-width: 48rem) and (max-width: 63.999rem)'),
+      css.indexOf('@media (min-width: 48rem) {\n  .platform-shell'),
+    )
+    expect(midRange).toContain('.customer-table thead')
+    expect(midRange).toContain('.customer-list-toolbar .responsive-sort-select')
+    expect(midRange).toContain('.customer-table-container')
+  })
+})
+
+describe('sidebar navigation groups', () => {
+  it('stacks each group by gap alone and separates the Business context with a rule', () => {
+    expect(rule('.navigation-group')).toContain('display: grid')
+    expect(rule('.navigation-group')).toContain('gap: var(--space-2)')
+    const context = rule('.navigation-context')
+    expect(context).toContain('border-top: 1px solid var(--color-border)')
+    expect(context).toContain('padding-top: var(--space-4)')
+  })
+
+  it('wraps a long Business name in the context heading instead of widening the sidebar', () => {
+    expect(rule('.navigation-context-heading')).toContain('overflow-wrap: anywhere')
+    expect(rule('.navigation-context-heading')).toContain('margin: 0')
+  })
+})
+
+describe('Business choice list', () => {
+  it('spaces cards by gap, lets them wrap, and wraps long names', () => {
+    expect(rule('.business-choice-list')).toContain('gap: var(--space-4)')
+    expect(rule('.business-choice-list')).toContain('list-style: none')
+    expect(rule('.business-choice')).toContain('flex-wrap: wrap')
+    expect(rule('.business-choice-name')).toContain('overflow-wrap: anywhere')
+    expect(rule('.business-choice-badges')).toContain('flex-wrap: wrap')
+  })
+
+  it('styles the selected Business as a pale-green card with a matching border and a checkmark chip', () => {
+    const selected = rule('.business-choice.is-selected')
+    expect(selected).toContain('border-color: var(--color-success-border)')
+    expect(selected).toContain('background: var(--color-success-subtle)')
+    expect(rule('.business-choice-check')).toContain('background: var(--color-success)')
+    // The lifecycle badge keeps its own chip on the green card.
+    expect(rule('.business-choice.is-selected .status-badge')).toContain('background: var(--color-surface)')
+  })
+})

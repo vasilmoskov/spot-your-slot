@@ -30,8 +30,9 @@ export type SubmitOutcome<K extends string> = { fieldErrors?: FieldErrors<K> } |
 export function backendFieldErrors<K extends string>(
   error: unknown,
   known: readonly K[],
+  codes: readonly string[] = ['VALIDATION_ERROR'],
 ): FieldErrors<K> | undefined {
-  if (!(error instanceof ApiError) || error.code !== 'VALIDATION_ERROR') return undefined
+  if (!(error instanceof ApiError) || !codes.includes(error.code)) return undefined
   if (!error.fieldErrors) return undefined
   const result: FieldErrors<K> = {}
   for (const field of known) {

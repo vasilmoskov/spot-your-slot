@@ -55,7 +55,10 @@ Customers, Appointments, cancellations, notifications, roles, and tenant model.
   owner-only until a separate approved MANAGER design exists (ADR-0021).
 - **STAFF:** sees and manages Appointments and schedule belonging to the linked
   StaffMember, creates manual Appointments, and marks them complete/no-show.
-- **Customer:** books as an unauthenticated guest; no Customer account exists.
+- **Customer:** books as an unauthenticated guest; no Customer account exists. A Customer *record* is
+  Business-owned data about a guest, not a login: public booking will find or create it automatically from the
+  supplied phone or email, and owners also create records manually for telephone, walk-in, and other externally
+  received bookings. A future authenticated Customer account is a separate, explicitly approved capability.
 
 Users receive tenant roles only through explicit Business Membership. A user
 may hold Memberships in multiple Businesses; authorization is evaluated in the
@@ -87,7 +90,8 @@ activates it. Normal users cannot elevate themselves.
 - **ACTIVE:** public booking and authorized administration are allowed.
 - **SUSPENDED:** data is preserved and public booking rejected; Business
   administration is read-only except logout and account-security actions.
-  PLATFORM_ADMIN may reactivate it.
+  PLATFORM_ADMIN may reactivate it. One approved exception: the owner may still correct
+  (update) an existing Customer record; creating Customers and every other change stay blocked.
 
 ## Public page and booking flow
 

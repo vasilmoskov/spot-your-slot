@@ -98,14 +98,14 @@ describe('ServiceList', () => {
     expect(screen.getByRole('button', { name: 'Добави нова услуга' })).toBeInTheDocument()
   })
 
-  it('hides mutation actions and shows a notice when the Business is SUSPENDED', async () => {
+  it('hides mutation actions and repeats no lifecycle sentence (the shared banner says it) when the Business is SUSPENDED', async () => {
     mockedListServices.mockResolvedValue(populatedPage)
     renderServiceList({ readOnly: true })
     await screen.findByText('Подстригване')
     expect(screen.queryByRole('button', { name: 'Добави нова услуга' })).not.toBeInTheDocument()
-    expect(
-      screen.getByText('Бизнесът е временно спрян — услугите могат само да бъдат преглеждани.'),
-    ).toBeInTheDocument()
+    expect(screen.queryByText(/временно спрян/)).not.toBeInTheDocument()
+    // No empty action row is left behind to add blank space under the banner.
+    expect(document.querySelector('.business-page-actions')).toBeNull()
   })
 
   it('shows a safe error and supports retry', async () => {

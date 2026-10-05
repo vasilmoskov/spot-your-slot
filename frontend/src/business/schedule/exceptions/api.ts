@@ -1,4 +1,4 @@
-import { request } from '../../../identity/api'
+import { businessRequest as request } from '../../../identity/businessRequest'
 
 export type ExceptionKind =
   | 'BUSINESS_CLOSURE'

@@ -66,11 +66,9 @@ describe('StaffCreate', () => {
       />,
     )
     expect(screen.queryByLabelText('Име на члена на екипа')).not.toBeInTheDocument()
-    expect(
-      screen.getByText(
-        'Бизнесът е временно спрян — нови членове на екипа не могат да бъдат добавяни.',
-      ),
-    ).toBeInTheDocument()
+    // The shared banner explains the state once; the page keeps only the way back.
+    expect(screen.queryByText(/временно спрян/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Обратно към екипа' })).toBeInTheDocument()
   })
 
   it('starts with a completely empty form', () => {

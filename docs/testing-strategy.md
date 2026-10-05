@@ -101,6 +101,59 @@ writes into a test-created probe table that is never part of Flyway. `CustomerMo
 pin the published root-package types, their dependencies, the consumer's use of the root package only,
 the absence of any Booking module, and the absence of logging.
 
+### Customer administration frontend verification (issue #20 Phase 5)
+
+Vitest and Testing Library only (no Playwright, which is Phase 6): the shared contact golden vectors run
+against the Customer form rules; route parsing, normalization, and round trips; list requests (GET versus the
+POST body), sorting in both directions, sizes, partial and out-of-range pages, shared pagination, and cards;
+search (explicit submit, trim, the 100 code point boundary, clear, blank, pending, stale and aborted
+responses, term absent from the URL, both storages, cookie, and title); recovery of an empty later page
+(`total` above and equal to 0) by history replacement to the last valid page or page 0 with the size, sort,
+direction, and search kept, no pushed entry, and no loop; create and edit validation,
+`fieldErrors` mapping, duplicate conflicts, contact removal, stale-version guarded reload, safe generic errors,
+and every unsaved-changes exit; DRAFT, ACTIVE, and SUSPENDED behavior including a mutation that reveals the
+suspension; Business switching; access by role; and durable CSS rules in `ui/layoutRules.test.ts`. Rendered
+review used a disposable PostgreSQL container and synthetic fixtures created through the APIs. Human visual
+approval is separate and outstanding.
+
+### Navigation, Business selection, live search, and contextual SUSPENDED wording (issue #20 Phase 5 correction)
+
+Vitest only: `ShellNavigation` through both shells (global links without a Business, a separate group headed by the
+selected Business, no technical role value, the user and not the Business above Logout, a second link for an
+administrator who manages Businesses, mobile focus and Escape); `BusinessSelection` and `App.businessSelection`
+(landing, the list of managed Businesses with lifecycle wording, `Покажи` buttons on heading-named cards, a
+checkmark and `aria-current` instead of an `Избран` badge, selecting DRAFT, ACTIVE, and
+SUSPENDED, no Customer data across Businesses, refresh through the session, return to the selection when the
+Business is unavailable, no selector in the Profile, guard around Business context); live search with fake timers
+and no sleeps (no request before the debounce, one request for the final value, deletion and clearing, page reset,
+preserved size, sort, and direction, aborted and stale responses, previous result kept busy, term absent from
+URL and storage, catalog-empty versus no-results, stale-page recovery with and without a term); the Customer
+SUSPENDED notice exactly once and no "configuration" wording; and the guard focus fallback. The rendered review
+(Playwright Chromium, disposable stack) also measured real requests during typing.
+
+### Business-context recovery and single lifecycle notice (issue #20 Phase 5, second correction)
+
+`App.contextRecovery.test.tsx` mocks only the network helper, so the real feature API modules, their error handling, and
+the application's session recovery run: recovery from every Business-scoped screen (Services, Staff and assignments,
+Working Hours, Schedule Changes, Customers), one refresh for simultaneous failures, replace-not-push, no loop when the
+session still carries the Business, the guard around a dirty form, late old-Business responses, the outcomes that must
+not clear the context (missing record, `ACCESS_DENIED`, SUSPENDED, `401`, `401` during the refresh, network failure),
+one notice per SUSPENDED screen, and the approved owner and administrator labels. A real Membership revocation has no
+supported API, so the browser check intercepted the two server answers in the browser only (documented as a
+simulation).
+
+### SUSPENDED Customer update exception (issue #20 Phase 5, third correction)
+
+`BusinessCustomerSuspendedApiIntegrationTests` (PostgreSQL): an owner updates an existing Customer in SUSPENDED with the
+canonical profile stored; creation (phone-only, email-only, both) returns `BUSINESS_SUSPENDED` and creates no row; DRAFT and
+ACTIVE behave as before; the optimistic version, validation, and contact uniqueness still apply and leave the row unchanged;
+a foreign or unknown ID is the same safe `CUSTOMER_NOT_FOUND`; `MANAGER`, `STAFF`, inactive, unselected, and platform-only
+callers are rejected before any update; and Service and StaffMember creation in SUSPENDED still return `BUSINESS_SUSPENDED`.
+`CustomerAdministrationServiceTests` pin the lock order and checks of a suspended update, and
+`CustomerAdministrationLockingIntegrationTests` prove with a real lock wait that an update queued behind a committing
+suspension still succeeds while a create is rejected. `BusinessCustomerReadApiIntegrationTests` add the surname and
+middle-fragment search regression. The published matching tests are unchanged and green.
+
 ### Customer administration verification (issue #20 Phase 4)
 
 `BusinessCustomerAuthorizationApiIntegrationTests` (MockMvc and PostgreSQL) cover authentication, the

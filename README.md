@@ -32,8 +32,10 @@ ADR-0019 to ADR-0021) and Phase 2 has delivered the shared contact policy, the
 `customer` table (V10) and internal persistence, and Phase 3 the conservative matching
 contracts (`CustomerIdentification`, `CustomerReferenceAccess`) used internally by future
 booking. Phase 4 adds the private owner-only backend API under `/api/business/customers` (list,
-body-based search, detail, explicit create, and version-guarded update). There is no Customer
-interface yet.
+body-based search, detail, explicit create, and version-guarded update), and Phase 5 the
+Business-owner "Клиенти" interface (sortable, paginated list, body-based search, create, detail, and
+version-guarded edit; read-only for a suspended Business). Phase 5 awaits human visual approval and the browser
+E2E belongs to Phase 6.
 Appointments, booking, production email, and hosting are not implemented.
 Business closures, StaffMember time off, working-day overrides, and additional
 working periods ("Промени в графика") can be administered through an
@@ -181,7 +183,7 @@ npm run dev
 ```
 
 Open `http://localhost:5173`. The client supports login, forgotten/reset
-password, invitation acceptance, Business selection, password change, and
+password, invitation acceptance, Business selection (the “Бизнеси” page), password change, and
 logout. It stores no authentication token in browser storage.
 
 ### Identity API and local links

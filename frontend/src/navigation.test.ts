@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  BUSINESS_CUSTOMER_NEW_ROUTE,
+  BUSINESS_CUSTOMERS_ROUTE,
   BUSINESS_SCHEDULE_ROUTE,
+  CUSTOMERS_DEFAULT_LIST,
   BUSINESS_SERVICE_NEW_ROUTE,
   BUSINESS_SERVICES_ROUTE,
   BUSINESS_STAFF_NEW_ROUTE,
@@ -406,5 +409,103 @@ describe('schedule change routes', () => {
       kind: 'business-schedule-exceptions',
       window: null,
     })
+  })
+})
+
+describe('customer routes', () => {
+  it('parses the canonical list route and its defaults', () => {
+    window.history.replaceState({}, '', '/#/business/customers?page=2&size=25&sort=email&direction=desc')
+    expect(readAuthenticatedRoute()).toEqual({
+      kind: 'business-customers',
+      list: { page: 2, size: 25, sort: 'email', direction: 'desc' },
+    })
+    window.history.replaceState({}, '', '/#/business/customers')
+    expect(readAuthenticatedRoute()).toEqual(BUSINESS_CUSTOMERS_ROUTE)
+    expect(routeHref(BUSINESS_CUSTOMERS_ROUTE)).toBe(
+      '/#/business/customers?page=0&size=10&sort=name&direction=asc',
+    )
+  })
+
+  it.each([
+    ['?page=-1&size=7&sort=normalized&direction=up', CUSTOMERS_DEFAULT_LIST],
+    ['?page=abc&size=100&sort=status&direction=ASC', CUSTOMERS_DEFAULT_LIST],
+    ['?page=3&size=50&sort=bogus', { page: 3, size: 50, sort: 'name', direction: 'asc' }],
+    ['?sort=phone', { ...CUSTOMERS_DEFAULT_LIST, sort: 'phone' }],
+  ])('normalizes invalid list values field by field for %s', (query, list) => {
+    window.history.replaceState({}, '', `/#/business/customers${query}`)
+    expect(readAuthenticatedRoute()).toEqual({ kind: 'business-customers', list })
+  })
+
+  it('only supports name, phone and email sorting', () => {
+    window.history.replaceState({}, '', '/#/business/customers?sort=updatedAt')
+    expect(readAuthenticatedRoute()).toEqual(BUSINESS_CUSTOMERS_ROUTE)
+  })
+
+  it('parses the create route with and without a return list', () => {
+    window.history.replaceState({}, '', '/#/business/customers/new')
+    expect(readAuthenticatedRoute()).toEqual(BUSINESS_CUSTOMER_NEW_ROUTE)
+    expect(routeHref(BUSINESS_CUSTOMER_NEW_ROUTE)).toBe('/#/business/customers/new')
+    window.history.replaceState({}, '', '/#/business/customers/new?page=1&size=25&sort=phone&direction=desc')
+    const route = readAuthenticatedRoute()
+    expect(route).toEqual({
+      kind: 'business-customer-new',
+      returnList: { page: 1, size: 25, sort: 'phone', direction: 'desc' },
+    })
+    expect(routeHref(route)).toBe('/#/business/customers/new?page=1&size=25&sort=phone&direction=desc')
+  })
+
+  it('round-trips the detail route with its return list and encodes the ID', () => {
+    const route = {
+      kind: 'business-customer-detail',
+      customerId: 'a b/c',
+      returnList: { page: 4, size: 50, sort: 'email', direction: 'asc' },
+    } as const
+    expect(routeHref(route)).toBe(
+      '/#/business/customers/a%20b%2Fc?page=4&size=50&sort=email&direction=asc',
+    )
+    window.history.replaceState({}, '', routeHref(route).slice(1))
+    expect(readAuthenticatedRoute()).toEqual(route)
+    window.history.replaceState({}, '', '/#/business/customers/abc')
+    expect(readAuthenticatedRoute()).toEqual({
+      kind: 'business-customer-detail',
+      customerId: 'abc',
+      returnList: null,
+    })
+  })
+
+  it('normalizes an invalid return list instead of dropping the route', () => {
+    window.history.replaceState({}, '', '/#/business/customers/abc?page=-5&size=3')
+    expect(readAuthenticatedRoute()).toEqual({
+      kind: 'business-customer-detail',
+      customerId: 'abc',
+      returnList: CUSTOMERS_DEFAULT_LIST,
+    })
+  })
+
+  it('falls back to the list for a malformed encoded ID', () => {
+    window.history.replaceState({}, '', '/#/business/customers/%E0%A4%A')
+    expect(readAuthenticatedRoute()).toEqual(BUSINESS_CUSTOMERS_ROUTE)
+  })
+
+  it('treats every customer route as a Business-owner route and never carries a search term', () => {
+    for (const route of [
+      BUSINESS_CUSTOMERS_ROUTE,
+      BUSINESS_CUSTOMER_NEW_ROUTE,
+      { kind: 'business-customer-detail', customerId: 'x', returnList: null } as const,
+    ]) {
+      expect(isBusinessOwnerRoute(route)).toBe(true)
+      expect(isPlatformRoute(route)).toBe(false)
+      expect(routeHref(route)).not.toMatch(/search|term|q=/i)
+    }
+  })
+
+  it('ignores a search parameter smuggled into the URL', () => {
+    window.history.replaceState({}, '', '/#/business/customers?search=Анна&page=1')
+    const route = readAuthenticatedRoute()
+    expect(route).toEqual({
+      kind: 'business-customers',
+      list: { ...CUSTOMERS_DEFAULT_LIST, page: 1 },
+    })
+    expect(routeHref(route)).not.toContain('Анна')
   })
 })

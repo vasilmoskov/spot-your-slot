@@ -184,17 +184,12 @@ export function ServiceList({
   return (
     <div className="platform-content">
       <div className="business-list-content">
-        <div className="business-page-actions">
-          {!readOnly && (
+        {!readOnly && (
+          <div className="business-page-actions">
             <Button type="button" onClick={onCreate}>
               Добави нова услуга
             </Button>
-          )}
-        </div>
-        {readOnly && (
-          <p className="section-introduction">
-            Бизнесът е временно спрян — услугите могат само да бъдат преглеждани.
-          </p>
+          </div>
         )}
         <div className="list-toolbar services-list-toolbar">
           <ResponsiveSortSelect

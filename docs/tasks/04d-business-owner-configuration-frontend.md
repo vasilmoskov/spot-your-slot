@@ -69,7 +69,9 @@ are as defined in issue #14 and are not repeated here.
   visibly separate from the `PLATFORM_ADMIN` interface and exposes no
   platform-admin-only controls.
 * The active Business is clearly identified, including for an owner with only
-  one Business; existing multi-Business selection behavior is unchanged.
+  one Business; existing multi-Business selection behavior is unchanged
+  (current behavior, issue #20 correction: selection lives on the `Бизнеси` page and the Business-scoped links
+  appear under the selected Business's name; the Profile has no selector).
 * Navigation exposes Услуги, Екип, and Работно време; only Услуги is fully
   implemented in this phase.
 * An owner can view, create, view details of, edit, cancel edits to,
@@ -1243,8 +1245,10 @@ clear is in flight so nothing behind the modal can start a competing operation.
 **Stale-response and Business-context audit** — reads use `AbortController`
 plus request-sequence guards; mutations use synchronous in-progress refs and
 `useFeedback` generations; Business-owner sections are keyed by the active
-Business (and entity id); the Business selector exists only on the Profile
-route, so Business-owner data unmounts before a switch. No defect was found in
+Business (and entity id); the Business selector existed only on the Profile
+route, so Business-owner data unmounts before a switch. (Superseded 2026-10-04 by issue #20: Business
+selection is now the `Бизнеси` page, outside the Profile; see
+`docs/tasks/07a-business-customer-records.md`. Business-owner data still unmounts before a switch.) No defect was found in
 that infrastructure. Regression tests were added for the uncovered case of a
 create response arriving after the form was left (no navigation) and for
 duplicate activation while a create is pending.

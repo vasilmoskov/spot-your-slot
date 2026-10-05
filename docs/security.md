@@ -405,7 +405,9 @@ supplies an authoritative `businessId`. Access requires an active `BUSINESS_OWNE
 for that exact user and selected Business. `PLATFORM_ADMIN` alone, `MANAGER`, `STAFF`,
 inactive Memberships, and Memberships in another Business do not grant access. DRAFT and
 ACTIVE Businesses permit reads and mutations; SUSPENDED permits reads (including the
-body-based search) and rejects create and update with `BUSINESS_SUSPENDED`. Each mutation
+body-based search) and rejects create with `BUSINESS_SUSPENDED`; updating an existing Customer is
+the one approved exception and is allowed (amended 2026-10-06, same locks, authorization, version
+check, validation, and uniqueness; no other operation is affected). Each mutation
 locks the Business lifecycle row, then the user's Membership row, then performs the
 optimistic write, and every POST and PUT remains CSRF-protected. A missing and a foreign
 Customer ID both return the identical `CUSTOMER_NOT_FOUND` (404).
@@ -413,8 +415,8 @@ Customer ID both return the identical `CUSTOMER_NOT_FOUND` (404).
 Implemented behavior (Phase 4): a session without a usable owner selection (`PLATFORM_ADMIN`
 alone, an inactive Membership, a Membership of another Business) is rejected with
 `ACTIVE_BUSINESS_REQUIRED` like every private API, `MANAGER` and `STAFF` of the selected
-Business with `ACCESS_DENIED`, and a SUSPENDED Business rejects create and update with
-`BUSINESS_SUSPENDED` before validation or lookup. Responses carry `no-store`; every problem has a
+Business with `ACCESS_DENIED`, and a SUSPENDED Business rejects create with
+`BUSINESS_SUSPENDED` before validation or lookup (update is allowed there, see above). Responses carry `no-store`; every problem has a
 fixed `instance` so a Customer ID in the path is never echoed; no endpoint exists under
 `/api/public`; all Customer commands, requests, and responses redact `toString()`; the search
 term travels only in the POST body. Search uses `strpos` and `starts_with` on bound parameters, so
@@ -431,7 +433,8 @@ name, or a SQL diagnostic.
 Customer names, phone numbers, email addresses, and appointment history never appear on
 public pages, in URLs, browser storage, safe errors, normal application logs, screenshots,
 generated test artifacts, or review archives. Only opaque UUIDs appear in paths. The search
-term is sent in a POST body and held only in component state. The Customer persistence layer
+term is sent in a POST body and held only in application memory (React state), tied to the selected Business and
+dropped when the user leaves the Customer area, switches Business, or signs out. The Customer persistence layer
 translates failures by SQLState and the exact structured constraint, table, or column name the
 driver reports, using the driver's types directly (message text is never parsed), and rethrows
 fixed exceptions that retain neither the cause nor a suppressed exception, because PostgreSQL's server

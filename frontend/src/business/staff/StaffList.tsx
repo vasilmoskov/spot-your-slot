@@ -180,17 +180,12 @@ export function StaffList({
   return (
     <div className="platform-content">
       <div className="business-list-content">
-        <div className="business-page-actions">
-          {!readOnly && (
+        {!readOnly && (
+          <div className="business-page-actions">
             <Button type="button" onClick={onCreate}>
               Добави нов член
             </Button>
-          )}
-        </div>
-        {readOnly && (
-          <p className="section-introduction">
-            Бизнесът е временно спрян — екипът може само да бъде преглеждан.
-          </p>
+          </div>
         )}
         <div className="list-toolbar staff-list-toolbar">
           <ResponsiveSortSelect

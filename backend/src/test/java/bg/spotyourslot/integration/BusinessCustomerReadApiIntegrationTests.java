@@ -242,6 +242,24 @@ class BusinessCustomerReadApiIntegrationTests extends BusinessCustomerApiIntegra
     }
 
     @Test
+    void searchFindsASurnameOrAMiddleFragmentEvenWhenTheNameDoesNotStartWithIt() throws Exception {
+        Actor owner = api.owner("ACTIVE");
+        UUID target = api.insertCustomer(owner.businessId(), "Мария Петрова Иванова", "+359887333333", null);
+        UUID other = api.insertCustomer(owner.businessId(), "Борис Димитров", "+359887444444", null);
+
+        // The surname, a fragment inside a word, a fragment spanning two words, and other letter case.
+        assertThat(ids(api.search(owner, "Иванова"))).containsExactly(target);
+        assertThat(ids(api.search(owner, "етр"))).containsExactly(target);
+        assertThat(ids(api.search(owner, "я Петр"))).containsExactly(target);
+        assertThat(ids(api.search(owner, "ова Иван"))).containsExactly(target);
+        assertThat(ids(api.search(owner, "ИВАНОВА"))).containsExactly(target);
+        assertThat(ids(api.search(owner, "Петрова   Иванова"))).containsExactly(target);
+        assertThat(ids(api.search(owner, "митр"))).containsExactly(other);
+        assertThat(ids(api.search(owner, "Иванова Мария"))).isEmpty();
+        api.search(owner, "ов").andExpect(status().isOk()).andExpect(jsonPath("$.total").value(2));
+    }
+
+    @Test
     void aBlankOrMissingSearchTermReturnsEveryCustomer() throws Exception {
         Actor owner = api.owner("ACTIVE");
         api.insertCustomer(owner.businessId(), "Първи", PHONE, null);

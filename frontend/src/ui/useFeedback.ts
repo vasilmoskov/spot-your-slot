@@ -17,6 +17,7 @@ export function errorCategory(error: unknown): NonNullable<Feedback['category']>
     'BUSINESS_CONCURRENT_UPDATE',
     'INVITATION_INVALID',
     'SERVICE_CONCURRENT_UPDATE',
+    'CUSTOMER_CONCURRENT_UPDATE',
   ].includes(error.code)) {
     return 'blocking'
   }
@@ -29,6 +30,7 @@ export function errorCategory(error: unknown): NonNullable<Feedback['category']>
     'CURRENT_PASSWORD_INVALID',
     'INVITATION_CREDENTIAL_MISMATCH',
     'SERVICE_NAME_CONFLICT',
+    'CUSTOMER_CONTACT_CONFLICT',
   ].includes(error.code)) {
     return 'validation'
   }

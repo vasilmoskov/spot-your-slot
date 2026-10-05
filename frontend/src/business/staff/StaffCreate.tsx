@@ -75,9 +75,6 @@ export function StaffCreate({
             Обратно към екипа
           </Button>
         </div>
-        <p className="section-introduction">
-          Бизнесът е временно спрян — нови членове на екипа не могат да бъдат добавяни.
-        </p>
       </div>
     )
   }

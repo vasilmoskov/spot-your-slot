@@ -1,23 +1,15 @@
 import { useId, useRef, useState, useLayoutEffect, type ReactNode } from 'react'
 import { Button } from '../ui/Button'
-import {
-  BUSINESS_SCHEDULE_ROUTE,
-  BUSINESS_SERVICES_ROUTE,
-  BUSINESS_STAFF_ROUTE,
-  isBusinessOwnerRoute,
-  isPlatformRoute,
-  PROFILE_ROUTE,
-  PLATFORM_BUSINESSES_ROUTE,
-  routeHref,
-  type AuthenticatedRoute,
-} from '../navigation'
+import { ShellNavigation, type SelectedBusiness } from '../ui/ShellNavigation'
+import type { AuthenticatedRoute } from '../navigation'
 
 type PlatformAdminShellProps = {
   route: AuthenticatedRoute
   platformAdmin: boolean
-  businessOwner: boolean
+  hasOwnedBusinesses: boolean
   displayName: string
-  activeBusinessName: string | undefined
+  // Present only while a Business the user manages is selected.
+  selectedBusiness: SelectedBusiness | undefined
   busy: boolean
   children: ReactNode
   onNavigate: (route: AuthenticatedRoute) => void
@@ -27,15 +19,14 @@ type PlatformAdminShellProps = {
 export function PlatformAdminShell({
   route,
   platformAdmin,
-  businessOwner,
+  hasOwnedBusinesses,
   displayName,
-  activeBusinessName,
+  selectedBusiness,
   busy,
   children,
   onNavigate,
   onLogout,
 }: PlatformAdminShellProps) {
-  const accountIdentity = businessOwner ? activeBusinessName : displayName
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false)
   const navigationId = useId()
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -77,6 +68,7 @@ export function PlatformAdminShell({
           type="button"
           variant="secondary"
           className="navigation-toggle"
+          data-focus-fallback
           aria-expanded={mobileNavigationOpen}
           aria-controls={navigationId}
           aria-label={mobileNavigationOpen ? 'Затвори навигацията' : 'Отвори навигацията'}
@@ -104,55 +96,16 @@ export function PlatformAdminShell({
             }
           }}
         >
-          {platformAdmin && (
-            <a
-              className="navigation-link"
-              ref={firstNavigationItemRef}
-              href={routeHref(PLATFORM_BUSINESSES_ROUTE)}
-              aria-current={isPlatformRoute(route) ? 'page' : undefined}
-              onClick={(event) => navigate(event, PLATFORM_BUSINESSES_ROUTE)}
-            >
-              Бизнеси
-            </a>
-          )}
-          {businessOwner && (
-            <>
-              <a
-                className="navigation-link"
-                ref={platformAdmin ? undefined : firstNavigationItemRef}
-                href={routeHref(BUSINESS_SERVICES_ROUTE)}
-                aria-current={isBusinessOwnerRoute(route) ? 'page' : undefined}
-                onClick={(event) => navigate(event, BUSINESS_SERVICES_ROUTE)}
-              >
-                Услуги
-              </a>
-              <a
-                className="navigation-link"
-                href={routeHref(BUSINESS_STAFF_ROUTE)}
-                onClick={(event) => navigate(event, BUSINESS_STAFF_ROUTE)}
-              >
-                Екип
-              </a>
-              <a
-                className="navigation-link"
-                href={routeHref(BUSINESS_SCHEDULE_ROUTE)}
-                onClick={(event) => navigate(event, BUSINESS_SCHEDULE_ROUTE)}
-              >
-                Работно време
-              </a>
-            </>
-          )}
-          <a
-              className="navigation-link"
-            ref={!platformAdmin && !businessOwner ? firstNavigationItemRef : undefined}
-            href={routeHref(PROFILE_ROUTE)}
-            aria-current={route.kind === 'profile' ? 'page' : undefined}
-            onClick={(event) => navigate(event, PROFILE_ROUTE)}
-          >
-            Профил
-          </a>
+          <ShellNavigation
+            route={route}
+            platformAdmin={platformAdmin}
+            hasOwnedBusinesses={hasOwnedBusinesses}
+            selectedBusiness={selectedBusiness}
+            firstItemRef={firstNavigationItemRef}
+            onNavigate={navigate}
+          />
           <div className="mobile-account">
-            {accountIdentity && <span>{accountIdentity}</span>}
+            {displayName && <span>{displayName}</span>}
             <Button
               type="button"
               variant="secondary"
@@ -164,7 +117,7 @@ export function PlatformAdminShell({
           </div>
         </nav>
         <div className="sidebar-account">
-          {accountIdentity && <span>{accountIdentity}</span>}
+          {displayName && <span>{displayName}</span>}
           <Button type="button" variant="secondary" disabled={busy} onClick={onLogout}>
             Изход
           </Button>
@@ -173,7 +126,9 @@ export function PlatformAdminShell({
 
       <main className="platform-main">
         <div className="platform-page-header">
-          <p className="eyebrow">Администрация</p>
+          <p className="eyebrow">
+            {route.kind === 'businesses' ? 'Управление на бизнеса' : 'Администрация'}
+          </p>
           <h1 ref={headingRef} tabIndex={-1}>
             {route.kind === 'profile'
               ? 'Профил'

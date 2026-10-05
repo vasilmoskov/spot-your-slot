@@ -22,3 +22,8 @@ export function canonicalOptional(value: string): string {
 export function codePointLength(value: string): number {
   return Array.from(value).length
 }
+
+// Edge-trimmed with the approved whitespace set only, without NFKC: the form a search term is sent in.
+export function trimApproved(value: string): string {
+  return value.replace(EDGE_WHITESPACE, '')
+}

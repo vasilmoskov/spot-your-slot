@@ -514,13 +514,16 @@ describe('identity application', () => {
     )
   })
 
-  it('keeps Business selection, successful password change and logout reachable', async () => {
+  it('keeps the personal Profile free of Business selection, with password change and logout reachable', async () => {
     const browserStorageWrite = vi.spyOn(Storage.prototype, 'setItem')
     mockedRequest.mockResolvedValue(session)
     render(<App />)
     await landOnProfile()
-    const businessSelect = await screen.findByLabelText('Избери бизнес')
-    const profilePanel = businessSelect.closest('.profile-panel') as HTMLElement
+    expect(screen.queryByLabelText('Избери бизнес')).not.toBeInTheDocument()
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/BUSINESS_OWNER|MANAGER|STAFF/)
+    const profilePanel = (await screen.findByRole('heading', { name: 'Лични данни' }))
+      .closest('.profile-panel') as HTMLElement
     const profileCard = profilePanel.closest('.content-card') as HTMLElement
     const platformContent = profileCard?.parentElement
     expect(platformContent).toHaveClass('platform-content')
@@ -539,13 +542,7 @@ describe('identity application', () => {
     expect(personalDetails).toHaveTextContent('Иван')
     expect(personalDetails).toHaveTextContent('ivan@example.invalid')
     expect(screen.queryByLabelText('Текуща парола')).not.toBeInTheDocument()
-    fireEvent.change(businessSelect, { target: { value: 'b' } })
-    await waitFor(() =>
-      expect(mockedRequest).toHaveBeenCalledWith(
-        '/api/auth/business',
-        expect.objectContaining({ body: JSON.stringify({ businessId: 'b' }) }),
-      ),
-    )
+    expect(mockedRequest).not.toHaveBeenCalledWith('/api/auth/business', expect.anything())
 
     fireEvent.click(passwordNavigation)
     expect(personalNavigation).toHaveAttribute('aria-pressed', 'false')
@@ -651,7 +648,7 @@ describe('identity application', () => {
     expect(screen.queryByLabelText('Име')).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Лични данни' }).closest('.profile-panel'))
       .toHaveTextContent('Мария')
-    expect(document.querySelector('.sidebar-account')).toHaveTextContent('Бизнес А')
+    expect(document.querySelector('.sidebar-account')).toHaveTextContent('Мария')
     expect(screen.getByText('ivan@example.invalid')).toBeInTheDocument()
     expect(browserStorageWrite).not.toHaveBeenCalled()
   })
@@ -735,7 +732,8 @@ describe('identity application', () => {
     await act(async () => resolveUpdate({ ...session, displayName: 'Мария' }))
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Смяна на парола' })).toHaveAttribute('aria-pressed', 'true')
-    expect(document.querySelector('.sidebar-account')).toHaveTextContent('Бизнес А')
+    // The late response still updates the session, so the new name shows, but no feedback does.
+    expect(document.querySelector('.sidebar-account')).toHaveTextContent('Мария')
   })
 
   it('clears Profile feedback through browser route navigation', async () => {
@@ -984,7 +982,10 @@ describe('identity application', () => {
 
       expect(await screen.findByRole('heading', { name: 'Профил' })).toBeInTheDocument()
       expect(window.location.hash).toBe('#/profile')
-      expect(screen.queryByRole('link', { name: 'Бизнеси' })).not.toBeInTheDocument()
+      // Only the user's own Business selection exists, never the platform list.
+      expect(screen.getByRole('link', { name: 'Бизнеси' })).toHaveAttribute('href', '/#/businesses')
+      expect(screen.queryByRole('link', { name: 'Моите бизнеси' })).not.toBeInTheDocument()
+      expect(mockedListBusinesses).not.toHaveBeenCalled()
       expect(mockedRequest).toHaveBeenCalledTimes(1)
       expect(mockedRequest).toHaveBeenCalledWith('/api/auth/session')
     },
@@ -1032,10 +1033,14 @@ describe('identity application', () => {
     )
     expect(screen.queryByRole('link', { name: 'Услуги' })).not.toBeInTheDocument()
 
-    const retrySelector = screen.getByLabelText('Избери бизнес')
-    expect(retrySelector).toBeInTheDocument()
+    // The manual path is the Business selection, never the personal Profile.
+    expect(screen.queryByLabelText('Избери бизнес')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('link', { name: 'Бизнеси' }))
+    expect(await screen.findByRole('heading', { name: 'Бизнеси' })).toBeInTheDocument()
     mockedRequest.mockResolvedValueOnce(session)
-    fireEvent.change(retrySelector, { target: { value: 'a' } })
+    fireEvent.click(
+      within(screen.getByRole('article', { name: 'Бизнес А' })).getByRole('button', { name: 'Покажи' }),
+    )
     await waitFor(() =>
       expect(mockedRequest).toHaveBeenCalledWith(
         '/api/auth/business',
@@ -1112,7 +1117,8 @@ describe('identity application', () => {
     expect(screen.getByRole('link', { name: 'Услуги' })).toBeInTheDocument()
     expect(screen.getAllByText('Бизнес А').length).toBeGreaterThan(0)
     expect(await screen.findByText('Все още няма създадени услуги.')).toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: 'Бизнеси' })).not.toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Бизнес А' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Бизнеси' })).toHaveAttribute('href', '/#/businesses')
   })
 
   it.each(['MANAGER', 'STAFF'] as const)(
@@ -1139,10 +1145,12 @@ describe('identity application', () => {
     await screen.findByRole('heading', { name: 'Профил' })
     expect(screen.getAllByRole('link').map((link) => link.textContent)).toEqual([
       'Бизнеси',
+      'Моите бизнеси',
+      'Профил',
       'Услуги',
       'Екип',
       'Работно време',
-      'Профил',
+      'Клиенти',
     ])
   })
 
@@ -1678,28 +1686,23 @@ describe('shared unsaved-changes guard', () => {
     expect(await screen.findByRole('heading', { name: 'Услуги' })).toBeInTheDocument()
   })
 
-  it('guards Business switching while a Profile edit is dirty', async () => {
+  it('guards the way to Business selection while a Profile edit is dirty', async () => {
     mockedRequest.mockResolvedValue(session)
     render(<App />)
     await landOnProfile()
     fireEvent.click(screen.getByRole('button', { name: 'Редактирай' }))
     fireEvent.change(screen.getByLabelText('Име'), { target: { value: 'Ново име' } })
 
-    const businessSelect = screen.getByLabelText('Избери бизнес')
-    fireEvent.change(businessSelect, { target: { value: 'b' } })
+    fireEvent.click(screen.getByRole('link', { name: 'Бизнеси' }))
     expect(screen.getByRole('alertdialog')).toBeInTheDocument()
-    expect(mockedRequest).not.toHaveBeenCalledWith(
-      '/api/auth/business',
-      expect.anything(),
-    )
+    expect(window.location.hash).toBe('#/profile')
+    fireEvent.click(screen.getByRole('button', { name: 'Остани' }))
+    expect(screen.getByLabelText('Име')).toHaveValue('Ново име')
 
+    fireEvent.click(screen.getByRole('link', { name: 'Бизнеси' }))
     fireEvent.click(screen.getByRole('button', { name: 'Напусни' }))
-    await waitFor(() =>
-      expect(mockedRequest).toHaveBeenCalledWith(
-        '/api/auth/business',
-        expect.objectContaining({ body: JSON.stringify({ businessId: 'b' }) }),
-      ),
-    )
+    expect(await screen.findByRole('heading', { name: 'Бизнеси' })).toBeInTheDocument()
+    expect(window.location.hash).toBe('#/businesses')
   })
 
   it('guards logout while a Service edit is dirty', async () => {

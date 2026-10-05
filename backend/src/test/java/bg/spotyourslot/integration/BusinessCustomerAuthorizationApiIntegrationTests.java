@@ -202,7 +202,7 @@ class BusinessCustomerAuthorizationApiIntegrationTests extends BusinessCustomerA
     }
 
     @Test
-    void aSuspendedBusinessAllowsReadsAndSearchAndRejectsCreateAndUpdate() throws Exception {
+    void aSuspendedBusinessAllowsReadsSearchAndUpdateButRejectsCreate() throws Exception {
         Actor owner = api.owner("SUSPENDED");
         UUID seeded = api.insertCustomer(owner.businessId(), NAME, PHONE, EMAIL);
 
@@ -210,21 +210,28 @@ class BusinessCustomerAuthorizationApiIntegrationTests extends BusinessCustomerA
         api.search(owner, "Анна").andExpect(status().isOk()).andExpect(jsonPath("$.total").value(1));
         api.detail(owner, seeded).andExpect(status().isOk());
 
+        // The approved exception: an existing Customer may still be corrected; nothing may be created.
         assertBusinessSuspended(api.create(owner, "Нов клиент", OTHER_PHONE, null, true));
-        assertBusinessSuspended(api.update(owner, seeded, "Променен", PHONE, EMAIL, 0L));
-
         assertThat(api.customerCount(owner.businessId())).isEqualTo(1L);
-        StoredCustomer unchanged = api.stored(seeded);
-        assertThat(unchanged.displayName()).isEqualTo(NAME);
-        assertThat(unchanged.version()).isZero();
+
+        api.update(owner, seeded, "Променен", PHONE, EMAIL, 0L)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.displayName").value("Променен"))
+                .andExpect(jsonPath("$.version").value(1));
+        StoredCustomer changed = api.stored(seeded);
+        assertThat(changed.displayName()).isEqualTo("Променен");
+        assertThat(changed.version()).isEqualTo(1L);
+        assertThat(api.customerCount(owner.businessId())).isEqualTo(1L);
     }
 
     @Test
-    void aSuspendedBusinessRejectionPrecedesValidationAndNotFound() throws Exception {
+    void aSuspendedBusinessRejectsCreateBeforeValidationButValidatesAndLooksUpOnUpdate() throws Exception {
         Actor owner = api.owner("SUSPENDED");
 
         assertBusinessSuspended(api.create(owner, " ", null, null, true));
-        assertBusinessSuspended(api.update(owner, MISSING_ID, " ", null, null, null));
+        assertValidationFields(api.update(owner, MISSING_ID, " ", null, null, 0L), "displayName", "contact");
+        assertNotFound(api.update(owner, MISSING_ID, NAME, PHONE, null, 0L));
+        assertThat(api.customerCount(owner.businessId())).isZero();
     }
 
     // ---- CSRF and method surface -----------------------------------------------------------------

@@ -79,9 +79,6 @@ export function ServiceCreate({
             Обратно към услугите
           </Button>
         </div>
-        <p className="section-introduction">
-          Бизнесът е временно спрян — нови услуги не могат да бъдат създавани.
-        </p>
       </div>
     )
   }

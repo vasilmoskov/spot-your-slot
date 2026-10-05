@@ -51,7 +51,12 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>Reads are read-only transactions with non-locking authorization. Each mutation is one
  * transaction that locks the Business lifecycle row, then the user's Membership row, and only then
- * performs the optimistic Customer write, matching the Service and StaffMember lock order. No
+ * performs the optimistic Customer write, matching the Service and StaffMember lock order.
+ *
+ * <p>A SUSPENDED Business rejects {@link #create} but, by an explicit product exception limited to
+ * this private owner-authorized use case, still allows {@link #update} of an existing Customer: the
+ * same locks, authorization, version check, validation, and uniqueness apply. No other operation
+ * and no shared guard is affected. No
  * operation opens a nested transaction, uses a savepoint, or merges, moves, or implicitly matches
  * Customers. Persistence failures are classified here and discarded: only fixed typed exceptions
  * leave this class, and nothing is logged.
@@ -126,7 +131,7 @@ public class CustomerAdministrationService {
     @Transactional
     public CustomerDetails create(
             AuthenticatedBusinessContext context, CreateCustomerCommand command) {
-        BusinessSelection selection = authorizeMutation(context);
+        BusinessSelection selection = authorizeMutation(context, false);
         if (command == null) {
             throw new InvalidInput(InputField.COMMAND);
         }
@@ -143,7 +148,8 @@ public class CustomerAdministrationService {
             AuthenticatedBusinessContext context,
             UUID customerId,
             UpdateCustomerCommand command) {
-        BusinessSelection selection = authorizeMutation(context);
+        // The one operation a SUSPENDED Business still permits (see the class comment).
+        BusinessSelection selection = authorizeMutation(context, true);
         UUID validatedId = validator.validateCustomerId(customerId);
         if (command == null) {
             throw new InvalidInput(InputField.COMMAND);
@@ -236,7 +242,8 @@ public class CustomerAdministrationService {
         return selection;
     }
 
-    private BusinessSelection authorizeMutation(AuthenticatedBusinessContext context) {
+    private BusinessSelection authorizeMutation(
+            AuthenticatedBusinessContext context, boolean allowedWhenSuspended) {
         BusinessSelection selection = requireSelection(context);
         BusinessLifecycle lifecycle = businesses.lockLifecycle(selection.businessId())
                 .orElseThrow(BusinessAccessDenied::new);
@@ -244,7 +251,7 @@ public class CustomerAdministrationService {
                 != Authorization.GRANTED) {
             throw new BusinessAccessDenied();
         }
-        if (lifecycle.status() == LifecycleStatus.SUSPENDED) {
+        if (lifecycle.status() == LifecycleStatus.SUSPENDED && !allowedWhenSuspended) {
             throw new BusinessSuspended();
         }
         return selection;

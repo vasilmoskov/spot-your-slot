@@ -114,18 +114,52 @@ class CustomerAdministrationServiceTests {
     }
 
     @Test
-    void aSuspendedBusinessRejectsCreateAndUpdateBeforeAnyCustomerAccess() {
+    void aSuspendedBusinessRejectsCreateBeforeAnyCustomerAccess() {
         allow(LifecycleStatus.SUSPENDED);
 
         assertThatThrownBy(() -> service.create(
                         context(), new CreateCustomerCommand(SENTINEL_NAME, SENTINEL_PHONE, null)))
                 .isInstanceOf(BusinessSuspended.class);
+
+        verifyNoInteractions(store);
+    }
+
+    @Test
+    void aSuspendedBusinessStillAllowsUpdateWithTheSameLocksAndChecksInTheSameOrder() {
+        allow(LifecycleStatus.SUSPENDED);
+        when(store.findById(businessId, customerId)).thenReturn(Optional.of(customer(0)));
+        when(store.findHolders(any(), any(), any())).thenReturn(List.of());
+        when(store.update(any(), any(), any(), org.mockito.ArgumentMatchers.anyLong(), any()))
+                .thenReturn(Optional.of(customer(1)));
+
+        var updated = service.update(
+                context(), customerId, new UpdateCustomerCommand(SENTINEL_NAME, SENTINEL_PHONE, null, 0L));
+
+        assertThat(updated.version()).isEqualTo(1L);
+        var order = inOrder(businesses, owners, store);
+        order.verify(businesses).lockLifecycle(businessId);
+        order.verify(owners).lockAndAuthorize(userId, businessId);
+        order.verify(store).findById(businessId, customerId);
+        order.verify(store).findHolders(any(), any(), any());
+        order.verify(store).update(any(), any(), any(), org.mockito.ArgumentMatchers.anyLong(), any());
+    }
+
+    @Test
+    void aSuspendedBusinessUpdateStillRequiresOwnerAuthorizationAndTheExpectedVersion() {
+        allow(LifecycleStatus.SUSPENDED);
+        when(owners.lockAndAuthorize(userId, businessId)).thenReturn(Authorization.DENIED);
         assertThatThrownBy(() -> service.update(
                         context(), customerId,
                         new UpdateCustomerCommand(SENTINEL_NAME, SENTINEL_PHONE, null, 0L)))
-                .isInstanceOf(BusinessSuspended.class);
-
+                .isInstanceOf(BusinessAccessDenied.class);
         verifyNoInteractions(store);
+
+        when(owners.lockAndAuthorize(userId, businessId)).thenReturn(Authorization.GRANTED);
+        when(store.findById(businessId, customerId)).thenReturn(Optional.of(customer(4)));
+        assertThatThrownBy(() -> service.update(
+                        context(), customerId,
+                        new UpdateCustomerCommand(SENTINEL_NAME, SENTINEL_PHONE, null, 0L)))
+                .isInstanceOf(CustomerAdministrationException.ConcurrentUpdate.class);
     }
 
     @Test

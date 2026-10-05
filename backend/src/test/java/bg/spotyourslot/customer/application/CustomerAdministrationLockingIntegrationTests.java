@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import bg.spotyourslot.customer.application.CustomerAdministrationException.BusinessAccessDenied;
 import bg.spotyourslot.customer.application.CustomerAdministrationException.BusinessSuspended;
 import bg.spotyourslot.customer.application.CustomerAdministrationRecords.CreateCustomerCommand;
+import bg.spotyourslot.customer.application.CustomerAdministrationRecords.UpdateCustomerCommand;
 import bg.spotyourslot.identity.AuthenticatedBusinessContext;
 import bg.spotyourslot.integration.PostgresIntegrationTest;
 import java.time.Duration;
@@ -100,6 +101,47 @@ class CustomerAdministrationLockingIntegrationTests extends PostgresIntegrationT
                     .isInstanceOf(ExecutionException.class)
                     .hasCauseInstanceOf(BusinessSuspended.class);
             assertThat(customerCount()).isZero();
+        }
+    }
+
+    @Test
+    void anUpdateWaitsForAConcurrentSuspensionAndThenStillSucceedsWhileACreateWouldNot() throws Exception {
+        UUID customerId = UUID.randomUUID();
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        jdbc.sql("""
+                        INSERT INTO customer(id,business_id,display_name,phone,email,version,created_at,updated_at)
+                        VALUES (:id,:business,'Анна',:phone,null,0,:now,:now)
+                        """)
+                .param("id", customerId)
+                .param("business", businessId)
+                .param("phone", "+359895555777")
+                .param("now", now)
+                .update();
+        try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+            LockHolder holder = new LockHolder(executor, """
+                    UPDATE business SET status='SUSPENDED', updated_at=now() WHERE id=:id
+                    """, businessId);
+            holder.holdUntilReleased();
+
+            CompletableFuture<Object> update = CompletableFuture.supplyAsync(
+                    () -> service.update(
+                            context(), customerId,
+                            new UpdateCustomerCommand("Анна Нова", "0895555777", null, 0L)),
+                    executor);
+            awaitLockWait(holder.pid(), update);
+            holder.release();
+
+            // The suspension committed first; the approved exception still lets the update through.
+            assertThat(((CustomerAdministrationRecords.CustomerDetails) update.get(30, TimeUnit.SECONDS))
+                            .version())
+                    .isEqualTo(1L);
+            assertThat(jdbc.sql("SELECT status FROM business WHERE id=:id")
+                            .param("id", businessId).query(String.class).single())
+                    .isEqualTo("SUSPENDED");
+            assertThatThrownBy(() -> service.create(
+                            context(), new CreateCustomerCommand("Нов", "0888123456", null)))
+                    .isInstanceOf(BusinessSuspended.class);
+            assertThat(customerCount()).isEqualTo(1L);
         }
     }
 

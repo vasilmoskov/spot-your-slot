@@ -1,13 +1,8 @@
 import { useId, useRef, useState, useLayoutEffect, type ReactNode } from 'react'
 import { Button } from '../ui/Button'
-import {
-  BUSINESS_SCHEDULE_ROUTE,
-  BUSINESS_SERVICES_ROUTE,
-  BUSINESS_STAFF_ROUTE,
-  PROFILE_ROUTE,
-  routeHref,
-  type AuthenticatedRoute,
-} from '../navigation'
+import { ShellNavigation } from '../ui/ShellNavigation'
+import type { AuthenticatedRoute } from '../navigation'
+import { suspendedNotice } from './lifecycleNotice'
 
 export type ActiveBusinessIdentity = {
   displayName: string
@@ -17,6 +12,9 @@ export type ActiveBusinessIdentity = {
 type BusinessOwnerShellProps = {
   route: AuthenticatedRoute
   activeBusiness: ActiveBusinessIdentity | undefined
+  displayName: string
+  platformAdmin: boolean
+  hasOwnedBusinesses: boolean
   busy: boolean
   children: ReactNode
   onNavigate: (route: AuthenticatedRoute) => void
@@ -33,6 +31,9 @@ function sectionTitle(route: AuthenticatedRoute): string {
   if (route.kind === 'business-schedule' || route.kind === 'business-schedule-exceptions') {
     return 'Работно време'
   }
+  if (route.kind === 'business-customers') return 'Клиенти'
+  if (route.kind === 'business-customer-new') return 'Нов клиент'
+  if (route.kind === 'business-customer-detail') return 'Клиент'
   if (route.kind === 'business-schedule-exception-new') return 'Нова промяна в графика'
   if (route.kind === 'business-schedule-exception-detail') return 'Промяна в графика'
   return 'Услуги'
@@ -41,6 +42,9 @@ function sectionTitle(route: AuthenticatedRoute): string {
 export function BusinessOwnerShell({
   route,
   activeBusiness,
+  displayName,
+  platformAdmin,
+  hasOwnedBusinesses,
   busy,
   children,
   onNavigate,
@@ -89,6 +93,7 @@ export function BusinessOwnerShell({
           type="button"
           variant="secondary"
           className="navigation-toggle"
+          data-focus-fallback
           aria-expanded={mobileNavigationOpen}
           aria-controls={navigationId}
           aria-label={mobileNavigationOpen ? 'Затвори навигацията' : 'Отвори навигацията'}
@@ -116,66 +121,23 @@ export function BusinessOwnerShell({
             }
           }}
         >
-          <a
-            className="navigation-link"
-            ref={firstNavigationItemRef}
-            href={routeHref(BUSINESS_SERVICES_ROUTE)}
-            aria-current={
-              route.kind === 'business-services' ||
-              route.kind === 'business-service-new' ||
-              route.kind === 'business-service-detail'
-                ? 'page'
-                : undefined
-            }
-            onClick={(event) => navigate(event, BUSINESS_SERVICES_ROUTE)}
-          >
-            Услуги
-          </a>
-          <a
-            className="navigation-link"
-            href={routeHref(BUSINESS_STAFF_ROUTE)}
-            aria-current={
-              route.kind === 'business-staff' ||
-              route.kind === 'business-staff-new' ||
-              route.kind === 'business-staff-detail'
-                ? 'page'
-                : undefined
-            }
-            onClick={(event) => navigate(event, BUSINESS_STAFF_ROUTE)}
-          >
-            Екип
-          </a>
-          <a
-            className="navigation-link"
-            href={routeHref(BUSINESS_SCHEDULE_ROUTE)}
-            aria-current={
-              route.kind === 'business-schedule' ||
-              route.kind === 'business-schedule-exceptions' ||
-              route.kind === 'business-schedule-exception-new' ||
-              route.kind === 'business-schedule-exception-detail'
-                ? 'page'
-                : undefined
-            }
-            onClick={(event) => navigate(event, BUSINESS_SCHEDULE_ROUTE)}
-          >
-            Работно време
-          </a>
-          <a
-            className="navigation-link"
-            href={routeHref(PROFILE_ROUTE)}
-            onClick={(event) => navigate(event, PROFILE_ROUTE)}
-          >
-            Профил
-          </a>
+          <ShellNavigation
+            route={route}
+            platformAdmin={platformAdmin}
+            hasOwnedBusinesses={hasOwnedBusinesses}
+            selectedBusiness={activeBusiness}
+            firstItemRef={firstNavigationItemRef}
+            onNavigate={navigate}
+          />
           <div className="mobile-account">
-            {activeBusiness && <span>{activeBusiness.displayName}</span>}
+            {displayName && <span>{displayName}</span>}
             <Button type="button" variant="secondary" disabled={busy} onClick={onLogout}>
               Изход
             </Button>
           </div>
         </nav>
         <div className="sidebar-account">
-          {activeBusiness && <span>{activeBusiness.displayName}</span>}
+          {displayName && <span>{displayName}</span>}
           <Button type="button" variant="secondary" disabled={busy} onClick={onLogout}>
             Изход
           </Button>
@@ -194,8 +156,7 @@ export function BusinessOwnerShell({
         {suspended && (
           <div className="platform-content">
             <p className="shell-banner" role="status">
-              Бизнесът е временно спрян. Данните са видими, но конфигурацията не може да бъде
-              променяна.
+              {suspendedNotice(route)}
             </p>
           </div>
         )}

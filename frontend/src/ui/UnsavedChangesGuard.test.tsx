@@ -154,6 +154,44 @@ describe('UnsavedChangesGuard', () => {
     expect(screen.getByLabelText('Поле')).toHaveValue('чернова')
   })
 
+  it('moves focus to the declared fallback control when the invoker is hidden, not to the page body', () => {
+    render(
+      <>
+        <button type="button" data-focus-fallback>
+          Меню
+        </button>
+        <Harness />
+      </>,
+    )
+    fireEvent.change(screen.getByLabelText('Поле'), { target: { value: 'чернова' } })
+    const trigger = screen.getByRole('button', { name: 'Придвижи се' })
+    // A link inside a closed mobile menu is connected but not visible.
+    Object.defineProperty(trigger, 'checkVisibility', { value: () => false })
+    trigger.focus()
+    fireEvent.click(trigger)
+    fireEvent.click(screen.getByRole('button', { name: 'Остани' }))
+    expect(screen.getByRole('button', { name: 'Меню' })).toHaveFocus()
+    expect(trigger).not.toHaveFocus()
+  })
+
+  it('still restores focus to a visible invoker even when a fallback exists', () => {
+    render(
+      <>
+        <button type="button" data-focus-fallback>
+          Меню
+        </button>
+        <Harness />
+      </>,
+    )
+    fireEvent.change(screen.getByLabelText('Поле'), { target: { value: 'чернова' } })
+    const trigger = screen.getByRole('button', { name: 'Придвижи се' })
+    Object.defineProperty(trigger, 'checkVisibility', { value: () => true })
+    trigger.focus()
+    fireEvent.click(trigger)
+    fireEvent.click(screen.getByRole('button', { name: 'Остани' }))
+    expect(trigger).toHaveFocus()
+  })
+
   it('"Напусни" discards through the registered callback and runs the original action exactly once', () => {
     const action = vi.fn()
     const discard = vi.fn()

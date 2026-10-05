@@ -15,13 +15,18 @@ import {
   useUnsavedChangesGuard,
 } from './ui/UnsavedChangesGuard'
 import { ApiError, request, type Session } from './identity/api'
+import { onBusinessContextLost } from './identity/businessRequest'
 import {
   PROFILE_ROUTE,
+  BUSINESSES_ROUTE,
   PLATFORM_BUSINESSES_ROUTE,
   PLATFORM_BUSINESS_NEW_ROUTE,
   BUSINESS_SERVICES_ROUTE,
   BUSINESS_STAFF_ROUTE,
+  BUSINESS_CUSTOMERS_ROUTE,
+  CUSTOMERS_DEFAULT_LIST,
   isBusinessOwnerRoute,
+  isCustomerRoute,
   isPlatformRoute,
   pushRoute,
   readAuthenticatedRoute,
@@ -40,17 +45,24 @@ import { BusinessList } from './platform/businesses/BusinessList'
 import { BusinessCreate } from './platform/businesses/BusinessCreate'
 import { BusinessDetail } from './platform/businesses/BusinessDetail'
 import { BusinessOwnerShell } from './business/BusinessOwnerShell'
+import { BusinessSelection } from './business/BusinessSelection'
 import { ServiceList } from './business/services/ServiceList'
 import { ServiceCreate } from './business/services/ServiceCreate'
 import { ServiceDetail } from './business/services/ServiceDetail'
 import { StaffList } from './business/staff/StaffList'
 import { StaffCreate } from './business/staff/StaffCreate'
 import { StaffDetail } from './business/staff/StaffDetail'
+import { CustomerList } from './business/customers/CustomerList'
+import { CustomerCreate } from './business/customers/CustomerCreate'
+import { CustomerDetail } from './business/customers/CustomerDetail'
 import { StaffWorkingSchedule } from './business/schedule/StaffWorkingSchedule'
 import { ScheduleTabs } from './business/schedule/ScheduleTabs'
 import { ScheduleExceptionList } from './business/schedule/exceptions/ScheduleExceptionList'
 import { ScheduleExceptionCreate } from './business/schedule/exceptions/ScheduleExceptionCreate'
 import { ScheduleExceptionDetail } from './business/schedule/exceptions/ScheduleExceptionDetail'
+
+// How long reports of a lost Business context are ignored after a refresh confirmed the context.
+const CONTEXT_RECHECK_COOLDOWN_MS = 5_000
 
 const safeErrorDetail = (error: unknown): string =>
   error instanceof ApiError ? error.detail : 'Възникна грешка. Опитайте отново.'
@@ -443,6 +455,30 @@ function isBusinessOwnerSession(session: Session): boolean {
   return activeBusinessOf(session)?.role === 'BUSINESS_OWNER'
 }
 
+// The Businesses the user can manage (an owner Membership), whether or not one is selected.
+function ownedBusinessesOf(session: Session) {
+  return session.businesses.filter((business) => business.role === 'BUSINESS_OWNER')
+}
+
+/**
+ * The route a user may actually open: platform routes need the platform role, Business routes
+ * a selected Business they own (otherwise the Business selection, or the Profile when they
+ * manage none), and the own-Businesses page a Business to manage unless they only administer
+ * the platform.
+ */
+function permittedRoute(route: AuthenticatedRoute, session: Session): AuthenticatedRoute {
+  const ownsBusinesses = ownedBusinessesOf(session).length > 0
+  if (isPlatformRoute(route)) return session.platformAdmin ? route : PROFILE_ROUTE
+  if (isBusinessOwnerRoute(route)) {
+    if (isBusinessOwnerSession(session)) return route
+    return ownsBusinesses ? BUSINESSES_ROUTE : PROFILE_ROUTE
+  }
+  if (route.kind === 'businesses') {
+    return !session.platformAdmin || ownsBusinesses ? route : PROFILE_ROUTE
+  }
+  return route
+}
+
 export function AuthenticatedApplication({
   session,
   setSession,
@@ -457,10 +493,15 @@ export function AuthenticatedApplication({
   const owner = isBusinessOwnerSession(session)
   const explicitProfileRequested = window.location.hash === '#/profile'
   const smartLandingApplicable = initialRoute.kind === 'profile' && !explicitProfileRequested
+  const ownedBusinesses = ownedBusinessesOf(session)
   const [route, setRoute] = useState<AuthenticatedRoute>(() => {
-    if (isPlatformRoute(initialRoute) && !session.platformAdmin) return PROFILE_ROUTE
-    if (isBusinessOwnerRoute(initialRoute) && !owner) return PROFILE_ROUTE
+    const permitted = permittedRoute(initialRoute, session)
+    if (permitted !== initialRoute) return permitted
     if (smartLandingApplicable && owner) return BUSINESS_SERVICES_ROUTE
+    // Several Businesses and none selected yet: the user chooses where to work.
+    if (smartLandingApplicable && !session.platformAdmin && ownedBusinesses.length > 1) {
+      return BUSINESSES_ROUTE
+    }
     return initialRoute
   })
   const landingResolved = useRef(!smartLandingApplicable || owner)
@@ -469,6 +510,38 @@ export function AuthenticatedApplication({
   // with the rendered route before the browser paints.
   const routeRef = useRef(route)
   routeRef.current = route
+  const guardRef = useRef(guard)
+  guardRef.current = guard
+  const lastBusinessKey = useRef<string | undefined>(session.activeBusinessId)
+  if (session.activeBusinessId) lastBusinessKey.current = session.activeBusinessId
+
+  // The Customer search term is personal data. It lives only here, in memory, for the current
+  // Business and only while a Customer screen is open: never in the URL, history or storage.
+  // It is tied to the Business it was entered for, so another Business never sees it.
+  const [customerSearchState, setCustomerSearchState] = useState({
+    businessId: session.activeBusinessId,
+    term: '',
+  })
+  const customerSearch =
+    customerSearchState.businessId === session.activeBusinessId ? customerSearchState.term : ''
+  const setCustomerSearch = useCallback(
+    (term: string) => setCustomerSearchState({ businessId: session.activeBusinessId, term }),
+    [session.activeBusinessId],
+  )
+  // A success message for a just-created Customer, shown by the detail after it has loaded.
+  const [createdCustomer, setCreatedCustomer] = useState<string | null>(null)
+
+  useEffect(() => {
+    setCreatedCustomer((current) =>
+      current !== null && route.kind === 'business-customer-detail' && route.customerId === current
+        ? current
+        : null,
+    )
+    if (isCustomerRoute(route)) return
+    setCustomerSearchState((current) =>
+      current.term === '' ? current : { businessId: current.businessId, term: '' },
+    )
+  }, [route])
 
   const authenticationRequired = useCallback(
     (detail: string) => {
@@ -477,6 +550,48 @@ export function AuthenticatedApplication({
     },
     [setFeedback, setSession],
   )
+
+  // Recovery from a lost Business context (and from a mutation that revealed a suspension): one
+  // session refresh at a time, however many requests report the loss. The refreshed session
+  // either still carries the selected Business (nothing changes, each screen keeps its safe
+  // error) or does not, and the route effect below then leaves the Business screens. An expired
+  // login found here follows the ordinary authentication flow; any other failure changes nothing.
+  const sessionRefresh = useRef<Promise<void> | null>(null)
+  const latestSession = useRef(session)
+  latestSession.current = session
+  // After a refresh that confirmed the selected Business is still valid, further loss reports
+  // are ignored for a short while: they cannot be answered differently, and a screen that
+  // refetches on every render must not turn them into a request loop.
+  const recheckAfter = useRef(0)
+  const refreshSession = useCallback(
+    (options: { force?: boolean } = {}) => {
+    if (sessionRefresh.current) return
+    if (!options.force) {
+      // A report that arrives when the context is already known to be gone needs no refresh.
+      if (!latestSession.current.activeBusinessId) return
+      if (Date.now() < recheckAfter.current) return
+    }
+    sessionRefresh.current = request<Session>('/api/auth/session')
+      .then(
+        (value) => {
+          if (!value) return
+          if (value.activeBusinessId && value.activeBusinessId === latestSession.current.activeBusinessId) {
+            recheckAfter.current = Date.now() + CONTEXT_RECHECK_COOLDOWN_MS
+          }
+          setSession(value)
+        },
+        (error: unknown) => {
+          if (error instanceof ApiError && error.status === 401) authenticationRequired(error.detail)
+        },
+      )
+      .finally(() => {
+        sessionRefresh.current = null
+      })
+    },
+    [setSession, authenticationRequired],
+  )
+
+  useEffect(() => onBusinessContextLost(() => refreshSession()), [refreshSession])
 
   // A layout effect (not a passive effect) so the corrected hash is applied
   // to the URL before the browser paints the rendered route: with a plain
@@ -487,12 +602,7 @@ export function AuthenticatedApplication({
   useLayoutEffect(() => {
     const synchronizeRoute = () => {
       const nextRoute = readAuthenticatedRoute()
-      const target: AuthenticatedRoute =
-        isPlatformRoute(nextRoute) && !session.platformAdmin
-          ? PROFILE_ROUTE
-          : isBusinessOwnerRoute(nextRoute) && !isBusinessOwnerSession(session)
-            ? PROFILE_ROUTE
-            : nextRoute
+      const target = permittedRoute(nextRoute, session)
       const targetNeedsReplace = target !== nextRoute
 
       guard.guard(
@@ -508,11 +618,7 @@ export function AuthenticatedApplication({
     }
 
     const approvedHash = routeHrefMatchesCurrentLocation(initialRoute)
-    if (
-      !approvedHash ||
-      (isPlatformRoute(initialRoute) && !session.platformAdmin) ||
-      (isBusinessOwnerRoute(initialRoute) && !isBusinessOwnerSession(session))
-    ) {
+    if (!approvedHash || permittedRoute(initialRoute, session) !== initialRoute) {
       replaceRoute(routeRef.current)
     }
 
@@ -523,6 +629,21 @@ export function AuthenticatedApplication({
     setFeedback(null)
   }, [session.activeBusinessId, setFeedback])
 
+  // A selected Business that is no longer available (the session no longer carries it) never
+  // leaves its screens behind: the user returns to the Business selection.
+  useLayoutEffect(() => {
+    const current = routeRef.current
+    const permitted = permittedRoute(current, session)
+    if (permitted === current) return
+    // The route is replaced, never pushed, so Back cannot return to a screen without context. A
+    // dirty form is not discarded silently: the shared dialog asks first.
+    guardRef.current.guard(() => {
+      replaceRoute(permitted)
+      setRoute(permitted)
+    })
+    // Only a changed session may trigger this; the guard object itself changes on every render.
+  }, [session])
+
   const previousActiveBusinessId = useRef(session.activeBusinessId)
   // A layout effect so a stale page number from the previous Business is
   // corrected before the Services list's own data-fetch effect (a passive
@@ -531,6 +652,9 @@ export function AuthenticatedApplication({
   useLayoutEffect(() => {
     if (previousActiveBusinessId.current === session.activeBusinessId) return
     previousActiveBusinessId.current = session.activeBusinessId
+    // A selection that disappeared is not a switch to another Business: the route effect above
+    // leaves the Business screens, and nothing here may override that.
+    if (!session.activeBusinessId) return
     const current = routeRef.current
     // A date window chosen for one Business is never carried to another: the
     // list resolves its own canonical window from the new Business timezone.
@@ -546,6 +670,30 @@ export function AuthenticatedApplication({
       current.returnWindow
     ) {
       const reset: AuthenticatedRoute = { ...current, returnWindow: null }
+      replaceRoute(reset)
+      setRoute(reset)
+      return
+    }
+    // Customer list state is never carried to another Business: every part of it returns
+    // to the defaults (the search term is dropped with the Business it belongs to).
+    if (current.kind === 'business-customers') {
+      const list = current.list
+      const isDefault =
+        list.page === CUSTOMERS_DEFAULT_LIST.page &&
+        list.size === CUSTOMERS_DEFAULT_LIST.size &&
+        list.sort === CUSTOMERS_DEFAULT_LIST.sort &&
+        list.direction === CUSTOMERS_DEFAULT_LIST.direction
+      if (isDefault) return
+      const reset = BUSINESS_CUSTOMERS_ROUTE
+      replaceRoute(reset)
+      setRoute(reset)
+      return
+    }
+    if (
+      (current.kind === 'business-customer-new' || current.kind === 'business-customer-detail') &&
+      current.returnList
+    ) {
+      const reset: AuthenticatedRoute = { ...current, returnList: null }
       replaceRoute(reset)
       setRoute(reset)
       return
@@ -574,6 +722,17 @@ export function AuthenticatedApplication({
 
   const updateBusinessStaffList = (next: ListQueryState, mode: ListNavigationMode = 'push') => {
     if (route.kind !== 'business-staff') return
+    const nextRoute: AuthenticatedRoute = { ...route, list: next }
+    if (mode === 'replace') {
+      replaceRoute(nextRoute)
+    } else {
+      pushRoute(nextRoute)
+    }
+    setRoute(nextRoute)
+  }
+
+  const updateBusinessCustomersList = (next: ListQueryState, mode: ListNavigationMode = 'push') => {
+    if (route.kind !== 'business-customers') return
     const nextRoute: AuthenticatedRoute = { ...route, list: next }
     if (mode === 'replace') {
       replaceRoute(nextRoute)
@@ -654,8 +813,7 @@ export function AuthenticatedApplication({
   }, [session, setSession, setFeedback, authenticationRequired])
 
   const navigate = (nextRoute: AuthenticatedRoute) => {
-    if (isPlatformRoute(nextRoute) && !session.platformAdmin) return
-    if (isBusinessOwnerRoute(nextRoute) && !owner) return
+    if (permittedRoute(nextRoute, session) !== nextRoute) return
     guard.guard(() => {
       pushRoute(nextRoute)
       setRoute(nextRoute)
@@ -681,6 +839,16 @@ export function AuthenticatedApplication({
     }
   }
 
+  // Selecting a Business to manage: establish the context, then open its first destination.
+  const manageBusiness = async (businessId: string) => {
+    if (businessId !== session.activeBusinessId) {
+      if (!(await action('/api/auth/business', { businessId }))) return
+    }
+    pushRoute(BUSINESS_SERVICES_ROUTE)
+    setRoute(BUSINESS_SERVICES_ROUTE)
+    setFeedback(null)
+  }
+
   const logout = async () => {
     setBusy(true)
     const publish = beginFeedback()
@@ -701,11 +869,20 @@ export function AuthenticatedApplication({
   if (isBusinessOwnerRoute(route)) {
     const activeBusiness = activeBusinessOf(session)
     const readOnly = activeBusiness?.status === 'SUSPENDED'
-    const businessKey = session.activeBusinessId ?? 'none'
+    // While the selection is gone (a lost context awaiting recovery or the user's answer to the
+    // guard dialog) the screens keep their key: they are not remounted, so an open form is never
+    // discarded behind the user's back.
+    const businessKey = session.activeBusinessId ?? lastBusinessKey.current ?? 'none'
+    // During the render that follows a Business switch the layout effect above has not yet reset
+    // the route, so the new Business's list must not start from the previous Business's state.
+    const businessJustChanged = previousActiveBusinessId.current !== session.activeBusinessId
     return (
       <BusinessOwnerShell
         route={route}
         activeBusiness={activeBusiness}
+        displayName={session.displayName}
+        platformAdmin={session.platformAdmin}
+        hasOwnedBusinesses={ownedBusinesses.length > 0}
         busy={busy}
         onNavigate={navigate}
         onLogout={guardedLogout}
@@ -766,6 +943,45 @@ export function AuthenticatedApplication({
             readOnly={readOnly}
             onAuthenticationRequired={authenticationRequired}
             onBack={() => navigate(BUSINESS_STAFF_ROUTE)}
+          />
+        ) : route.kind === 'business-customers' ? (
+          <CustomerList
+            key={businessKey}
+            readOnly={readOnly}
+            list={businessJustChanged ? CUSTOMERS_DEFAULT_LIST : route.list}
+            searchTerm={customerSearch}
+            onSearchTermChange={setCustomerSearch}
+            onListChange={updateBusinessCustomersList}
+            onAuthenticationRequired={authenticationRequired}
+            onCreate={() => navigate({ kind: 'business-customer-new', returnList: route.list })}
+            onOpen={(customerId) =>
+              navigate({ kind: 'business-customer-detail', customerId, returnList: route.list })
+            }
+          />
+        ) : route.kind === 'business-customer-new' ? (
+          <CustomerCreate
+            key={businessKey}
+            readOnly={readOnly}
+            onAuthenticationRequired={authenticationRequired}
+            onBusinessSuspended={() => refreshSession({ force: true })}
+            onCancel={() => navigate(customerListRoute(route.returnList))}
+            onCreated={(customerId) => {
+              setCreatedCustomer(customerId)
+              navigate({
+                kind: 'business-customer-detail',
+                customerId,
+                returnList: route.returnList,
+              })
+            }}
+          />
+        ) : route.kind === 'business-customer-detail' ? (
+          <CustomerDetail
+            key={`${businessKey}-${route.customerId}`}
+            customerId={route.customerId}
+            initialSuccess={createdCustomer === route.customerId ? 'Клиентът е добавен.' : undefined}
+            onInitialSuccessShown={() => setCreatedCustomer(null)}
+            onAuthenticationRequired={authenticationRequired}
+            onBack={() => navigate(customerListRoute(route.returnList))}
           />
         ) : route.kind === 'business-schedule' ? (
           <>
@@ -839,9 +1055,9 @@ export function AuthenticatedApplication({
     <PlatformAdminShell
       route={route}
       platformAdmin={session.platformAdmin}
-      businessOwner={owner}
+      hasOwnedBusinesses={ownedBusinesses.length > 0}
       displayName={session.displayName}
-      activeBusinessName={activeBusinessOf(session)?.displayName}
+      selectedBusiness={owner ? activeBusinessOf(session) : undefined}
       busy={busy}
       onNavigate={navigate}
       onLogout={guardedLogout}
@@ -859,6 +1075,13 @@ export function AuthenticatedApplication({
           setFeedback={setFeedback}
           action={action}
           guard={guard}
+        />
+      ) : route.kind === 'businesses' ? (
+        <BusinessSelection
+          businesses={ownedBusinesses}
+          activeBusinessId={owner ? session.activeBusinessId : undefined}
+          busy={busy}
+          onManage={(businessId) => void manageBusiness(businessId)}
         />
       ) : route.kind === 'platform-businesses' ? (
         <BusinessList
@@ -904,6 +1127,14 @@ function ComingSoon() {
 // looking at, or the canonical default when none was carried.
 function exceptionListRoute(window: ExceptionListState | null): AuthenticatedRoute {
   return { kind: 'business-schedule-exceptions', window }
+}
+
+// The list the Customer create and detail routes return to: the state the user was looking at,
+// or the canonical default when none was carried.
+function customerListRoute(returnList: ListQueryState | null): AuthenticatedRoute {
+  return returnList
+    ? { kind: 'business-customers', list: returnList }
+    : BUSINESS_CUSTOMERS_ROUTE
 }
 
 function routeHrefMatchesCurrentLocation(route: AuthenticatedRoute): boolean {
@@ -1057,30 +1288,6 @@ function Profile({ session, busy, feedback, setFeedback, action, guard }: Profil
                       Редактирай
                     </Button>
                   </>
-                )}
-                {(session.businesses.length > 1 ||
-                  (session.businesses.length === 1 && !session.activeBusinessId)) && (
-                  <label>
-                    Избери бизнес
-                    <select
-                      value={session.activeBusinessId ?? ''}
-                      onChange={(event) => {
-                        const businessId = event.target.value
-                        guard.guard(() => {
-                          void action('/api/auth/business', { businessId })
-                        })
-                      }}
-                    >
-                      <option value="" disabled>
-                        Изберете
-                      </option>
-                      {session.businesses.map((business) => (
-                        <option key={business.id} value={business.id}>
-                          {business.displayName} — {business.role}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
                 )}
                 <FeedbackMessage feedback={feedback} errorRef={profileFeedback} />
               </>

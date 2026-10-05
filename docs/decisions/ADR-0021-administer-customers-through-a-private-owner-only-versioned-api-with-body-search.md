@@ -26,7 +26,8 @@ access.
 - Only an active `BUSINESS_OWNER` Membership of the selected Business grants access;
   `PLATFORM_ADMIN` authority alone does not.
 - DRAFT and ACTIVE Businesses allow mutations; SUSPENDED is readable and not
-  writable (issue #20, existing Business-owner contracts).
+  writable (issue #20, existing Business-owner contracts), except that an owner may still
+  update an existing Customer (see "Implementation notes (Phase 5)": the approved exception).
 - A foreign or missing Customer ID must not reveal that a Customer exists.
 - The mandatory table standard applies (`docs/ui-design-guidelines.md` §15 and §15.1).
 - Search terms contain contact data and must not appear in URLs, history, or storage.
@@ -94,8 +95,10 @@ Business lifecycle row, the user's Membership row, then the optimistic Customer 
 `PLATFORM_ADMIN` alone, MANAGER, STAFF, inactive, and other-Business Memberships
 receive `ACCESS_DENIED`; an absent selection returns `ACTIVE_BUSINESS_REQUIRED`.
 DRAFT and ACTIVE permit mutations. SUSPENDED permits reads and `POST /search`, and
-rejects create and update with `BUSINESS_SUSPENDED`. A missing or foreign Customer ID
-returns the identical `CUSTOMER_NOT_FOUND`.
+rejects create with `BUSINESS_SUSPENDED` and, as originally decided, update; **the update
+rejection is superseded** by the approved exception recorded under "Implementation notes
+(Phase 5)": an owner-authorized update of an existing Customer is allowed in SUSPENDED, and
+only that. A missing or foreign Customer ID returns the identical `CUSTOMER_NOT_FOUND`.
 
 **Corrections.** An update replaces name, phone, and email atomically with
 `expectedVersion`. The current holder of an identifier is checked first so every
@@ -223,6 +226,25 @@ from the implementation (details in `docs/tasks/07a-business-customer-records.md
   unchanged.
 - The `EXPLAIN` evidence at about 10,000 Customers did not fail the criterion above, so no index was
   added.
+
+## Implementation notes (Phase 5)
+
+The Business-owner interface follows the decisions above unchanged. Clarification: `version`, `createdAt`, and
+`updatedAt` are detail-response fields (API exposure, with `version` serving as `expectedVersion`); this ADR does
+not make them visible page content, and the Customer detail does not display them. The search term is held in
+application memory only, tied to the selected Business, and is dropped when the user leaves the Customer area,
+switches Business, or signs out (stricter than "cleared on Business switch and logout").
+
+**Approved exception (2026-10-06): updating an existing Customer in a SUSPENDED Business.** Product
+decision, narrowly scoped: `PUT /api/business/customers/{id}` is permitted in a SUSPENDED Business for
+the authorized owner; `POST /api/business/customers` still returns `BUSINESS_SUSPENDED` and creates no
+row. The update keeps the same transaction, the same lock order (Business lifecycle row, Membership
+row, then the optimistic write), owner-only authorization, tenant isolation, `expectedVersion`,
+validation, contact uniqueness, and safe errors; the suspension check simply does not reject an
+update. No other operation (Services, StaffMembers, schedules, Business administration) and no shared
+lifecycle guard changed; public booking and `CustomerIdentification` are unchanged. The search
+semantics are unchanged (name substring, canonical lowercase email substring, canonical phone prefix
+or exact match).
 
 ## Conditions for revisiting
 

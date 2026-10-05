@@ -84,9 +84,8 @@ describe('ServiceCreate', () => {
       />,
     )
     expect(screen.queryByLabelText('Име на услугата')).not.toBeInTheDocument()
-    expect(
-      screen.getByText('Бизнесът е временно спрян — нови услуги не могат да бъдат създавани.'),
-    ).toBeInTheDocument()
+    expect(screen.queryByText(/временно спрян/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Обратно към услугите' })).toBeInTheDocument()
   })
 
   it('starts with a completely empty form and no starter presets', () => {

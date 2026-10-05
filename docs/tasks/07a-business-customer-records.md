@@ -3,10 +3,11 @@
 Status: Phase 1 (decisions, ADRs, and plan), Phase 2 (shared contact policy, Customer domain,
 `V10` schema, and internal persistence), and Phase 3 (conservative matching, the published
 `CustomerIdentification` and `CustomerReferenceAccess` contracts, caller-owned transaction semantics,
-and PostgreSQL concurrency evidence) are committed. Phase 4 (the private owner-only administration
-backend: list, body-based search, detail, explicit create, and version-guarded update) is implemented
-and verified and awaits review and commit. Issue #20 is in progress; the Business-owner interface (Phase 5)
-and the browser E2E (Phase 6) are not started, and each later phase needs separate explicit approval.
+and PostgreSQL concurrency evidence) and Phase 4 (the private owner-only administration backend: list,
+body-based search, detail, explicit create, and version-guarded update) are committed. Phase 5 (the
+Business-owner Customer administration frontend) is implemented and verified and awaits human visual approval,
+review, and commit. Issue #20 is in progress; the browser E2E (Phase 6) is not started, and each later phase
+needs separate explicit approval.
 GitHub issue: #20 — Build Business-scoped customer records
 Depends on: the approved identity, authorization, and Business-isolation foundation,
 and the Business-owner configuration and navigation where Customer administration is
@@ -26,6 +27,22 @@ across Businesses, or silently merging different people. Issue #20 is privacy-se
 Strict work: it adds a migration, a tenant-isolated private API, a cross-module
 contract, and personal-data handling. Each phase needs separate approval before
 persistent changes.
+
+## Customer record versus Customer account
+
+- A Customer record belongs to exactly one Business. It is **not** a SpotYourSlot login or account, has no
+  password, session, or Membership, and is never created by, or linked to, a User.
+- **Automatic creation (future, issue #18):** in the public booking flow the Booking capability will use the
+  already published `CustomerIdentification.findOrCreate` to find or create the Business-scoped Customer record
+  from the phone and/or email the guest supplies (matching rules above). Booking never creates an authenticated
+  Customer account.
+- **Manual creation (this issue):** the owner's `Добави клиент` remains necessary for telephone bookings,
+  walk-ins, imports, and bookings received outside the public flow. It uses the same canonical identifiers and
+  uniqueness, so manual and automatic creation never produce a duplicate.
+- The same person may have separate Customer records in different Businesses; they share nothing and must never
+  leak across tenants.
+- An authenticated Customer account, and any safe linkage of one to Business-owned Customer records, is a
+  separate capability that needs its own explicit approval and design. Nothing in issue #20 anticipates it.
 
 ## Corrected dependency wording
 
@@ -167,7 +184,9 @@ on one with existing data, with V1–V9 checksums unchanged.
 
 Fields by exposure: persistence-only `normalized_display_name`; list `id`,
 `displayName`, `phone`, `email`; detail the list fields plus `version`, `createdAt`,
-`updatedAt`; `businessId` never in a response. An accepted update increments `version`
+`updatedAt`; `businessId` never in a response. "Exposure" here means the API response only:
+`version` is transport state for `expectedVersion`, and `version`, `createdAt`, and `updatedAt` are
+not decided as visible Customer page content (the Phase 5 interface shows none of them; see its record). An accepted update increments `version`
 once and sets `updated_at` from the injected clock, including an unchanged update;
 matching never writes to an existing Customer.
 
@@ -186,7 +205,8 @@ matching never writes to an existing Customer.
 Business from the server-side context only. Missing and foreign IDs return the identical
 `CUSTOMER_NOT_FOUND`. `PLATFORM_ADMIN` alone, MANAGER, STAFF, inactive, and other-Business
 Memberships are denied. DRAFT and ACTIVE allow mutations; SUSPENDED allows reads and
-`POST /search` and rejects create and update with `BUSINESS_SUSPENDED`. No delete,
+`POST /search`, rejects create with `BUSINESS_SUSPENDED`, and (amended 2026-10-06, approved exception) allows
+update of an existing Customer. No delete,
 deactivate, merge, public, account, or Membership operation exists. Mutations lock the
 Business row, then the user's Membership row, then perform the optimistic write.
 
@@ -302,8 +322,10 @@ is stated for the Customer list:
 - **Route:** `#/business/customers?page&size&sort&direction`. The search term is
   deliberately absent (recorded exception: privacy, ephemeral state).
 - **Reset rules:** size, sort, direction, or search changes reset to page 0; a Business
-  switch resets the page and keeps size, sort, and direction; out-of-range pages recover
-  to the last valid page by replacing history.
+  switch clears the search and returns page, size, sort, and direction to the defaults (Phase 5
+  decision, replacing the earlier "keeps size, sort, and direction": nothing from the previous
+  Business, including its search, may survive); out-of-range pages recover to the last valid page by
+  replacing history.
 - **Responsive:** desktop table, mobile cards with the same ordering and the shared
   sort select.
 - **After a mutation:** create navigates to the detail and returns to the same list
@@ -320,7 +342,7 @@ invalid control. Every field error is directly under its control; the `contact` 
 attaches to the contact group. Backend `fieldErrors` map inline, unknown names are
 ignored, and the generic alert appears only without usable fields. The shared unsaved-changes
 guard covers create and edit. Concurrency and identifier conflicts use shared feedback.
-SUSPENDED shows the shared read-only banner, read-only fields, and no create button.
+SUSPENDED shows the shared notice and no create button (amended 2026-10-06: editing an existing Customer stays available).
 Fields use `autocomplete="off"`. The detail edit pattern is confirmed against the existing
 detail screens in Phase 5. Wrapped errors, dialogs, and desktop, tablet, mobile, and 200%
 zoom review are required, with explicit human visual approval.
@@ -333,7 +355,7 @@ zoom review are required, with explicit human visual approval.
 | 2 (committed) | **First** extract the shared contact policy (backend and frontend module), add golden vectors, make StaffMember delegate, and verify existing StaffMember behavior. **Then** the `customer` domain, `V10__add_customers.sql`, repository/store, uniqueness and concurrency tests, and the boundary test. No controller or frontend Customer UI. Internal checkpoints are allowed within this one phase. | Strict | Own approval and commit; Phase 1 accepted |
 | 3 (committed) | `CustomerIdentification` and `CustomerReferenceAccess`, normalization, typed outcomes, transaction and race tests, test-only consumer. No Appointment. | Strict (cross-module contract) | Own approval and commit |
 | 4 (implemented, awaiting review) | Private administration backend: authorization, list, search, detail, create, update, lifecycle behavior, tenant-isolation and privacy tests, `EXPLAIN` evidence. | Strict | Own approval and commit |
-| 5 | Business-owner interface: navigation, list and search **first**, then create, detail, and edit; validation, guards, SUSPENDED mode, rendered desktop, tablet, mobile, and zoom review. Two human visual checkpoints are allowed within this one phase. | Standard (human visual approval) | Human visual approval |
+| 5 (implemented, awaiting human visual approval) | Business-owner interface: navigation, list and search **first**, then create, detail, and edit; validation, guards, SUSPENDED mode, rendered desktop, tablet, mobile, and zoom review. Two human visual checkpoints are allowed within this one phase. | Standard (human visual approval) | Human visual approval |
 | 6 | Playwright administration journey, tenant isolation, lifecycle, privacy evidence, Booking-seam evidence, full gates, documentation completion, roadmap update, review archive. | Standard | Green verification; closure only with explicit approval |
 
 ## Tests required per phase
@@ -366,7 +388,7 @@ zoom review are required, with explicit human visual approval.
   lock-order tests in the style of `ServiceAuthorizationLockingIntegrationTests`;
   sentinel tests for errors, captured logs, and the public profile; `no-store` headers;
   `EXPLAIN` evidence at about 10,000 rows.
-- **Phase 5:** Vitest for the shared contact validation and golden vectors, route parsing
+- **Phase 5 (executed, see its record):** Vitest for the shared contact validation and golden vectors, route parsing
   and normalization, list state, search absent from URL and storage, form validation,
   `fieldErrors` mapping, guards, and SUSPENDED mode; rendered review and human approval.
 - **Phase 6:** Playwright journey; Business A versus B isolation through the UI; SUSPENDED
@@ -755,7 +777,7 @@ lock order is proved against PostgreSQL (below).
 | `PLATFORM_ADMIN` alone, inactive Membership, Membership in another Business | 403 `ACTIVE_BUSINESS_REQUIRED` | 403 `ACTIVE_BUSINESS_REQUIRED` |
 | `MANAGER`, `STAFF` of the selected Business | 403 `ACCESS_DENIED` | 403 `ACCESS_DENIED` |
 | `BUSINESS_OWNER` (also when `PLATFORM_ADMIN`) of a DRAFT or ACTIVE Business | allowed | allowed |
-| `BUSINESS_OWNER` of a SUSPENDED Business | allowed | 409 `BUSINESS_SUSPENDED` (before validation and lookup) |
+| `BUSINESS_OWNER` of a SUSPENDED Business | allowed | create: 409 `BUSINESS_SUSPENDED` (before validation); update: allowed (amended 2026-10-06, approved exception) |
 
 Note on ADR-0021: the ADR says `PLATFORM_ADMIN` alone, inactive, and other-Business Memberships
 receive `ACCESS_DENIED`. In the implemented session model (identical for the Service and StaffMember
@@ -774,7 +796,7 @@ existence is revealed. The tests pin the implemented behavior.
 | 409 | `CUSTOMER_CONTACT_CONFLICT` | `fieldErrors.phone` and/or `fieldErrors.email`; reported from a holder lookup, with the unique indexes as final arbiter |
 | 409 | `CUSTOMER_CONCURRENT_UPDATE` | stale `expectedVersion`, or a lost guarded write |
 | 409 | `CUSTOMER_CONCURRENT_CONFLICT` | SQLState `40001` or `40P01` |
-| 409 | `BUSINESS_SUSPENDED` | create or update in a SUSPENDED Business |
+| 409 | `BUSINESS_SUSPENDED` | create in a SUSPENDED Business (update is allowed there since the 2026-10-06 amendment) |
 | 500 | `INTERNAL_ERROR` | `CustomerOperationFailure` (any other persistence failure) |
 
 The messages are exactly those of the error taxonomy above. A duplicate on update or create reports the
@@ -901,3 +923,344 @@ ADR-0021 criterion, and an index remains a follow-up only if later measurement f
   edit screens, validation and guards in the browser, SUSPENDED read-only mode, rendered review at
   desktop, tablet, mobile, and 200% zoom with human approval, the shared frontend table behavior, and the
   Playwright journey.
+
+## Phase 5 record (implemented and verified; awaiting human visual approval, review, and commit)
+
+Phase 5 delivered the authenticated Business-owner Customer administration frontend. It did **not**
+start Phase 6: there is no Playwright journey, no Customer deletion, archive, lifecycle, note, history,
+anonymization, or merge, no Booking or Appointment behavior, no public Customer page, no frontend retry
+loop, and no backend, migration, schema, dependency, or security change (`pom.xml`, `package.json`, and
+V1 to V10 are unchanged).
+
+### Final routes and Bulgarian terminology
+
+| Route (hash) | Page heading (`h1`) | Notes |
+|---|---|---|
+| `#/business/customers?page=0&size=10&sort=name&direction=asc` | `Клиенти` | list; sorts `name`, `phone`, `email`; the search term is never part of the route |
+| `#/business/customers/new[?page&size&sort&direction]` | `Нов клиент` | the optional query is the list state to return to |
+| `#/business/customers/{customerId}[?page&size&sort&direction]` | `Клиент` | same return state |
+
+Navigation item `Клиенти` is one of the Business-scoped links under the selected Business's name (final
+navigation: see the correction below; the original placement after `Работно време` and the Profile-page owner links
+are superseded); never for Platform Administrators without an owner Membership, `MANAGER`, `STAFF`, or
+unauthenticated users (the owner-only route guard sends them to the Business selection, or the Profile when the user
+manages no Business). Copy: `Добави клиент`,
+`Търсене` (placeholder `Име, телефон или имейл`; live search, no `Търси` or `Изчисти` button, see the
+correction below), columns `Име`, `Телефон`, `Имейл`, `Добави`,
+`Запази промените`, `Редактирай`, `Отказ`, `Обратно към клиентите`, `Зареди актуалните данни`, the hint
+`Попълнете телефон или имейл.`, `Не са намерени клиенти по това търсене.` (empty search),
+`Все още няма добавени клиенти.` (empty catalog), `Клиентът е добавен.`, `Промените са запазени.`. The Customer
+messages of the error taxonomy are frontend-owned (`business/customers/errors.ts`): the backend text is never
+rendered for the stable codes, field names are mapped to the approved text, unknown names are ignored, and an
+unknown code uses a generic fallback.
+
+### Route state and search privacy
+
+- Page, size, sort, and direction live in the URL; invalid values normalize field by field, and automatic
+  canonicalization or out-of-range recovery replaces history while user changes (sort, size, page, create or
+  open) push it. Sorting, size, and search changes reset to page 0 (a search from a later page is one push).
+- The search term is held in the authenticated application's React state only (`AuthenticatedApplication`),
+  keyed to the active Business, and sent only in the body of `POST /api/business/customers/search`. A blank term
+  uses the ordinary `GET`. The term never reaches the URL, hash, history, `localStorage`, `sessionStorage`,
+  IndexedDB, cookies, the document title, or any log (tests assert URL, both storages, cookie, and title). It
+  survives list, detail or create, and return in the mounted session, is dropped when the user leaves the
+  Customer area or switches Business, and is not reconstructed by a refresh or a direct link.
+- A Business switch returns the list to the defaults (and the create and detail routes drop their carried
+  list state); the new Business's list is rendered with the defaults from its first render, and a late
+  response of the previous Business is ignored (aborted requests and a per-effect abort signal).
+- The term is trimmed with the approved whitespace set (no NFKC) and limited to 100 code points locally. (The
+  original explicit-submit interaction and its focus handling are superseded by the live search below.)
+
+### Create, edit, and conflicts
+
+One `CustomerForm` serves both (a confirmed discard that leaves it mounted remounts it from the
+loaded values, like the Business and schedule-change forms): `Име`, `Телефон`, `Имейл`, all `autocomplete="off"`, `noValidate`, the shared
+`useFieldValidation` policy (blur, immediate error for an invalid non-empty value, submit shows all and focuses
+the first). Phone and email use the shared `contactPolicy` and the golden vectors (every vector is run against the
+Customer form rules). The `contact` error (neither value) appears only after a submit attempt or from the backend,
+once, under the two fields, and replaces the hint; each control is described by it. Backend `VALIDATION_ERROR`
+and `CUSTOMER_CONTACT_CONFLICT` field names map inline (duplicate phone and email on their own fields); the entered
+values are kept; `CUSTOMER_CONCURRENT_CONFLICT`, `INTERNAL_ERROR`, access errors, and unnamed validation errors use
+the safe alert and are never retried. Create navigates to the detail only after the response, clears the guard
+first, and the success message appears after the detail has loaded. Edit sends `expectedVersion`, allows removing
+one contact while the other remains, and rejects removing both locally. `CUSTOMER_CONCURRENT_UPDATE` keeps the
+entered values, shows the conflict message, and offers `Зареди актуалните данни`, which goes through the shared
+unsaved-changes guard before replacing the form with the latest server data and version. `version`, `createdAt`,
+and `updatedAt` are transport-only and not displayed. **Metadata decision (confirmed against this record and
+ADR-0021):** both documents list these three fields only as members of the detail *response* (API exposure) and
+nowhere require or describe them as visible page content; `docs/ui-design-guidelines.md` and `architecture.md`
+treat versions as technical state that is kept and not displayed (Businesses, Services, StaffMembers). The detail
+page therefore shows the name as the page header (like the Service, Staff, and Business details), then phone and
+email only when present; no version badge, timestamp, ID, or status is shown. Showing any of them would need a
+separate product decision.
+
+### Lifecycle and guards
+
+DRAFT and ACTIVE: list, search, create, and edit. (Superseded by the Third correction below for SUSPENDED: edit of
+an existing Customer is now allowed.) SUSPENDED: list, search, and detail stay readable; the existing
+shared banner appears once, with Customer-specific wording (see the correction below); `Добави клиент`,
+`Редактирай`, and every editable field are absent; a direct create route shows that banner and the way back. When a mutation reveals the suspension
+(`BUSINESS_SUSPENDED`) the safe message is shown and the session is refreshed so the screen enters the same read-only
+presentation (the entered values of that failed create cannot be saved and are no longer shown). Create and edit
+register the shared guard: sidebar links, the back action, browser Back, Business switching, logout, `Отказ`, and the
+reload after a conflict all show the shared dialog (`Остани` first and focused, Escape stays and restores focus,
+`Напусни` destructive); a successful save shows no false dialog.
+
+### Table standard (section 15.1) as implemented
+
+Default `name` ascending; sortable Name, Phone, Email through the shared `SortableColumnHeader` and, in card
+layout, `ResponsiveSortSelect`; server-side sorting and pagination; 10, 25, and 50 through the shared
+`ListPagination` (one size selector, the range summary, `Предишна` and `Следваща`); no actions column; the row opens
+the detail through the name link; cards at the same breakpoints as the Staff table; missing phone or email shown as
+an accessible `—`; long values wrap inside their cells.
+
+### Verification evidence (executed 2026-10-03)
+
+- Full frontend: `npm ci`, `npm run test` (58 files, 1,345 tests; the previous total was 1,103 in 51 files),
+  `npm run lint`, and `npm run build` pass.
+- New and extended Vitest: `business/customers/validation.test.ts` (shared vectors and rules, search bounds),
+  `api.test.ts` (GET versus POST body), `errors.test.ts`, `CustomerList.test.tsx` (columns, sorting both
+  directions, sizes, partial and out-of-range pages, search, stale responses, privacy, states),
+  `CustomerCreate.test.tsx`, `CustomerDetail.test.tsx` (edit, contact removal, conflicts, guarded reload, guard),
+  `App.customers.test.tsx` (routes, canonicalization, history, access by role, in-memory search, Business
+  switch, guards, suspended mode, created message), `navigation.test.ts` (Customer routes), the shell tests
+  (navigation order), and `ui/layoutRules.test.ts` (durable Customer layout rules).
+- Rendered review (Chromium through Playwright against a disposable PostgreSQL container, backend, and Vite server,
+  synthetic data created through the supported APIs, separate from the development database): 1280, 1024, 800,
+  640 (200% zoom equivalent), 375, and Pixel 7 (412) widths with no horizontal overflow on the list, a later page,
+  and the create form; screenshots inspected for the multi-page list, sorting, search and clear, an empty search,
+  an empty catalog, the too-long search error, create with inline errors and duplicate phone and email, the
+  unsaved-changes dialog (Escape restores focus to the invoking link), detail, edit, the stale-version flow with
+  the guarded reload, SUSPENDED list, detail, and create, long Bulgarian name and long valid email at 375, and the
+  retryable load failure. One spacing defect (the heading action and the search sat too far apart because a
+  margin stacked on the layout gap) was fixed and re-reviewed. This is developer review, not human approval.
+
+### Correction after human visual review (2026-10-04): navigation, Business selection, live search, SUSPENDED wording
+
+Human review found that personal settings and Business selection were mixed, that Business links appeared
+abruptly after a selection, that submit-based search with a `Изчисти` button was awkward, and that Customer pages
+called Customers "configuration". Decisions, which replace the earlier behavior where they differ:
+
+- **Information architecture.** Global destinations (`Бизнеси`, `Профил`) are always present and stand above a
+  separate group headed by the selected Business's name (`Услуги`, `Екип`, `Работно време`, `Клиенти`). That group
+  exists only while a Business the user manages is selected; Business-scoped links never exist without their context.
+  The bottom of the sidebar shows the signed-in user and `Изход`, never the Business. A shared
+  `ui/ShellNavigation` renders the same structure in both shells, so every page shows one model.
+- **Business selection is not a personal setting.** The selector is removed from the Profile, which now holds only
+  personal data and the password change. `Бизнеси` (`#/businesses`) lists the Businesses the user manages (cards, not
+  a data table: the list is the user's own Memberships), with lifecycle wording (`Предстои активиране`, `Активен`,
+  `Временно спрян`), a visible `Избран` marker, and `Управлявай` (accessible name `Управлявай {Business}`; both superseded by the
+Third correction below: the button is `Покажи` and the badge is a checkmark on a pale-green card), which
+  selects the Business through the existing session endpoint and opens `Услуги`. DRAFT, ACTIVE, and SUSPENDED are all
+  selectable; no technical role or enum value is shown; only owner Memberships are offered.
+- **Routing.** With several Businesses and none selected the user lands on `Бизнеси`; with exactly one the existing
+  automatic selection and `Услуги` landing are unchanged and `Бизнеси` stays available. A direct link to a Business
+  screen without a selected Business opens `Бизнеси` (or the Profile for a user who manages none). The selection
+  persists through the server session across refresh. If the selected Business becomes unavailable (the session no
+  longer carries it, e.g. `ACTIVE_BUSINESS_REQUIRED` from a Customer screen, which refreshes the session), the user
+  returns to `Бизнеси` (now for every Business-scoped screen; see the second correction below). The guard still
+  covers sidebar navigation, browser Back/Forward, logout, and the `Управлявай` switch.
+- **Administrators.** A Platform Administrator's `Бизнеси` remains the platform list. An administrator who also
+  manages Businesses gets a second link, `Моите бизнеси`, to the owner selection. This naming is an **approved,
+  intentional exception** (see the second correction below); no other combination has two Business links.
+- **Live search.** The `Търси` and `Изчисти` buttons are gone. The effective search follows the typed text about
+  300 ms after the last keystroke (`SEARCH_DEBOUNCE_MS`); removing characters searches again; an empty or
+  whitespace-only field restores the unfiltered list; Enter applies at once and Escape clears at once; a changed
+  effective search resets to page 0 (one history push only when the page was not already 0), keeps size, sort, and
+  direction, and a repeated identical effective term sends nothing. A superseded request is aborted and an old
+  response can never replace a newer one. The previous result stays visible, dimmed and `aria-busy`, with a polite
+  status, while a newer one loads (the table is not blanked per keystroke); the empty message follows the term that was
+  searched (catalog-empty versus no-results stay distinct). A term over 100 code points shows its error at once, is
+  never sent, and leaves the last valid result. The term stays in memory only (still never in the URL, storage,
+  cookies, title, or logs).
+- **Contextual SUSPENDED wording.** The shared banner takes its text from `business/lifecycleNotice.ts` by route.
+  Customer routes say `Бизнесът е временно спрян. Можете да преглеждате клиентите, но не можете да добавяте или
+  редактирате.`; other screens keep their existing generic sentence (their own legacy repeats are untouched). The
+  message appears once; create and edit are absent, not disabled; the backend still rejects forced mutations.
+- **Unsaved-changes focus.** When cancelling the shared dialog and the invoker is gone or hidden (a link in a closed
+  mobile menu), focus now goes to the declared `data-focus-fallback` control (the menu button) instead of the page
+  body (found in the rendered review).
+
+- **Evidence (2026-10-04).** Full frontend suite: 60 files, 1,395 tests (before this correction 58 files, 1,355);
+  `npm run lint` and `npm run build` clean; focused selection (shells, selection, Profile, routes, guard, shared
+  UI, Customers) 23 files, 580 tests; broader regression (Services, Staff, Schedule, public) 33 files, 669 tests.
+  Rendered review (Playwright Chromium against a disposable stack, synthetic data through the APIs) at 1280, 800,
+  640, 375, and Pixel 7 (412): no Business selected, the selection list with a clear selection, DRAFT, ACTIVE, and
+  SUSPENDED selected, the Customer list, live search (no request before the pause, one request for the final
+  value, one for deleted characters, a plain `GET` after clearing, nothing in URL or storage), no matches, an
+  empty catalog, a SUSPENDED list, detail, and create, long Business and Customer names, the mobile menu with
+  keyboard navigation and Escape, focus rings in a scrolling sidebar, and a dirty form followed by global navigation:
+  no horizontal overflow and no clipped focus. One defect found and fixed (focus after cancelling the guard dialog
+  on mobile). Developer review only; human visual approval is pending.
+
+### Second correction (2026-10-05): consistent Business-context recovery, one lifecycle notice, approved naming
+
+**Backend facts established first.** Every Business-scoped API family (Services, StaffMembers and their assignments,
+working schedules, schedule exceptions, Customers) answers a request whose selected Business the session no longer
+supports with `403 ACTIVE_BUSINESS_REQUIRED`. The server's session filter has by then cleared the selection and persisted
+that, so `GET /api/auth/session` no longer reports `activeBusinessId`. The other outcomes are different codes and are never
+read as a lost context: `404 *_NOT_FOUND` (a missing or foreign record), `403 ACCESS_DENIED` (a retained selection whose
+role is not owner), `409 BUSINESS_SUSPENDED`, `401 AUTH_REQUIRED`, and network or server failures. No backend change was
+needed.
+
+**One shared mechanism.** `identity/businessRequest.ts` wraps `request` for every Business-scoped API module (the five
+feature `api.ts` files). A `403 ACTIVE_BUSINESS_REQUIRED` is announced once to the application, and the error is rethrown
+unchanged, so each screen still shows its own safe message. `AuthenticatedApplication` registers the handler:
+
+- **Refresh once.** `refreshSession` runs one `GET /api/auth/session` at a time; reports that arrive while one is in
+  flight, or when the session already has no selection, start nothing. After a refresh that confirms the Business is
+  still valid, further reports are ignored for 5 seconds (`CONTEXT_RECHECK_COOLDOWN_MS`), so a screen that refetches on
+  every render cannot create a request loop. A `401` found while refreshing follows the ordinary authentication flow;
+  any other refresh failure changes nothing.
+- **Leave only when the context is really gone.** If the refreshed session carries no valid owner Business, the route is
+  **replaced** (never pushed) with `#/businesses`; Back cannot return to a screen without context, and the Business
+  group disappears from the sidebar at once. If access is still valid the context stays and the screen's safe error
+  remains. A SUSPENDED Business keeps its selection and read-only access (the Customer screens that reveal a suspension
+  through a rejected mutation still refresh the session, forced past the cooldown).
+- **A lost selection is not a Business switch.** The "Business changed" route reset no longer runs when the selection
+  merely disappears, so it cannot override the redirect; the screens also keep their key (no remount) while the selection
+  is gone, and `Business-scoped` search and list state are cleared by the existing leaving-the-area rules.
+- **Dirty forms.** The redirect goes through the shared unsaved-changes guard: a clean screen leaves at once; a dirty form
+  asks first (`Остани` keeps every value and the form with its safe error, without asking again; `Напусни` leaves). No
+  Business-scoped link remains while the dialog is open.
+- **Late responses.** The departing screen is unmounted and its requests are aborted; a response of the old Business that
+  still arrives is never rendered (tested).
+
+The Customer screens no longer carry their own recovery callbacks; they use the same shared mechanism.
+
+**One lifecycle notice per screen.** The shared banner is the only SUSPENDED lifecycle statement. The page-level repeats
+that began "Бизнесът е временно спрян — …" were removed from the Services list and create pages and the Staff list and
+create pages (the schedule screens never had one); a create route in a SUSPENDED Business keeps only its way back, and
+the list no longer leaves an empty action row (blank space) under the banner. Action-specific explanations that do not
+restate the lifecycle (for example "Нови промени не могат да бъдат добавяни." and the inactive-StaffMember note) stay.
+Customer screens keep exactly `Бизнесът е временно спрян. Можете да преглеждате клиентите, но не можете да добавяте или
+редактирате.`; the other screens keep the generic banner wording.
+
+**Approved naming exception.** Business selection for an ordinary owner is `Бизнеси`; for a Platform Administrator
+`Бизнеси` is the platform-wide list; a Platform Administrator who also manages Businesses reaches the owner selection
+through `Моите бизнеси`. The three destinations stay distinct (`#/businesses` for owner selection,
+`#/platform/businesses` for the platform list); no role or enum value is ever shown.
+
+**Evidence (2026-10-05, executed).** Full frontend suite 61 files, 1,424 tests; lint and build clean.
+`App.contextRecovery.test.tsx` (33 tests, the real feature API code with only the network helper mocked) proves recovery
+from Services (list, detail, create), Staff (list, detail, create, assignments), Working Hours, Schedule Changes (list,
+create, detail), and Customers (list, detail, create); one refresh for simultaneous failures; replace-not-push; no loop
+when the refreshed session still carries the Business; missing Service and Customer records, `ACCESS_DENIED`,
+SUSPENDED, `401` (and `401` during the refresh), and network failures all keeping the context; the guard dialog with
+`Остани` and `Напусни`; late old-Business responses ignored; one notice on every SUSPENDED screen; and the owner and
+administrator labels. Rendered review (Playwright Chromium, rebuilt disposable stack) at 1280 and 375: one notice on
+the Services, Staff, and Customer lists, create pages, and Customer detail; no horizontal overflow. **Limitation:** a
+Membership cannot be revoked through any supported API, so the lost-context scenario was reproduced in the browser by
+intercepting the two server answers (`403 ACTIVE_BUSINESS_REQUIRED` and a session without a selection) in the browser
+only, with no data changed; it showed `#/businesses`, no extra history entry, one session request, no Business group,
+and, for a dirty Customer form, the dialog with the values preserved. That simulation, not a real revocation, is the
+browser evidence. Developer review only; human visual approval is pending.
+
+### Third correction (2026-10-06): `Покажи`, selected-card appearance, editing in SUSPENDED, unchanged search
+
+Approved changes. They replace the earlier wording above where they differ; the earlier text stays as history.
+
+**Plan recorded for the Strict backend part (executed as approved).** Inspect `CustomerAdministrationService`: every
+mutation calls one `authorizeMutation` that locks the Business lifecycle row, then the Membership row, then rejects a
+SUSPENDED Business. Smallest change: `authorizeMutation(context, allowedWhenSuspended)`; `create` passes `false`, `update`
+passes `true`. Nothing else moves: the locks and their order, owner-only authorization, the optimistic version check,
+validation, uniqueness, the transaction boundary, the HTTP contract, the error taxonomy, the published
+`CustomerIdentification`/`CustomerReferenceAccess`, the store, and the shared lifecycle access types are untouched, and no
+migration is needed. Verification: unit tests with mocks (locks, order, authorization, version), PostgreSQL API tests, and a
+real-lock race test.
+
+**Backend scope of the exception (precisely).** In a SUSPENDED Business the authorized owner of the selected Business may
+`PUT /api/business/customers/{id}` an existing Customer (name, phone, email, `expectedVersion`). Everything else is
+unchanged: `POST /api/business/customers` still returns `409 BUSINESS_SUSPENDED` before validation and creates no row;
+reads and `POST /search` stay allowed; `MANAGER`, `STAFF`, inactive, other-Business, platform-only, and unselected callers get
+the same `ACCESS_DENIED` / `ACTIVE_BUSINESS_REQUIRED`; a foreign or unknown ID is the same byte-identical `CUSTOMER_NOT_FOUND`;
+a stale or missing version, validation errors, and a duplicate phone or email still apply; DRAFT and ACTIVE behave as before;
+Services, StaffMembers, schedules, schedule changes, and Business administration still reject mutations in SUSPENDED.
+**This exception applies to no other Business operation.**
+
+**Frontend.** The Customer detail always offers `Редактирай` (the page no longer has a read-only mode); create remains
+absent: no `Добави клиент`, and a direct create route renders only its way back. The notice on every Customer screen of a
+SUSPENDED Business is exactly `Бизнесът е временно спрян. Можете да преглеждате и редактирате клиентите, но не можете да
+добавяте нови.`, shown once through the shared banner (`business/lifecycleNotice.ts`). Saving keeps the stale-version,
+validation, and duplicate-contact handling and the guarded reload; the unsaved-changes guard is unchanged. If the suspension
+begins during an existing edit the update still succeeds; if it is revealed during creation, creation stays blocked (the
+earlier read-only presentation applies to the create route only). Unavailable-Business recovery and authentication handling
+are unchanged.
+
+**Business selection.** The button is exactly `Покажи` (visible text and accessible name; no `aria-label`). Each Business is
+an `article` named by its own `h2` heading, so tests and assistive technology find the card first and then its `Покажи`
+button. The visible `Избран` badge is removed. The selected card has a pale-green background (`--color-success-subtle`) with a
+matching border (`--color-success-border`), a small checkmark, `aria-current="true"`, and visually hidden text `Текущо избран
+бизнес`; the checkmark means "current selection" only and is independent of the lifecycle badge, so a DRAFT or SUSPENDED
+Business can be the selected one. The lifecycle badge stays and, on the green card, keeps its own white chip. Selection,
+navigation, pending state, duplicate protection, and the unsaved-changes guard are unchanged.
+
+**Search semantics unchanged.** No algorithm, mode, minimum length, or explanation was added: case-insensitive name
+substring over the normalized name, lowercase email substring, canonical phone exact or prefix, 300 ms debounce, request
+cancellation, in-memory term, server-side sorting and pagination. New regression evidence: a backend API test finds a
+Customer by surname, by a fragment inside a word, by a fragment spanning two words, in other letter case, and with extra
+inner whitespace, none of them a prefix of the display name; frontend tests send such terms (and a single character)
+verbatim.
+
+**Evidence (2026-10-06, executed).** Full backend `./mvnw --batch-mode verify`: 2,229 tests, 0 failures (BUILD SUCCESS; Phase 4
+recorded 2,217). Focused: `BusinessCustomerSuspendedApiIntegrationTests` 8, `CustomerAdministrationServiceTests` 26,
+`CustomerAdministrationLockingIntegrationTests` 4, the Customer API suites, and the unchanged `CustomerIdentification*` suites.
+Full frontend suite 61 files, 1,440 tests (three consecutive runs); lint, build, and `git diff --check` clean. Migrations,
+`pom.xml`, `package.json`, and the lockfile are unchanged. Rendered review (Playwright Chromium, disposable stack, synthetic
+data through the supported APIs, 1280 and 375 px): cards with and without selection for DRAFT, ACTIVE, and SUSPENDED
+(computed pale-green background `rgb(236, 253, 243)` and border `rgb(166, 224, 197)`, one checkmark, one `aria-current`, the
+lifecycle badge unchanged), `Покажи` buttons with a visible keyboard focus ring; in the SUSPENDED Business editing, saving,
+persistence after reload, a stale version, and a duplicate email all worked, creation had no control and a direct create route
+no form, a forced `POST` was rejected by the real backend with `409 BUSINESS_SUSPENDED`, and the exact notice appeared once;
+searching a surname (`Пробен`), a span across two words (`ис Про`), a middle fragment (`естов`), other letter case (`ИВАНОВА`), and
+`ова-Пет` found the right Customers; no horizontal overflow anywhere. Developer review only; human visual approval is pending.
+
+### Pre-approval pagination correction and consistency audit (2026-10-04)
+
+- **Pagination correction.** An empty page beyond the data used to be recovered only when `total > 0`. A stale
+  route such as `page=2` whose whole result became empty (`total = 0`) stayed on the nonexistent page. Now any
+  empty page above 0 is never rendered: the route is replaced (never pushed) with the last valid page, or page 0
+  when nothing matches, the list stays in its loading state until that one follow-up request returns, and the
+  size, sort, direction, and in-memory search are kept. Page 0 is final, so there is no loop. Covered by
+  `CustomerList.test.tsx` (ordinary and search cases, replace-only, two requests, state kept, no loop, `total > 0`
+  still recovering to the last page) and `App.customers.test.tsx` (canonical URL, unchanged history length, search
+  kept and absent from the URL).
+- **Audit scope.** Read in full: `README.md`, `testing-strategy.md`, `security.md`, `architecture.md`, ADR-0019 to
+  ADR-0021, the Phase 4 HTTP records and exception handler, the Services, Schedule Changes, and Platform Business
+  frontends, and the shared list, sort, pagination, form, feedback, dialog, and guard code they use.
+- **Matches an established convention (unchanged):** list page structure (page action row, then the filter form,
+  then results; the schedule list is the precedent for keeping its form mounted while results load), left-aligned
+  primary action, the shared sortable headers, `ResponsiveSortSelect`, and `ListPagination` (the Services, Staff, and
+  Business lists still carry older private pagination markup; the guide mandates the shared one), the card
+  breakpoints, `Опитай отново` retry, `feedback-action-layout` states, inline `FieldError` with `aria-describedby`,
+  `useFieldValidation`, error alert focus, `useFeedback` lifetimes, the shared unsaved-changes dialog and its sizing
+  (no custom dialog), `Зареди актуалните данни` through the guard, `Отказ` and `Запази промените`, and `Редактирай`.
+- **Inconsistencies found and corrected** (each is a repeated, reusable convention, and each has a test):
+  1. The detail showed the name as a labelled row; Service, Staff, and Business details show the entity name as the
+     `h2` header card. The Customer detail now has that header and lists only phone and email.
+  2. The form did not reset on a confirmed discard that leaves it mounted (ui guide section 16; the Business and
+     schedule forms do). `CustomerForm` now remounts from the loaded values.
+  3. The back action stayed enabled while a create or save was in flight (the schedule screens disable it). It is
+     now disabled while pending.
+  4. List links had the name as their only accessible name; all four sibling lists use `Отвори {name}`. The Customer
+     link now has it (the visible text is contained in the name).
+- **Intentional differences that remain:** the search form (no precedent); the contact group, its once-only
+  group error, and the hint; the success message of a created Customer is shown by the detail after it has loaded
+  (the schedule flow shows it immediately, Services and Staff show none); no `h2` and no explanatory paragraph in the
+  create section (the heading and the schedule create screens already say it, guide sections 17 and 20, whereas the
+  older Service, Staff, and Business create screens repeat it); no duplicated lifecycle sentence under the shared
+  SUSPENDED banner (the schedule screens already omit it; Services and Staff still repeat it); the page action row
+  is not rendered when empty and its own bottom margin is zeroed inside the list stack so the layout gap is the single
+  source of spacing (the sibling lists stack a margin on the gap, a pre-existing quirk outside this phase); the
+  mutation-revealed SUSPENDED refresh; and the edit button goes through the guard.
+
+### Deviations, limitations, and remaining work
+
+- **Documented conflict resolved:** the earlier table note kept size, sort, and direction on a Business switch;
+  the Phase 5 requirement clears them (above) and this record and the guide are updated.
+- The read-only transition after a mid-edit `BUSINESS_SUSPENDED` discards the unsaveable form values; the other
+  owner screens show only the message.
+- The built-in browser pane was hidden during the session, so the rendered review used the repository's
+  Playwright Chromium instead; the human visual checkpoint is still outstanding.
+- Not done (Phase 6): the Playwright administration journey, Business A/B isolation through the UI, SUSPENDED
+  and privacy checks in the browser, Booking-seam evidence, full gates, roadmap completion, and closing the issue.

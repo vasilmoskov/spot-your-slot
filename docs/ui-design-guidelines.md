@@ -277,6 +277,12 @@ unrelated flow merely because the message is safe.
 - Error states use safe natural Bulgarian text and an actionable recovery when
   one exists.
 
+Lifecycle feedback must describe the current domain operation: the shared SUSPENDED notice takes its wording
+from the screen (Customers: “…Можете да преглеждате и редактирате клиентите, но не можете да добавяте нови.”), and
+no screen calls its records “configuration” when they are not. It appears once: the shared banner is the only
+lifecycle statement on a screen, so a page must not repeat it in its own sentence or leave an empty action row (blank
+space) where the blocked action used to be. Action-specific explanations that do not restate the lifecycle stay.
+
 Classify feedback before implementing it. Use the shared `useFeedback` hook for
 local action feedback instead of separate page timers:
 
@@ -353,6 +359,30 @@ controls must reproduce the expected keyboard and assistive-technology behavior.
 Use a left sidebar with the SpotYourSlot text wordmark, “Бизнеси” and “Профил”
 navigation, and the current user plus logout at the bottom. The adjacent area
 contains a clear page header and primary content region.
+
+#### Global and Business-scoped navigation (durable rules)
+
+- Global account navigation (“Бизнеси”, “Профил”) and Business-scoped navigation (“Услуги”, “Екип”, “Работно
+  време”, “Клиенти”) stay visibly separate: the global links first, then a separated group headed by the selected
+  Business's name. The signed-in user and “Изход” close the sidebar; the Business name belongs only to its group.
+- Contextual navigation appears only while its context exists: no Business-scoped link is rendered without a
+  selected Business, and a user who loses the Business (it became unavailable) returns to “Бизнеси”.
+- Business selection never lives inside personal settings. “Профил” holds only personal data and the password.
+  “Бизнеси” lists the user's Businesses as cards, each named by its own heading, with the lifecycle in words and a
+  plain “Покажи” button (the card, not a longer button label, supplies the context), which selects the Business and
+  opens “Услуги”. The selected card is pale green with a matching border and a small checkmark plus screen-reader text
+  (never colour alone, and separate from the lifecycle badge, because a draft or suspended Business can be selected).
+  No technical role or status value is ever shown.
+- A lost Business context is recovered the same way on every Business-scoped screen: the backend's
+  `403 ACTIVE_BUSINESS_REQUIRED` (and only that code) refreshes the session once; if no valid Business remains the
+  route is replaced with “Бизнеси”, otherwise the screen keeps its safe error. A missing record, a suspended Business,
+  an expired login, and a network failure are never treated as a lost context. A dirty form is never discarded
+  silently: the shared guard asks first.
+- Switching Business, sidebar navigation, browser Back/Forward, and logout use the shared unsaved-changes guard.
+  Cancelling the dialog returns focus to the invoker, or to the control marked `data-focus-fallback` (the mobile
+  menu button) when the invoker is hidden. Naming is an approved, intentional exception: an ordinary owner's Business
+  selection is “Бизнеси”; a Platform Administrator's “Бизнеси” is the platform-wide list; one who also manages
+  Businesses reaches their own selection through “Моите бизнеси”. The destinations stay distinct.
 
 ### Shared layout and feedback
 
@@ -560,9 +590,18 @@ table, the task must state:
   the Customer search term, is not stored in the URL, history, or browser storage. It lives in
   component state, is sent in a POST body, resets the page to 0 when it changes, and is
   cleared on Business switch and logout. Page, size, sort, and direction remain in the URL.
-- The Customer list (planned, issue #20) has Name, Phone, and Email sortable columns with
+  A Business switch also clears that search and returns the Customer list to its defaults.
+- A filter whose input is free text and which can update safely as the user types is a live search: no
+  redundant Search/Clear buttons, a short debounce (about 300 ms), Enter applies at once, Escape clears, removing
+  characters searches again, an empty field restores the unfiltered list, superseded requests are aborted, and the
+  previous result stays visible (dimmed, `aria-busy`) until the newer one arrives. The Customer search is the
+  first.
+- The Customer list (implemented, issue #20 Phase 5) has Name, Phone, and Email sortable columns with
   default `name` ascending and the tie-breakers normalized name, then id, empty phone and
-  email last in both directions, server-side pagination, no actions column, and mobile cards.
+  email last in both directions, server-side pagination, no actions column, and mobile cards. Its detail
+  shows the name as the page header and only the phone and email that exist; `version`, timestamps, and IDs are
+  response fields, never page content. An empty page above 0 (including a result that became empty) is replaced
+  by the last valid page or page 0 before it is rendered.
   Its fields use `autocomplete="off"` because they describe other people.
 - Mobile cards render exactly the same sorted, paginated result as the desktop
   table.

@@ -38,7 +38,7 @@ All backend packages live below `bg.spotyourslot`.
 | `scheduling` | timezone-aware availability, Business closures, StaffMember time off, working-day overrides, additional working periods, and deterministic assignment (ADR-0013) |
 | `publicprofile` | read-only unauthenticated public Business profile (`GET /api/public/businesses/{slug}`) orchestrated over the published `business.PublicBusinessProfileAccess` and `catalog.PublicServiceAccess` contracts (ADR-0017; backend contract, public React page and browser E2E verification implemented in issue #17; booking is not part of it) |
 | `booking` | transactional Appointment lifecycle and conflicts |
-| `customer` | Business-scoped Customers, conservative find-or-create matching, and private owner-only Customer administration (decisions in ADR-0019 to ADR-0021, issue #20). Implemented so far: the domain model and internal persistence (V10), conservative matching published as `CustomerIdentification` and `CustomerReferenceAccess` (with the sanitized `CustomerConcurrentConflict` and `CustomerOperationFailure`) from its root package, and the private owner-only administration API (`web` controller and advice, internal `application` service and validator; the Business-owner interface follows). Depends on `shared` (`contact`), `identity` (owner access and the authenticated context), and `business` (lifecycle access); never on `workforce`, `catalog`, `scheduling`, `publicprofile`, or `booking`, and nothing depends on it |
+| `customer` | Business-scoped Customers, conservative find-or-create matching, and private owner-only Customer administration (decisions in ADR-0019 to ADR-0021, issue #20). Implemented so far: the domain model and internal persistence (V10), conservative matching published as `CustomerIdentification` and `CustomerReferenceAccess` (with the sanitized `CustomerConcurrentConflict` and `CustomerOperationFailure`) from its root package, and the private owner-only administration API (`web` controller and advice, internal `application` service and validator) and the Business-owner interface (frontend `business/customers`: list with body-based search, create, detail, and version-guarded edit; Phase 5). Depends on `shared` (`contact`), `identity` (owner access and the authenticated context), and `business` (lifecycle access); never on `workforce`, `catalog`, `scheduling`, `publicprofile`, or `booking`, and nothing depends on it |
 | `notification` | outbox, delivery attempts, reminders, `EmailService` |
 | `audit` | immutable security/business audit events |
 | `shared` | small cross-cutting primitives, errors, clocks, configuration, and the small contact text, phone, and email canonicalization policy (`ContactTextCanonicalizer`, `ContactPhoneNumbers`, `ContactEmailPolicy`) in the `shared.contact` package, declared the `shared::contact` named interface and the only part of `shared` other modules may use; `workforce` and `customer` both use it (ADR-0019) |
@@ -105,6 +105,31 @@ Appointment `(business_id, customer_id)` foreign key is the persistence guarante
 Appointment snapshots submitted contact data is deferred to issue #18. Customer appointment
 history will be a Booking-owned query added by issue #21; no Customer-to-Booking dependency
 exists. `publicprofile` and every other existing module must not depend on `customer`.
+
+## Customer records and Customer accounts
+
+A Customer record is Business-owned data, not a SpotYourSlot login or account. In the future public booking flow
+the Booking capability finds or creates the Business-scoped record through the published `CustomerIdentification`
+from the supplied phone and email; a booking never creates an authenticated Customer account. Owners create
+records manually for telephone, walk-in, imported, and other externally received bookings. The same person has
+separate records in different Businesses, and records never cross tenants. An authenticated Customer account and
+its safe linkage to Business-owned records is a separate capability that needs explicit approval.
+
+A SUSPENDED Business keeps its Customer records correctable: `CustomerAdministrationService.update` is the only
+mutation whose lifecycle check allows a suspended Business (same locks, authorization, version check, validation, and
+uniqueness); `create` and every other module's mutations still reject it.
+
+## Authenticated shell navigation
+
+The authenticated React shells render one shared navigation (`ui/ShellNavigation`): global destinations
+(`Бизнеси`, `Профил`) and, only while a Business the user manages is selected, a separate group headed by that
+Business's name with `Услуги`, `Екип`, `Работно време`, and `Клиенти`. Business selection is a page (`#/businesses`),
+not a Profile setting; it uses the existing server-side session selection, which also supplies the refresh-safe
+selected Business. A selected Business the session no longer carries sends the user back to the selection. Every Business-scoped API
+module sends its requests through `identity/businessRequest`, which announces the backend's single
+`403 ACTIVE_BUSINESS_REQUIRED` signal; the application then refreshes the session once and replaces the route with
+`#/businesses` when no valid owner Business remains (a dirty form is protected by the shared guard). Missing records,
+suspension, authentication, and network failures are separate outcomes and never clear the context.
 
 ## Conflict-safe booking
 

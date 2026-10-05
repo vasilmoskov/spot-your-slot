@@ -96,8 +96,16 @@ export function UnsavedChangesGuardProvider({ children }: { children: ReactNode 
     const current = pending
     setPending(null)
     current?.onCancel?.()
-    invokerRef.current?.focus()
+    const invoker = invokerRef.current
     invokerRef.current = null
+    // When the invoker is gone or hidden (a sidebar link inside a closed mobile menu), focus
+    // goes to the nearest meaningful control instead of falling back to the page body.
+    const visible =
+      invoker !== null &&
+      invoker.isConnected &&
+      (typeof invoker.checkVisibility !== 'function' || invoker.checkVisibility())
+    const target = visible ? invoker : document.querySelector<HTMLElement>('[data-focus-fallback]')
+    target?.focus()
   }
 
   return (

@@ -152,14 +152,14 @@ describe('StaffList', () => {
     expect(cells[3]).toHaveTextContent('anna@example.invalid')
   })
 
-  it('hides mutation actions and shows a notice when the Business is SUSPENDED', async () => {
+  it('hides mutation actions and repeats no lifecycle sentence (the shared banner says it) when the Business is SUSPENDED', async () => {
     mockedListStaffMembers.mockResolvedValue(populatedPage)
     renderStaffList({ readOnly: true })
     await screen.findByText('Анна Иванова')
     expect(screen.queryByRole('button', { name: 'Добави нов член' })).not.toBeInTheDocument()
-    expect(
-      screen.getByText('Бизнесът е временно спрян — екипът може само да бъде преглеждан.'),
-    ).toBeInTheDocument()
+    expect(screen.queryByText(/временно спрян/)).not.toBeInTheDocument()
+    // No empty action row is left behind to add blank space under the banner.
+    expect(document.querySelector('.business-page-actions')).toBeNull()
   })
 
   it('shows a safe error and supports retry', async () => {
