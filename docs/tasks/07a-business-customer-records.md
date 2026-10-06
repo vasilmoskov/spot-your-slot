@@ -1,13 +1,10 @@
 # SpotYourSlot — Business-scoped Customer Records
 
-Status: Phase 1 (decisions, ADRs, and plan), Phase 2 (shared contact policy, Customer domain,
-`V10` schema, and internal persistence), and Phase 3 (conservative matching, the published
-`CustomerIdentification` and `CustomerReferenceAccess` contracts, caller-owned transaction semantics,
-and PostgreSQL concurrency evidence) and Phase 4 (the private owner-only administration backend: list,
-body-based search, detail, explicit create, and version-guarded update) are committed. Phase 5 (the
-Business-owner Customer administration frontend) is implemented and verified and awaits human visual approval,
-review, and commit. Issue #20 is in progress; the browser E2E (Phase 6) is not started, and each later phase
-needs separate explicit approval.
+Status: all six phases are implemented and verified. Phases 1 to 5 are committed (Phase 5, the Business-owner
+Customer administration frontend, received human visual approval on 2026-10-06). Phase 6 (browser E2E
+verification and this documentation reconciliation) awaits final user review and commit. Issue #20 remains open
+until the user closes it; this record does not close it. Not delivered by #20 and not claimed: Booking and
+Appointments (#18, #21), Customer accounts, deletion, merge, notes, history, and lifecycle.
 GitHub issue: #20 — Build Business-scoped customer records
 Depends on: the approved identity, authorization, and Business-isolation foundation,
 and the Business-owner configuration and navigation where Customer administration is
@@ -355,8 +352,8 @@ zoom review are required, with explicit human visual approval.
 | 2 (committed) | **First** extract the shared contact policy (backend and frontend module), add golden vectors, make StaffMember delegate, and verify existing StaffMember behavior. **Then** the `customer` domain, `V10__add_customers.sql`, repository/store, uniqueness and concurrency tests, and the boundary test. No controller or frontend Customer UI. Internal checkpoints are allowed within this one phase. | Strict | Own approval and commit; Phase 1 accepted |
 | 3 (committed) | `CustomerIdentification` and `CustomerReferenceAccess`, normalization, typed outcomes, transaction and race tests, test-only consumer. No Appointment. | Strict (cross-module contract) | Own approval and commit |
 | 4 (implemented, awaiting review) | Private administration backend: authorization, list, search, detail, create, update, lifecycle behavior, tenant-isolation and privacy tests, `EXPLAIN` evidence. | Strict | Own approval and commit |
-| 5 (implemented, awaiting human visual approval) | Business-owner interface: navigation, list and search **first**, then create, detail, and edit; validation, guards, SUSPENDED mode, rendered desktop, tablet, mobile, and zoom review. Two human visual checkpoints are allowed within this one phase. | Standard (human visual approval) | Human visual approval |
-| 6 | Playwright administration journey, tenant isolation, lifecycle, privacy evidence, Booking-seam evidence, full gates, documentation completion, roadmap update, review archive. | Standard | Green verification; closure only with explicit approval |
+| 5 (committed; human visual approval received 2026-10-06) | Business-owner interface: navigation, list and search **first**, then create, detail, and edit; validation, guards, SUSPENDED mode, rendered desktop, tablet, mobile, and zoom review. Two human visual checkpoints are allowed within this one phase. | Standard (human visual approval) | Human visual approval |
+| 6 (implemented and verified; awaiting commit) | Playwright administration journey, tenant isolation, lifecycle, privacy evidence, Booking-seam evidence, full gates, documentation completion, roadmap update, review archive. | Standard | Green verification; closure only with explicit approval |
 
 ## Tests required per phase
 
@@ -1264,3 +1261,147 @@ searching a surname (`Пробен`), a span across two words (`ис Про`), a
   Playwright Chromium instead; the human visual checkpoint is still outstanding.
 - Not done (Phase 6): the Playwright administration journey, Business A/B isolation through the UI, SUSPENDED
   and privacy checks in the browser, Booking-seam evidence, full gates, roadmap completion, and closing the issue.
+
+## Phase 6 record (implemented and verified; awaiting final review and commit)
+
+Phase 6 added the browser E2E verification and reconciled the documentation. It changed **no** production code, backend
+code, migration, dependency, `package.json`, lockfile, or workflow (V1 to V10 are byte-identical to `HEAD`; hashes below).
+No production defect was found, so no production fix was made.
+
+### Files
+
+- New: `frontend/e2e/customer-administration-journey.spec.ts` (12 tests), `customer-lifecycle-isolation.spec.ts` (5),
+  `customer-mobile-smoke.spec.ts` (3, Pixel 7), `frontend/e2e/support/customers.ts` (fixtures, deterministic expected
+  order, privacy and route helpers).
+- Changed: `support/publicProfile.ts` (three existing declarations exported for reuse; no behavior change),
+  `business-configuration-journey.spec.ts` and `business-onboarding-lifecycle.spec.ts` (test defects below).
+- Documentation: this record, README, architecture, product roadmap, implementation plan, testing strategy, security.
+
+### Test defects found in existing specs (not production defects)
+
+Running the unchanged suite against the redesigned navigation gave 47 passes, 1 skipped, and 6 failures. One was the root
+cause and five were cascades of it (the first failure left Business A SUSPENDED and skipped its restoring test). The stale
+assertions, updated to the approved UI without weakening what they check:
+
+1. The SUSPENDED test expected the removed per-page sentence "нови услуги не могат да бъдат създавани"; it now asserts the single shared
+   notice appears once and the create control is absent.
+2. The owner-shell test expected the old link list and no "Бизнеси" link; it now expects `Бизнеси, Профил, Услуги, Екип,
+   Работно време, Клиенти` and that "Бизнеси" points to `#/businesses` (the owner selection, never the platform list).
+3. The Pixel 7 test expected the first menu link to be "Услуги"; the first link is now "Бизнеси".
+4. The onboarding test expected an owner to have no "Бизнеси" link; it now asserts the selection link and no "Нов бизнес".
+
+### Browser evidence (real Chromium against the disposable stack; synthetic data created only through supported APIs and UI)
+
+All scenarios use unique Business slugs and owner emails per provisioning attempt and run-time synthetic names. Waiting is by
+Playwright polling and web-first assertions; there are no sleeps and no debounce-timing guarantee is claimed (the 300 ms
+debounce is covered by Vitest with fake timers, not by the browser tests).
+
+- **Navigation and context** (journey): distinct `Бизнеси` and `Профил`; no selector on the Profile; three cards, `Покажи` on the
+  correct card; the Business name above the scoped group; `aria-current`, one checkmark, hidden selected text, no `Избран`
+  and no technical value; selection survives reload; switching Businesses changes the data and clears the search, page,
+  size, sort, and direction.
+- **Creation and editing**: phone only, email only, and both through the interface with raw representative inputs (`0888 123 456`,
+  ` Ime.Prezime@Primer.BG `, `+359 (895) 555-777`), canonical values shown and persisted after reload; required name and contact; invalid
+  phone (letters, extension, prefix-less) and email inline; edit with persistence; removing both contacts rejected; duplicate
+  phone and email (different formatting and case, and on edit) give the safe inline messages, keep the entered values, and leave
+  the existing Customers' versions and the total unchanged; equal names are allowed.
+- **Live search**: surname, a middle fragment, other letter case, email substring (any case), and phone prefix and full value; typing, a
+  deleted character, clearing, and Escape update the list; no `Търси` or `Изчисти` button; a changed term resets to page 0; no
+  results versus an empty catalog are distinct; the route holds only `page, size, sort, direction`; no search request carries the
+  term in its URL.
+- **Sorting and pagination** (54 Customers): default 10 with options 10/25/50; Next, Previous, range, and total; name, phone, and email
+  in both directions with the visible order, phone and email cells, `aria-sort`, and the route all asserted against an
+  independent expected order (`NULLS LAST`, name tie-break); sort and size changes reset the page; detail and Back preserve page,
+  size, sort, direction, and the in-memory search; **stale-page recovery** reproduced through supported `PUT` updates (two matches renamed
+  away between page 0 and the request for page 1) recovers to page 0.
+- **Unsaved changes**: dirty create and edit prompt on global navigation, Back, `Отказ`, and logout; `Остани` keeps the values, the
+  route, and the focus on the invoker; `Напусни` completes the action; a successful create or save shows no prompt. The mobile
+  case returns focus to the menu button when the invoking link is in the closed menu. Business switching while a form is open cannot
+  be produced in one tab (the selection page replaces the form), so that guard stays proven by Vitest
+  (`App.customers.test.tsx`, `BusinessSelection.test.tsx`); the browser covers the global-navigation exit followed by `Покажи`.
+- **Lifecycle**: DRAFT and ACTIVE create and edit; SUSPENDED lists, searches, sorts, paginates, shows detail, and edits an existing
+  Customer (persisted after reload); no `Добави клиент`; the direct create route shows no form; the exact notice appears once on
+  the list, detail, and create route; a forced same-session `POST` returns `409 BUSINESS_SUSPENDED` and the total is unchanged;
+  reactivation restores creation. The lifecycle is restored in `finally`.
+- **Version conflict**: a second page of the same owner session saves first through the owner API; the stale edit shows the established
+  conflict message, keeps the entered values, `Зареди актуалните данни` goes through the shared guard (`Остани`, then `Напусни`),
+  and the stored Customer is the first writer's (name and version asserted through the API).
+- **Tenant isolation and authorization**: owner B receives `404 CUSTOMER_NOT_FOUND` for Customer A by ID for read and update, with a body
+  byte-identical to an unknown ID; A's record is unchanged; A's data never appears in B's list or search (API and interface);
+  a Platform Administrator without an owner Membership receives `403 ACTIVE_BUSINESS_REQUIRED` on all five operations; anonymous callers
+  receive `401 AUTH_REQUIRED` on all five. The matrix pins the implemented codes (see the Phase 4 note on ADR-0021).
+- **Privacy**: after searching by name, email, and phone, and after opening the detail, the sentinel terms and Customer values are absent from the URL,
+  `localStorage`, `sessionStorage`, IndexedDB, script-visible cookies, and the document title; no Customer request URL or header contains
+  them; the public profile API and the public page contain no Customer value. Failure messages compare booleans, never bodies; fixtures are synthetic
+  (`@example.test`, bulk numbers in a fictional `+359 885 550 xxx` range, and numbers from the shared golden vectors).
+- **Pixel 7** (a real Playwright device context with touch): Business selection, mobile navigation, cards, sort select, pagination, live search, create
+  and edit forms with wrapped validation errors, unbroken 120-character names and 58-character email local parts, the dialog and focus return, SUSPENDED editing
+  with creation absent, all with no horizontal overflow.
+
+### Evidence boundaries
+
+- Browser tests do not prove that no `app_user`, Membership, or Appointment row was created. That claim rests on backend evidence:
+  `BusinessCustomerMutationApiIntegrationTests.createNeverUsesTheOwnersContactOrCreatesAnyAccountRecord` compares the row counts of `app_user`,
+  `membership`, `user_session`, `platform_role`, and `business` before and after two creates (V1 to V10 contain no Appointment table, so none can exist).
+- Conservative matching and the Booking seam are proven by backend tests only: `CustomerIdentificationServiceTests`,
+  `CustomerIdentificationIntegrationTests`, and `CustomerIdentificationConcurrencyIntegrationTests` (with its test-only consumer and probe table that
+  references `customer(business_id, id)`). The browser journey proves **manual** Customer administration; **future Booking consumption of the
+  contract (#18) remains unimplemented**.
+- No request-interception simulation was added in Phase 6. The only intercepted evidence for the lost-Business-context recovery is the Phase 5
+  second-correction developer review (a simulation, because a Membership cannot be revoked through any supported API) and the Vitest suite
+  `App.contextRecovery.test.tsx`; it is not real backend evidence.
+- The 300 ms debounce, 200% zoom, tablet, and rendered-layout checks are developer review (Phase 5) and human visual approval, not Phase 6 browser assertions.
+
+### Verification (executed 2026-10-06)
+
+- Full backend `./mvnw --batch-mode verify`: 2,229 tests, 0 failures, 0 errors, 0 skipped (BUILD SUCCESS); no Java file changed, so no Java formatting check applies.
+- Frontend: `npm ci`, `npm run test` 61 files and 1,440 tests, `npm run lint`, and `npm run build` pass.
+- Browser E2E: two consecutive complete `./scripts/run-e2e.sh` runs, each 74 tests passed (54 before Phase 6, 20 new: 12 + 5 + 3), 0 failed, 0 skipped. After each
+  run no `spotyourslot-e2e` container, volume, or network remained; the development database and unrelated stacks were not touched.
+- `git diff --check` clean; nothing staged; V1 to V10 SHA-256 identical to `HEAD`:
+
+| Migration | SHA-256 |
+|---|---|
+| V1 | `68cb25d6ccfd4e5aca12ec0b0199f13f3d0dd35418e45e1d7d2ef74a6832dc49` |
+| V2 | `c1b62d1fed08138a937f281d4e3952942cc0a5d5cbaf7ed4803dc030a60527f8` |
+| V3 | `655d22a52c06eb41996a75c100c1bfab853c907b9e0e076f128ba2ab8be674a2` |
+| V4 | `aa48255701e3ce6999073801ca0ed37e292b9ada545e3fe4a50221ada596cb98` |
+| V5 | `e2221627ed52ceb951881648d9738d213544ad4c8d79aa35e1e79c0896e958d3` |
+| V6 | `73e89120c0163d6ea79ee28f0d59ae02c055df85066234a3688f525ada16ff1b` |
+| V7 | `d9a8184b7c7c856064426d79dd375e7b4fb7f55a1fec389b7c391512286339b2` |
+| V8 | `2f9fb21a06d4f42e5a3f9b4f479a2bbae2470e4fad0800247aed816d624668e8` |
+| V9 | `9f0560e4daeb139eafe611b4e890a8505ca02ccffa30a293fef24a2a2fd182dd` |
+| V10 | `a80c976b011bdfffc0948d252cf158ce9b75d8c5341b5dc31c36c94a94c3cfaa` |
+
+### Final acceptance matrix
+
+Legend: **BE** backend unit/integration, **FE** frontend unit (Vitest), **E2E** real browser journey (Phase 6), **SIM** intercepted browser simulation,
+**DEV** developer visual review, **HUM** human visual approval (Phase 5, 2026-10-06).
+
+| Requirement | Evidence |
+|---|---|
+| Business-scoped Customer, no account, Membership, or Appointment (D-record, record vs account) | BE `CustomerSchemaIntegrationTests`, `BusinessCustomerMutationApiIntegrationTests.createNeverUsesTheOwnersContactOrCreatesAnyAccountRecord`; E2E creation journey (visible behavior only) |
+| Name required, at least one contact (D1, D2) | BE `CustomerProfileTests`, `BusinessCustomerMutationApiIntegrationTests`; FE `validation.test.ts`, `CustomerCreate.test.tsx`; E2E `requires a name and a contact…` |
+| Canonical phone and email (D3, D4) | BE `ContactPolicyVectorTests` and the API vectors; FE `contactPolicy.test.ts`, `validation.test.ts`; E2E creation with raw inputs |
+| Unique phone and email per Business, safe conflict (D5, D7) | BE `CustomerStoreIntegrationTests`, `CustomerSchemaIntegrationTests`, mutation API suite; FE `CustomerCreate.test.tsx`, `CustomerDetail.test.tsx`; E2E `duplicate phone and email…` |
+| Names are not identity keys | BE `CustomerStoreIntegrationTests`; E2E same-name creation |
+| Conservative matching, truth table, concurrency (D6, D9) | BE `CustomerIdentificationServiceTests`, `…IntegrationTests`, `…ConcurrencyIntegrationTests` (**backend only**) |
+| Booking consumption of `findOrCreate` and `find` | Contract and test-only consumer proven in BE; **real consumption is #18 and unimplemented** |
+| Owner-only private API, tenant isolation, identical 404 (D11) | BE `BusinessCustomerAuthorizationApiIntegrationTests`, `BusinessCustomerReadApiIntegrationTests`, mutation API suite; E2E `owner B cannot read…`, `a Platform Administrator…` |
+| Search semantics (D12) | BE `BusinessCustomerReadApiIntegrationTests`, `CustomerSearchCriteriaTests`; FE `CustomerList.test.tsx`; E2E `search is live…` |
+| Pagination, sorting, table standard (D13) | BE `CustomerStoreListIntegrationTests`; FE `CustomerList.test.tsx`, `navigation.test.ts`; E2E sorting and pagination tests; HUM |
+| Bulgarian form, validation, guard (D14) | FE `CustomerCreate.test.tsx`, `CustomerDetail.test.tsx`, `UnsavedChangesGuard.test.tsx`; E2E validation and unsaved-changes tests; DEV; HUM |
+| Privacy: no Customer data in URLs, storage, errors, logs (D15) | BE `BusinessCustomerPrivacyApiIntegrationTests`, `CustomerModuleBoundaryTests`; FE `CustomerList.test.tsx`; E2E privacy test |
+| Optimistic versioning (D16) | BE mutation API suite, `CustomerAdministrationLockingIntegrationTests`; FE `CustomerDetail.test.tsx`; E2E `a stale edit is rejected…` |
+| Lifecycle: DRAFT/ACTIVE mutable; SUSPENDED read plus edit, create blocked | BE `BusinessCustomerSuspendedApiIntegrationTests`, `CustomerAdministrationServiceTests`; FE `App.customers.test.tsx`; E2E lifecycle test and mobile SUSPENDED test; DEV; HUM |
+| Business selection (`Бизнеси`, `Покажи`, selected card) and scoped navigation | FE `BusinessSelection.test.tsx`, `App.businessSelection.test.tsx`, shell tests; E2E navigation tests; DEV; HUM |
+| Lost-context recovery | FE `App.contextRecovery.test.tsx`; **SIM** (Phase 5 developer review only, no supported revocation API) |
+| Live search UI (no buttons, in-memory term) | FE `CustomerList.test.tsx` (fake-timer debounce); E2E live search; DEV; HUM |
+| Mobile and responsive layout | FE `layoutRules.test.ts`; E2E Pixel 7; DEV (1280 to 375, zoom); HUM |
+| Customer history and Appointment-based criteria | **Deferred to #18 and #21** (see the table "Acceptance criteria that cannot close in issue #20") |
+
+Unsupported or deferred, deliberately not claimed: Appointments, history, notes, merge, deletion, archive, lifecycle, anonymization, export, MANAGER and STAFF access,
+Customer accounts, trigram or full-text search, internationalized email, phone extensions, and the Appointment composite foreign key.
+
+All acceptance criteria that issue #20 can satisfy are met. Implementation and verification are complete, pending final user review and commit; the GitHub
+issue and Project board are untouched.

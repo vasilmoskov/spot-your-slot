@@ -654,9 +654,7 @@ test.describe('Working schedule, unsaved changes and lifecycle journey', () => {
     }
 
     await page.goto('/#/business/services/new')
-    await expect(
-      page.getByText('Бизнесът е временно спрян — нови услуги не могат да бъдат създавани.'),
-    ).toBeVisible()
+    await expect(page.getByRole('status').filter({ hasText: SUSPENDED_BANNER })).toHaveCount(1)
     await expect(page.getByRole('button', { name: 'Създай услуга' })).toHaveCount(0)
 
     await openSection(page, 'Екип')
@@ -954,12 +952,16 @@ test.describe('Business isolation and browser-context separation', () => {
     await openSection(page, 'Услуги')
     const navigation = page.getByRole('navigation', { name: 'Навигация на бизнеса' })
     await expect(navigation.getByRole('link')).toHaveText([
+      'Бизнеси',
+      'Профил',
       'Услуги',
       'Екип',
       'Работно време',
-      'Профил',
+      'Клиенти',
     ])
-    await expect(page.getByRole('link', { name: 'Бизнеси' })).toHaveCount(0)
+    // The owner's "Бизнеси" is the Business selection, never the platform list.
+    await expect(navigation.getByRole('link', { name: 'Бизнеси' }))
+      .toHaveAttribute('href', '/#/businesses')
     await page.goto('/#/platform/businesses')
     await expect(page.getByRole('heading', { name: 'Бизнеси', level: 1 })).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Нов бизнес' })).toHaveCount(0)
@@ -1005,7 +1007,7 @@ test.describe('Business-owner mobile smoke', () => {
       await menu.focus()
       await menu.press('Enter')
       await expect(menu).toHaveAttribute('aria-expanded', 'true')
-      await expect(navigation.getByRole('link', { name: 'Услуги' })).toBeFocused()
+      await expect(navigation.getByRole('link', { name: 'Бизнеси' })).toBeFocused()
       await expect(
         navigation.getByText(businessA.name, { exact: true }).filter({ visible: true }),
       ).toBeVisible()

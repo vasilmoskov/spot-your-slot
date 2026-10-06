@@ -65,9 +65,9 @@ type BusinessBody = {
   contactEmail: string | null
 }
 
-type BusinessResponse = BusinessBody & { id: string, version: number, status: string }
+export type BusinessResponse = BusinessBody & { id: string, version: number, status: string }
 
-function bodyFor(spec: BusinessSpec, slug: string): BusinessBody {
+export function bodyFor(spec: BusinessSpec, slug: string): BusinessBody {
   return {
     slug,
     displayName: spec.name,
@@ -132,7 +132,7 @@ export async function transitionBusiness(
   expect(result.status, result.code ?? action).toBe(200)
 }
 
-async function inviteOwnerThroughApi(admin: Page, id: string, email: string): Promise<void> {
+export async function inviteOwnerThroughApi(admin: Page, id: string, email: string): Promise<void> {
   const result = await apiRequest(
     admin,
     'POST',

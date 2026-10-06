@@ -144,7 +144,10 @@ test('Business onboarding and lifecycle through isolated browser contexts', asyn
     const ownerProfile = ownerPage.getByRole('region', { name: 'Настройки на профила' })
     await expect(ownerProfile.getByText(OWNER_DISPLAY_NAME, { exact: true })).toBeVisible()
     await expect(ownerProfile.getByText(OWNER_EMAIL, { exact: true })).toBeVisible()
-    await expect(ownerPage.getByRole('link', { name: 'Бизнеси' })).toHaveCount(0)
+    // The owner's "Бизнеси" is the Business selection, not the platform list.
+    await expect(ownerPage.getByRole('link', { name: 'Бизнеси' }))
+      .toHaveAttribute('href', '/#/businesses')
+    await expect(ownerPage.getByRole('button', { name: 'Нов бизнес' })).toHaveCount(0)
 
     const ownerSessionResponse = await publicSession(ownerPage)
     expect(ownerSessionResponse.status).toBe(200)

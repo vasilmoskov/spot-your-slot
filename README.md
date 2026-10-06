@@ -34,8 +34,9 @@ contracts (`CustomerIdentification`, `CustomerReferenceAccess`) used internally 
 booking. Phase 4 adds the private owner-only backend API under `/api/business/customers` (list,
 body-based search, detail, explicit create, and version-guarded update), and Phase 5 the
 Business-owner "Клиенти" interface (sortable, paginated list, body-based search, create, detail, and
-version-guarded edit; read-only for a suspended Business). Phase 5 awaits human visual approval and the browser
-E2E belongs to Phase 6.
+version-guarded edit; creation is blocked for a suspended Business, which can still be viewed and its existing
+Customers edited). Phase 5 has human visual approval, and Phase 6 added the Customer browser E2E journeys. Issue #20 is
+implemented and verified, pending final review and commit; Booking and Appointments (#18, #21) are not implemented.
 Appointments, booking, production email, and hosting are not implemented.
 Business closures, StaffMember time off, working-day overrides, and additional
 working periods ("Промени в графика") can be administered through an

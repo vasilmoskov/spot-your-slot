@@ -154,6 +154,24 @@ callers are rejected before any update; and Service and StaffMember creation in 
 suspension still succeeds while a create is rejected. `BusinessCustomerReadApiIntegrationTests` add the surname and
 middle-fragment search regression. The published matching tests are unchanged and green.
 
+### Customer browser E2E (issue #20 Phase 6)
+
+`frontend/e2e/customer-administration-journey.spec.ts` (12), `customer-lifecycle-isolation.spec.ts` (5), and
+`customer-mobile-smoke.spec.ts` (3, an actual Pixel 7 context) run on the existing disposable stack
+(`./scripts/run-e2e.sh`) with run-time synthetic fixtures, a unique slug and owner email per provisioning, and data created only
+through the supported APIs and the invitation flow. They cover Business selection and context, creation and editing with canonical
+contacts, duplicates, live search (observable polling and responses; no sleeps and no debounce-timing claim), sorting and server-side
+pagination with an independently computed order, detail and Back, stale-page recovery through supported updates, the unsaved-changes
+guard, the Business lifecycle (SUSPENDED edit but no creation, restored in `finally`), a version conflict, tenant isolation,
+Platform Administrator and anonymous rejection, and privacy (URL, storage, cookies, title, request URLs and headers, public surfaces).
+Failure messages compare booleans, never Customer bodies. Browser tests do not prove that no account, Membership, or Appointment row
+is created: that rests on `BusinessCustomerMutationApiIntegrationTests.createNeverUsesTheOwnersContactOrCreatesAnyAccountRecord`, and
+conservative matching and the Booking seam rest on the `CustomerIdentification*Tests`. No request-interception simulation was added; the
+only intercepted lost-context evidence is the Phase 5 developer review, labeled as a simulation. The existing journeys were updated to
+the redesigned navigation (owner links, first mobile menu link, the single SUSPENDED notice) without weakening their assertions.
+Executed 2026-10-06: backend 2,229 tests, frontend 1,440 tests in 61 files, two consecutive full E2E runs of 74 passing tests each.
+The acceptance matrix is in `docs/tasks/07a-business-customer-records.md`.
+
 ### Customer administration verification (issue #20 Phase 4)
 
 `BusinessCustomerAuthorizationApiIntegrationTests` (MockMvc and PostgreSQL) cover authentication, the

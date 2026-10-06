@@ -132,8 +132,9 @@ working periods were delivered by issue #16 (see Phase 5).
   Phase 2 (shared contact policy, `V10` schema, domain model, and persistence) are complete,
   Phase 3 (conservative matching and the published `CustomerIdentification` and
   `CustomerReferenceAccess` contracts) and Phase 4 (the private owner-only administration backend)
-  are committed; Phase 5 (the Business-owner interface: list, body-based search, create, detail, and
-  edit) is implemented and awaits human visual approval and review; the browser E2E is not started). Issues #18 and #21 are future consumers, not
+  and Phase 5 (the Business-owner interface: list, body-based search, create, detail, and
+  edit; human visual approval received) are committed; Phase 6, the browser E2E and documentation
+  reconciliation, is implemented and verified and awaits final review and commit). Issues #18 and #21 are future consumers, not
   prerequisites; they add Appointment, event, and cancellation-token migrations with
   `business_id` and `staff_member_id` and decide any Appointment contact snapshot.
 - Add GiST exclusion on `staff_member_id`, transactional revalidation, online
