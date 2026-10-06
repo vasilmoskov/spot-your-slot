@@ -184,6 +184,9 @@ over the default risk level.
   record bodies. Review and correct every match unless it is generated code or
   an explicitly justified exception, and confirm this check in the completion
   report.
+- Test reliability, CI failure diagnosis, and how to report the tested `HEAD` and local versus CI
+  verification follow `docs/testing-strategy.md` ("Reliability, diagnosis, and verification
+  reporting"). Never call a CI failure flaky before investigating it.
 - Report exact test counts only when supported by executed output. Do not call
   partially implemented or indirectly tested behavior complete; state remaining
   limitations and operational tradeoffs explicitly.

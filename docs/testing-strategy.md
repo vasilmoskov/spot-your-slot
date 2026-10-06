@@ -26,6 +26,54 @@ tags or pre-release/experimental dependencies.
 - Static gates: Maven, formatting, architecture rules, TypeScript/lint/build,
   dependency/secret/container scans when those artifacts exist.
 
+## Reliability, diagnosis, and verification reporting
+
+This section is the authoritative source for how tests are written, how failures are
+diagnosed, and how verification is reported. `AGENTS.md` and `CLAUDE.md` only point here.
+
+### Writing reliable tests
+
+- **Wait for the state being asserted.** An asynchronous UI test waits, with Testing Library's
+  asynchronous queries or Playwright's web-first assertions, for the observable state it asserts
+  next. An earlier success message, route change, or request does not prove that the destination
+  has finished loading or that the data it shows has arrived.
+- **Control time.** A test that depends on a date or the time of day uses an injected or fake
+  clock, or an explicit test date. It never relies on a calendar date whose meaning changes as
+  real time passes, a machine time zone, or the day of the week it happens to run.
+- **Order overlapping work deterministically.** Tests for overlapping requests, session updates,
+  and navigation use deferred promises (a promise the test resolves or rejects) to exercise each
+  relevant completion order, including a result that arrives after the user has moved on. They
+  do not depend on timing, load, or the scheduler.
+- **Prefer deterministic regression coverage.** A bug found in CI is covered by a test that fails
+  deterministically before the fix and passes after it. Repeated or stress runs (many runs, parallel
+  load) are targeted diagnostic tools for reproducing a suspected race, not required checks for
+  every change.
+
+### Diagnosing a CI failure
+
+Investigate before calling a failure flaky. Read the failure log and the DOM or assertion output
+it contains, reproduce it locally where possible (including under load), and classify it:
+
+- a **test synchronization defect** (the test asserts before the state exists);
+- a **date or environment assumption** (clock, time zone, locale, runtime version, parallelism);
+- a **production race or defect** (the application misbehaves for some completion order).
+
+Fix the classified cause. Do not "fix" a failure only by increasing a timeout, adding a sleep,
+weakening an assertion, skipping the test, or rerunning until it passes. A timeout change
+requires evidence that the existing ceiling is inappropriate for the work being awaited, not
+merely that the test is slow when it fails. A failure that is not understood is reported as such.
+
+### Verification and reporting
+
+- Run the required checks against the final code before handing it over for commit. Report the
+  tested `HEAD` and whether uncommitted changes were included. A later code change requires the
+  affected checks to be run again; documentation-only edits do not require another full run.
+- A production navigation or session fix is verified by the deterministic regression tests and,
+  in addition, by the relevant existing browser journey. A new browser test is added only when it
+  covers behavior no deterministic test can.
+- Report local verification and CI verification separately. A green CI run approves only the exact
+  commit it checked.
+
 ## Mandatory high-risk tests
 
 ### Concurrent booking

@@ -115,6 +115,9 @@ material ambiguity.
   production behavior, transaction semantics, security, concurrency, or
   schema behavior. A purely archival or metadata operation must not rerun
   tests.
+- Follow `docs/testing-strategy.md` ("Reliability, diagnosis, and verification reporting") for
+  reliable async, date, and overlapping-request tests, for diagnosing CI failures before calling them
+  flaky, and for reporting the tested `HEAD` and local versus CI results.
 - Distinguish implementation failures from environmental or sandbox failures.
 - Never weaken a valid test merely to obtain a passing build.
 - Verify the exact changed-file scope, formatting, migration integrity,
