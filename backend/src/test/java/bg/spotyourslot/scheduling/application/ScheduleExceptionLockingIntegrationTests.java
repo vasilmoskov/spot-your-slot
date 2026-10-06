@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import bg.spotyourslot.business.BusinessScheduleContextAccess;
+import bg.spotyourslot.business.ScheduleRevisionBump;
 import bg.spotyourslot.identity.AuthenticatedBusinessContext;
 import bg.spotyourslot.identity.SelectedBusinessOwnerAccess;
 import bg.spotyourslot.integration.PostgresIntegrationTest;
@@ -64,9 +65,13 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * Proves the Business, Membership, StaffMember, aggregate lock order and the
- * schedule-exception races. Every race is coordinated with latches and
- * PostgreSQL lock-wait observation; there are no sleeps.
+ * Proves the Business, Membership, StaffMember, schedule revision, aggregate lock
+ * order and the schedule-exception races. Every mutation of one Business advances
+ * its schedule revision (ADR-0025) before the aggregate write, so concurrent
+ * writers of one Business wait on the revision row first and meet the aggregate
+ * constraints only after the earlier writer has finished. Every race is
+ * coordinated with latches and PostgreSQL lock-wait observation; there are no
+ * sleeps.
  */
 @Import(ScheduleExceptionLockingIntegrationTests.LockConfiguration.class)
 @Sql(
@@ -85,6 +90,7 @@ class ScheduleExceptionLockingIntegrationTests extends PostgresIntegrationTest {
     @Autowired PausingStaffMemberStore pausingStaffStore;
     @Autowired ObservingBusinessAccess businessAccess;
     @Autowired ObservingStaffReferenceAccess staffReferenceAccess;
+    @Autowired ObservingRevisionBump revisionBump;
 
     private ScheduleExceptionTestSupport support;
 
@@ -94,6 +100,7 @@ class ScheduleExceptionLockingIntegrationTests extends PostgresIntegrationTest {
         store.disarmAll();
         businessAccess.disarm();
         staffReferenceAccess.disarm();
+        revisionBump.disarm();
         pausingStaffStore.disarmDeactivate();
     }
 
@@ -105,18 +112,18 @@ class ScheduleExceptionLockingIntegrationTests extends PostgresIntegrationTest {
         observation.clear();
         ScheduleExceptionDetails created = exceptions.create(
                 fixture.context(), timeOff(staffMemberId, DATE)).exception();
-        assertOrder(List.of("BUSINESS", "MEMBERSHIP", "STAFF_MEMBER", "AGGREGATE"));
+        assertOrder(List.of("BUSINESS", "MEMBERSHIP", "STAFF_MEMBER", "SCHEDULE_REVISION", "AGGREGATE"));
 
         observation.clear();
         exceptions.replace(
                 fixture.context(),
                 created.id(),
                 new ReplaceScheduleExceptionCommand(0L, DATE, DATE.plusDays(1), true, List.of()));
-        assertOrder(List.of("BUSINESS", "MEMBERSHIP", "STAFF_MEMBER", "AGGREGATE"));
+        assertOrder(List.of("BUSINESS", "MEMBERSHIP", "STAFF_MEMBER", "SCHEDULE_REVISION", "AGGREGATE"));
 
         observation.clear();
         exceptions.delete(fixture.context(), created.id(), 1L);
-        assertOrder(List.of("BUSINESS", "MEMBERSHIP", "STAFF_MEMBER", "AGGREGATE"));
+        assertOrder(List.of("BUSINESS", "MEMBERSHIP", "STAFF_MEMBER", "SCHEDULE_REVISION", "AGGREGATE"));
     }
 
     @Test
@@ -126,18 +133,18 @@ class ScheduleExceptionLockingIntegrationTests extends PostgresIntegrationTest {
         observation.clear();
         ScheduleExceptionDetails created = exceptions.create(
                 fixture.context(), closure(DATE, DATE)).exception();
-        assertOrder(List.of("BUSINESS", "MEMBERSHIP", "AGGREGATE"));
+        assertOrder(List.of("BUSINESS", "MEMBERSHIP", "SCHEDULE_REVISION", "AGGREGATE"));
 
         observation.clear();
         exceptions.replace(
                 fixture.context(),
                 created.id(),
                 new ReplaceScheduleExceptionCommand(0L, DATE, DATE, true, List.of()));
-        assertOrder(List.of("BUSINESS", "MEMBERSHIP", "AGGREGATE"));
+        assertOrder(List.of("BUSINESS", "MEMBERSHIP", "SCHEDULE_REVISION", "AGGREGATE"));
 
         observation.clear();
         exceptions.delete(fixture.context(), created.id(), 1L);
-        assertOrder(List.of("BUSINESS", "MEMBERSHIP", "AGGREGATE"));
+        assertOrder(List.of("BUSINESS", "MEMBERSHIP", "SCHEDULE_REVISION", "AGGREGATE"));
     }
 
     @Test
@@ -194,6 +201,8 @@ class ScheduleExceptionLockingIntegrationTests extends PostgresIntegrationTest {
                     fixture.context(), created.id()).exception();
             assertThat(stored.version()).isEqualTo(1);
             assertThat(stored.periods()).isIn(first.periods(), second.periods());
+            // One creation and the one winning replacement; the loser's bump rolled back.
+            assertThat(support.revision(fixture.businessId())).isEqualTo(2L);
             assertThat(support.periodCount(created.id())).isEqualTo(stored.periods().size());
         }
     }
@@ -209,12 +218,12 @@ class ScheduleExceptionLockingIntegrationTests extends PostgresIntegrationTest {
                     exceptions.create(fixture.context(), closure(DATE, DATE.plusDays(1))));
             await(inserted, "first create did not insert");
 
-            Probe probe = store.armInsert();
+            Probe probe = revisionBump.arm();
             CompletableFuture<Throwable> second = CompletableFuture.supplyAsync(
                     () -> captureFailure(() -> exceptions.create(
                             fixture.context(), closure(DATE.plusDays(1), DATE.plusDays(2)))),
                     executor);
-            await(probe.attempted(), "second create did not reach the insert");
+            await(probe.attempted(), "second create did not reach the revision lock");
             assertLockWait(probe.backendPid());
             assertThat(second).isNotCompleted();
             release.countDown();
@@ -222,6 +231,9 @@ class ScheduleExceptionLockingIntegrationTests extends PostgresIntegrationTest {
             completed(first);
             assertThat(completed(second)).isInstanceOf(OverlapConflict.class);
             assertThat(support.exceptionCount(fixture.businessId())).isEqualTo(1);
+            // The rejected creation, which had advanced the revision before the insert failed,
+            // rolled that bump back with it.
+            assertThat(support.revision(fixture.businessId())).isEqualTo(1L);
         } finally {
             release.countDown();
         }
@@ -238,18 +250,20 @@ class ScheduleExceptionLockingIntegrationTests extends PostgresIntegrationTest {
                     exceptions.create(fixture.context(), closure(DATE, DATE.plusDays(1))));
             await(inserted, "first create did not insert");
 
-            Probe probe = store.armInsert();
+            Probe probe = revisionBump.arm();
             CompletableFuture<Throwable> second = CompletableFuture.supplyAsync(
                     () -> captureFailure(() -> exceptions.create(
                             fixture.context(), closure(DATE.plusDays(1), DATE.plusDays(2)))),
                     executor);
-            await(probe.attempted(), "second create did not reach the insert");
+            await(probe.attempted(), "second create did not reach the revision lock");
             assertLockWait(probe.backendPid());
             release.countDown();
 
             completed(first);
             assertThat(completed(second)).isNull();
             assertThat(support.exceptionCount(fixture.businessId())).isEqualTo(1);
+            // The first creation rolled back with its bump; only the second advanced the revision.
+            assertThat(support.revision(fixture.businessId())).isEqualTo(1L);
         } finally {
             release.countDown();
         }
@@ -272,18 +286,20 @@ class ScheduleExceptionLockingIntegrationTests extends PostgresIntegrationTest {
                                     0L, DATE, DATE.plusDays(1), true, List.of())));
             await(replaced, "replacement did not write");
 
-            Probe probe = store.armDelete();
+            Probe probe = revisionBump.arm();
             CompletableFuture<Throwable> deletion = CompletableFuture.supplyAsync(
                     () -> captureFailure(() -> exceptions.delete(
                             fixture.context(), created.id(), 0L)),
                     executor);
-            await(probe.attempted(), "deletion did not reach the store");
+            await(probe.attempted(), "deletion did not reach the revision lock");
             assertLockWait(probe.backendPid());
             release.countDown();
 
             completed(replacement);
             assertThat(completed(deletion)).isInstanceOf(ConcurrentUpdate.class);
             assertThat(support.storedVersion(created.id())).isEqualTo(1);
+            // Creation and replacement advanced it; the losing deletion's bump rolled back.
+            assertThat(support.revision(fixture.businessId())).isEqualTo(2L);
         } finally {
             release.countDown();
         }
@@ -302,7 +318,7 @@ class ScheduleExceptionLockingIntegrationTests extends PostgresIntegrationTest {
                     exceptions.delete(fixture.context(), created.id(), 0L));
             await(deleted, "deletion did not write");
 
-            Probe probe = store.armReplace();
+            Probe probe = revisionBump.arm();
             CompletableFuture<Throwable> replacement = CompletableFuture.supplyAsync(
                     () -> captureFailure(() -> exceptions.replace(
                             fixture.context(),
@@ -310,13 +326,15 @@ class ScheduleExceptionLockingIntegrationTests extends PostgresIntegrationTest {
                             new ReplaceScheduleExceptionCommand(
                                     0L, DATE, DATE.plusDays(1), true, List.of()))),
                     executor);
-            await(probe.attempted(), "replacement did not reach the store");
+            await(probe.attempted(), "replacement did not reach the revision lock");
             assertLockWait(probe.backendPid());
             release.countDown();
 
             completed(deletion);
             assertThat(completed(replacement)).isInstanceOf(ConcurrentUpdate.class);
             assertThat(support.exceptionCount(fixture.businessId())).isZero();
+            // Creation and deletion advanced it; the losing replacement's bump rolled back.
+            assertThat(support.revision(fixture.businessId())).isEqualTo(2L);
         } finally {
             release.countDown();
         }
@@ -458,7 +476,7 @@ class ScheduleExceptionLockingIntegrationTests extends PostgresIntegrationTest {
     }
 
     @Test
-    void oppositeOrderReplacementsDeadlockAndTheVictimIsAConcurrentUpdate() {
+    void oppositeOrderReplacementsOfOneBusinessSerializeBehindTheRevisionInsteadOfDeadlocking() {
         Fixture fixture = support.fixture("ACTIVE");
         UUID staffMemberId = support.staffMember(fixture.businessId(), true);
         ScheduleExceptionDetails a = exceptions.create(
@@ -488,7 +506,7 @@ class ScheduleExceptionLockingIntegrationTests extends PostgresIntegrationTest {
                     executor);
             await(firstDone, "first replacement did not write");
 
-            Probe probe = store.armReplace();
+            Probe probe = revisionBump.arm();
             CompletableFuture<Throwable> second = CompletableFuture.supplyAsync(
                     () -> captureFailure(() -> exceptions.replace(
                             fixture.context(),
@@ -496,23 +514,61 @@ class ScheduleExceptionLockingIntegrationTests extends PostgresIntegrationTest {
                             new ReplaceScheduleExceptionCommand(
                                     0L, DATE, DATE, true, List.of()))),
                     executor);
-            await(probe.attempted(), "second replacement did not reach the store");
+            await(probe.attempted(), "second replacement did not reach the revision lock");
             assertLockWait(probe.backendPid());
             secondBlocked.countDown();
 
-            Throwable firstFailure = completed(first);
-            Throwable secondFailure = completed(second);
-            boolean secondWasVictim = firstFailure == null
-                    && secondFailure instanceof ConcurrentUpdate;
-            boolean firstWasVictim = firstFailure instanceof ConcurrentUpdate
-                    && secondFailure instanceof OverlapConflict;
-            assertThat(secondWasVictim || firstWasVictim)
-                    .as("first=%s second=%s", firstFailure, secondFailure)
-                    .isTrue();
+            assertThat(completed(first)).isNull();
+            assertThat(completed(second)).isInstanceOf(ConcurrentUpdate.class);
             assertThat(support.exceptionCount(fixture.businessId())).isEqualTo(2);
+            assertThat(support.storedVersion(a.id())).isEqualTo(1);
+            assertThat(support.storedVersion(b.id())).isEqualTo(1);
             assertThat(overlappingPairs(fixture.businessId())).isZero();
+            // Two creations and the winner's two replacements; the loser's bump rolled back.
+            assertThat(support.revision(fixture.businessId())).isEqualTo(4L);
         } finally {
             secondBlocked.countDown();
+        }
+    }
+
+    @Test
+    void aLockOrderViolatingCallerDeadlocksOnTheRevisionAndTheVictimIsAConcurrentUpdate() {
+        Fixture fixture = support.fixture("ACTIVE");
+        UUID staffMemberId = support.staffMember(fixture.businessId(), true);
+        CountDownLatch bumped = new CountDownLatch(1);
+        CountDownLatch secondWaiting = new CountDownLatch(1);
+
+        try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+            // The first caller owns the revision row and then asks for the StaffMember row, which
+            // is the reverse of the approved order; the mutation itself never does this.
+            CompletableFuture<Throwable> first = CompletableFuture.supplyAsync(
+                    () -> captureFailure(() -> transaction().executeWithoutResult(status -> {
+                        exceptions.create(fixture.context(), closure(DATE, DATE));
+                        bumped.countDown();
+                        await(secondWaiting, "second create was not waiting on the revision");
+                        staffMembers.deactivate(
+                                fixture.context(), staffMemberId, new StaffMemberVersionCommand(0L));
+                    })),
+                    executor);
+            await(bumped, "first create did not advance the revision");
+
+            Probe probe = revisionBump.arm();
+            CompletableFuture<Throwable> second = CompletableFuture.supplyAsync(
+                    () -> captureFailure(() -> exceptions.create(
+                            fixture.context(), timeOff(staffMemberId, DATE.plusDays(5)))),
+                    executor);
+            await(probe.attempted(), "second create did not reach the revision lock");
+            assertLockWait(probe.backendPid());
+            secondWaiting.countDown();
+
+            // The second transaction began waiting first, so PostgreSQL's deadlock check runs in it
+            // and it is the victim; the first transaction then completes.
+            assertThat(completed(second)).isInstanceOf(ConcurrentUpdate.class);
+            assertThat(completed(first)).isNull();
+            assertThat(support.exceptionCount(fixture.businessId())).isEqualTo(1);
+            assertThat(staffMembers.get(fixture.context(), staffMemberId).active()).isFalse();
+        } finally {
+            secondWaiting.countDown();
         }
     }
 
@@ -773,6 +829,41 @@ class ScheduleExceptionLockingIntegrationTests extends PostgresIntegrationTest {
         }
     }
 
+    static final class ObservingRevisionBump implements ScheduleRevisionBump {
+        private final ScheduleRevisionBump delegate;
+        private final JdbcClient jdbc;
+        private final LockObservation observation;
+        private final AtomicReference<Probe> probe = new AtomicReference<>();
+
+        ObservingRevisionBump(
+                ScheduleRevisionBump delegate, JdbcClient jdbc, LockObservation observation) {
+            this.delegate = delegate;
+            this.jdbc = jdbc;
+            this.observation = observation;
+        }
+
+        Probe arm() {
+            Probe value = Probe.create();
+            probe.set(value);
+            return value;
+        }
+
+        void disarm() {
+            probe.set(null);
+        }
+
+        @Override
+        public long advance(UUID businessId) {
+            int pid = jdbc.sql("SELECT pg_backend_pid()").query(Integer.class).single();
+            observation.record("SCHEDULE_REVISION", pid);
+            Probe current = probe.getAndSet(null);
+            if (current != null) {
+                current.hit(pid);
+            }
+            return delegate.advance(businessId);
+        }
+    }
+
     static class ObservingStore extends ScheduleExceptionStore {
         private final JdbcClient jdbc;
         private final LockObservation observation;
@@ -915,6 +1006,15 @@ class ScheduleExceptionLockingIntegrationTests extends PostgresIntegrationTest {
                 JdbcClient jdbc,
                 LockObservation observation) {
             return new ObservingOwnerAccess(delegate, jdbc, observation);
+        }
+
+        @Bean
+        @Primary
+        ObservingRevisionBump observingRevisionBump(
+                @Qualifier("scheduleRevisionService") ScheduleRevisionBump delegate,
+                JdbcClient jdbc,
+                LockObservation observation) {
+            return new ObservingRevisionBump(delegate, jdbc, observation);
         }
 
         @Bean

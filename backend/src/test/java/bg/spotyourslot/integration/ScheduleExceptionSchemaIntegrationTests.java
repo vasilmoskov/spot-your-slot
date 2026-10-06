@@ -53,7 +53,7 @@ class ScheduleExceptionSchemaIntegrationTests extends PostgresIntegrationTest {
     // ---- migration integrity -------------------------------------------------
 
     @Test
-    void migrationsFromEmptyAreExactlyV1ThroughV11() {
+    void migrationsFromEmptyAreExactlyV1ThroughV12() {
         List<String> versions = jdbc.sql("""
                         SELECT version
                         FROM flyway_schema_history
@@ -63,7 +63,7 @@ class ScheduleExceptionSchemaIntegrationTests extends PostgresIntegrationTest {
                 .query(String.class)
                 .list();
 
-        assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11");
+        assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12");
     }
 
     @Test
@@ -153,7 +153,7 @@ class ScheduleExceptionSchemaIntegrationTests extends PostgresIntegrationTest {
             assertThat(result.getLong(2)).isEqualTo(1);
             assertThat(result.getLong(3)).isZero();
             assertThat(result.getLong(4)).isZero();
-            assertThat(result.getInt(5)).isEqualTo(11);
+            assertThat(result.getInt(5)).isEqualTo(12);
         }
     }
 

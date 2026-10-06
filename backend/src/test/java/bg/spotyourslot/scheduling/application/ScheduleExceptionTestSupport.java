@@ -125,6 +125,13 @@ final class ScheduleExceptionTestSupport {
                 .single();
     }
 
+    long revision(UUID businessId) {
+        return jdbc.sql("SELECT revision FROM business_schedule_revision WHERE business_id = :id")
+                .param("id", businessId)
+                .query(Long.class)
+                .single();
+    }
+
     long storedVersion(UUID exceptionId) {
         return jdbc.sql("SELECT version FROM schedule_exception WHERE id = :id")
                 .param("id", exceptionId)

@@ -1,5 +1,7 @@
 package bg.spotyourslot.workforce.application;
 
+import bg.spotyourslot.business.ScheduleRevisionBump;
+import bg.spotyourslot.business.ScheduleRevisionConcurrentConflict;
 import bg.spotyourslot.workforce.StaffWorkingScheduleApplicationException.ConcurrentUpdate;
 import bg.spotyourslot.workforce.StaffWorkingScheduleApplicationException.StaffWorkingScheduleNotFound;
 import bg.spotyourslot.workforce.StaffWorkingScheduleRecords.ReplaceWorkingPeriodsCommand;
@@ -15,20 +17,26 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Business-scoped schedule persistence, without the owner authorization, Business
- * lifecycle enforcement, or outer lock order that a later phase adds around it.
+ * lifecycle enforcement, or outer lock order that the administration service adds
+ * around it. An accepted replacement advances the Business schedule revision
+ * (ADR-0025) in the same transaction, after the caller's StaffMember lock and
+ * before the aggregate mutation; a rejected one never reaches it.
  */
 @Service
 public class StaffWorkingScheduleService {
     private final StaffWorkingScheduleStore store;
     private final StaffWorkingScheduleInputValidator validator;
+    private final ScheduleRevisionBump scheduleRevision;
     private final Clock clock;
 
     public StaffWorkingScheduleService(
             StaffWorkingScheduleStore store,
             StaffWorkingScheduleInputValidator validator,
+            ScheduleRevisionBump scheduleRevision,
             Clock clock) {
         this.store = store;
         this.validator = validator;
+        this.scheduleRevision = scheduleRevision;
         this.clock = clock;
     }
 
@@ -47,6 +55,7 @@ public class StaffWorkingScheduleService {
         ReplaceWorkingPeriodsCommand validated = validator.validateReplacement(command);
         StaffWorkingScheduleRow current = requireSchedule(businessId, validatedStaffMemberId);
         requireCurrentVersion(current, validated.expectedVersion());
+        advanceScheduleRevision(businessId);
 
         StaffWorkingScheduleRow guarded = store.advanceScheduleVersion(
                         businessId,
@@ -57,6 +66,14 @@ public class StaffWorkingScheduleService {
         store.replacePeriods(businessId, validatedStaffMemberId, validated.periods());
         List<WorkingPeriod> periods = store.findPeriods(businessId, validatedStaffMemberId);
         return details(guarded, periods);
+    }
+
+    private void advanceScheduleRevision(UUID businessId) {
+        try {
+            scheduleRevision.advance(businessId);
+        } catch (ScheduleRevisionConcurrentConflict conflict) {
+            throw new ConcurrentUpdate();
+        }
     }
 
     private StaffWorkingScheduleRow requireSchedule(UUID businessId, UUID staffMemberId) {

@@ -132,5 +132,8 @@ exceptions without reactivation.
 The decision above is preserved. ADR-0025 adds one step to the mutation lock order for every create, replace, and
 delete of every exception kind: after the StaffMember row (for StaffMember-scoped kinds) and before the
 conditional aggregate statement, the transaction bumps the Business-level schedule revision row. Versions,
-overlap handling, failure mapping, and responses are unchanged. This takes effect when Phase 3 of issue #18 is
-implemented; until then the order above is the implemented behavior.
+overlap handling, failure mapping, and responses are unchanged. **Implemented in issue #18 Phase 3** for every
+kind and operation: after the StaffMember lock and immediately before the aggregate statement, with the stored
+version compared first so an already-stale replace or delete (the same `ConcurrentUpdate`) never takes the
+revision's exclusive lock. Writers of one Business now serialize on the revision row before they reach the
+exclusion constraints; outcomes are unchanged.

@@ -4,9 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import bg.spotyourslot.business.BusinessScheduleContextAccess;
 import bg.spotyourslot.business.BusinessScheduleContextAccess.BusinessScheduleContext;
+import bg.spotyourslot.business.ScheduleRevisionBump;
 import bg.spotyourslot.identity.AuthenticatedBusinessContext;
 import bg.spotyourslot.identity.SelectedBusinessOwnerAccess;
 import bg.spotyourslot.identity.SelectedBusinessOwnerAccess.Authorization;
+import bg.spotyourslot.integration.ConcurrencyTestSupport;
 import bg.spotyourslot.integration.PostgresIntegrationTest;
 import bg.spotyourslot.workforce.StaffMemberAdministration;
 import bg.spotyourslot.workforce.StaffMemberRecords.CreateStaffMemberCommand;
@@ -69,9 +71,10 @@ class StaffWorkingScheduleLockingIntegrationTests extends PostgresIntegrationTes
     @Autowired PlatformTransactionManager transactionManager;
     @Autowired LockObservation observation;
     @Autowired PausingStaffMemberStore pausingStore;
+    @Autowired ObservingRevisionBump revisionBump;
 
     @Test
-    void replacementUsesBusinessMembershipThenStaffMemberLockOrder() {
+    void replacementUsesBusinessMembershipStaffMemberThenScheduleRevisionLockOrder() {
         Fixture fixture = fixture();
         StaffMemberDetails staffMember = staffMembers.create(
                 fixture.context(), create("Ordered"));
@@ -81,8 +84,69 @@ class StaffWorkingScheduleLockingIntegrationTests extends PostgresIntegrationTes
                 fixture.context(), staffMember.id(), command(List.of(monday()), 0));
 
         assertThat(result.version()).isEqualTo(1);
-        assertThat(observation.events()).containsExactly("BUSINESS", "MEMBERSHIP", "STAFF_MEMBER");
+        assertThat(observation.events()).containsExactly(
+                "BUSINESS", "MEMBERSHIP", "STAFF_MEMBER", "SCHEDULE_REVISION");
         assertThat(observation.backendPids()).hasSize(1);
+        assertThat(revisionOf(fixture.businessId())).isEqualTo(1L);
+    }
+
+    @Test
+    void replacementsOfDifferentStaffMembersOfOneBusinessSerializeBehindTheRevisionAndBothCommit() {
+        Fixture fixture = fixture();
+        StaffMemberDetails first = staffMembers.create(fixture.context(), create("First"));
+        StaffMemberDetails second = staffMembers.create(fixture.context(), create("Second"));
+        CountDownLatch firstWritten = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicInteger firstPid = new AtomicInteger();
+
+        try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+            CompletableFuture<Void> holder = CompletableFuture.runAsync(
+                    () -> transaction().executeWithoutResult(status -> {
+                        firstPid.set(ConcurrencyTestSupport.backendPid(jdbc));
+                        schedules.replace(
+                                fixture.context(), first.id(), command(List.of(monday()), 0));
+                        firstWritten.countDown();
+                        await(release, "first replacement was not released");
+                    }),
+                    executor);
+            await(firstWritten, "first replacement did not write");
+
+            Probe probe = revisionBump.arm();
+            CompletableFuture<StaffWorkingScheduleAdministrationDetails> waiter =
+                    CompletableFuture.supplyAsync(
+                            () -> schedules.replace(
+                                    fixture.context(), second.id(), command(List.of(tuesday()), 0)),
+                            executor);
+            await(probe.attempted(), "second replacement did not reach the revision lock");
+            ConcurrencyTestSupport.awaitBlockedBy(jdbc, probe.backendPid().get(), firstPid.get());
+            assertThat(waiter).isNotCompleted();
+            assertThat(revisionOf(fixture.businessId())).isZero();
+            release.countDown();
+
+            completed(holder);
+            assertThat(completed(waiter).version()).isEqualTo(1);
+            assertThat(revisionOf(fixture.businessId())).isEqualTo(2L);
+            assertThat(schedules.get(fixture.context(), first.id()).periods())
+                    .containsExactly(monday());
+            assertThat(schedules.get(fixture.context(), second.id()).periods())
+                    .containsExactly(tuesday());
+        } finally {
+            release.countDown();
+        }
+    }
+
+    @Test
+    void theLoserOfASameVersionRaceLeavesNoBumpBehind() {
+        Fixture fixture = fixture();
+        StaffMemberDetails staffMember = staffMembers.create(fixture.context(), create("Loser"));
+        schedules.replace(fixture.context(), staffMember.id(), command(List.of(monday()), 0));
+        long baseline = revisionOf(fixture.businessId());
+
+        assertThat(captureFailure(() -> schedules.replace(
+                        fixture.context(), staffMember.id(), command(List.of(tuesday()), 0))))
+                .isInstanceOf(ConcurrentUpdate.class);
+
+        assertThat(revisionOf(fixture.businessId())).isEqualTo(baseline);
     }
 
     @Test
@@ -111,6 +175,8 @@ class StaffWorkingScheduleLockingIntegrationTests extends PostgresIntegrationTes
                     fixture.context(), staffMember.id());
             assertThat(stored.version()).isEqualTo(1);
             assertThat(stored.periods()).isIn(List.of(monday()), List.of(tuesday()));
+            // Exactly one writer committed, so exactly one bump survived; the loser's rolled back.
+            assertThat(revisionOf(fixture.businessId())).isEqualTo(1L);
         }
     }
 
@@ -246,6 +312,13 @@ class StaffWorkingScheduleLockingIntegrationTests extends PostgresIntegrationTes
             Thread.onSpinWait();
         }
         throw new AssertionError("PostgreSQL lock wait was not observed");
+    }
+
+    private long revisionOf(UUID businessId) {
+        return jdbc.sql("SELECT revision FROM business_schedule_revision WHERE business_id = :id")
+                .param("id", businessId)
+                .query(Long.class)
+                .single();
     }
 
     private TransactionTemplate transaction() {
@@ -454,6 +527,38 @@ class StaffWorkingScheduleLockingIntegrationTests extends PostgresIntegrationTes
         }
     }
 
+    static final class ObservingRevisionBump implements ScheduleRevisionBump {
+        private final ScheduleRevisionBump delegate;
+        private final JdbcClient jdbc;
+        private final LockObservation observation;
+        private final AtomicReference<Probe> probe = new AtomicReference<>();
+
+        ObservingRevisionBump(
+                ScheduleRevisionBump delegate, JdbcClient jdbc, LockObservation observation) {
+            this.delegate = delegate;
+            this.jdbc = jdbc;
+            this.observation = observation;
+        }
+
+        Probe arm() {
+            Probe value = new Probe(new CountDownLatch(1), new AtomicInteger());
+            probe.set(value);
+            return value;
+        }
+
+        @Override
+        public long advance(UUID businessId) {
+            int pid = jdbc.sql("SELECT pg_backend_pid()").query(Integer.class).single();
+            observation.record("SCHEDULE_REVISION", pid);
+            Probe current = probe.getAndSet(null);
+            if (current != null) {
+                current.backendPid().set(pid);
+                current.attempted().countDown();
+            }
+            return delegate.advance(businessId);
+        }
+    }
+
     static class PausingStaffMemberStore extends StaffMemberStore {
         private final JdbcClient jdbc;
         private final LockObservation observation;
@@ -529,6 +634,15 @@ class StaffWorkingScheduleLockingIntegrationTests extends PostgresIntegrationTes
         PausingStaffMemberStore pausingStaffMemberStore(
                 JdbcClient jdbc, LockObservation observation) {
             return new PausingStaffMemberStore(jdbc, observation);
+        }
+
+        @Bean
+        @Primary
+        ObservingRevisionBump observingRevisionBump(
+                @Qualifier("scheduleRevisionService") ScheduleRevisionBump delegate,
+                JdbcClient jdbc,
+                LockObservation observation) {
+            return new ObservingRevisionBump(delegate, jdbc, observation);
         }
 
         @Bean

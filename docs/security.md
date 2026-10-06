@@ -416,7 +416,10 @@ start so a future slot cannot be released early.
   calendar (issue #21).
 - **Logging.** No request body, note, contact, attempt ID, reference, or fingerprint is logged.
 - **Schedule coordination.** Schedule mutations and bookings are ordered by the Business schedule revision row
-  and the total lock order of ADR-0025.
+  and the total lock order of ADR-0025. The mutation side is implemented (Phase 3): the revision change and the
+  schedule write share one transaction, a missing revision row is a sanitized internal failure (never a silent
+  success), the revision exposes no identifier, SQL, or personal data in any failure or response, and the
+  revision is never reachable from a public route. The booking side (the shared lock) is Phase 4.
 
 ## Secrets, logging, and asynchronous work
 

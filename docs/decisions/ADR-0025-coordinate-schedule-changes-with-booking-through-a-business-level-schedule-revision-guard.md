@@ -77,11 +77,11 @@ commits.
 
 **Mechanism.** A Business-owned **schedule revision** row (`business_id` primary
 key, a `bigint` revision, UTC timestamp) stored in a table created by the Phase 3
-migration (`V12`, a Proposed name). The `business` module publishes a narrow
-contract (a Proposed name) to bump the row and to lock it in shared mode; no module
+migration (`V12`, see the implementation notes). The `business` module publishes a narrow
+contract (names in the implementation notes) to bump the row and to lock it in shared mode; no module
 reads the table directly. Existing Businesses are backfilled in the migration; a new
-Business receives its row in the transaction that creates the Business (the exact
-mechanism is Proposed). A missing row is a sanitized technical failure and never a
+Business receives its row in the transaction that creates the Business (a trigger; see the
+implementation notes). A missing row is a sanitized technical failure and never a
 silent success.
 
 - **Bump:** one `UPDATE … SET revision = revision + 1` per accepted mutation, in the
@@ -200,6 +200,80 @@ mutation); the `INSERT`/`UPDATE`/`DELETE` statements in `BusinessStore`,
 ADR-0016. Inference: that `SELECT … FOR SHARE` of a row updated after a
 repeatable-read snapshot raises `40001` is documented PostgreSQL behavior and is
 proven by the Phase 4 tests, not yet observed in this repository.
+
+## Implementation notes (Phase 3, 2026-10-06)
+
+Implemented in `V12__add_business_schedule_revision.sql`, the `business` contracts and service, and the
+participation of the two schedule mutation paths. No decision above changed; these settle the Proposed names
+and record the clarifications and the one tightening so the accepted text is not silently rewritten.
+
+- **Names (the Proposed items are settled).** Table `business_schedule_revision` (`business_id` primary key,
+  `revision bigint NOT NULL DEFAULT 0` with `CHECK (revision >= 0)`, `updated_at timestamptz NOT NULL`).
+  Constraints `business_schedule_revision_pkey`, `business_schedule_revision_business_fk` (`REFERENCES
+  business(id) ON DELETE RESTRICT`, like every other Business-owned table) and
+  `business_schedule_revision_nonnegative`; no other index. Published contracts in the `business` module root:
+  `ScheduleRevisionBump.advance(businessId)` (returns the new revision) and
+  `ScheduleRevisionGuard.lockShared(businessId)` (returns the protected revision), implemented only by
+  `business.application.ScheduleRevisionService`, plus the cause-free `ScheduleRevisionConcurrentConflict`
+  (`40001`, `40P01`) and `ScheduleRevisionFailure` (everything else). The bump and the guard are separate
+  interfaces so a consumer holds only the capability it needs; `business.infrastructure.ScheduleRevisionStore`
+  is the only reader and writer of the table. `business` gains no module dependency.
+- **Initialization.** The migration backfills one row at revision `0` for every existing Business, stamped with the
+  Business's `created_at`. A new Business receives its row from an `AFTER INSERT ... FOR EACH ROW` trigger on
+  `business` (`business_create_schedule_revision`, function `create_business_schedule_revision`), that is, in the
+  same statement and transaction as the Business insert, whichever code path inserts it (the application, a
+  fixture, or a future import). This resolves "the transaction that creates the Business" in the strongest form:
+  a committed Business without a revision row is impossible, and a rolled-back insert leaves no row. The function
+  is not `SECURITY DEFINER` and resolves the table through the session search path, like every other statement.
+  A row that is nevertheless missing (for example removed by hand) is a sanitized `ScheduleRevisionFailure`
+  from both operations and never recreated silently.
+- **Bump placement.** Weekly replacement: `StaffWorkingScheduleService.replace` bumps after input validation,
+  schedule lookup, and the version check, and immediately before the conditional schedule update; the outer
+  `StaffWorkingScheduleAdministrationService` already holds Business, Membership, and StaffMember in that order.
+  Exceptions: `ScheduleExceptionAdministrationService` create, replace, and delete bump after the StaffMember lock
+  (StaffMember-scoped kinds only) and immediately before the aggregate statement. **Tightening:** replace and delete
+  now compare the stored version with the expected version before the bump and raise the same
+  `ConcurrentUpdate` the conditional statement would, so a request that is already stale never takes the revision's
+  exclusive lock. A conflict lost to a concurrent writer after the check is still the conditional statement's
+  `ConcurrentUpdate`; the whole transaction (including the bump) rolls back. The bump's `40001`/`40P01` victim is
+  mapped to the same `ConcurrentUpdate`; `ScheduleRevisionFailure` propagates to the generic sanitized `500`.
+  Responses, versions, and HTTP contracts are unchanged and expose no revision.
+- **Concurrent schedule writers of one Business now serialize on the revision row** before they reach the
+  aggregate. Existing behavior is preserved (one winner, same outcomes), but where two writers previously
+  waited on the exclusion constraint or a row lock inside the store they now wait one step earlier. The earlier
+  deadlock test of two opposite-order replacements inside one caller transaction therefore no longer deadlocks
+  (the second writer waits on the revision before it owns any exception row); it was replaced by a test that
+  proves the serialization, and a new test proves that a caller that violates the order (revision, then
+  StaffMember row) deadlocks and the bump's victim becomes the sanitized `ConcurrentUpdate`.
+- **Guard preconditions.** `lockShared` joins the caller's transaction (`MANDATORY`) and additionally requires that
+  the transaction was started repeatable-read or serializable (the same rule as `AvailabilityQuery`); a weaker or
+  unexposed level fails with `ScheduleRevisionFailure` before any statement, because under read committed
+  the lock could not detect a change committed after the booking's reads. The bump needs no snapshot and runs
+  in the default isolation where the mutations run.
+- **Audit reconciliation.** Every production `INSERT`, `UPDATE`, and `DELETE` statement was inspected. The table
+  above is complete and unchanged: the only paths needing the bump are the weekly replacement
+  (`staff_working_schedule` update, `staff_working_period` delete and insert) and the schedule exception
+  statements (`schedule_exception` and `schedule_exception_period`); there is still no Business working-hours
+  store. Lifecycle and timezone remain protected by the Business row lock, Service by the Service row lock, StaffMember
+  profile, activity, and assignment by the StaffMember row (assignment replacement updates `staff_member`
+  before it changes `staff_member_service`), and the creation statements only add availability.
+  `AvailabilityMutationInventoryTests` scans the production sources: it fails when a write statement is
+  added, changed, or no longer present without an inventory decision, and when a production caller of a bumped
+  store write does not also depend on `ScheduleRevisionBump`.
+- **PostgreSQL behavior observed (the inference in Evidence is now proven).** In a repeatable-read transaction, `SELECT ...
+  FOR SHARE` of a revision row updated and committed after the snapshot fails immediately with `40001`; an
+  uncommitted bump makes the lock wait and then fail with `40001` when the bump commits, or succeed at the old
+  revision when it rolls back; a bump of another Business never affects it
+  (`ScheduleRevisionIntegrationTests`).
+- **Evidence and limits.** Phase 3 proves the guard with a transaction that stands in for a booking and uses only
+  the published guard, against each of the thirteen audited mutation paths
+  (`ScheduleRevisionMutationIntegrationTests`): a snapshot predating the committed mutation fails the guard;
+  a held guard makes the real mutation wait at the revision row (PostgreSQL's `pg_blocking_pids` names the holder
+  and the blocked statement is the revision `UPDATE`) and the mutation commits after the stand-in; a control run
+  without the guard shows the stale view never learns of the change. It does **not** prove booking orchestration:
+  there is no `booking` use of the guard, no Appointment write behind it, no retry, and no booking-side
+  rejection. The commit-order tests listed under "Phase 4 commit orders to prove", with real Appointments, Customers, and
+  `AvailabilityQuery`, remain Phase 4.
 
 ## Conditions for revisiting
 

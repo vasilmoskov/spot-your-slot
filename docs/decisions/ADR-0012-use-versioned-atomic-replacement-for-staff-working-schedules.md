@@ -202,5 +202,9 @@ semantics, retry policy, and deterministic PostgreSQL verification.
 The decision above is preserved. ADR-0025 inserts one step into the mutation lock order: after the StaffMember
 row lock (step 3) and before the conditional schedule version update (step 4), the transaction bumps the
 Business-level schedule revision row so a concurrent booking is serialized with the change. The schedule version,
-the replacement semantics, and the response are unchanged. This note takes effect when Phase 3 of issue #18 is
-implemented; until then the order above is the implemented behavior.
+the replacement semantics, and the response are unchanged. **Implemented in issue #18 Phase 3:** the bump runs in
+`StaffWorkingScheduleService.replace` after validation and the version check and immediately before the
+conditional schedule update, in the same transaction; a rejected replacement never advances the revision and a
+rolled-back one leaves it unchanged. The order is now Business, Membership, StaffMember, schedule revision, then
+the conditional update. Two replacements for different StaffMembers of one Business therefore now serialize on
+the revision row.

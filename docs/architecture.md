@@ -32,7 +32,7 @@ All backend packages live below `bg.spotyourslot`.
 |---|---|
 | `identity` | users, credentials, sessions, invitations, password reset, Memberships, roles |
 | `platform` | PLATFORM_ADMIN operations and Business lifecycle |
-| `business` | Business profile, BusinessType, slug, settings, status, tenant context |
+| `business` | Business profile, BusinessType, slug, settings, status, tenant context; owns the Business schedule revision row and publishes `ScheduleRevisionBump` and `ScheduleRevisionGuard` (issue #18 Phase 3, ADR-0025) |
 | `catalog` | Business-owned Services, prices, durations, lifecycle, and versioned administration |
 | `workforce` | StaffMembers, Service qualifications, recurring weekly hours |
 | `scheduling` | timezone-aware availability, Business closures, StaffMember time off, working-day overrides, additional working periods, and deterministic assignment (ADR-0013) |
@@ -143,8 +143,10 @@ overlap protection exists. `btree_gist` supplies scalar equality and half-open r
 overlap conflict), and `BookingBusyIntervalSource`, which replaced the placeholder (one bulk statement over
 `CONFIRMED` rows, `MANDATORY` transaction participation).
 
-**Decided by issue #18 and planned, not yet implemented** (ADR-0022 to ADR-0026; the first bullet of this list
-describes the Phase 4 transaction, and the busy-source bullet is implemented as stated above):
+**Decided by issue #18** (ADR-0022 to ADR-0026). The busy-source bullet and the Business schedule revision
+(`business_schedule_revision`, the `ScheduleRevisionBump` and `ScheduleRevisionGuard` contracts, and the
+participation of the weekly-schedule and schedule-exception mutations; Phase 3) are implemented as stated; the first
+bullet describes the Phase 4 transaction, which is planned and not implemented:
 
 - One repeatable-read, read-write transaction per attempt (ADR-0023). The orchestration is invoked with no
   active transaction and rejects an active caller transaction before any work, so every attempt is a separate
@@ -156,10 +158,15 @@ describes the Phase 4 transaction, and the busy-source bullet is implemented as 
   always a completely new transaction (at most three attempts), and a transaction that threw is never
   continued.
 - Total lock order for every path: Business lifecycle row, Membership row, StaffMember row, Business schedule
-  revision row, Service row, then Customer, Appointment, and aggregate rows (ADR-0025). Recurring-schedule and
-  schedule-exception mutations bump the revision row; a booking that validated against older schedule data
-  fails with `40001` and retries, or the mutation waits for it. The other availability-affecting mutations
-  already conflict with the booking's row locks through real row updates (audit in ADR-0025).
+  revision row, Service row, then Customer, Appointment, and aggregate rows (ADR-0025). **Implemented (Phase 3)
+  on the mutation side:** weekly-schedule replacement and every schedule-exception create, replace, and delete
+  take Business, Membership, the StaffMember (where scoped), and then advance the revision row in their own
+  transaction immediately before the aggregate statement; a rejected or rolled-back mutation leaves the revision
+  unchanged, and schedule writers of one Business serialize on that row. **Planned (Phase 4):** a booking that
+  validated against older schedule data fails the guard (`ScheduleRevisionGuard.lockShared`, which requires a
+  repeatable-read or serializable caller transaction) with `40001` and retries, or the mutation waits for the
+  booking. The other availability-affecting mutations already conflict with the booking's row locks through real
+  row updates (audit in ADR-0025, enforced by `AvailabilityMutationInventoryTests`).
 - Idempotency and replay by an attempt ID and a versioned HMAC request fingerprint, and the distinction between
   a proven rollback and an uncertain commit outcome (ADR-0024).
 - The real `BusyIntervalSource` in `booking` returns `CONFIRMED` windows in one bulk query joined to the

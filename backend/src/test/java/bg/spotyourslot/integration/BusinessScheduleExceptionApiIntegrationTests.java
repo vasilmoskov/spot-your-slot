@@ -333,6 +333,56 @@ class BusinessScheduleExceptionApiIntegrationTests extends PostgresIntegrationTe
     }
 
     @Test
+    void theScheduleRevisionAdvancesOncePerAcceptedRequestIsNeverExposedAndAMissingRowIsASafeError()
+            throws Exception {
+        Actor owner = actor("ACTIVE", "BUSINESS_OWNER", true, false, true);
+        assertThat(revisionOf(owner.businessId())).isZero();
+
+        String created = create(owner, closureJson("2026-12-24", "2026-12-24"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$", aMapWithSize(11)))
+                .andReturn().getResponse().getContentAsString();
+        UUID id = idOf(created);
+        assertThat(revisionOf(owner.businessId())).isEqualTo(1L);
+
+        String replaced = replace(owner, id, replaceJson(0, "2026-12-24", "2026-12-25", true, ""))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", aMapWithSize(11)))
+                .andReturn().getResponse().getContentAsString();
+        assertThat(revisionOf(owner.businessId())).isEqualTo(2L);
+        assertThat(created).doesNotContainIgnoringCase("revision");
+        assertThat(replaced).doesNotContainIgnoringCase("revision");
+
+        // Rejected requests leave the revision where it was.
+        assertConcurrentUpdate(replace(owner, id, replaceJson(0, "2026-12-24", "2026-12-24", true, "")));
+        assertConcurrentUpdate(deleteOne(owner, id, 0));
+        assertExceptionNotFound(deleteOne(owner, MISSING_ID, 0));
+        assertValidationError(create(owner, closureJson("2026-12-26", "2026-12-24")));
+        assertThat(revisionOf(owner.businessId())).isEqualTo(2L);
+
+        deleteOne(owner, id, 1).andExpect(status().isNoContent());
+        assertThat(revisionOf(owner.businessId())).isEqualTo(3L);
+
+        // A Business without a revision row is a sanitized internal error that writes nothing.
+        jdbc.sql("DELETE FROM business_schedule_revision WHERE business_id = :id")
+                .param("id", owner.businessId())
+                .update();
+        create(owner, closureJson("2026-12-24", "2026-12-24"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"))
+                .andExpect(content().string(not(containsString("business_schedule_revision"))))
+                .andExpect(content().string(not(containsString(owner.businessId().toString()))));
+        assertThat(exceptionCount(owner.businessId())).isZero();
+    }
+
+    private long revisionOf(UUID businessId) {
+        return jdbc.sql("SELECT revision FROM business_schedule_revision WHERE business_id = :id")
+                .param("id", businessId)
+                .query(Long.class)
+                .single();
+    }
+
+    @Test
     void sameKindOverlapIsAContainedSafeConflictAndCrossKindOverlapIsAllowed() throws Exception {
         Actor owner = actor("ACTIVE", "BUSINESS_OWNER", true, false, true);
         UUID staffMemberId = staffMember(owner.businessId(), true);

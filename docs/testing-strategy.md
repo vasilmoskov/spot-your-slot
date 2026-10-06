@@ -886,7 +886,7 @@ Not covered by design: real browser zoom (640px is the CSS-width equivalent), ho
 SPA fallback, server-rendered metadata (the page is client-rendered), and the human visual approval,
 which Phase 3 recorded separately.
 
-## Appointment and guest booking verification (issue #18; Phase 2 executed, Phases 3 to 8 planned and not executed)
+## Appointment and guest booking verification (issue #18; Phases 2 and 3 executed, Phases 4 to 8 planned and not executed)
 
 Decisions: ADR-0022 to ADR-0026; phases and the per-phase evidence table:
 `docs/tasks/08a-appointment-core-and-guest-booking.md`. Every test follows the reliability rules above
@@ -899,10 +899,24 @@ flaky) and uses real PostgreSQL through Testcontainers for persistence, concurre
   `CANCELLED` rows that do not block, DST instants, concurrent two-writer inserts with lock-wait evidence, the
   real busy source (only `CONFIRMED` windows, one bulk query, joined transaction), placeholder removal, and
   module boundaries.
-- **Phase 3 (schedule guard):** the revision migration and backfill, a revision for a new Business, exactly one
-  bump per accepted weekly-schedule or schedule-exception mutation (every kind and operation) and none for a
-  rejected one, exclusive versus shared lock conflicts with PostgreSQL wait evidence, and an enumeration test
-  of availability-affecting statements. The booking against schedule commit-order tests belong to Phase 4.
+- **Phase 3 (schedule guard; executed, 117 new tests in seven classes and 8 added to four existing classes, full
+  suite 2594 tests; the Phase 3 record of the task document has the details and limits):** the `V12`
+  migration (byte-identical V1 to V11, a pinned V12, the backfill of existing Businesses upgraded from V11, the
+  trigger that gives every new Business its row, a rolled-back insert, exact columns and constraints); the
+  bump and guard contracts against PostgreSQL (one increment per call, Business isolation, a missing row or
+  Business as a sanitized failure, a mandatory caller transaction, the guard's repeatable-read requirement, shared
+  guards that never block each other, a held guard that blocks a later bump, an uncommitted bump that blocks the
+  guard and then fails it with `40001` or lets it succeed after a rollback, a snapshot that predates a committed
+  bump failing without waiting); each of the 13 audited mutation paths (weekly replacement and every
+  kind times create, replace, delete) advancing the revision exactly once, rolling back with the write, never
+  advancing it when rejected for validation, authorization, lifecycle, StaffMember, missing record, stale version or
+  exclusion, and coordinating with a stand-in booking transaction through `pg_blocking_pids` lock-wait evidence and
+  a stale-snapshot `40001`; writes that must **not** bump (lifecycle, timezone, Service, StaffMember,
+  assignment); lock-order observation and concurrent-writer serialization with a deliberate order violation
+  producing a deadlock victim; sanitized failures and the HTTP contract; module-boundary tests; and
+  `AvailabilityMutationInventoryTests`, the source scan that classifies every write statement. Coordination uses
+  latches, futures, and PostgreSQL's own blocking report, never fixed sleeps (`ConcurrencyTestSupport`). The
+  booking-against-schedule commit-order tests with real Appointments and Customers belong to Phase 4.
 - **Phase 4 (orchestration):** an active caller transaction rejected before any booking work; each attempt and
   retry in a distinct PostgreSQL transaction (own transaction identifier and snapshot, no `REQUIRES_NEW`); replay
   holding only the initial Business lock; zero Customer rows after each failure path; lock order; revalidation against

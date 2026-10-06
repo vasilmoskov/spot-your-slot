@@ -92,7 +92,7 @@ class AppointmentSchemaIntegrationTests extends PostgresIntegrationTest {
     // ---- migration integrity -------------------------------------------------
 
     @Test
-    void migrationsFromEmptyAreExactlyV1ThroughV11WithV11Newest() {
+    void migrationsFromEmptyAreExactlyV1ThroughV12WithV12Newest() {
         List<String> versions = jdbc.sql("""
                         SELECT version
                         FROM flyway_schema_history
@@ -103,7 +103,7 @@ class AppointmentSchemaIntegrationTests extends PostgresIntegrationTest {
                 .list();
 
         assertThat(versions)
-                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11");
+                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12");
     }
 
     @Test
@@ -147,6 +147,7 @@ class AppointmentSchemaIntegrationTests extends PostgresIntegrationTest {
                 .dataSource(dataSource)
                 .schemas(schema)
                 .defaultSchema(schema)
+                .target("11")
                 .load()
                 .migrate();
 

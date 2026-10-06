@@ -216,4 +216,6 @@ availability endpoint is introduced by ADR-0026 as a narrow adapter that maps th
 StaffMember exposure (no StaffMember identifier is attached to a slot). **Implemented in issue #18 Phase 2:**
 `BookingBusyIntervalSource` replaced the placeholder, `NoBookingBusyIntervalSource` and its placeholder-only
 tests were deleted, and the required-bean fail-fast tests now use test stubs. The statement "There is no public
-availability endpoint" remains true until the public API phase.
+availability endpoint" remains true until the public API phase. **Phase 3:** `AvailabilityQuery` is unchanged;
+the Business schedule revision (ADR-0025) coordinates schedule mutations with the future booking transaction
+without touching the availability calculation, its four reads, or its transaction requirement.

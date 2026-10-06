@@ -65,7 +65,7 @@ class CustomerSchemaIntegrationTests extends PostgresIntegrationTest {
     // ---- migration integrity -------------------------------------------------
 
     @Test
-    void migrationsFromEmptyAreExactlyV1ThroughV11() {
+    void migrationsFromEmptyAreExactlyV1ThroughV12() {
         List<String> versions = jdbc.sql("""
                         SELECT version
                         FROM flyway_schema_history
@@ -75,7 +75,7 @@ class CustomerSchemaIntegrationTests extends PostgresIntegrationTest {
                 .query(String.class)
                 .list();
 
-        assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11");
+        assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12");
         assertThat(MIGRATION_FILES).hasSize(9);
     }
 
@@ -175,7 +175,7 @@ class CustomerSchemaIntegrationTests extends PostgresIntegrationTest {
                 assertThat(result.getString(3)).isEqualTo(PHONE);
                 assertThat(result.getLong(4)).isEqualTo(1);
                 assertThat(result.getLong(5)).isZero();
-                assertThat(result.getInt(6)).isEqualTo(11);
+                assertThat(result.getInt(6)).isEqualTo(12);
             }
             try (var customer = connection.prepareStatement("""
                     INSERT INTO v10_customer_upgrade.customer(

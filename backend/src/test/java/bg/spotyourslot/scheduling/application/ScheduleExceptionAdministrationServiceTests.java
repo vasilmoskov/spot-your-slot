@@ -12,6 +12,9 @@ import static org.mockito.Mockito.when;
 import bg.spotyourslot.business.BusinessLifecycleAccess.LifecycleStatus;
 import bg.spotyourslot.business.BusinessScheduleContextAccess;
 import bg.spotyourslot.business.BusinessScheduleContextAccess.BusinessScheduleContext;
+import bg.spotyourslot.business.ScheduleRevisionBump;
+import bg.spotyourslot.business.ScheduleRevisionConcurrentConflict;
+import bg.spotyourslot.business.ScheduleRevisionFailure;
 import bg.spotyourslot.identity.AuthenticatedBusinessContext;
 import bg.spotyourslot.identity.SelectedBusinessOwnerAccess;
 import bg.spotyourslot.identity.SelectedBusinessOwnerAccess.Authorization;
@@ -75,6 +78,7 @@ class ScheduleExceptionAdministrationServiceTests {
     @Mock BusinessScheduleContextAccess businesses;
     @Mock SelectedBusinessOwnerAccess owners;
     @Mock StaffMemberReferenceAccess staffMembers;
+    @Mock ScheduleRevisionBump scheduleRevision;
 
     private ScheduleExceptionAdministrationService service;
     private AuthenticatedBusinessContext context;
@@ -87,6 +91,7 @@ class ScheduleExceptionAdministrationServiceTests {
                 businesses,
                 owners,
                 staffMembers,
+                scheduleRevision,
                 Clock.fixed(NOW, ZoneOffset.UTC));
         context = new TestContext(USER_ID, BUSINESS_ID);
     }
@@ -101,7 +106,7 @@ class ScheduleExceptionAdministrationServiceTests {
                 .isInstanceOf(SelectedBusinessRequired.class);
         assertThatThrownBy(() -> service.delete(new TestContext(USER_ID, null), EXCEPTION_ID, 0L))
                 .isInstanceOf(SelectedBusinessRequired.class);
-        verifyNoInteractions(store, businesses, owners, staffMembers);
+        verifyNoInteractions(store, businesses, owners, staffMembers, scheduleRevision);
     }
 
     @Test
@@ -186,10 +191,11 @@ class ScheduleExceptionAdministrationServiceTests {
 
         ScheduleExceptionAdministrationDetails result = service.create(context, timeOff());
 
-        InOrder order = Mockito.inOrder(businesses, owners, staffMembers, store);
+        InOrder order = Mockito.inOrder(businesses, owners, staffMembers, scheduleRevision, store);
         order.verify(businesses).lockScheduleContext(BUSINESS_ID);
         order.verify(owners).lockAndAuthorize(USER_ID, BUSINESS_ID);
         order.verify(staffMembers).lockReference(BUSINESS_ID, STAFF_MEMBER_ID);
+        order.verify(scheduleRevision).advance(BUSINESS_ID);
         order.verify(store).insert(any());
         verify(store, never()).findOverlapping(any(), any(), any());
         verify(store, never()).findOverlappingForStaff(any(), any(), any(), any());
@@ -286,11 +292,12 @@ class ScheduleExceptionAdministrationServiceTests {
                 EXCEPTION_ID,
                 new ReplaceScheduleExceptionCommand(4L, DATE, DATE.plusDays(3), true, List.of()));
 
-        InOrder order = Mockito.inOrder(businesses, owners, store, staffMembers);
+        InOrder order = Mockito.inOrder(businesses, owners, store, staffMembers, scheduleRevision);
         order.verify(businesses).lockScheduleContext(BUSINESS_ID);
         order.verify(owners).lockAndAuthorize(USER_ID, BUSINESS_ID);
         order.verify(store).findByBusinessIdAndId(BUSINESS_ID, EXCEPTION_ID);
         order.verify(staffMembers).lockReference(BUSINESS_ID, STAFF_MEMBER_ID);
+        order.verify(scheduleRevision).advance(BUSINESS_ID);
         order.verify(store).replace(
                 any(), any(), anyLong(), any(), any());
         ArgumentCaptor<ScheduleExceptionContent> content =
@@ -347,7 +354,7 @@ class ScheduleExceptionAdministrationServiceTests {
     void failedConditionalMutationAfterASuccessfulReadIsAConcurrentUpdate() {
         authorizeMutation(LifecycleStatus.ACTIVE);
         when(store.findByBusinessIdAndId(BUSINESS_ID, EXCEPTION_ID))
-                .thenReturn(Optional.of(stored(closureContent(), 3)));
+                .thenReturn(Optional.of(stored(closureContent(), 2)));
         when(store.replace(any(), any(), anyLong(), any(), any())).thenReturn(Optional.empty());
         when(store.delete(BUSINESS_ID, EXCEPTION_ID, 2L)).thenReturn(false);
 
@@ -373,8 +380,9 @@ class ScheduleExceptionAdministrationServiceTests {
                 .thenReturn(Optional.of(new StaffMemberReference(STAFF_MEMBER_ID, true)));
         when(store.delete(BUSINESS_ID, EXCEPTION_ID, 1L)).thenReturn(true);
         service.delete(context, EXCEPTION_ID, 1L);
-        InOrder order = Mockito.inOrder(staffMembers, store);
+        InOrder order = Mockito.inOrder(staffMembers, scheduleRevision, store);
         order.verify(staffMembers, Mockito.atLeastOnce()).lockReference(BUSINESS_ID, STAFF_MEMBER_ID);
+        order.verify(scheduleRevision).advance(BUSINESS_ID);
         order.verify(store).delete(BUSINESS_ID, EXCEPTION_ID, 1L);
     }
 
@@ -446,6 +454,111 @@ class ScheduleExceptionAdministrationServiceTests {
                 .isInstanceOfSatisfying(InvalidInput.class, failure ->
                         assertThat(failure.field()).isEqualTo(InputField.WINDOW));
         verifyNoInteractions(store);
+    }
+
+    @Test
+    void everyAcceptedMutationAdvancesTheRevisionExactlyOnceBeforeTheAggregateWrite() {
+        authorizeMutation(LifecycleStatus.ACTIVE);
+        when(store.insert(any())).thenAnswer(invocation -> {
+            NewScheduleException input = invocation.getArgument(0);
+            return new ScheduleException(input.id(), input.businessId(), input.content(), 0, NOW, NOW);
+        });
+        when(store.findByBusinessIdAndId(BUSINESS_ID, EXCEPTION_ID))
+                .thenReturn(Optional.of(stored(closureContent(), 0)));
+        when(store.replace(any(), any(), anyLong(), any(), any())).thenAnswer(invocation ->
+                Optional.of(new ScheduleException(
+                        EXCEPTION_ID, BUSINESS_ID, invocation.getArgument(3), 1, NOW, NOW)));
+        when(store.delete(BUSINESS_ID, EXCEPTION_ID, 0L)).thenReturn(true);
+
+        service.create(context, closure());
+        service.replace(context, EXCEPTION_ID, replacement(0L));
+        service.delete(context, EXCEPTION_ID, 0L);
+
+        verify(scheduleRevision, Mockito.times(3)).advance(BUSINESS_ID);
+        InOrder order = Mockito.inOrder(scheduleRevision, store);
+        order.verify(scheduleRevision).advance(BUSINESS_ID);
+        order.verify(store).insert(any());
+        order.verify(scheduleRevision).advance(BUSINESS_ID);
+        order.verify(store).replace(any(), any(), anyLong(), any(), any());
+        order.verify(scheduleRevision).advance(BUSINESS_ID);
+        order.verify(store).delete(BUSINESS_ID, EXCEPTION_ID, 0L);
+    }
+
+    @Test
+    void rejectedMutationsNeverAdvanceTheRevision() {
+        // Authorization and lifecycle rejections.
+        when(businesses.lockScheduleContext(BUSINESS_ID)).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.create(context, closure()))
+                .isInstanceOf(BusinessAccessDenied.class);
+        when(businesses.lockScheduleContext(BUSINESS_ID))
+                .thenReturn(Optional.of(scheduleContext(LifecycleStatus.SUSPENDED)));
+        when(owners.lockAndAuthorize(USER_ID, BUSINESS_ID)).thenReturn(Authorization.GRANTED);
+        assertThatThrownBy(() -> service.create(context, closure()))
+                .isInstanceOf(BusinessSuspended.class);
+        verifyNoInteractions(scheduleRevision);
+
+        // Validation, missing exception, StaffMember and stale-version rejections.
+        when(businesses.lockScheduleContext(BUSINESS_ID))
+                .thenReturn(Optional.of(scheduleContext(LifecycleStatus.ACTIVE)));
+        assertThatThrownBy(() -> service.replace(context, EXCEPTION_ID, replacement(-1L)))
+                .isInstanceOf(InvalidInput.class);
+        assertThatThrownBy(() -> service.delete(context, EXCEPTION_ID, null))
+                .isInstanceOf(InvalidInput.class);
+        when(store.findByBusinessIdAndId(BUSINESS_ID, EXCEPTION_ID)).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.replace(context, EXCEPTION_ID, replacement(0L)))
+                .isInstanceOf(ScheduleExceptionNotFound.class);
+        assertThatThrownBy(() -> service.delete(context, EXCEPTION_ID, 0L))
+                .isInstanceOf(ScheduleExceptionNotFound.class);
+        when(staffMembers.lockReference(BUSINESS_ID, STAFF_MEMBER_ID)).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.create(context, timeOff()))
+                .isInstanceOf(StaffMemberNotFound.class);
+        when(staffMembers.lockReference(BUSINESS_ID, STAFF_MEMBER_ID))
+                .thenReturn(Optional.of(new StaffMemberReference(STAFF_MEMBER_ID, false)));
+        assertThatThrownBy(() -> service.create(context, timeOff()))
+                .isInstanceOf(StaffMemberInactive.class);
+        when(store.findByBusinessIdAndId(BUSINESS_ID, EXCEPTION_ID))
+                .thenReturn(Optional.of(stored(closureContent(), 5)));
+        assertThatThrownBy(() -> service.replace(context, EXCEPTION_ID, replacement(4L)))
+                .isInstanceOf(ConcurrentUpdate.class);
+        assertThatThrownBy(() -> service.delete(context, EXCEPTION_ID, 4L))
+                .isInstanceOf(ConcurrentUpdate.class);
+
+        verifyNoInteractions(scheduleRevision);
+        verify(store, never()).insert(any());
+        verify(store, never()).replace(any(), any(), anyLong(), any(), any());
+        verify(store, never()).delete(any(), any(), anyLong());
+    }
+
+    @Test
+    void aRevisionConcurrencyVictimIsTheExistingSanitizedConflictAndNothingIsWritten() {
+        authorizeMutation(LifecycleStatus.ACTIVE);
+        when(store.findByBusinessIdAndId(BUSINESS_ID, EXCEPTION_ID))
+                .thenReturn(Optional.of(stored(closureContent(), 0)));
+        Mockito.doThrow(new ScheduleRevisionConcurrentConflict())
+                .when(scheduleRevision).advance(BUSINESS_ID);
+
+        assertThatThrownBy(() -> service.create(context, closure()))
+                .isInstanceOf(ConcurrentUpdate.class)
+                .hasNoCause();
+        assertThatThrownBy(() -> service.replace(context, EXCEPTION_ID, replacement(0L)))
+                .isInstanceOf(ConcurrentUpdate.class);
+        assertThatThrownBy(() -> service.delete(context, EXCEPTION_ID, 0L))
+                .isInstanceOf(ConcurrentUpdate.class);
+
+        verify(store, never()).insert(any());
+        verify(store, never()).replace(any(), any(), anyLong(), any(), any());
+        verify(store, never()).delete(any(), any(), anyLong());
+    }
+
+    @Test
+    void aRevisionFailureIsNotMaskedAndNothingIsWritten() {
+        authorizeMutation(LifecycleStatus.ACTIVE);
+        Mockito.doThrow(new ScheduleRevisionFailure())
+                .when(scheduleRevision).advance(BUSINESS_ID);
+
+        assertThatThrownBy(() -> service.create(context, closure()))
+                .isInstanceOf(ScheduleRevisionFailure.class);
+        verify(store, never()).insert(any());
     }
 
     private void authorizeMutation(LifecycleStatus status) {

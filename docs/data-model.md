@@ -220,9 +220,18 @@ date_range)`.
   `appointment_staff_no_overlap`. **No Customer name, phone, or email is copied** (D2). The private
   staff note, cancellation metadata, and `late_cancellation` are deferred to #21 and the cancellation issue and
   arrive by forward migrations.
-- **schedule revision** (issue #18 Phase 3, ADR-0025; **decided and planned for `V12`, not yet implemented**): one
-  row per Business, bumped by every mutation that changes recurring schedules or schedule exceptions and locked
-  `FOR SHARE` by booking. Its exact name is Proposed.
+- **business_schedule_revision** (issue #18 Phase 3, ADR-0025; implemented in `V12`, owned by the `business`
+  module): one row per Business with `business_id` (primary key, `business_schedule_revision_pkey`; foreign key
+  `business_schedule_revision_business_fk` to `business(id)`, `ON DELETE RESTRICT`), `revision bigint NOT NULL
+  DEFAULT 0` (`business_schedule_revision_nonnegative`, `revision >= 0`), and `updated_at timestamptz NOT NULL`.
+  It has no other index and carries no schedule content. Existing Businesses were backfilled at revision `0`
+  stamped with their `created_at`; the trigger `business_create_schedule_revision` (`AFTER INSERT ON business`,
+  `FOR EACH ROW`) gives every new Business its row in the same statement. Every accepted weekly-schedule
+  replacement and every schedule-exception create, replace, and delete advances it by exactly one in its own
+  transaction (`UPDATE ... SET revision = revision + 1`); booking will lock it `FOR SHARE` (Phase 4). Only the
+  `business` module reads or writes it, through the published `ScheduleRevisionBump` and `ScheduleRevisionGuard`.
+  Lifecycle, timezone, Service, StaffMember, and assignment changes do not advance it: each already updates the
+  Business, Service, or StaffMember row that booking locks (ADR-0025 audit).
 - **appointment_event:** `business_id`, Appointment, type, actor, timestamp,
   non-sensitive summary/correlation ID.
 - **cancellation_token:** `business_id`, Appointment, token hash and lifecycle.
