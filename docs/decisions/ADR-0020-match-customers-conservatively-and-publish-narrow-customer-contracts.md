@@ -284,3 +284,13 @@ Revisit when #18 finalizes the Appointment transaction, if a locking reference i
 demonstrated to be required, if owners cannot resolve conflicts acceptably, for
 verified Customer identity or accounts, for a merge capability, or for staff flows
 that need to explain a match.
+
+## Amendment note (issue #18, 2026-10-06)
+
+The decision above is preserved. Issue #18 resolved the items it deferred: **no Appointment contact snapshot**
+(ADR-0022; the fingerprint of ADR-0024 covers idempotency instead); the Appointment transaction and retry policy
+(ADR-0023: three attempts in total, each a completely new transaction, with `CustomerConcurrentConflict`
+retryable and `CustomerOperationFailure` not retried); rate limiting and the generic guest response
+(ADR-0026, the guest message is unchanged); and that the Appointment's composite foreign key
+`(business_id, customer_id)` is the persistence guarantee. Customer matching under repeatable read, which the
+booking transaction uses, is accepted by this ADR as stronger isolation.

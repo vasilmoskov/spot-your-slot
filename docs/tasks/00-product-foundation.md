@@ -218,3 +218,13 @@ all modified files, scope/terminology/version policy, remaining decisions, and
 any intentional obsolete-term occurrence. Verify no application/configuration/
 dependency/hosting/Git state was created. Do not commit or push. Stop for human
 review.
+
+## Amendment note (issue #18, 2026-10-06)
+
+The foundation text above is preserved as the Phase 0 record. Issue #18 amends it
+([task 08a](08a-appointment-core-and-guest-booking.md), ADR-0022 and ADR-0026): the Appointment statuses are
+`CONFIRMED` and `CANCELLED` (cancellation attribution, `COMPLETED`, and `NO_SHOW` are deferred), the source is
+`ONLINE` or `MANUAL`, and the public booking flow uses formal wording with the neutral step headings
+«Избор на услуга», «Избор на служител», «Дата и час», «Вашите данни» and «Преглед и потвърждение» instead of the
+informal question quoted in the "Booking and availability" section. The confirmation email and the secure
+cancellation link described there are later work; the first booking confirmation is shown on screen.

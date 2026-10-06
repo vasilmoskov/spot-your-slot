@@ -99,13 +99,21 @@ An ACTIVE Business page shows its generic profile, contact/working information,
 active Services with price/duration, and available qualified team members. The
 Bulgarian mobile-first flow is:
 
-1. select a Service;
-2. answer “При кого искаш да запазиш час?” by selecting a person or “Без
-   предпочитание”;
-3. select an available date and time;
-4. provide name, phone, email, and optional booking note;
-5. accept privacy information and cancellation rules;
-6. submit and receive a confirmation page, email, and secure cancellation link.
+1. «Избор на услуга»: select a Service;
+2. «Избор на служител»: select a person or “Без предпочитание”;
+3. «Дата и час»: select an available date and time;
+4. «Вашите данни»: provide a name, a phone and/or an email, and an optional booking
+   note of at most 500 characters;
+5. «Преглед и потвърждение»: review the complete appointment and submit;
+6. receive a confirmation page. The email and the secure cancellation link are later
+   work; until then the page tells the guest to contact the Business to change or cancel.
+
+Issue #18 decisions (ADR-0022 to ADR-0026, [task 08a](tasks/08a-appointment-core-and-guest-booking.md);
+decided and documented, not yet implemented): the journey stays on the single `/{businessSlug}` URL with
+in-memory steps; the public wording is formal; contact needs a name and at least one of phone or email under
+the Customer policies, a short privacy notice is shown, and there is no verification, Customer account, or
+marketing consent; a displayed slot is never a reservation; the assigned person for “Без предпочитание” is shown
+after confirmation. Production public booking waits for the Business calendar (issue #21).
 
 Issue #17 delivers only the profile part of this page (decisions in
 [task 06a](tasks/06a-public-business-profile.md); the read contract `GET /api/public/businesses/{slug}` and the page are implemented and browser-verified): display
@@ -202,10 +210,13 @@ distinct UTC instants and are visibly disambiguated.
 Online and authorized staff-created Appointments support editing, rescheduling,
 Customer/staff cancellation, separate Customer booking and private staff notes,
 source, status, and audit history. Every successful Appointment is automatically
-`CONFIRMED`. MVP statuses are `CONFIRMED`, `CANCELLED_BY_CUSTOMER`,
-`CANCELLED_BY_BUSINESS`, `COMPLETED`, and `NO_SHOW`. `COMPLETED`/`NO_SHOW` are
-allowed only at or after start. Normal operations never physically delete an
-Appointment.
+`CONFIRMED`. Amended by ADR-0022 (issue #18): the Appointment statuses are
+`CONFIRMED` and `CANCELLED` (only `CONFIRMED` blocks time) and the source is `ONLINE` or
+`MANUAL`. Cancellation attribution (Customer or Business), the late-cancellation
+flag, and `COMPLETED`/`NO_SHOW` (allowed only at or after start) are deferred to the
+issues that implement them. An Appointment keeps snapshots of the Service name,
+duration, EUR price, Business timezone, and assigned StaffMember name, and no copy of
+Customer contact data. Normal operations never physically delete an Appointment.
 
 Customer cancellation uses a secure random link while only its hash is stored.
 A future Appointment may be cancelled after the deadline but is marked late;
@@ -221,7 +232,8 @@ Customer is created only if neither matches; any partial match or conflict is
 rejected for explicit owner correction, and nothing is merged, moved, or added
 automatically. A guest sees a generic message that does not reveal which
 identifier matched. Appointment history belongs to Appointment issues #18 and #21,
-not to the Customer record. Do not solicit health or other special-category data.
+not to the Customer record, and the Appointment keeps no copy of the submitted contact
+data (ADR-0022). Do not solicit health or other special-category data.
 
 ## Administration and notifications
 
@@ -229,8 +241,9 @@ The responsive Business administration UI includes authentication, daily and
 weekly calendar views, manual Appointment operations, Service and StaffMember
 management, schedules/breaks/time off, Customers/history, and Business settings.
 Generic Bulgarian administration uses “Екип” and “Член на екипа”. Public
-booking uses natural contextual wording such as “При кого искаш да запазиш
-час?” and “Без предпочитание”; it does not require one generic performer noun.
+booking uses formal wording, the neutral step headings listed under the public
+flow, and the option “Без предпочитание” (ADR-0026); the earlier informal question
+“При кого искаш да запазиш час?” is withdrawn.
 `StaffMember` remains the internal English domain and technical term. Daily and
 weekly views do not limit the configured booking window.
 

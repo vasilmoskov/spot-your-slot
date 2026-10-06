@@ -193,21 +193,32 @@ date_range)`.
   `customer_business_phone_unique`, `customer_business_email_unique`,
   `customer_business_id_id_unique`; index `customer_business_normalized_display_name_id_idx`.
   History metrics derive from Appointments in later issues.
-- **appointment** (issue #18; whether it snapshots the submitted Customer name, phone, or
-  email is deferred to #18, ADR-0020): `business_id`, `staff_member_id`, `service_id`, `customer_id`,
-  UTC `start_at`/`occupied_until`, captured Service facts, status, source
-  (`ONLINE`/`STAFF`), Customer booking note, private staff note, cancellation
-  metadata, `late_cancellation`, audit fields.
+- **appointment** (issue #18, ADR-0022; **decided and planned for `V11`, not yet implemented**).
+  Created together with its overlap exclusion constraint. `business_id`; `customer_id`, `service_id`, and
+  `staff_member_id` each with a composite same-Business restrictive foreign key (and no foreign key to the
+  Service assignment); UTC `start_at`, `end_at`, and `occupied_until` (equal in the MVP, zero buffers); snapshots
+  `timezone`, `duration_minutes`, `price_eur`, `service_name`, and `staff_display_name`; `source`
+  (`ONLINE`/`MANUAL`); `status` (`CONFIRMED`/`CANCELLED`); optional plain-text `customer_note` (at most 500
+  code points); a random informational `public_reference` unique per Business; the idempotency columns
+  `booking_attempt_hash`, `request_fingerprint`, `fingerprint_encoding_version`, and `fingerprint_key_version`
+  (ADR-0024); `version`; audit timestamps. **No Customer name, phone, or email is copied** (D2). The private
+  staff note, cancellation metadata, and `late_cancellation` are deferred to #21 and the cancellation issue and
+  arrive by forward migrations.
+- **schedule revision** (issue #18 Phase 3, ADR-0025; **decided and planned for `V12`, not yet implemented**): one
+  row per Business, bumped by every mutation that changes recurring schedules or schedule exceptions and locked
+  `FOR SHARE` by booking. Its exact name is Proposed.
 - **appointment_event:** `business_id`, Appointment, type, actor, timestamp,
   non-sensitive summary/correlation ID.
 - **cancellation_token:** `business_id`, Appointment, token hash and lifecycle.
 
-All referenced rows must share the Business. Statuses are `CONFIRMED`,
-`CANCELLED_BY_CUSTOMER`, `CANCELLED_BY_BUSINESS`, `COMPLETED`, and `NO_SHOW`.
-Every successful online/staff-created Appointment is `CONFIRMED`; no MVP
-confirmation-mode field or `PENDING` status exists.
+All referenced rows must share the Business. Amended by ADR-0022 (the earlier text listed
+`CONFIRMED`, `CANCELLED_BY_CUSTOMER`, `CANCELLED_BY_BUSINESS`, `COMPLETED`, and `NO_SHOW`, and source
+`ONLINE`/`STAFF`): statuses are `CONFIRMED` and `CANCELLED`, and the source is `ONLINE` or `MANUAL`.
+Every successful online/manual Appointment is `CONFIRMED`; no MVP
+confirmation-mode field or `PENDING` status exists. Cancellation attribution and `COMPLETED`/`NO_SHOW` are
+deferred and arrive by forward migrations.
 
-Only `CONFIRMED` blocks time:
+Only `CONFIRMED` blocks time (created in `V11`, the same migration as the table):
 
 ```sql
 EXCLUDE USING gist (
@@ -217,9 +228,10 @@ EXCLUDE USING gist (
 WHERE (status = 'CONFIRMED')
 ```
 
-Flyway enables `btree_gist`. The specific violation becomes HTTP 409. Completed,
-no-show, and cancelled rows remain in history. Application rules permit
-`COMPLETED`/`NO_SHOW` only at or after start.
+Flyway enables `btree_gist` (installed by `V7`). The specific violation becomes a typed sanitized outcome
+and, publicly, HTTP 409. Cancelled rows remain in history. The deferred `COMPLETED`/`NO_SHOW` rule (only at
+or after start) applies when those statuses are introduced. The `appointment` table never has a foreign key
+to the Service assignment because assignment history is not stored.
 
 ## Notifications, audit, and relationships
 
@@ -248,7 +260,9 @@ Use a global unique normalized Business slug; unique Membership
 on `(business_id,start_at)`, `(staff_member_id,start_at)`, and
 `(customer_id,start_at desc)` plus GiST; schedule indexes by
 Business/StaffMember/day; token and outbox indexes; checks for ranges/statuses;
-and restrictive delete behavior.
+and restrictive delete behavior. Issue #18 creates only the exclusion index and the unique indexes it needs
+(public reference and attempt hash); the calendar and Customer-history indexes are added with the issue that
+queries them (#21).
 
 No health or special-category data is solicited. Export and reviewed
 deletion/anonymization remain future work. Retention and lawful bases require

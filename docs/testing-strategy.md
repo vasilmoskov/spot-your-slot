@@ -83,7 +83,8 @@ overlapping requests. Coordinate independent transactions against PostgreSQL;
 assert exactly one success, one 409, one blocking Appointment, and a healthy
 connection afterward. Cover identical/partial overlap, adjacent half-open
 ranges, and rescheduling. The database constraint must key on
-`staff_member_id`.
+`staff_member_id`. The issue #18 verification (planned by phase, not yet executed) is in "Appointment and
+guest booking verification" below.
 
 ### Tenant isolation and workforce linkage
 
@@ -255,8 +256,9 @@ booking-window boundaries (the MVP currently fixes them at two hours and 30
 Business-local dates per ADR-0013; Business-configured values, buffers, and
 breaks are follow-ups),
 cancelled-slot release, qualifications, no-preference ties, fixed clocks,
-`Europe/Sofia` DST gaps/overlaps, UTC storage/display, and
-`COMPLETED`/`NO_SHOW` rejection before start and acceptance at/after start.
+`Europe/Sofia` DST gaps/overlaps, UTC storage/display, and, once those statuses exist (deferred by ADR-0022; the
+MVP statuses are `CONFIRMED` and `CANCELLED`), `COMPLETED`/`NO_SHOW` rejection before start and acceptance at/after
+start.
 
 Test invitation/reset/cancellation tokens for expiry, tamper, revocation, reuse,
 hash-only storage, and races; sessions for rotation/invalidation; CSRF and exact
@@ -277,9 +279,9 @@ industry-specific engine or authorization branch.
 2. Owner consumes the invitation and configures Business, StaffMember, Service,
    qualification, and schedule.
 3. DRAFT blocks public booking; activation enables it.
-4. Guest selects a Service, answers “При кого искаш да запазиш час?” with a
-   person or “Без предпочитание”, selects date/time, and books without an
-   account.
+4. Guest passes «Избор на услуга», «Избор на служител» (a person or “Без
+   предпочитание”), «Дата и час», «Вашите данни», and «Преглед и потвърждение», and
+   books without an account.
 5. Business calendars show the automatically CONFIRMED Appointment.
 6. Guest cancels securely and the slot returns.
 7. Staff create/edit/reschedule/cancel/complete/no-show within permission and
@@ -883,3 +885,39 @@ as a delta, so the claim "one activation sends one request" is independent of th
 Not covered by design: real browser zoom (640px is the CSS-width equivalent), hosting and production
 SPA fallback, server-rendered metadata (the page is client-rendered), and the human visual approval,
 which Phase 3 recorded separately.
+
+## Appointment and guest booking verification (issue #18; planned, nothing below has been executed)
+
+Decisions: ADR-0022 to ADR-0026; phases and the per-phase evidence table:
+`docs/tasks/08a-appointment-core-and-guest-booking.md`. Every test follows the reliability rules above
+(wait for the asserted state, control time, deferred promises, no sleeps, diagnose before calling anything
+flaky) and uses real PostgreSQL through Testcontainers for persistence, concurrency, and tenant isolation.
+
+- **Phase 2 (schema and overlap):** every `V11` constraint, same-Business composite keys and cross-Business
+  rejection, the exclusion for identical, partial, and adjacent ranges, different StaffMembers and Businesses,
+  `CANCELLED` rows that do not block, DST instants, concurrent two-writer inserts with lock-wait evidence, the
+  real busy source (only `CONFIRMED` windows, one bulk query, joined transaction), placeholder removal, and
+  module boundaries.
+- **Phase 3 (schedule guard):** the revision migration and backfill, a revision for a new Business, exactly one
+  bump per accepted weekly-schedule or schedule-exception mutation (every kind and operation) and none for a
+  rejected one, exclusive versus shared lock conflicts with PostgreSQL wait evidence, and an enumeration test
+  of availability-affecting statements. The booking against schedule commit-order tests belong to Phase 4.
+- **Phase 4 (orchestration):** an active caller transaction rejected before any booking work; each attempt and
+  retry in a distinct PostgreSQL transaction (own transaction identifier and snapshot, no `REQUIRES_NEW`); replay
+  holding only the initial Business lock; zero Customer rows after each failure path; lock order; revalidation against
+  suspension, deactivation, assignment, and Service changes; the assignment rule; fingerprint golden vectors and
+  a matrix (each field changed, preference versus the assigned member, another Business); key and encoding
+  versions with rotation and a missing key; replay after suspension, deactivation, and cancellation;
+  concurrent identical and conflicting attempts; retry classification and exhaustion; proven rollback versus
+  uncertain classification; and the ADR-0025 commit orders for every schedule mutation, with a control run
+  without the guard.
+- **Phase 5 (public API):** exact key sets and privacy sentinels, Business A/B isolation, guessed identifiers,
+  the collapsed 404, unknown-field rejection, the CSRF exemption scope, session independence, limiter capacity,
+  expiry, saturation, and replay limiting, the error contract, and no-store with no cookie.
+- **Phase 6 (frontend):** Vitest with fake clocks and deferred promises, abort and stale-response ordering, the
+  frozen uncertain state and exact-payload retry, duplicate-submit protection, and no personal data in the URL,
+  storage, or `history.state`.
+- **Phase 7 (rendered review):** rendered browser review and explicit human visual approval, separate from every
+  automated test, before Phase 8.
+- **Phase 8 (browser E2E):** Playwright journeys with fixtures created only through supported APIs, conflict
+  recovery, lifecycle states, mobile, tenant isolation, and unchanged administration.

@@ -72,8 +72,9 @@ dependencies absent separate approval.
 - Enforce optional same-Business one-to-one StaffMember/Membership linkage with
   constraints/tests. Use “Екип” and “Член на екипа” in generic Bulgarian
   administration while preserving `StaffMember` internally; public booking uses
-  contextual wording such as “При кого искаш да запазиш час?” and “Без
-  предпочитание”.
+  the neutral formal step headings of ADR-0026 («Избор на услуга», «Избор на служител», «Дата и час», «Вашите
+  данни», «Преглед и потвърждение») and “Без предпочитание”; the informal question “При кого искаш да запазиш
+  час?” is withdrawn.
 - Exit: availability inputs can be configured for every BusinessType; role and
   tenant tests pass without industry branches.
 
@@ -121,7 +122,9 @@ working periods were delivered by issue #16 (see Phase 5).
   redesign; Phase 4 browser acceptance and documentation reconciliation complete, pending
   review and closure of the issue);
   the public availability endpoint, Service and StaffMember selection, and slot
-  selection remain issue #18 work.
+  selection remain issue #18 work, decided and phased by Phase 1 of issue #18
+  (`docs/tasks/08a-appointment-core-and-guest-booking.md`, ADR-0022 to ADR-0026) and not yet
+  implemented.
 - Exit: DST/boundary/cancelled-slot/assignment and BusinessType parity pass.
 
 ## Phase 6 — transactional booking and Customers
@@ -136,12 +139,20 @@ working periods were delivered by issue #16 (see Phase 5).
   edit; human visual approval received) are committed; Phase 6, the browser E2E and documentation
   reconciliation, is implemented and verified and awaits final review and commit). Issues #18 and #21 are future consumers, not
   prerequisites; they add Appointment, event, and cancellation-token migrations with
-  `business_id` and `staff_member_id` and decide any Appointment contact snapshot.
+  `business_id` and `staff_member_id`; issue #18 decided that an Appointment keeps no Customer contact snapshot (ADR-0022).
 - Add GiST exclusion on `staff_member_id`, transactional revalidation, online
   booking through the published Customer matching contract delivered by issue #20, automatic
   `CONFIRMED`, cancellation/late flag, audit, and Bulgarian 409 recovery.
-- Use only `CONFIRMED`, `CANCELLED_BY_CUSTOMER`, `CANCELLED_BY_BUSINESS`,
-  `COMPLETED`, and `NO_SHOW`.
+- Issue #18 delivers this in eight phases (`docs/tasks/08a-appointment-core-and-guest-booking.md`;
+  decided, none implemented): (1) decisions, ADRs, and documentation; (2) the `appointment` table created
+  with its GiST exclusion in `V11`, domain and store, the real busy source, and removal of the placeholder;
+  (3) the Business schedule revision guard and the schedule mutations' participation; (4) booking
+  orchestration, contracts, Customer integration, retries, and idempotency; (5) the public API, security, and
+  abuse protection; (6) the frontend; (7) rendered browser review and human visual approval (a stop gate);
+  (8) browser E2E and final acceptance. Production public booking waits for the Business calendar (issue #21).
+- Amended by ADR-0022 (the earlier text said: "Use only `CONFIRMED`, `CANCELLED_BY_CUSTOMER`,
+  `CANCELLED_BY_BUSINESS`, `COMPLETED`, and `NO_SHOW`."): use only `CONFIRMED` and `CANCELLED`; cancellation
+  attribution, the late flag, and `COMPLETED`/`NO_SHOW` arrive with the issues that implement them.
 - Exit: exactly one overlapping booking succeeds; cancellation releases time;
   no raw token is stored.
 

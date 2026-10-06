@@ -126,3 +126,11 @@ Revisit for pagination or filtering when StaffMember volume or response size
 becomes material, a bounded but Business-configurable horizon, time-precise
 conflicts, per-Business limits, or allowing cleanup of an inactive StaffMember's
 exceptions without reactivation.
+
+## Amendment note (issue #18, 2026-10-06)
+
+The decision above is preserved. ADR-0025 adds one step to the mutation lock order for every create, replace, and
+delete of every exception kind: after the StaffMember row (for StaffMember-scoped kinds) and before the
+conditional aggregate statement, the transaction bumps the Business-level schedule revision row. Versions,
+overlap handling, failure mapping, and responses are unchanged. This takes effect when Phase 3 of issue #18 is
+implemented; until then the order above is the implemented behavior.

@@ -206,3 +206,13 @@ Revisit for Business-configurable horizon, notice, grid, or buffers; breaks; a
 public availability endpoint; a real Appointment source; a measured need to
 lock or serialize availability against booking; or team sizes where listing
 every eligible StaffMember becomes material.
+
+## Amendment note (issue #18, 2026-10-06)
+
+The decision above is preserved. Issue #18 supplies the real `BusyIntervalSource` in the new `booking` module
+(Phase 2), which also deletes `NoBookingBusyIntervalSource` and its wiring test as this ADR requires. The
+booking transaction is repeatable-read and read-write and joins `AvailabilityQuery` (ADR-0023). A public
+availability endpoint is introduced by ADR-0026 as a narrow adapter that maps the four failures and decides
+StaffMember exposure (no StaffMember identifier is attached to a slot). The statements "There is no public
+availability endpoint" and that the placeholder is temporary describe the state until those phases are
+implemented.

@@ -196,3 +196,11 @@ requirement, or future schedule exceptions need a wider transactional aggregate.
 Any replacement must define the client precondition, atomic database guard,
 StaffMember lifecycle race, tenant ownership, overlap guarantee, timezone
 semantics, retry policy, and deterministic PostgreSQL verification.
+
+## Amendment note (issue #18, 2026-10-06)
+
+The decision above is preserved. ADR-0025 inserts one step into the mutation lock order: after the StaffMember
+row lock (step 3) and before the conditional schedule version update (step 4), the transaction bumps the
+Business-level schedule revision row so a concurrent booking is serialized with the change. The schedule version,
+the replacement semantics, and the response are unchanged. This note takes effect when Phase 3 of issue #18 is
+implemented; until then the order above is the implemented behavior.

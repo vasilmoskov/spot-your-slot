@@ -244,3 +244,14 @@ query; and the orchestrator verifies the effective repeatable-read isolation bef
 Revisit for per-field visibility controls, a public StaffMember or Service
 reference, a public availability or booking endpoint, CDN caching, measured
 abuse or load, material response size, or server-rendered profile pages.
+
+## Amendment note (issue #18, 2026-10-06)
+
+The decision above is preserved as the issue #17 record. ADR-0026 amends the public contract for issue #18: the
+profile's Service entries gain the Service UUID (`services[].id`), the exact key-set test changes by that one
+key, and the Business timezone becomes public only in the narrow booking-options and availability contracts.
+The blanket denial of deeper paths under `/api/public/businesses/` is replaced by exact matchers for the three
+new booking routes; every other verb and path stays denied. "No StaffMember data is public" remains true for
+the profile itself; booking-options exposes only the display names of the StaffMembers eligible for one
+Service. The slug collapse, allowlist approach, and no-store behavior are unchanged. Effective when Phase 5 of
+issue #18 is implemented.

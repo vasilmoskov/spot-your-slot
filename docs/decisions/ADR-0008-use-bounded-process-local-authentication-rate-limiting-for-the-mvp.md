@@ -279,3 +279,11 @@ normalization, algorithms and windows, shared-state consistency, expiry,
 capacity, fail-open or fail-closed behavior, proxy trust, privacy, response
 headers, observability and failure modes. Upstream and application controls may
 be layered; migration to them is not automatic.
+
+## Amendment note (issue #18, 2026-10-06)
+
+The text above is preserved as the historical record. ADR-0026 adds a **separate, booking-owned** bounded
+process-local limiter for the public booking endpoints with the same properties (fixed window, explicit
+capacity, expiry cleanup, irreversible keys, fail-closed saturation, single instance, servlet remote
+address). The authentication limiter and its limits are unchanged, and the statement above that future public
+booking endpoints were outside the implemented scope is superseded for issue #18 by ADR-0026.

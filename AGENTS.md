@@ -60,9 +60,11 @@
 - Every business-owned query and mutation must derive or validate the Business
   from authenticated Membership; never trust a client-supplied business ID.
 - Preserve `StaffMember` as the internal English domain/technical term. In
-  generic Bulgarian administration use “Екип” and “Член на екипа”; in public
-  booking prefer contextual wording such as “При кого искаш да запазиш час?”
-  and the option “Без предпочитание”, rather than a mandatory performer noun.
+  generic Bulgarian administration use “Екип” and “Член на екипа”. The public
+  booking flow (ADR-0026) uses formal wording, the neutral step headings
+  “Избор на услуга”, “Избор на служител”, “Дата и час”, “Вашите данни” and
+  “Преглед и потвърждение”, and the option “Без предпочитание”; the earlier
+  informal question “При кого искаш да запазиш час?” is withdrawn.
 - The product direction is that a Business configures how many days in advance
   Customers may book (default 30 days). The current MVP implementation fixes the
   window at 30 Business-local dates (today through today + 29), the minimum

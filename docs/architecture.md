@@ -37,7 +37,7 @@ All backend packages live below `bg.spotyourslot`.
 | `workforce` | StaffMembers, Service qualifications, recurring weekly hours |
 | `scheduling` | timezone-aware availability, Business closures, StaffMember time off, working-day overrides, additional working periods, and deterministic assignment (ADR-0013) |
 | `publicprofile` | read-only unauthenticated public Business profile (`GET /api/public/businesses/{slug}`) orchestrated over the published `business.PublicBusinessProfileAccess` and `catalog.PublicServiceAccess` contracts (ADR-0017; backend contract, public React page and browser E2E verification implemented in issue #17; booking is not part of it) |
-| `booking` | transactional Appointment lifecycle and conflicts |
+| `booking` | transactional Appointment lifecycle and conflicts; planned by issue #18 and not yet implemented (ADR-0022 to ADR-0026): it owns the Appointment, the booking transaction, the real `BusyIntervalSource`, and the public booking HTTP adapter. It will depend on `business`, `catalog`, `workforce`, `scheduling`, `customer`, and `shared.contact`; nothing depends on it |
 | `customer` | Business-scoped Customers, conservative find-or-create matching, and private owner-only Customer administration (decisions in ADR-0019 to ADR-0021, issue #20). Implemented so far: the domain model and internal persistence (V10), conservative matching published as `CustomerIdentification` and `CustomerReferenceAccess` (with the sanitized `CustomerConcurrentConflict` and `CustomerOperationFailure`) from its root package, and the private owner-only administration API (`web` controller and advice, internal `application` service and validator) and the Business-owner interface (frontend `business/customers`: list with live body-based search, create, detail, and version-guarded edit; Phase 5), with Playwright journeys for it (Phase 6). Depends on `shared` (`contact`), `identity` (owner access and the authenticated context), and `business` (lifecycle access); never on `workforce`, `catalog`, `scheduling`, `publicprofile`, or `booking`, and nothing depends on it |
 | `notification` | outbox, delivery attempts, reminders, `EmailService` |
 | `audit` | immutable security/business audit events |
@@ -96,13 +96,13 @@ inside its own caller-owned transaction and receive only an existing or created 
 an invalid-identity outcome, or an identity-conflict outcome (ADR-0020). A PostgreSQL
 serialization failure, deadlock, or unrecoverable race is not an outcome: it raises the
 sanitized typed `CustomerConcurrentConflict`, which marks the caller's transaction for
-rollback; the caller retries the whole outer transaction after rollback, finalized by
-issue #18. Any other persistence failure raises the equally sanitized `CustomerOperationFailure`;
+rollback; the caller retries the whole outer transaction after rollback (finalized by issue #18 in
+ADR-0023: at most three attempts, each a completely new transaction). Any other persistence failure raises the equally sanitized `CustomerOperationFailure`;
 no persistence type crosses the boundary. Both operations are `MANDATORY` (a missing transaction
 fails before any work), `findOrCreate` runs at most three Customer statements (lookup, one
 `INSERT ... ON CONFLICT DO NOTHING`, one re-read), and `READ_COMMITTED` is the tested baseline. `CustomerReferenceAccess.find` supplies a same-Business reference; the future
-Appointment `(business_id, customer_id)` foreign key is the persistence guarantee. Whether an
-Appointment snapshots submitted contact data is deferred to issue #18. Customer appointment
+Appointment `(business_id, customer_id)` foreign key is the persistence guarantee. Decided by issue #18
+(ADR-0022): an Appointment does **not** snapshot submitted contact data. Customer appointment
 history will be a Booking-owned query added by issue #21; no Customer-to-Booking dependency
 exists. `publicprofile` and every other existing module must not depend on `customer`.
 
@@ -135,14 +135,35 @@ suspension, authentication, and network failures are separate outcomes and never
 
 PostgreSQL is the final arbiter. A Flyway-created GiST exclusion constraint
 uses `staff_member_id WITH =` and
-`tstzrange(start_at, occupied_until, '[)') WITH &&` for status `CONFIRMED`.
-`btree_gist` supplies scalar equality and half-open ranges permit adjacency.
+`tstzrange(start_at, occupied_until, '[)') WITH &&` for status `CONFIRMED`; issue
+#18 creates it in the same migration as the `appointment` table (`V11`, ADR-0022), so no schema without
+overlap protection exists. `btree_gist` supplies scalar equality and half-open ranges permit adjacency.
 
-Within one transaction, booking reloads Business settings and StaffMember/
-Service state, revalidates availability, creates or matches the Customer, and
-inserts the Appointment. The specific overlap violation becomes HTTP 409.
-Rescheduling follows the same path. `COMPLETED` and `NO_SHOW` require current
-time at or after `start_at`, preventing premature release of future time.
+**Decided by issue #18 and planned, not yet implemented** (ADR-0022 to ADR-0026):
+
+- One repeatable-read, read-write transaction per attempt (ADR-0023). The orchestration is invoked with no
+  active transaction and rejects an active caller transaction before any work, so every attempt is a separate
+  transaction. A replay holds only the initial Business lock. An attempt locks the Business `FOR SHARE`, looks
+  up a replay by attempt, revalidates through `AvailabilityQuery`, chooses the StaffMember (the requested one,
+  or the deterministic assignment among those the slot lists as free), locks the StaffMember, the Business
+  schedule revision, and the Service `FOR SHARE`, finds or creates the Customer, and inserts the Appointment.
+  Everything rolls back together, so a failed booking leaves no partial Customer or Appointment. A retry is
+  always a completely new transaction (at most three attempts), and a transaction that threw is never
+  continued.
+- Total lock order for every path: Business lifecycle row, Membership row, StaffMember row, Business schedule
+  revision row, Service row, then Customer, Appointment, and aggregate rows (ADR-0025). Recurring-schedule and
+  schedule-exception mutations bump the revision row; a booking that validated against older schedule data
+  fails with `40001` and retries, or the mutation waits for it. The other availability-affecting mutations
+  already conflict with the booking's row locks through real row updates (audit in ADR-0025).
+- Idempotency and replay by an attempt ID and a versioned HMAC request fingerprint, and the distinction between
+  a proven rollback and an uncertain commit outcome (ADR-0024).
+- The real `BusyIntervalSource` in `booking` returns `CONFIRMED` windows in one bulk query joined to the
+  caller's transaction and replaces `NoBookingBusyIntervalSource` in Phase 2 (ADR-0016).
+- Narrow public booking routes under `/api/public/businesses/{slug}` that never depend on a session
+  (ADR-0026). The overlap violation becomes a typed outcome and, publicly, HTTP 409.
+
+Rescheduling and manual creation (issues #19 and #21) follow the same store and constraint. Cancellation attribution and
+`COMPLETED`/`NO_SHOW` (with the rule that they require the current time at or after `start_at`) are deferred.
 
 ## Authentication, notifications, and deployment
 

@@ -38,6 +38,10 @@ version-guarded edit; creation is blocked for a suspended Business, which can st
 Customers edited). Phase 5 has human visual approval, and Phase 6 added the Customer browser E2E journeys. Issue #20 is
 implemented and verified, pending final review and commit; Booking and Appointments (#18, #21) are not implemented.
 Appointments, booking, production email, and hosting are not implemented.
+Issue #18 (appointment core and guest booking) has completed Phase 1 only: its decisions are recorded in
+`docs/tasks/08a-appointment-core-and-guest-booking.md` and ADR-0022 to ADR-0026, and Phases 2 to 8
+(schema, schedule coordination, booking, public API, frontend, rendered review, and E2E) are planned and not
+implemented; production public booking is planned to wait for the Business calendar (issue #21).
 Business closures, StaffMember time off, working-day overrides, and additional
 working periods ("Промени в графика") can be administered through an
 authenticated backend API and the Business-owner interface under "Работно
@@ -84,6 +88,7 @@ expand the MVP.
 - [Recurring staff working schedules backend task](docs/tasks/04c-recurring-staff-working-schedules-backend.md)
 - [Availability and schedule exceptions task](docs/tasks/05a-availability-and-schedule-exceptions.md)
 - [Business Customer records task](docs/tasks/07a-business-customer-records.md)
+- [Appointment core and guest booking task](docs/tasks/08a-appointment-core-and-guest-booking.md)
 - [Foundation task](docs/tasks/00-product-foundation.md)
 
 ## Selected toolchain
