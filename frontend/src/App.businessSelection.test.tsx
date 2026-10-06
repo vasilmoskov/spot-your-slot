@@ -226,6 +226,45 @@ describe('selecting a Business', () => {
     expect(screen.getByRole('button', { name: 'Добави клиент' })).toBeInTheDocument()
   })
 
+  // The selection request is held open so that something else can clear the page feedback while
+  // it is in flight; the outcome of the selection must not depend on that.
+  function holdSelection() {
+    let release: () => void = () => undefined
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const answer = mockedRequest.getMockImplementation()!
+    mockedRequest.mockImplementation(async (path: string, options?: RequestInit) => {
+      if (path === '/api/auth/business') await gate
+      return answer(path, options)
+    })
+    return release
+  }
+
+  it('still opens Услуги when the page feedback is cleared while the selection is in flight', async () => {
+    render(<App />)
+    const release = holdSelection()
+    await manage('Студио Активно')
+    // A same-route navigation event clears the feedback, which supersedes the pending attempt.
+    fireEvent(window, new PopStateEvent('popstate'))
+    release()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Услуги' })).toBeInTheDocument()
+    expect(window.location.hash).toBe('#/business/services?page=0&size=10&sort=name&direction=asc')
+    expect(screen.getByRole('group', { name: 'Студио Активно' })).toBeInTheDocument()
+  })
+
+  it('does not pull the user back to Услуги when they navigated elsewhere during the selection', async () => {
+    render(<App />)
+    const release = holdSelection()
+    await manage('Студио Активно')
+    fireEvent.click(screen.getByRole('link', { name: 'Профил' }))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Профил' })).toBeInTheDocument()
+    release()
+    await screen.findByRole('group', { name: 'Студио Активно' })
+    expect(screen.getByRole('heading', { level: 1, name: 'Профил' })).toBeInTheDocument()
+    expect(window.location.hash).toBe('#/profile')
+  })
+
   it('does not select anything when the request fails, and shows a safe message', async () => {
     mockedRequest.mockImplementation(async (path: string) => {
       if (path === '/api/auth/session') return current

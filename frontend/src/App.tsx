@@ -821,7 +821,11 @@ export function AuthenticatedApplication({
     })
   }
 
-  const action = async (path: string, body?: object) => {
+  // `failed`: the request did not succeed. `superseded`: it succeeded but newer feedback replaced
+  // this attempt's (any `setFeedback` call does that, including a no-op navigation event).
+  type ActionOutcome = 'done' | 'superseded' | 'failed'
+
+  const runAction = async (path: string, body?: object): Promise<ActionOutcome> => {
     setBusy(true)
     const publish = beginFeedback()
     try {
@@ -829,20 +833,26 @@ export function AuthenticatedApplication({
       if (body) options.body = JSON.stringify(body)
       const value = await request<Session>(path, options)
       if (value) setSession(value)
-      if (!publish(null)) return false
-      return true
+      return publish(null) ? 'done' : 'superseded'
     } catch (error) {
       publish({ kind: 'error', category: errorCategory(error), text: safeErrorDetail(error) })
-      return false
+      return 'failed'
     } finally {
       setBusy(false)
     }
   }
 
+  const action = async (path: string, body?: object) => (await runAction(path, body)) === 'done'
+
   // Selecting a Business to manage: establish the context, then open its first destination.
   const manageBusiness = async (businessId: string) => {
     if (businessId !== session.activeBusinessId) {
-      if (!(await action('/api/auth/business', { businessId }))) return
+      const startedAt = routeHref(routeRef.current)
+      const outcome = await runAction('/api/auth/business', { businessId })
+      if (outcome === 'failed') return
+      // Superseded feedback does not undo the selection. The user is still taken to the Business
+      // unless they have meanwhile navigated somewhere else, which must not be overridden.
+      if (outcome === 'superseded' && routeHref(routeRef.current) !== startedAt) return
     }
     pushRoute(BUSINESS_SERVICES_ROUTE)
     setRoute(BUSINESS_SERVICES_ROUTE)
