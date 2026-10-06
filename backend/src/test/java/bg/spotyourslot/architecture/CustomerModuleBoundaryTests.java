@@ -304,9 +304,8 @@ class CustomerModuleBoundaryTests {
     }
 
     @Test
-    void noBookingModuleOrClassExistsYetAndCustomerNeverDependsOnIt() {
-        assertThat(modules.getModuleByName("booking")).isEmpty();
-        assertThat(new ClassFileImporter().importPackages("bg.spotyourslot.booking")).isEmpty();
+    void customerNeverDependsOnBookingOrWorkforce() {
+        assertThat(modules.getModuleByName("booking")).isPresent();
         assertThat(dependenciesOf("customer")).doesNotContain("booking", "workforce");
     }
 

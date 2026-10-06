@@ -36,12 +36,15 @@ body-based search, detail, explicit create, and version-guarded update), and Pha
 Business-owner "Клиенти" interface (sortable, paginated list, body-based search, create, detail, and
 version-guarded edit; creation is blocked for a suspended Business, which can still be viewed and its existing
 Customers edited). Phase 5 has human visual approval, and Phase 6 added the Customer browser E2E journeys. Issue #20 is
-implemented and verified, pending final review and commit; Booking and Appointments (#18, #21) are not implemented.
-Appointments, booking, production email, and hosting are not implemented.
-Issue #18 (appointment core and guest booking) has completed Phase 1 only: its decisions are recorded in
-`docs/tasks/08a-appointment-core-and-guest-booking.md` and ADR-0022 to ADR-0026, and Phases 2 to 8
-(schema, schedule coordination, booking, public API, frontend, rendered review, and E2E) are planned and not
-implemented; production public booking is planned to wait for the Business calendar (issue #21).
+implemented and verified, pending final review and commit; Booking (#18, in progress below) and the Business calendar (#21) are not implemented.
+Booking, production email, and hosting are not implemented.
+Issue #18 (appointment core and guest booking) has completed Phases 1 and 2: its decisions are recorded in
+`docs/tasks/08a-appointment-core-and-guest-booking.md` and ADR-0022 to ADR-0026, and Phase 2 (implemented
+and verified, pending review and commit) added the `appointment` table with its database overlap exclusion
+(`V11`), the internal Appointment domain and store, and the real Scheduling busy-interval source in a new
+`booking` module, replacing the placeholder. There is no booking operation, public endpoint, or UI yet:
+Phases 3 to 8 (schedule coordination, booking, public API, frontend, rendered review, and E2E) are planned
+and not implemented; production public booking is planned to wait for the Business calendar (issue #21).
 Business closures, StaffMember time off, working-day overrides, and additional
 working periods ("Промени в графика") can be administered through an
 authenticated backend API and the Business-owner interface under "Работно
@@ -49,7 +52,8 @@ authenticated backend API and the Business-owner interface under "Работно
 contract combines them with the recurring schedules into a current availability
 view under fixed MVP values (15-minute grid, two-hour notice, 30 local dates,
 zero buffers, no breaks; Business configuration is a follow-up); there is no
-public availability HTTP endpoint, and Appointments and booking do not exist.
+public availability HTTP endpoint and no booking operation; Appointments exist only as persisted rows
+that the availability view treats as busy time.
 
 ## Product identity
 

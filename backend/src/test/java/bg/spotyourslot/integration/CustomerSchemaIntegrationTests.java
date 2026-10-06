@@ -65,7 +65,7 @@ class CustomerSchemaIntegrationTests extends PostgresIntegrationTest {
     // ---- migration integrity -------------------------------------------------
 
     @Test
-    void migrationsFromEmptyAreExactlyV1ThroughV10WithV10Newest() {
+    void migrationsFromEmptyAreExactlyV1ThroughV11() {
         List<String> versions = jdbc.sql("""
                         SELECT version
                         FROM flyway_schema_history
@@ -75,7 +75,7 @@ class CustomerSchemaIntegrationTests extends PostgresIntegrationTest {
                 .query(String.class)
                 .list();
 
-        assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10");
+        assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11");
         assertThat(MIGRATION_FILES).hasSize(9);
     }
 
@@ -175,7 +175,7 @@ class CustomerSchemaIntegrationTests extends PostgresIntegrationTest {
                 assertThat(result.getString(3)).isEqualTo(PHONE);
                 assertThat(result.getLong(4)).isEqualTo(1);
                 assertThat(result.getLong(5)).isZero();
-                assertThat(result.getInt(6)).isEqualTo(10);
+                assertThat(result.getInt(6)).isEqualTo(11);
             }
             try (var customer = connection.prepareStatement("""
                     INSERT INTO v10_customer_upgrade.customer(
@@ -236,7 +236,7 @@ class CustomerSchemaIntegrationTests extends PostgresIntegrationTest {
     }
 
     @Test
-    void noAppointmentTableExistsAndNothingReferencesOrIsReferencedBeyondTheBusiness() {
+    void customerReferencesOnlyItsBusinessAndIsReferencedOnlyByTheAppointmentTable() {
         List<String> tables = jdbc.sql("""
                         SELECT table_name
                         FROM information_schema.tables
@@ -254,8 +254,9 @@ class CustomerSchemaIntegrationTests extends PostgresIntegrationTest {
                 .query(String.class)
                 .list();
 
-        assertThat(tables).contains("customer").doesNotContain("appointment");
-        assertThat(foreignKeys).containsExactly("customer_business_fk->business");
+        assertThat(tables).contains("customer", "appointment");
+        assertThat(foreignKeys).containsExactlyInAnyOrder(
+                "customer_business_fk->business", "appointment_customer_fk->customer");
     }
 
     @Test

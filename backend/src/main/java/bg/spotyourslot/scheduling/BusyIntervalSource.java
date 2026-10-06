@@ -8,11 +8,11 @@ import java.util.Objects;
 import java.util.UUID;
 
 /**
- * Scheduling-owned seam for occupied StaffMember time. The future Booking
- * module implements it and depends on {@code scheduling}; {@code scheduling}
- * never depends on Booking. Until then
- * {@code scheduling.infrastructure.NoBookingBusyIntervalSource} is the only
- * implementation (ADR-0016).
+ * Scheduling-owned seam for occupied StaffMember time. The Booking module
+ * implements it ({@code booking.infrastructure.BookingBusyIntervalSource},
+ * ADR-0016, ADR-0022) and depends on {@code scheduling}; {@code scheduling}
+ * never depends on Booking. Exactly one implementation must be a bean, so a
+ * second one makes startup fail rather than silently hiding booked time.
  *
  * <p>Contract for every implementation:
  * <ul>

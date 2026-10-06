@@ -22,8 +22,9 @@ class AvailabilityModuleBoundaryTests {
 
     @Test
     void schedulingHasNoDependencyOnBooking() {
-        assertThat(modules.getModuleByName("booking")).isEmpty();
+        assertThat(modules.getModuleByName("booking")).isPresent();
         assertThat(dependenciesOf("scheduling")).doesNotContain("booking");
+        assertThat(dependenciesOf("booking")).contains("scheduling");
     }
 
     @Test

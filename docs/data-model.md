@@ -193,15 +193,31 @@ date_range)`.
   `customer_business_phone_unique`, `customer_business_email_unique`,
   `customer_business_id_id_unique`; index `customer_business_normalized_display_name_id_idx`.
   History metrics derive from Appointments in later issues.
-- **appointment** (issue #18, ADR-0022; **decided and planned for `V11`, not yet implemented**).
-  Created together with its overlap exclusion constraint. `business_id`; `customer_id`, `service_id`, and
+- **appointment** (issue #18 Phase 2, ADR-0022; **implemented by `V11__add_appointments.sql`**, the
+  table and its overlap exclusion in one migration; no booking, public contract, or idempotency computation
+  exists yet). `business_id`; `customer_id`, `service_id`, and
   `staff_member_id` each with a composite same-Business restrictive foreign key (and no foreign key to the
   Service assignment); UTC `start_at`, `end_at`, and `occupied_until` (equal in the MVP, zero buffers); snapshots
   `timezone`, `duration_minutes`, `price_eur`, `service_name`, and `staff_display_name`; `source`
   (`ONLINE`/`MANUAL`); `status` (`CONFIRMED`/`CANCELLED`); optional plain-text `customer_note` (at most 500
-  code points); a random informational `public_reference` unique per Business; the idempotency columns
+  code points, trimmed, no control characters except tab and line feed); a random informational
+  `public_reference` (ten Crockford base32 characters, unique per Business); the idempotency columns
   `booking_attempt_hash`, `request_fingerprint`, `fingerprint_encoding_version`, and `fingerprint_key_version`
-  (ADR-0024); `version`; audit timestamps. **No Customer name, phone, or email is copied** (D2). The private
+  (ADR-0024), which are all present or all absent and always present for an `ONLINE` row; `version`; audit
+  timestamps. Every column is `NOT NULL` except the note and the four idempotency columns. `occupied_until`
+  must equal `end_at` while buffers are zero, and `end_at` must equal `start_at` plus the duration in elapsed
+  time. Stable constraint names: `appointment_business_fk`, `appointment_customer_fk`, `appointment_service_fk`,
+  `appointment_staff_member_fk`, `appointment_source_valid`, `appointment_status_valid`,
+  `appointment_instants_finite`, `appointment_duration_minutes_range`, `appointment_end_matches_duration`,
+  `appointment_occupied_until_equals_end`, `appointment_price_nonnegative`, `appointment_timezone_not_blank`,
+  `appointment_service_name_canonical`, `appointment_staff_display_name_canonical`,
+  `appointment_customer_note_plain_text`, `appointment_public_reference_format`,
+  `appointment_attempt_hash_length`, `appointment_fingerprint_length`,
+  `appointment_fingerprint_versions_positive`, `appointment_idempotency_all_or_none`,
+  `appointment_online_requires_idempotency`, `appointment_version_nonnegative`,
+  `appointment_timestamps_finite_ordered`, `appointment_business_id_id_unique`,
+  `appointment_business_public_reference_unique`, `appointment_business_attempt_hash_unique`, and the exclusion
+  `appointment_staff_no_overlap`. **No Customer name, phone, or email is copied** (D2). The private
   staff note, cancellation metadata, and `late_cancellation` are deferred to #21 and the cancellation issue and
   arrive by forward migrations.
 - **schedule revision** (issue #18 Phase 3, ADR-0025; **decided and planned for `V12`, not yet implemented**): one
@@ -218,7 +234,7 @@ Every successful online/manual Appointment is `CONFIRMED`; no MVP
 confirmation-mode field or `PENDING` status exists. Cancellation attribution and `COMPLETED`/`NO_SHOW` are
 deferred and arrive by forward migrations.
 
-Only `CONFIRMED` blocks time (created in `V11`, the same migration as the table):
+Only `CONFIRMED` blocks time (implemented in `V11`, the same migration as the table):
 
 ```sql
 EXCLUDE USING gist (
@@ -260,7 +276,7 @@ Use a global unique normalized Business slug; unique Membership
 on `(business_id,start_at)`, `(staff_member_id,start_at)`, and
 `(customer_id,start_at desc)` plus GiST; schedule indexes by
 Business/StaffMember/day; token and outbox indexes; checks for ranges/statuses;
-and restrictive delete behavior. Issue #18 creates only the exclusion index and the unique indexes it needs
+and restrictive delete behavior. Issue #18 created only the exclusion index and the unique indexes it needs
 (public reference and attempt hash); the calendar and Customer-history indexes are added with the issue that
 queries them (#21).
 

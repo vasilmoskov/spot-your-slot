@@ -192,6 +192,43 @@ Inference: PostgreSQL permits `tstzrange(start_at, occupied_until, '[)')` in a
 partial exclusion constraint; this is proven by the Phase 2 schema tests, not yet
 observed in this repository.
 
+## Implementation notes (Phase 2, 2026-10-06)
+
+Implemented in `V11__add_appointments.sql`, `booking.domain`, `booking.infrastructure.AppointmentStore`,
+and `BookingBusyIntervalSource`. No decision above changed; these clarifications and deviations are recorded
+so the accepted text is not silently rewritten:
+
+- **Tighter equality.** The migration requires `occupied_until = end_at` (the current zero-buffer policy)
+  instead of the `occupied_until >= end_at` written in the Decision. A later approved buffer relaxes the one
+  constraint `appointment_occupied_until_equals_end` by a forward migration.
+- **Idempotency columns.** The four columns are all present or all absent
+  (`appointment_idempotency_all_or_none`) and always present for `ONLINE` rows
+  (`appointment_online_requires_idempotency`). A `MANUAL` row may carry them, so a later manual-creation form
+  can be idempotent too; this is a Phase 2 detail, not an accepted rule for #21.
+- **Note.** The database accepts only a trimmed, non-empty note of at most 500 code points with no control
+  character other than tab and line feed (a carriage return is rejected, so a caller normalizes line breaks
+  first). The exact application-side normalization remains Proposed (task record).
+- **Public reference.** Ten characters of the Crockford base32 alphabet (digits and letters except I, L, O, U),
+  uppercase, checked by `appointment_public_reference_format`. The alphabet question is therefore finalized.
+- **Timezone.** `varchar(100)`, the length of `business.timezone`; the database checks only a non-empty trimmed
+  value, and the domain requires a known region identifier.
+- **Names.** The Service and StaffMember snapshots must satisfy the same canonical NFKC/whitespace form as the
+  source columns. The database enforces it (`appointment_service_name_canonical`,
+  `appointment_staff_display_name_canonical`), and the domain enforces the same invariant with the repository's
+  existing `shared.contact` canonicalization: a noncanonical name (repeated or non-space whitespace inside,
+  edge whitespace, or a string NFKC would change) is rejected rather than silently changed, so a stored snapshot is
+  always the exact source fact. Phase 2 therefore also depends on the `shared::contact` named interface.
+- **Time range.** The domain rejects an instant outside `0001-01-01` to `9999-12-31` so every value converts to
+  a PostgreSQL `timestamptz`; PostgreSQL itself rejects an overflow with SQLState `22008`.
+- **Store.** `AppointmentStore` offers `insert`, `find`, `findByAttemptHash`, and `findBlockingWindows`; there is
+  no update, cancellation, or manual-creation operation (deferred). Failures are classified from the SQLState
+  and the structured constraint, table, or column fields into the sealed, cause-free
+  `AppointmentPersistenceException` (overlap, duplicate public reference, duplicate attempt, unknown
+  reference, invalid data, concurrent failure for `40001` and `40P01`, and an unexpected failure that keeps only
+  the SQLState). The store opens no transaction.
+- **PostgreSQL 18 note.** `pg_constraint` also lists `NOT NULL` constraints (type `n`); schema tests exclude
+  them when listing declared constraints.
+
 ## Conditions for revisiting
 
 Revisit for approved buffers, additional lifecycle states, a pending state,

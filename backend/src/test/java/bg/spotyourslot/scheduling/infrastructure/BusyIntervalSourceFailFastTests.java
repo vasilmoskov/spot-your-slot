@@ -16,15 +16,19 @@ import org.springframework.beans.factory.NoUniqueBeanDefinitionException;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 
 /**
- * The placeholder is a required ordinary bean, never a silent fallback. When a
- * real implementation appears, startup must fail until the placeholder is
- * deleted (ADR-0016).
+ * The busy-interval source is a required ordinary bean, never an optional or
+ * defaulted one. Exactly one implementation must exist: none or two fail
+ * startup, so booked time can never be silently ignored (ADR-0016). The
+ * Booking-owned implementation is wired by the booking module's own tests.
  */
 class BusyIntervalSourceFailFastTests {
     @Test
-    void exactlyOnePlaceholderStartsTheOrchestrator() {
+    void exactlyOneImplementationStartsTheOrchestrator() {
         try (AnnotationConfigApplicationContext context = context()) {
-            context.register(NoBookingBusyIntervalSource.class);
+            context.registerBean(
+                    "busySource",
+                    BusyIntervalSource.class,
+                    BusyIntervalSourceFailFastTests::noBusyTime);
             context.refresh();
 
             assertThat(context.getBeansOfType(BusyIntervalSource.class)).hasSize(1);
@@ -33,13 +37,16 @@ class BusyIntervalSourceFailFastTests {
     }
 
     @Test
-    void aRealImplementationAlongsideThePlaceholderFailsStartup() {
+    void twoImplementationsFailStartup() {
         try (AnnotationConfigApplicationContext context = context()) {
-            context.register(NoBookingBusyIntervalSource.class);
             context.registerBean(
-                    "futureBookingBusyIntervalSource",
+                    "firstBusySource",
                     BusyIntervalSource.class,
-                    () -> (businessId, staffMemberIds, from, to) -> Map.of());
+                    BusyIntervalSourceFailFastTests::noBusyTime);
+            context.registerBean(
+                    "secondBusySource",
+                    BusyIntervalSource.class,
+                    BusyIntervalSourceFailFastTests::noBusyTime);
 
             assertThatThrownBy(context::refresh)
                     .hasRootCauseInstanceOf(NoUniqueBeanDefinitionException.class);
@@ -51,6 +58,10 @@ class BusyIntervalSourceFailFastTests {
         try (AnnotationConfigApplicationContext context = context()) {
             assertThatThrownBy(context::refresh).isInstanceOf(RuntimeException.class);
         }
+    }
+
+    private static BusyIntervalSource noBusyTime() {
+        return (businessId, staffMemberIds, from, to) -> Map.of();
     }
 
     private static AnnotationConfigApplicationContext context() {

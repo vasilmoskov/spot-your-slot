@@ -886,14 +886,15 @@ Not covered by design: real browser zoom (640px is the CSS-width equivalent), ho
 SPA fallback, server-rendered metadata (the page is client-rendered), and the human visual approval,
 which Phase 3 recorded separately.
 
-## Appointment and guest booking verification (issue #18; planned, nothing below has been executed)
+## Appointment and guest booking verification (issue #18; Phase 2 executed, Phases 3 to 8 planned and not executed)
 
 Decisions: ADR-0022 to ADR-0026; phases and the per-phase evidence table:
 `docs/tasks/08a-appointment-core-and-guest-booking.md`. Every test follows the reliability rules above
 (wait for the asserted state, control time, deferred promises, no sleeps, diagnose before calling anything
 flaky) and uses real PostgreSQL through Testcontainers for persistence, concurrency, and tenant isolation.
 
-- **Phase 2 (schema and overlap):** every `V11` constraint, same-Business composite keys and cross-Business
+- **Phase 2 (schema and overlap; executed, 244 new tests in nine classes, full suite 2469 tests, details and the full-suite result in the Phase 2
+  record of the task document):** every `V11` constraint, same-Business composite keys and cross-Business
   rejection, the exclusion for identical, partial, and adjacent ranges, different StaffMembers and Businesses,
   `CANCELLED` rows that do not block, DST instants, concurrent two-writer inserts with lock-wait evidence, the
   real busy source (only `CONFIRMED` windows, one bulk query, joined transaction), placeholder removal, and

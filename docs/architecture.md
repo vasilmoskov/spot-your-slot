@@ -37,7 +37,7 @@ All backend packages live below `bg.spotyourslot`.
 | `workforce` | StaffMembers, Service qualifications, recurring weekly hours |
 | `scheduling` | timezone-aware availability, Business closures, StaffMember time off, working-day overrides, additional working periods, and deterministic assignment (ADR-0013) |
 | `publicprofile` | read-only unauthenticated public Business profile (`GET /api/public/businesses/{slug}`) orchestrated over the published `business.PublicBusinessProfileAccess` and `catalog.PublicServiceAccess` contracts (ADR-0017; backend contract, public React page and browser E2E verification implemented in issue #17; booking is not part of it) |
-| `booking` | transactional Appointment lifecycle and conflicts; planned by issue #18 and not yet implemented (ADR-0022 to ADR-0026): it owns the Appointment, the booking transaction, the real `BusyIntervalSource`, and the public booking HTTP adapter. It will depend on `business`, `catalog`, `workforce`, `scheduling`, `customer`, and `shared.contact`; nothing depends on it |
+| `booking` | transactional Appointment lifecycle and conflicts; issue #18 (ADR-0022 to ADR-0026). **Implemented (Phase 2):** the Appointment domain records, the internal `AppointmentStore` (V11), and the real `BusyIntervalSource` (`BookingBusyIntervalSource`); it depends only on the published `scheduling` seam and the `shared.contact` canonicalization policy (used to reject noncanonical snapshot names). **Planned, not implemented:** the booking transaction, idempotency, and the public booking HTTP adapter, which will add dependencies on `business`, `catalog`, `workforce`, `customer`, and `shared.contact`. Nothing depends on it and `scheduling` never does |
 | `customer` | Business-scoped Customers, conservative find-or-create matching, and private owner-only Customer administration (decisions in ADR-0019 to ADR-0021, issue #20). Implemented so far: the domain model and internal persistence (V10), conservative matching published as `CustomerIdentification` and `CustomerReferenceAccess` (with the sanitized `CustomerConcurrentConflict` and `CustomerOperationFailure`) from its root package, and the private owner-only administration API (`web` controller and advice, internal `application` service and validator) and the Business-owner interface (frontend `business/customers`: list with live body-based search, create, detail, and version-guarded edit; Phase 5), with Playwright journeys for it (Phase 6). Depends on `shared` (`contact`), `identity` (owner access and the authenticated context), and `business` (lifecycle access); never on `workforce`, `catalog`, `scheduling`, `publicprofile`, or `booking`, and nothing depends on it |
 | `notification` | outbox, delivery attempts, reminders, `EmailService` |
 | `audit` | immutable security/business audit events |
@@ -138,8 +138,13 @@ uses `staff_member_id WITH =` and
 `tstzrange(start_at, occupied_until, '[)') WITH &&` for status `CONFIRMED`; issue
 #18 creates it in the same migration as the `appointment` table (`V11`, ADR-0022), so no schema without
 overlap protection exists. `btree_gist` supplies scalar equality and half-open ranges permit adjacency.
+**Implemented in issue #18 Phase 2:** `V11`, the `booking.domain` records, the `booking.infrastructure`
+`AppointmentStore` (which classifies PostgreSQL errors structurally into sanitized typed outcomes such as the
+overlap conflict), and `BookingBusyIntervalSource`, which replaced the placeholder (one bulk statement over
+`CONFIRMED` rows, `MANDATORY` transaction participation).
 
-**Decided by issue #18 and planned, not yet implemented** (ADR-0022 to ADR-0026):
+**Decided by issue #18 and planned, not yet implemented** (ADR-0022 to ADR-0026; the first bullet of this list
+describes the Phase 4 transaction, and the busy-source bullet is implemented as stated above):
 
 - One repeatable-read, read-write transaction per attempt (ADR-0023). The orchestration is invoked with no
   active transaction and rejects an active caller transaction before any work, so every attempt is a separate
@@ -158,7 +163,7 @@ overlap protection exists. `btree_gist` supplies scalar equality and half-open r
 - Idempotency and replay by an attempt ID and a versioned HMAC request fingerprint, and the distinction between
   a proven rollback and an uncertain commit outcome (ADR-0024).
 - The real `BusyIntervalSource` in `booking` returns `CONFIRMED` windows in one bulk query joined to the
-  caller's transaction and replaces `NoBookingBusyIntervalSource` in Phase 2 (ADR-0016).
+  caller's transaction and replaced `NoBookingBusyIntervalSource` in Phase 2 (ADR-0016; implemented).
 - Narrow public booking routes under `/api/public/businesses/{slug}` that never depend on a session
   (ADR-0026). The overlap violation becomes a typed outcome and, publicly, HTTP 409.
 
@@ -312,12 +317,13 @@ performs no writes or explicit locks, though a joined outer transaction may be
 read-write, and PostgreSQL's first-statement snapshot then covers every
 committed database read; the result is a current view that reserves nothing and booking
 must revalidate. The Scheduling-owned `BusyIntervalSource` is the seam for
-occupied time. Its real implementation belongs to the future Booking issue and
-must join the caller's transaction with one bulk query; a temporary
-`NoBookingBusyIntervalSource` placeholder is a required ordinary bean, so a
-second implementation makes startup fail until the placeholder is deleted. The
-orchestration issues four application SQL statements regardless of team size.
-There is no public availability endpoint.
+occupied time. Its real implementation, `booking.infrastructure.BookingBusyIntervalSource`
+(issue #18 Phase 2), joins the caller's transaction (`MANDATORY`) and answers all requested
+StaffMembers with one bulk statement over `CONFIRMED` Appointments; the temporary
+`NoBookingBusyIntervalSource` placeholder and its tests were deleted in the same change, and the
+source remains a required ordinary bean, so zero or two implementations make startup fail. The
+orchestration issues four application SQL statements regardless of team size, plus the busy-interval
+statement. There is no public availability endpoint.
 
 Issue #17 adds the `publicprofile` module (the backend public read contract, the
 public React page and its browser E2E verification are implemented; booking, availability

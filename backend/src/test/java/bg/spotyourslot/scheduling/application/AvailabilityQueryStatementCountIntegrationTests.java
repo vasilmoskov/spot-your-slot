@@ -73,26 +73,30 @@ class AvailabilityQueryStatementCountIntegrationTests extends PostgresIntegratio
     }
 
     @Test
-    void exactlyFourApplicationStatementsForOneEligibleStaffMember() {
-        assertThat(statementsFor(1)).hasSize(4);
+    void exactlyFiveApplicationStatementsForOneEligibleStaffMember() {
+        // Four availability reads plus the one bulk busy-interval read of the Booking module.
+        assertThat(statementsFor(1)).hasSize(5);
     }
 
     @Test
-    void theSameFourStatementsForTenEligibleStaffMembers() {
-        assertThat(statementsFor(10)).hasSize(4);
+    void theSameFiveStatementsForTenEligibleStaffMembers() {
+        assertThat(statementsFor(10)).hasSize(5);
     }
 
     @Test
-    void theFourStatementsAreBusinessServiceStaffWithPeriodsAndExceptionsInOrder() {
+    void theFiveStatementsAreBusinessServiceStaffWithPeriodsExceptionsAndBusyTimeInOrder() {
         List<String> statements = statementsFor(3);
 
-        assertThat(statements).hasSize(4);
+        assertThat(statements).hasSize(5);
         assertThat(normalized(statements.get(0))).contains("from business");
         assertThat(normalized(statements.get(1))).contains("from service");
         assertThat(normalized(statements.get(2)))
                 .contains("from staff_member m")
                 .contains("staff_working_period");
         assertThat(normalized(statements.get(3))).contains("from schedule_exception e");
+        assertThat(normalized(statements.get(4)))
+                .contains("from appointment")
+                .contains("status = 'confirmed'");
     }
 
     @Test
@@ -113,7 +117,7 @@ class AvailabilityQueryStatementCountIntegrationTests extends PostgresIntegratio
 
         List<String> statements = record(() -> scenario.calculate(availability));
 
-        assertThat(statements).hasSize(4);
+        assertThat(statements).hasSize(5);
         assertThat(ISOLATIONS).contains(Connection.TRANSACTION_REPEATABLE_READ);
         assertThat(scenario.result()[0].slots()).isNotEmpty();
     }
@@ -152,7 +156,7 @@ class AvailabilityQueryStatementCountIntegrationTests extends PostgresIntegratio
         List<String> statements = record(
                 () -> inTransaction(TransactionDefinition.ISOLATION_REPEATABLE_READ, scenario));
 
-        assertThat(statements).hasSize(4);
+        assertThat(statements).hasSize(5);
         assertThat(ISOLATIONS).first().isEqualTo(Connection.TRANSACTION_REPEATABLE_READ);
         assertThat(scenario.result()[0].slots()).isNotEmpty();
     }
@@ -164,7 +168,7 @@ class AvailabilityQueryStatementCountIntegrationTests extends PostgresIntegratio
         List<String> statements = record(
                 () -> inTransaction(TransactionDefinition.ISOLATION_SERIALIZABLE, scenario));
 
-        assertThat(statements).hasSize(4);
+        assertThat(statements).hasSize(5);
         assertThat(ISOLATIONS).first().isEqualTo(Connection.TRANSACTION_SERIALIZABLE);
         assertThat(scenario.result()[0].slots()).isNotEmpty();
     }

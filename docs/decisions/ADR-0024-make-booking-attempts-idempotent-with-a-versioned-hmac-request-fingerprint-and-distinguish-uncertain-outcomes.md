@@ -57,9 +57,12 @@ secure random generator and sends it as a lowercase UUID version 4 in the reques
 unpredictable identifier. The server validates only the **format** (a canonical
 lowercase UUID version 4; any other form is a validation error): format validation
 cannot prove that the value was randomly generated, so the server does not and cannot
-guarantee entropy, and a caller that supplies a predictable ID can only affect its
-own attempts, because replay also requires the exact payload and fingerprint. The ID
-is not an authentication credential. The server stores only
+guarantee entropy. Unpredictable generation by every caller is therefore a **requirement
+on callers**, not something the server enforces, and neither the format check nor the
+payload comparison of the fingerprint justifies any claim about what a caller that
+supplies a predictable or reused ID can or cannot affect; the consequences of such a
+caller are treated as unanalysed residual risk. The ID is not an authentication
+credential. The server stores only
 `SHA-256(canonical attempt ID)` in `booking_attempt_hash`, unique per Business.
 
 **Canonical request and fingerprint.** The fingerprint identifies a request by
@@ -203,7 +206,7 @@ messages truthful.
 - **Encoding drift:** a frozen encoding with golden vectors and a version column.
 - **Misclassification of a commit failure:** conservative, evidence-based
   classification; Phase 4 tests.
-- **Replay enumeration:** browser-generated secure random attempt IDs (format validated, entropy not provable by the server), a required exact payload, and rate
+- **Replay enumeration:** requiring callers to generate unpredictable attempt IDs (the server validates the format only and cannot prove entropy), a required exact payload, and rate
   limiting.
 
 ## Consequences

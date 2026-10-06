@@ -56,7 +56,7 @@ class BusinessSchemaIntegrationTests extends PostgresIntegrationTest {
                 .query(String.class)
                 .list();
 
-        assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10");
+        assertThat(versions).containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11");
     }
 
     @Test
@@ -285,7 +285,6 @@ class BusinessSchemaIntegrationTests extends PostgresIntegrationTest {
         assertThat(tables)
                 .contains("staff_working_schedule", "staff_working_period")
                 .doesNotContain(
-                        "appointment",
                         "weekly_work_interval",
                         "schedule_break",
                         "time_off",

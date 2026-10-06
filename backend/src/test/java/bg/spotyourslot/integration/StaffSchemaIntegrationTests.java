@@ -339,8 +339,7 @@ class StaffSchemaIntegrationTests extends PostgresIntegrationTest {
                         "weekly_work_interval",
                         "schedule_break",
                         "time_off",
-                        "working_override",
-                        "appointment");
+                        "working_override");
     }
 
     private UUID createBusiness() {

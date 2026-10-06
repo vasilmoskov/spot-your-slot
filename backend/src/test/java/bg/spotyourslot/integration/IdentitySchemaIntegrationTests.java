@@ -27,8 +27,7 @@ class IdentitySchemaIntegrationTests extends PostgresIntegrationTest {
                         "platform_role",
                         "user_session",
                         "owner_invitation",
-                        "password_reset")
-                .doesNotContain("appointment");
+                        "password_reset");
     }
 
     @Test
