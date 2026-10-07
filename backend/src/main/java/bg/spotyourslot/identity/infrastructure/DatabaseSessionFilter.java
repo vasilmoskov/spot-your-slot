@@ -31,6 +31,15 @@ public class DatabaseSessionFilter extends OncePerRequestFilter {
         this.clock = clock;
     }
 
+    /**
+     * The public booking routes are session-independent (ADR-0026): the cookie is neither read nor
+     * validated, and the session is never touched, refreshed, cleared, or revoked for them.
+     */
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        return PublicBookingRoutes.SESSION_INDEPENDENT.matches(request);
+    }
+
     @Override
     protected void doFilterInternal(
             HttpServletRequest request, HttpServletResponse response, FilterChain chain)

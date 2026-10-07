@@ -237,7 +237,8 @@ export const PROFILE_KEYS = [
   'slug',
 ]
 export const ADDRESS_KEYS = ['city', 'details', 'postalCode', 'street', 'streetNumber']
-export const SERVICE_KEYS = ['description', 'durationMinutes', 'name', 'price']
+// ADR-0026 (issue #18 Phase 5) added the Service reference `id`: the only identifier in the response.
+export const SERVICE_KEYS = ['description', 'durationMinutes', 'id', 'name', 'price']
 
 export type PublicApiResult = { status: number, text: string, body: unknown }
 
@@ -264,7 +265,7 @@ export type PublicProfileJson = {
   description: string | null
   phone: string | null
   address: Record<string, string | null> | null
-  services: { name: string, description: string | null, durationMinutes: number, price: number }[]
+  services: { id: string, name: string, description: string | null, durationMinutes: number, price: number }[]
 }
 
 export function asProfile(result: PublicApiResult): PublicProfileJson {

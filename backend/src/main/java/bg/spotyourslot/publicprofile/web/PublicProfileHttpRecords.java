@@ -3,10 +3,12 @@ package bg.spotyourslot.publicprofile.web;
 import bg.spotyourslot.publicprofile.application.PublicProfileView;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.UUID;
 
 /**
- * The public HTTP contract. Every property is an explicit allowlist entry; there is no
- * identifier, status, version, timestamp, contact email, timezone, or currency.
+ * The public HTTP contract. Every property is an explicit allowlist entry; the only identifier
+ * is the Service reference (ADR-0026), and there is no status, version, timestamp, contact
+ * email, timezone, or currency.
  */
 public final class PublicProfileHttpRecords {
     private PublicProfileHttpRecords() {
@@ -49,12 +51,14 @@ public final class PublicProfileHttpRecords {
     }
 
     public record ServiceResponse(
+            UUID id,
             String name,
             String description,
             int durationMinutes,
             BigDecimal price) {
         static ServiceResponse from(PublicProfileView.Service service) {
             return new ServiceResponse(
+                    service.id(),
                     service.name(),
                     service.description(),
                     service.durationMinutes(),

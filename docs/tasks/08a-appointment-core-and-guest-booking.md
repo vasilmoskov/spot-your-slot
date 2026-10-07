@@ -1,11 +1,11 @@
 # SpotYourSlot — Appointment Core and Guest Booking
 
-Status: Phase 1 (decisions and documentation) and Phase 2 (the `appointment` schema with its overlap exclusion,
-the internal domain and persistence, and the real busy-interval source) are committed (`a0243f7`, `18052b8`).
-Phase 3 (the Business schedule revision guard and the schedule mutations' participation) is committed (`70e31c9`).
-Phase 4 (booking orchestration, idempotency, HMAC fingerprints, bounded retry; internal only) is implemented and
-verified and awaits review and commit. Phases 5 to 8 are planned and not started. Issue #18 is closed only on
-explicit approval; issue #19 is not changed.
+Status: Phase 1 (decisions and documentation), Phase 2 (the `appointment` schema with its overlap exclusion, the
+internal domain and persistence, and the real busy-interval source), Phase 3 (the Business schedule revision guard and the
+schedule mutations' participation), and Phase 4 (booking orchestration, idempotency, HMAC fingerprints, bounded retry)
+are committed (`a0243f7`, `18052b8`, `70e31c9`, `63f6019`). Phase 5 (the public availability and booking API,
+session-independent security, and the bounded limiter; backend only) is implemented and verified and awaits review
+and commit. Phases 6 to 8 are planned and not started. Issue #18 is closed only on explicit approval; issue #19 is not changed.
 GitHub issue: #18 — Build appointment core and guest booking flow
 Depends on: #16, #17, #20; relates to #19 (partly satisfied here) and #21 (release dependency)
 Decision records: [ADR-0022](../decisions/ADR-0022-model-appointments-with-snapshots-two-statuses-and-a-database-overlap-exclusion.md),
@@ -129,8 +129,8 @@ administration wording «Екип» and «Член на екипа» is unchange
 
 - **Schema (Phase 2, `V11`):** `appointment` as in ADR-0022. **Phase 3, `V12`:** `business_schedule_revision`
   (ADR-0025; implemented).
-- **Public routes (Phase 5):** the amended profile (`services[].id`), `booking-options`, `availability`, and
-  `POST …/bookings` (ADR-0026).
+- **Public routes (Phase 5, implemented):** the amended profile (`services[].id`), `booking-options`, `availability`, and
+  `POST …/bookings` (ADR-0026; exact contract in its Phase 5 implementation notes).
 - **New `booking` module:** depends on `business`, `catalog`, `workforce`, `scheduling`, `customer`, and
   `shared.contact`; nothing depends on it; `scheduling` never depends on it. It implements
   `scheduling.BusyIntervalSource` and removes `NoBookingBusyIntervalSource` and its wiring test in Phase 2
@@ -196,15 +196,17 @@ These stay Proposed until the named phase settles them with evidence:
    Phase 4.
 4. ~~The byte layout of the canonical request encoding and the exact note normalization~~ Settled in Phase 4
    (ADR-0024 implementation notes).
-5. Fingerprint key ring names and startup validation settled in Phase 4 (ADR-0024 notes; a startup check of every
-   stored key version is not implemented); the limiter remains Phase 5.
+5. ~~Fingerprint key ring names and startup validation~~ Settled in Phase 4 (ADR-0024 notes; a startup check of every
+   stored key version is not implemented); the limiter was settled in Phase 5 (ADR-0026 notes).
 6. ~~COMMIT classification~~ Settled in Phase 4 (ADR-0024 notes; real commit errors could not be provoked).
-7. The HTTP status of the `GET` routes for an unavailable Service, `Retry-After`, and the fixed problem
-   `instance`.
-8. The per-address aggregate limiter budget that prevents one address from exhausting limiter capacity, and the
-   capacity default.
+7. ~~The HTTP status of the `GET` routes for an unavailable Service, `Retry-After`, and the fixed problem
+   `instance`~~ Settled in Phase 5: `409 BOOKING_SERVICE_UNAVAILABLE` on the `GET` routes too; `Retry-After` on `429`
+   (seconds until the window or capacity frees) and `2` on both `503`; the instance `/api/public/businesses`.
+8. ~~The per-address aggregate limiter budget and the capacity default~~ Settled in Phase 5: 30 bookings and 600 reads
+   per address across Businesses per 15 minutes; 50 000 counters.
 9. The wording of the privacy notice and of the confirmation shown when leaving the frozen uncertain state.
-10. The mechanism that makes public endpoints ignore the session (Phase 5).
+10. ~~The mechanism that makes public endpoints ignore the session~~ Settled in Phase 5: `PublicBookingRoutes` and
+    `DatabaseSessionFilter.shouldNotFilter`.
 
 ## Exclusions
 
@@ -384,7 +386,7 @@ deletions in `deleted-files.txt`, and the 46 paths in `changed-files.txt`.
   author, never by editing V1 to V11.
 - Nothing in Phase 2 is visible in the UI, so no visual review applies.
 
-## Phase 3 record (implemented and verified; awaiting review and commit)
+## Phase 3 record (implemented, verified, reviewed, and committed as `70e31c9`)
 
 Scope: the Business-owned schedule revision row and its two narrow published contracts, the forward migration
 `V12`, and the participation of the weekly working-schedule replacement and every schedule-exception create,
@@ -559,7 +561,7 @@ booking, the lock order including the Service row, and the rollback of the Custo
   sources.
 - Nothing in Phase 3 is visible in the UI, so no visual review applies. Phase 4 remains outstanding.
 
-## Phase 4 record (implemented and verified; awaiting review and commit)
+## Phase 4 record (implemented, verified, reviewed, and committed as `63f6019`)
 
 Scope: the internal `GuestBooking` capability: transaction ownership, one attempt, idempotency, HMAC request
 fingerprints, replay, bounded whole-transaction retry, and outcome classification, with the narrow published
@@ -670,3 +672,137 @@ Local only; base `HEAD` `70e31c9` plus the uncommitted Phase 4 working tree (not
   replay.
 - Nothing is visible in the UI, so no visual review applies. Issue #18 and #19 are not complete; production public
   booking still depends on Issue #21.
+
+## Phase 5 record (implemented and verified; awaiting review and commit)
+
+Scope: the public HTTP contracts of guest booking, session-independent security with the one narrow CSRF exemption, the
+bounded Booking-owned limiter, and the bound on the booking request body, backend only (plus the compatibility check of the
+existing public-profile frontend consumers). No frontend, cancellation, manual booking, owner calendar, Customer
+history, payment, notification, migration (V1 to V12 are byte-identical to `HEAD`), dependency, booking transaction
+semantics, HMAC encoding, or lock strategy changed. The final contract, the settled Proposed details, and every
+refinement are the **Phase 5 implementation notes of ADR-0026**; this record maps them to evidence.
+
+### What was implemented
+
+- **Routes (`publicbooking` module):** `GET …/services/{serviceId}/booking-options`, `GET …/services/{serviceId}/availability?date=`
+  `[&staffMemberId=]`, and `POST …/bookings` (`201` new, `200` replay including `CANCELLED`); the profile gains `services[].id`.
+  The controller only delegates: `GuestBooking` for booking, `AvailabilityQuery` (in one repeatable-read snapshot with the
+  new `workforce.PublicStaffAccess`) for the reads. It contains no orchestration, matching, availability calculation, or
+  retry logic. Every error is a sanitized RFC 7807 body with the fixed `instance` `/api/public/businesses` and the approved
+  Bulgarian messages; the known rollback and the uncertain outcome are two `503` results with distinct codes and messages.
+- **Security (`identity`):** `PublicBookingRoutes` is the one definition of the four exact matchers used by the `permitAll`
+  rule, `DatabaseSessionFilter.shouldNotFilter` (so a session is never read, refreshed, revoked, or set), and
+  `ignoringRequestMatchers` (only `POST …/bookings`). Authorization, CORS (exact origin, unchanged), and every other CSRF
+  rule are unchanged.
+- **Limiter (`booking`):** `PublicBookingRateLimiter` (published), `BookingRateLimiter`, `FixedWindowCounters`, `Digest`,
+  `RateLimitSettings`, and `BookingRateLimitConfiguration`; the configuration keys are `spotyourslot.booking.rate-limit.*`
+  (documented in `application.yaml` with `BOOKING_RATE_LIMIT_*` environment names).
+- **Contract additions:** `workforce.PublicStaffAccess`, `PublicService.id`, `AvailabilitySnapshot.firstDate()` and
+  `lastDate()` (derived, no new component).
+
+### Existing tests changed because Phase 5 legitimately changes their subject
+
+`PublicProfileApiIntegrationTests` (the Service key set now starts with `id`; the privacy test asserts the Service reference
+is the only identifier), `PublicProfileControllerTests` and `PublicServiceAccessServiceTests` (the new value),
+`BookingModuleBoundaryTests` and `ScheduleRevisionModuleBoundaryTests` (only `publicbooking` may depend on `booking`; the new
+published type). No assertion was weakened or removed.
+
+### Verification (executed)
+
+Local only; the tested state is base `HEAD` `63f6019` **plus the uncommitted Phase 5 working tree** (nothing staged). No CI
+run exists for this state. The final `./mvnw --batch-mode verify` ran after the last change to any file under `backend/`; the
+only later edits are Markdown.
+
+- **Final complete `./mvnw --batch-mode verify`** (PostgreSQL 18.4 through Testcontainers), run after the last change under
+  `backend/` (the second correction pass below): **158 test classes, 3153 tests, 0 failures, 0 errors, 0 skipped,
+  `BUILD SUCCESS`** (2 min 3 s). Phase 4's 2943 plus 210 new tests (the first Phase 5 verify, before the corrections, was 3131).
+- **New classes (188 tests):** `BookingRateLimiterTests` 38, `PublicBookingRequestParserTests` 35, `PublicBookingCreationApiIntegrationTests`
+  32, `PublicBookingAvailabilityApiIntegrationTests` 19, `PublicBookingRateLimitApiIntegrationTests` 16,
+  `PublicBookingSessionSecurityApiIntegrationTests` 15, `PublicBookingResultMappingApiIntegrationTests` 11,
+  `PublicBookingModuleBoundaryTests` 8, `PublicBookingRoutesTests` 5, `PublicBookingRateLimitCapacityApiIntegrationTests` 4,
+  `PublicBookingDefaultRateLimitApiIntegrationTests` 3, `PublicStaffAccessServiceTests` 2 (`PublicBookingApiIntegrationTest` is the base class); added by the review corrections: `BookingBodyLimitFilterTests` 6, `PublicBookingBodyLimitApiIntegrationTests` 8, `PublicBookingBodyLimitContainerIntegrationTests` 5, and +2 in `BookingRateLimiterTests` (38 to 40) and +1 in `PublicBookingRateLimitApiIntegrationTests` (16 to 17).
+- **Reliability.** Before the final run, the Phase 5 classes were run alone repeatedly while they were written; after the final
+  run, every `PublicBooking*` class, `BookingRateLimiterTests`, and `PublicProfileApiIntegrationTests` were run twice more as
+  one selection (both runs exit 0; these are extra checks and not part of the test total, and predate the review corrections). Failures found while writing were diagnosed, not worked around: the
+  shared limiter coupling tests through a common remote address (each request now uses its own address, and the capacity class
+  advances the injected clock one window per test), the aggregate contact budget that a replay legitimately consumes
+  (tests were restructured, not the budget), a preflight that Spring answers with only the allowed header, and a
+  `@JsonIgnoreProperties(ignoreUnknown = false)` that cannot force a failure (which led to the strict tree parser). No sleep, no
+  larger timeout, and no weakened assertion was used.
+- **Hygiene:** a search over every new or changed Java file found no compressed empty constructor, method, class, or record
+  body, no wildcard import, no unused import, and no trailing whitespace; `git diff --check` is clean; V1 to V12 are
+  byte-identical to `HEAD` (hashes in the review archive). Frontend: see the review corrections.
+
+### File inventory (exact, from `git`; 70 changed paths, after the review corrections)
+
+| Group | Count | Detail |
+|---|---:|---|
+| New (untracked) | 41 | 25 main: 6 `booking` (`PublicBookingRateLimiter`, `BookingRateLimiter`, `FixedWindowCounters`, `Digest`, `RateLimitSettings`, `BookingRateLimitConfiguration`), `PublicBookingRoutes`, 14 `publicbooking` (including `BookingBodyLimitFilter` and `RequestBodyTooLarge`), 3 `workforce`; 16 test files |
+| Modified | 29 | 12 main (11 Java and `application.yaml`), 5 backend test files, 4 frontend files (`api.ts`, `api.test.ts`, `e2e/support/publicProfile.ts`, `e2e/public-business-profile.spec.ts`), 7 documents under `docs/`, and `README.md` |
+| Deleted | 0 | none |
+
+### Evidence by requirement
+
+- **Contracts, allowlists, privacy:** exact key sets and values in the three API classes; sentinel strings for the Customer,
+  the note, the attempt ID, the contact, and staff private data in responses, errors, and captured logs; no internal
+  identifier, version, or audit value in any response; no lookup-by-reference route (`GET …/bookings/{reference}` is the denied route).
+- **Status and message of every `BookingResult`:** `PublicBookingResultMappingApiIntegrationTests` (all eleven results, the field
+  errors, `Retry-After`, 500) and the real-fault 503 tests in `PublicBookingCreationApiIntegrationTests`.
+- **Session independence:** `PublicBookingSessionSecurityApiIntegrationTests` (byte-identical for anonymous, owner,
+  administrator, invalid, and expired callers; every `user_session` row unchanged; controls on private routes show a refresh and
+  a revocation would be detected; no `Set-Cookie`; no `identity` dependency in `PublicBookingModuleBoundaryTests`).
+- **CSRF and CORS:** the same class (the exemption for exactly the booking POST, 403 for every sibling, other verb, deeper path, and
+  private mutation; exact-origin reads, bookings, and preflight).
+- **Limiter:** `BookingRateLimiterTests` (every budget and window boundary, expiry, capacity and saturation, canonicalization,
+  aggregates, IPv6, concurrency) and the HTTP classes (429 contract, charging, no database or orchestration work for a
+  rejected request, spoofed forwarded headers, small configured budgets, shipped defaults).
+- **Evidence boundary:** injected outcomes prove only the HTTP mapping; transaction, commit, retry, and idempotency behavior
+  is proven by the Phase 4 classes, and the two real-fault tests use their mechanism.
+
+### Deviations and limitations (all for review)
+
+- **The profile route is also session-independent** (the session filter skips it), a small extension of ADR-0026's list,
+  because it is the first request of the same journey.
+- **The booking body is read as a JSON tree** and checked against an allowlist, because the global Jackson configuration ignores
+  unknown properties. Text fields must be JSON strings or null.
+- **A new `publicbooking` module** hosts the controller (the `booking` module may not contain one, by its boundary tests); it
+  depends on `booking`, `business`, `scheduling`, and `workforce` only.
+- **`AvailabilitySnapshot` gained two derived accessors**, an additive change to a published `scheduling` record.
+- **Pre-existing, not changed:** the shared `ApiExceptionHandler` maps an unsupported request `Content-Type` on any other route to
+  a 500 `INTERNAL_ERROR` whose `instance` is the request path (observed with a private `POST`); the public routes handle it as 415 with the
+  fixed instance. It deserves its own correction.
+- **Limiter limits** (ADR-0026 notes): one process, restart resets, the proxy address is shared by all guests behind a proxy, no
+  distributed limiter, the proxy or edge must still bound requests (the application bounds only the booking body), a third party can exhaust a known contact's budget.
+- **Release dependency (unchanged):** production public booking waits for issue #21. Issue #18 and #19 are not complete and
+  GitHub and the board are unchanged. Nothing is visible in the UI, so no visual review applies.
+
+### Review corrections (2026-10-07)
+
+1. **Booking body bound.** `BookingBodyLimitFilter` bounds `POST …/bookings` (nothing else) to 16 KiB by default
+   (`spotyourslot.booking.max-request-body-bytes`), counting the bytes the application actually reads and failing at the first byte
+   over the limit, before any JSON tree exists; chunked, absent, and false `Content-Length` are covered, and a declared length above the
+   limit fails on the first read. The result is a sanitized `413 REQUEST_TOO_LARGE` with the fixed instance and `no-store`. An oversized
+   request is charged **once to the address budgets** (the interceptor runs before the body is read) and never to a contact budget, and it
+   does no booking, Customer, or database work. Session independence, CSRF, CORS, and private endpoints are unchanged (tests).
+   *Evidence:* MockMvc (`PublicBookingBodyLimitApiIntegrationTests`, `BookingBodyLimitFilterTests`) proves the application logic: the
+   exact boundary, bytes versus characters, a valid multibyte Bulgarian payload, the 413 contract, charging, and no database work.
+   Real embedded Tomcat on a real socket (`PublicBookingBodyLimitContainerIntegrationTests`) proves chunked bodies at, within, and
+   over the limit, a declared length far above the body (413 without waiting for the bytes), and a declared length below the body
+   (the container delivers only the declared bytes: 400, never more). MockMvc cannot produce an absent or false `Content-Length`. Proxy
+   and edge size protection remains an additional production requirement.
+2. **Public-profile consumers.** The frontend decoder copies only documented fields, so the new `services[].id` is tolerated and dropped;
+   `decodeService` and the page needed no change (a comment in `api.ts` was updated and a Vitest case now decodes the revised
+   contract). The stale end-to-end contract assertions were corrected only where `id` legitimately changes them: `SERVICE_KEYS` includes
+   `id`, the ACTIVE Services' API ids must equal the ids the fixture created, the inactive Service's id must be absent, exactly one `"id"`
+   member per Service may appear, and no Service id may be rendered on the page. All privacy assertions remain. *Executed:*
+   `npm run lint` (clean), the full frontend `npm test` (61 files, 1443 tests passed), `npm run build` (succeeded), and the existing
+   `public-business-profile` Playwright spec (19 journeys passed) against the final backend (`spring-boot:run` from the working tree), run
+   through a copy of `scripts/run-e2e.sh` that differs only by naming that spec and fixing the repository path, with the script's own isolated
+   disposable Compose project. No booking UI was implemented.
+3. **Limiter charging wording.** Atomicity applies within one admission decision. The address decision and the contact decision are
+   separate: an address rejection changes no counter and never reaches the contact decision; a contact rejection after an admitted address
+   decision **retains the address charge**; the phone and the email within the contact decision are all-or-none. The behavior is unchanged;
+   the earlier wording ("a rejected call charges nothing" read across both decisions) is corrected in the limiter contract
+   (`PublicBookingRateLimiter`), ADR-0026, `security.md`, and this record. Deterministic tests:
+   `BookingRateLimiterTests.aLaterContactRejectionRetainsTheEarlierAddressCharge` and `anAddressRejectionChangesNoCounterAndTheContactBudgetIsUntouched`,
+   and `PublicBookingRateLimitApiIntegrationTests.aContactRejectionRetainsTheAddressChargeAndAnAddressRejectionNeverChargesTheContact` through HTTP.

@@ -937,9 +937,29 @@ flaky) and uses real PostgreSQL through Testcontainers for persistence, concurre
   (real PostgreSQL and transaction-manager commit evidence, labelled; the completion-status classification, the silent-rollback verification, and misleading after-commit exceptions), `GuestBookingKeyRotationIntegrationTests`,
   `BookingContractsIntegrationTests`, and the boundary tests. Test wiring (`BookingHookConfiguration`) wraps the real
   collaborators with latches and a recording transaction manager; the wrappers delegate unchanged. Deadlock-victim tests fix the victim with `SET LOCAL deadlock_timeout` on the participant that must not be chosen, because PostgreSQL aborts whichever participant's check finds the cycle first, not the one that waited first.
-- **Phase 5 (public API):** exact key sets and privacy sentinels, Business A/B isolation, guessed identifiers,
-  the collapsed 404, unknown-field rejection, the CSRF exemption scope, session independence, limiter capacity,
-  expiry, saturation, and replay limiting, the error contract, and no-store with no cookie.
+- **Phase 5 (public API, implemented):** real PostgreSQL through the complete servlet and security filter chain, the
+  controllable clock, and a distinct remote address per request (so the shared limiter never couples tests):
+  `PublicBookingAvailabilityApiIntegrationTests` (exact key sets, window, ordering, DST repeated hour, tenant isolation,
+  collapsed 404 and generic 409s, validation, denied routes and verbs), `PublicBookingCreationApiIntegrationTests`
+  (201, replay 200 including the cancelled fixture, mismatch, replay after suspension and snapshot changes, every
+  rejection, every field error, unknown properties, 415, the real known-rollback and uncertain-commit faults with the same
+  attempt repeated, no-store, no cookie, fixed instances, sentinel privacy including captured logs),
+  `PublicBookingSessionSecurityApiIntegrationTests` (owner, administrator, invalid, expired, and anonymous callers
+  byte-identical; every session row unchanged, with private-route controls that show a refresh and a revocation are
+  detectable; the narrow CSRF exemption and the private-mutation regression; exact-origin CORS and preflight),
+  `PublicBookingRateLimitApiIntegrationTests` and `PublicBookingRateLimitCapacityApiIntegrationTests` (small configured
+  budgets: the 429 contract, charging rules, windows with the injected clock, spoofed forwarded headers, IPv6 /64,
+  saturation, and no database or orchestration work for a rejected request), `PublicBookingDefaultRateLimitApiIntegrationTests`
+  (the shipped 10, 5, and 300), and `PublicBookingResultMappingApiIntegrationTests` (every `BookingResult` through the
+  full chain with a mocked orchestration), `PublicBookingBodyLimitApiIntegrationTests` (MockMvc evidence only: the exact
+  byte boundary, bytes versus characters, a valid multibyte Bulgarian payload, the 413 contract, charging once to the address
+  budgets, and no database work), and `PublicBookingBodyLimitContainerIntegrationTests` (real embedded Tomcat on a real socket:
+  chunked bodies, a declared length far above or below the body; MockMvc cannot produce an absent or false `Content-Length`). Unit and architecture tests: `BookingRateLimiterTests` (every budget, the
+  window boundary, expiry, capacity, canonicalization, aggregates, concurrency with 64 threads released together by a
+  latch), `PublicBookingRequestParserTests`, `PublicBookingRoutesTests` (every verb against every route and sibling),
+  `PublicStaffAccessServiceTests`, `BookingBodyLimitFilterTests`, and `PublicBookingModuleBoundaryTests`. The public-profile consumers are checked by the frontend public-profile Vitest suites and the existing `public-business-profile` Playwright journey against the final backend. **Evidence boundary:** injected outcomes
+  prove only the HTTP mapping; transactions, commits, retries, and idempotency are proven by the Phase 4 classes, and the
+  two real-fault 503 tests reuse their mechanism. No test sleeps; time moves only when a test moves the injected clock.
 - **Phase 6 (frontend):** Vitest with fake clocks and deferred promises, abort and stale-response ordering, the
   frozen uncertain state and exact-payload retry, duplicate-submit protection, and no personal data in the URL,
   storage, or `history.state`.

@@ -54,7 +54,7 @@ class PublicProfileApiIntegrationTests extends PostgresIntegrationTest {
     private static final List<String> ADDRESS_KEYS =
             List.of("city", "postalCode", "street", "streetNumber", "details");
     private static final List<String> SERVICE_KEYS =
-            List.of("name", "description", "durationMinutes", "price");
+            List.of("id", "name", "description", "durationMinutes", "price");
     private static final String UNAVAILABLE_BODY = """
             {"detail":"Страницата не е налична.","instance":"/api/public/businesses",
              "status":404,"title":"Заявката не може да бъде изпълнена.",
@@ -79,7 +79,8 @@ class PublicProfileApiIntegrationTests extends PostgresIntegrationTest {
     @Test
     void anonymousRequestResolvesTheActiveBusinessWithExactlyTheApprovedFields() throws Exception {
         UUID business = insertBusiness("studio-a", "ACTIVE", "Студио А");
-        insertService(business, "Подстригване", "Дамско подстригване", 45, "25.00", true);
+        UUID serviceId =
+                insertService(business, "Подстригване", "Дамско подстригване", 45, "25.00", true);
 
         MvcResult result = mvc.perform(get(ROUTE, "studio-a")).andReturn();
 
@@ -99,6 +100,7 @@ class PublicProfileApiIntegrationTests extends PostgresIntegrationTest {
         assertThat(body.get("services")).hasSize(1);
         JsonNode service = body.get("services").get(0);
         assertThat(fieldNames(service)).containsExactlyElementsOf(SERVICE_KEYS);
+        assertThat(service.get("id").asString()).isEqualTo(serviceId.toString());
         assertThat(service.get("name").asString()).isEqualTo("Подстригване");
         assertThat(service.get("description").asString()).isEqualTo("Дамско подстригване");
         assertThat(service.get("durationMinutes").asInt()).isEqualTo(45);
@@ -258,7 +260,6 @@ class PublicProfileApiIntegrationTests extends PostgresIntegrationTest {
 
         assertThat(raw)
                 .doesNotContain(business.toString())
-                .doesNotContain(service.toString())
                 .doesNotContain(staff.toString())
                 .doesNotContain(ownerId.toString())
                 .doesNotContain(membership.toString())
@@ -280,11 +281,13 @@ class PublicProfileApiIntegrationTests extends PostgresIntegrationTest {
                 .doesNotContainIgnoringCase("staff")
                 .doesNotContainIgnoringCase("schedule")
                 .doesNotContainIgnoringCase("contactEmail")
-                .doesNotContainIgnoringCase("currency")
-                .doesNotContainIgnoringCase("\"id\"");
+                .doesNotContainIgnoringCase("currency");
         JsonNode body = json.readTree(raw);
         assertThat(fieldNames(body)).containsExactlyElementsOf(PROFILE_KEYS);
         assertThat(fieldNames(body.get("services").get(0))).containsExactlyElementsOf(SERVICE_KEYS);
+        // The Service reference is the one approved identifier (ADR-0026); no other id appears.
+        assertThat(body.get("services").get(0).get("id").asString()).isEqualTo(service.toString());
+        assertThat(raw.split("\"id\"", -1)).hasSize(2);
     }
 
     // ---- lifecycle collapse ----

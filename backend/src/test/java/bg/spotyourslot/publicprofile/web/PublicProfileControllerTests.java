@@ -41,6 +41,7 @@ class PublicProfileControllerTests {
                 "studio-a", "Студио А", "HAIR_SALON", null, "+359 88 000 0000",
                 new PublicProfileView.Address("София", "1000", "Улица", "1", null),
                 List.of(new PublicProfileView.Service(
+                        java.util.UUID.fromString("00000000-0000-0000-0000-0000000000a1"),
                         "Услуга", null, 45, new BigDecimal("25.00"))))));
 
         mvc.perform(get("/api/public/businesses/studio-a"))
@@ -50,7 +51,8 @@ class PublicProfileControllerTests {
                 .andExpect(jsonPath("$.slug").value("studio-a"))
                 .andExpect(jsonPath("$.description").doesNotExist())
                 .andExpect(jsonPath("$.address.length()").value(5))
-                .andExpect(jsonPath("$.services[0].length()").value(4))
+                .andExpect(jsonPath("$.services[0].length()").value(5))
+                .andExpect(jsonPath("$.services[0].id").value("00000000-0000-0000-0000-0000000000a1"))
                 .andExpect(jsonPath("$.services[0].durationMinutes").value(45))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("\"price\":25.00")));
     }

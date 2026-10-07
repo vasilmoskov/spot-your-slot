@@ -67,6 +67,20 @@ describe('fetchPublicBusinessProfile', () => {
     })
   })
 
+  it('decodes the revised contract in which each Service carries its public reference', async () => {
+    const reference = '6f1a1d0e-3c52-4a39-9d52-8a1d2b0f9c11'
+    useFetch(async () =>
+      respond(200, {
+        ...profileBody,
+        services: profileBody.services.map((service) => ({ ...service, id: reference })),
+      }),
+    )
+    const result = await fetchPublicBusinessProfile('example-studio')
+    // The page does not use the reference, so it is dropped and the decoded profile is unchanged.
+    expect(result).toEqual({ kind: 'profile', profile: profileBody })
+    expect(JSON.stringify(result)).not.toContain(reference)
+  })
+
   it('keeps only the documented fields of a response', async () => {
     useFetch(async () =>
       respond(200, {

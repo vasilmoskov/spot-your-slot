@@ -3,6 +3,7 @@ package bg.spotyourslot.identity.configuration;
 import bg.spotyourslot.identity.domain.PasswordPolicy;
 import bg.spotyourslot.identity.domain.TokenCodec;
 import bg.spotyourslot.identity.infrastructure.DatabaseSessionFilter;
+import bg.spotyourslot.identity.infrastructure.PublicBookingRoutes;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.util.List;
@@ -83,7 +84,11 @@ public class SecurityConfiguration {
         csrf.setCookieCustomizer(cookie -> cookie.path("/").sameSite("Lax").secure(secureCookies));
         return http
                 .cors(Customizer.withDefaults())
-                .csrf(config -> config.csrfTokenRepository(csrf))
+                .csrf(config -> config
+                        .csrfTokenRepository(csrf)
+                        // The one narrow exemption (ADR-0026): the unauthenticated, session-
+                        // independent public booking POST. Nothing else is exempt.
+                        .ignoringRequestMatchers(PublicBookingRoutes.BOOKING_MUTATION))
                 .addFilterBefore(sessions, AnonymousAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
@@ -96,9 +101,10 @@ public class SecurityConfiguration {
                                 "/api/auth/password/reset",
                                 "/api/auth/invitations/accept")
                         .permitAll()
-                        // The only unauthenticated Business surface (ADR-0017): one path
-                        // segment, GET only. Every other verb and route stays authenticated.
-                        .requestMatchers(HttpMethod.GET, "/api/public/businesses/{slug}")
+                        // The only unauthenticated Business surface (ADR-0017, ADR-0026): the
+                        // profile and exactly the three booking routes, each with its one verb.
+                        // Every other verb and route stays authenticated.
+                        .requestMatchers(PublicBookingRoutes.SESSION_INDEPENDENT)
                         .permitAll()
                         // Any other verb or deeper path under the public prefix is refused
                         // here (401 anonymous, 403 authenticated) rather than reaching MVC.

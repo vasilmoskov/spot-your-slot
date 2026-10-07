@@ -318,8 +318,10 @@ local-only and is never sent or persisted.
 
 ## Public Business profile (issue #17; backend implemented in Phase 2B)
 
-Decided in ADR-0017 and ADR-0018; the backend contract is implemented and the public
-frontend is not. One unauthenticated
+Decided in ADR-0017 and ADR-0018; the backend contract is implemented. **Amended by ADR-0026 (Phase 5):**
+each active Service now also carries its identifier (`services[].id`), the response is session-independent in the
+strict sense (the session filter skips the route), and exactly three more public routes exist (see the guest
+booking section); the paragraphs below are otherwise unchanged. One unauthenticated
 `GET /api/public/businesses/{slug}` (a single non-empty path segment) is the only new
 public route. Every other verb or deeper path under `/api/public/businesses/**` is
 denied (401 anonymous, 403 authenticated) before it reaches MVC, and every other
@@ -333,8 +335,8 @@ default request path would echo the submitted slug. Path characters the servlet
 firewall rejects (encoded slash, semicolon, backslash, NUL) receive its bare empty
 400, which discloses nothing. The body is an allowlist: slug, display name, Business
 type, optional description, optional telephone, optional structured address, and
-each active Service's name, description, duration, and EUR price. `contact_email`,
-timezone, status, identifiers, versions, timestamps, owner and Membership data,
+each active Service's identifier, name, description, duration, and EUR price. `contact_email`,
+timezone, status, other identifiers, versions, timestamps, owner and Membership data,
 StaffMembers, and inactive Services are never public. Responses keep the default
 `no-store` headers and set no cookie. The endpoint writes nothing, takes no lock,
 and creates no Customer, Appointment, or session state; it issues two SQL statements
@@ -381,20 +383,30 @@ structured Bulgarian errors. When `COMPLETED` and `NO_SHOW` are introduced (defe
 statuses are currently `CONFIRMED` and `CANCELLED`), reject them before Appointment
 start so a future slot cannot be released early.
 
-### Guest booking (issue #18; decided in ADR-0022 to ADR-0026, not yet implemented)
+### Guest booking (issue #18; decided in ADR-0022 to ADR-0026; the backend is implemented, the frontend is not)
 
-- **Public surface.** Beyond the profile, only `GET …/{slug}/services/{serviceId}/booking-options`,
-  `GET …/{slug}/services/{serviceId}/availability`, and `POST …/{slug}/bookings` become public; every other verb
-  or deeper path under `/api/public/businesses/` stays denied. They are Business-scoped by the slug, resolve a
-  foreign or missing identifier like a missing one, and collapse a DRAFT, SUSPENDED, unknown, or malformed slug
-  into the existing `BUSINESS_PAGE_UNAVAILABLE` 404. Responses are `no-store`, set no cookie, use a fixed
-  RFC 7807 `instance`, and expose no StaffMember identifier on a slot, no contact data, and no other guest's data.
-  The request has no field for price, duration, end, status, source, timezone, or Business, and unknown
-  properties are rejected.
-- **CSRF and session.** Only the `POST …/bookings` route is exempt from CSRF validation, because the endpoints
-  are session-independent (never authenticate from a session cookie, never refresh session activity) and the
-  public frontend omits credentials; CORS stays exact-origin. The exemption is pinned by tests and changes no
-  other route.
+- **Public surface (implemented, Phase 5).** Beyond the profile, exactly `GET …/{slug}/services/{serviceId}/booking-options`,
+  `GET …/{slug}/services/{serviceId}/availability`, and `POST …/{slug}/bookings` are public, each with its one verb
+  and an exact path (no wildcard); every other verb, sibling, or deeper path under `/api/public/businesses/` stays denied
+  (401 anonymous, 403 authenticated). They are Business-scoped by the slug, resolve a foreign or missing identifier like a
+  missing one (`BOOKING_SERVICE_UNAVAILABLE` or `BOOKING_STAFF_UNAVAILABLE`, 409), and collapse a DRAFT, SUSPENDED,
+  unknown, malformed, or reserved slug into the existing `BUSINESS_PAGE_UNAVAILABLE` 404. Responses are `no-store`
+  (also errors), set no cookie, use the fixed RFC 7807 `instance` `/api/public/businesses`, and expose no
+  StaffMember identifier on a slot, no Customer or internal Appointment identifier, no contact data, no version or audit
+  value, and no other guest's data. The only StaffMember data are the identifier and display name in `booking-options` and the
+  assigned display name in the confirmation. There is no endpoint that looks an Appointment up by its informational
+  reference. The request has no field for price, duration, end, status, source, timezone, or Business, and unknown
+  properties (also in `customer`) and non-string text values are rejected as `VALIDATION_ERROR`; the body is read from the
+  JSON tree because the global Jackson configuration ignores unknown properties. The exact contract is in ADR-0026
+  (implementation notes).
+- **CSRF and session (implemented, Phase 5).** The four public routes are session-independent: `DatabaseSessionFilter`
+  skips them (the cookie is neither read nor validated), so a valid session is not refreshed, an expired one is not
+  revoked, and no session or cookie is created or cleared; the controllers cannot reach `identity` or the principal
+  (architecture tests). Only `POST …/bookings` is exempt from CSRF validation, through the same exact matcher
+  (`PublicBookingRoutes`) that authorizes and bypasses it; every other mutation, including other verbs and deeper
+  paths under the public prefix and every authenticated write, still needs the token (regression tests). The public
+  frontend omits credentials; CORS stays exact-origin with the unchanged credentialed policy (no wildcard; a foreign
+  `Origin` is refused for reads, bookings, and preflight, and nothing is booked).
 - **Idempotency.** An attempt ID plus a versioned HMAC-SHA-256 fingerprint over the normalized Service,
   requested preference, start, Customer input, and note; a different request under the same attempt ID is
   `BOOKING_ATTEMPT_MISMATCH`; replay uses the stored encoding and key versions, holds only the initial Business
@@ -404,16 +416,29 @@ start so a future slot cannot be released early.
   The fingerprint key is a new server secret with a retained key ring; a missing historical key is a safe,
   uncertain technical failure and never a mismatch. The fingerprint columns are replay material that a future
   erasure procedure must clear (ADR-0024).
-- **Outcomes.** A proven rollback is reported with «Резервацията не беше направена. Опитайте отново.»; an
-  uncertain outcome with «Не получихме потвърждение за резервацията. Опитайте отново.». A guest is never told a
-  booking failed when it may exist.
-- **Abuse protection.** A booking-owned, bounded, process-local limiter (initial limits: bookings 10 per 15
-  minutes per address and Business and 5 per 15 minutes per Business and contact digest; options and availability
-  300 per 15 minutes per address and Business), with a capacity bound, expiry, fail-closed saturation, irreversible
-  keys, and replay consuming the same budget. It works for one instance, relies on the servlet remote address,
-  and behind a proxy all guests share one address until trusted forwarding is separately approved. No contact
-  verification exists, so fake bookings can only be slowed; production public booking waits for the Business
-  calendar (issue #21).
+- **Outcomes (implemented, Phase 5).** A proven rollback is `503 BOOKING_TEMPORARILY_UNAVAILABLE` with «Резервацията не беше
+  направена. Опитайте отново.»; an uncertain outcome is `503 BOOKING_OUTCOME_UNCERTAIN` with «Не получихме потвърждение за
+  резервацията. Опитайте отново.»; both carry `Retry-After: 2` and the same attempt can be repeated (a replay returns the
+  committed Appointment, `200`). A guest is never told a booking failed when it may exist.
+- **Request body bound (implemented).** `POST …/bookings` accepts at most 16 KiB (`spotyourslot.booking.max-request-body-bytes`),
+  counted in bytes actually read before the JSON tree is built (chunked, absent, and false `Content-Length` included); more is a
+  sanitized `413 REQUEST_TOO_LARGE` with the fixed instance and `no-store`, charged once to the address budgets and never to the
+  contact budget, with no booking or database work. Private endpoints are unchanged.
+- **Abuse protection (implemented, Phase 5).** A Booking-owned, bounded, process-local, fixed-window limiter charged before
+  any database work (a rejected request writes nothing and reaches no orchestration). Defaults per 15 minutes: bookings 10
+  per address and Business, 30 per address across Businesses, and 5 per Business and canonical phone or email (each supplied
+  identifier is charged, all or none); `booking-options` and `availability` 300 per address and Business and 600 per
+  address across Businesses; at most 50 000 counters. Keys are HMAC-SHA-256 digests under a per-process random secret
+  (no raw address, slug, contact, or attempt ID is retained or logged); an IPv6 address is limited as its /64 prefix;
+  malformed slugs share one bucket; a rejected admission decision charges nothing; a replay, a rejected booking, and an invalid body are
+  charged (the address and the contact decision are separate: a contact rejection keeps the earlier address charge, and an address rejection never reaches the contact decision); at capacity a new counter is refused (`429`, fail closed) and no active counter is evicted. The sanitized
+  `429 RATE_LIMITED` carries `Retry-After` in whole seconds. The address is only the servlet remote address; `Forwarded`,
+  `X-Forwarded-For`, and `X-Real-IP` are never read. **Limits:** one process only (restart resets, each instance has its
+  own counters), behind a proxy all guests share one address until a trusted-address policy is separately approved,
+  a distributed or edge limiter is required beyond one instance, the proxy or edge must bound request lines, headers, and
+  bodies as well (the application bounds only the booking body), and a third
+  party who knows a guest's contact can exhaust that guest's budget for the window. No contact verification exists,
+  so fake bookings can only be slowed; production public booking waits for the Business calendar (issue #21).
 - **Logging.** No request body, note, contact, attempt ID, reference, or fingerprint is logged.
 - **Schedule coordination.** Schedule mutations and bookings are ordered by the Business schedule revision row
   and the total lock order of ADR-0025. The mutation side is implemented (Phase 3): the revision change and the

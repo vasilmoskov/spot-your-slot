@@ -32,6 +32,19 @@ server:
         secure: ${SESSION_COOKIE_SECURE:false}
 
 spotyourslot:
+  booking:
+    # The public guest booking limiter (ADR-0026): process-local fixed windows, one window length
+    # for every budget. Defaults are the approved budgets; every value is validated at startup.
+    # Largest accepted body of POST .../bookings, in bytes actually read (413 above it).
+    max-request-body-bytes: ${BOOKING_MAX_REQUEST_BODY_BYTES:16384}
+    rate-limit:
+      window-seconds: ${BOOKING_RATE_LIMIT_WINDOW_SECONDS:900}
+      booking-per-address-business: ${BOOKING_RATE_LIMIT_BOOKING_PER_ADDRESS_BUSINESS:10}
+      booking-per-contact: ${BOOKING_RATE_LIMIT_BOOKING_PER_CONTACT:5}
+      booking-per-address: ${BOOKING_RATE_LIMIT_BOOKING_PER_ADDRESS:30}
+      availability-per-address-business: ${BOOKING_RATE_LIMIT_AVAILABILITY_PER_ADDRESS_BUSINESS:300}
+      availability-per-address: ${BOOKING_RATE_LIMIT_AVAILABILITY_PER_ADDRESS:600}
+      max-entries: ${BOOKING_RATE_LIMIT_MAX_ENTRIES:50000}
   security:
     allowed-origin: ${ALLOWED_ORIGIN:http://localhost:5173}
     trusted-proxy: ${TRUSTED_PROXY:false}

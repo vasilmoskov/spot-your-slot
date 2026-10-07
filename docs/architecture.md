@@ -37,7 +37,8 @@ All backend packages live below `bg.spotyourslot`.
 | `workforce` | StaffMembers, Service qualifications, recurring weekly hours |
 | `scheduling` | timezone-aware availability, Business closures, StaffMember time off, working-day overrides, additional working periods, and deterministic assignment (ADR-0013) |
 | `publicprofile` | read-only unauthenticated public Business profile (`GET /api/public/businesses/{slug}`) orchestrated over the published `business.PublicBusinessProfileAccess` and `catalog.PublicServiceAccess` contracts (ADR-0017; backend contract, public React page and browser E2E verification implemented in issue #17; booking is not part of it) |
-| `booking` | transactional Appointment lifecycle and conflicts; issue #18 (ADR-0022 to ADR-0026). **Implemented (Phase 2):** the Appointment domain records, the internal `AppointmentStore` (V11), and the real `BusyIntervalSource` (`BookingBusyIntervalSource`); it depends only on the published `scheduling` seam and the `shared.contact` canonicalization policy (used to reject noncanonical snapshot names). **Planned, not implemented:** the booking transaction, idempotency, and the public booking HTTP adapter, which will add dependencies on `business`, `catalog`, `workforce`, `customer`, and `shared.contact`. Nothing depends on it and `scheduling` never does |
+| `booking` | transactional Appointment lifecycle and conflicts; issue #18 (ADR-0022 to ADR-0026). **Implemented:** the Appointment domain records, the internal `AppointmentStore` (V11), and the real `BusyIntervalSource` (`BookingBusyIntervalSource`) (Phase 2); the guest booking orchestration `GuestBooking` (one repeatable-read transaction per attempt, ordered locks, bounded whole-transaction retry, idempotent attempts with a versioned HMAC fingerprint, proven-rollback versus uncertain outcomes) over the narrow `business`, `catalog`, `workforce`, `scheduling`, and `customer` contracts (Phase 4); and the process-local, bounded public abuse limiter `PublicBookingRateLimiter` (Phase 5). It depends on `business`, `catalog`, `workforce`, `scheduling`, `customer`, and the `shared.contact` canonicalization policy. It has no controller; only `publicbooking` depends on it, and `scheduling` never does |
+| `publicbooking` | the unauthenticated, session-independent HTTP adapter of guest booking (issue #18, Phase 5, ADR-0026): `GET …/services/{serviceId}/booking-options`, `GET …/services/{serviceId}/availability`, and `POST …/bookings` under `/api/public/businesses/{slug}`, the strict body parser, the per-address limiter interceptor, and the sanitized error mapping. It depends only on the published contracts of `booking` (`GuestBooking`, `PublicBookingRateLimiter`), `business` (`PublicBusinessProfileAccess`), `scheduling` (`AvailabilityQuery`), and `workforce` (`PublicStaffAccess`), never on `identity`, `customer`, or `catalog`; nothing depends on it |
 | `customer` | Business-scoped Customers, conservative find-or-create matching, and private owner-only Customer administration (decisions in ADR-0019 to ADR-0021, issue #20). Implemented so far: the domain model and internal persistence (V10), conservative matching published as `CustomerIdentification` and `CustomerReferenceAccess` (with the sanitized `CustomerConcurrentConflict` and `CustomerOperationFailure`) from its root package, and the private owner-only administration API (`web` controller and advice, internal `application` service and validator) and the Business-owner interface (frontend `business/customers`: list with live body-based search, create, detail, and version-guarded edit; Phase 5), with Playwright journeys for it (Phase 6). Depends on `shared` (`contact`), `identity` (owner access and the authenticated context), and `business` (lifecycle access); never on `workforce`, `catalog`, `scheduling`, `publicprofile`, or `booking`, and nothing depends on it |
 | `notification` | outbox, delivery attempts, reminders, `EmailService` |
 | `audit` | immutable security/business audit events |
@@ -172,7 +173,10 @@ bullet describes the Phase 4 transaction, which is implemented (`booking.applica
 - The real `BusyIntervalSource` in `booking` returns `CONFIRMED` windows in one bulk query joined to the
   caller's transaction and replaced `NoBookingBusyIntervalSource` in Phase 2 (ADR-0016; implemented).
 - Narrow public booking routes under `/api/public/businesses/{slug}` that never depend on a session
-  (ADR-0026). The overlap violation becomes a typed outcome and, publicly, HTTP 409.
+  (ADR-0026; implemented in Phase 5 as the `publicbooking` module). One class, `PublicBookingRoutes`, defines the exact
+  matchers that authorize them, bypass the session filter, and exempt only `POST …/bookings` from CSRF. The
+  Booking-owned limiter charges before any database work. The overlap violation becomes a typed outcome and, publicly,
+  HTTP 409.
 
 Rescheduling and manual creation (issues #19 and #21) follow the same store and constraint. Cancellation attribution and
 `COMPLETED`/`NO_SHOW` (with the rule that they require the current time at or after `start_at`) are deferred.
@@ -330,7 +334,7 @@ StaffMembers with one bulk statement over `CONFIRMED` Appointments; the temporar
 `NoBookingBusyIntervalSource` placeholder and its tests were deleted in the same change, and the
 source remains a required ordinary bean, so zero or two implementations make startup fail. The
 orchestration issues four application SQL statements regardless of team size, plus the busy-interval
-statement. There is no public availability endpoint.
+statement. (Phase 5 later published the availability view as `GET …/availability`; see ADR-0026.)
 
 Issue #17 adds the `publicprofile` module (the backend public read contract, the
 public React page and its browser E2E verification are implemented; booking, availability

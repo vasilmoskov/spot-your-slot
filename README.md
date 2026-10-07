@@ -38,13 +38,22 @@ version-guarded edit; creation is blocked for a suspended Business, which can st
 Customers edited). Phase 5 has human visual approval, and Phase 6 added the Customer browser E2E journeys. Issue #20 is
 implemented and verified, pending final review and commit; Booking (#18, in progress below) and the Business calendar (#21) are not implemented.
 Booking, production email, and hosting are not implemented.
-Issue #18 (appointment core and guest booking) has completed Phases 1 to 3 (committed) and has Phase 4
-(the transactional, idempotent guest booking orchestration, internal only) implemented and verified pending review and commit: its decisions are recorded in
+Issue #18 (appointment core and guest booking) has completed Phases 1 to 4 (committed) and has Phase 5
+(the public availability and booking API, backend only) implemented and verified pending review and commit: its decisions are recorded in
 `docs/tasks/08a-appointment-core-and-guest-booking.md` and ADR-0022 to ADR-0026; Phase 2 added the `appointment`
 table with its database overlap exclusion (`V11`), the internal Appointment domain and store, and the real
-Scheduling busy-interval source in a new `booking` module, replacing the placeholder; Phase 3 adds the
+Scheduling busy-interval source in a new `booking` module, replacing the placeholder; Phase 3 added the
 Business-level schedule revision (`V12`, the `business` guard contracts) that the weekly-schedule and
-schedule-exception mutations advance in their own transactions. The `GuestBooking` operation exists but has no public endpoint or UI: Phases 5 to 8 (public API, frontend, rendered review, and E2E) are planned and not implemented. The booking request fingerprint needs `spotyourslot.booking.fingerprint.*` keys (development and test profiles ship non-secret keys; production must supply its own through `SPOTYOURSLOT_BOOKING_FINGERPRINT_ACTIVE_KEY_VERSION` and `SPOTYOURSLOT_BOOKING_FINGERPRINT_KEYS_<version>`, Base64 of at least 32 random bytes);
+schedule-exception mutations advance in their own transactions; Phase 4 added the transactional, idempotent `GuestBooking`
+operation. Phase 5 publishes three unauthenticated, session-independent routes under `/api/public/businesses/{slug}`
+(`GET …/services/{serviceId}/booking-options`, `GET …/services/{serviceId}/availability?date=`, and
+`POST …/bookings`, the only public route exempt from CSRF) and adds `services[].id` to the public profile; they are
+protected by a bounded, process-local limiter (defaults per 15 minutes: bookings 10 per address and Business, 30 per address,
+5 per Business and contact; reads 300 per address and Business, 600 per address; at most 50 000 counters; configurable through
+`spotyourslot.booking.rate-limit.*` or the `BOOKING_RATE_LIMIT_*` environment variables). The booking body is bounded to 16 KiB of bytes actually read (`spotyourslot.booking.max-request-body-bytes` or `BOOKING_MAX_REQUEST_BODY_BYTES`; a larger body is a 413), and the proxy or edge must still bound requests before the application. The limiter uses only the servlet remote address
+(forwarded headers are never read), keeps no raw value, resets at restart, and works for one instance only: behind a reverse proxy
+the proxy address is shared by all guests until a trusted-address policy is approved, and several instances need a shared or edge limiter.
+The frontend, rendered review, and E2E (Phases 6 to 8) are planned and not implemented, so no booking UI exists. The booking request fingerprint needs `spotyourslot.booking.fingerprint.*` keys (development and test profiles ship non-secret keys; production must supply its own through `SPOTYOURSLOT_BOOKING_FINGERPRINT_ACTIVE_KEY_VERSION` and `SPOTYOURSLOT_BOOKING_FINGERPRINT_KEYS_<version>`, Base64 of at least 32 random bytes);
 production public booking is planned to wait for the Business calendar (issue #21).
 Business closures, StaffMember time off, working-day overrides, and additional
 working periods ("Промени в графика") can be administered through an

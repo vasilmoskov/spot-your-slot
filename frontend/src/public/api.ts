@@ -1,8 +1,10 @@
 import { API_BASE_URL } from '../identity/api'
 
 // Mirrors the allowlisted response of `GET /api/public/businesses/{slug}`
-// (ADR-0017). The lifecycle status, identifiers and booking state are not part
-// of the contract and are deliberately not modelled.
+// (ADR-0017). The lifecycle status, other identifiers and booking state are not
+// part of the contract and are deliberately not modelled. Since ADR-0026 each
+// Service also carries its public reference (`id`); this page does not use it,
+// so the decoder still copies only the fields below and drops it.
 export type PublicAddress = {
   city: string | null
   postalCode: string | null

@@ -144,8 +144,8 @@ working periods were delivered by issue #16 (see Phase 5).
   booking through the published Customer matching contract delivered by issue #20, automatic
   `CONFIRMED`, cancellation/late flag, audit, and Bulgarian 409 recovery.
 - Issue #18 delivers this in eight phases (`docs/tasks/08a-appointment-core-and-guest-booking.md`;
-  Phases 1 to 3 committed, Phase 4 (booking orchestration) implemented and verified pending review and commit,
-  Phases 5 to 8 not started): (1) decisions, ADRs, and documentation; (2) the `appointment` table created
+  Phases 1 to 4 committed, Phase 5 (public API, security, and abuse protection) implemented and verified pending
+  review and commit, Phases 6 to 8 not started): (1) decisions, ADRs, and documentation; (2) the `appointment` table created
   with its GiST exclusion in `V11`, domain and store, the real busy source, and removal of the placeholder;
   (3) the Business schedule revision guard (`V12`, the `business` contracts) and the schedule mutations'
   participation; (4) booking

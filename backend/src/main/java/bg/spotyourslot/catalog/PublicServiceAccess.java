@@ -7,8 +7,9 @@ import java.util.UUID;
 
 /**
  * Narrow published read contract for the Services shown on a public Business profile
- * (ADR-0017). It exposes only name, description, duration, and price: no identifier, version,
- * timestamp, normalized value, or activity flag. It writes nothing and takes no lock.
+ * (ADR-0017, amended by ADR-0026). It exposes only the Service identifier, name, description,
+ * duration, and price: no version, timestamp, normalized value, or activity flag. The identifier is
+ * a public reference only inside its Business and is never an authority (ADR-0026). It writes nothing and takes no lock.
  */
 public interface PublicServiceAccess {
     /**
@@ -24,8 +25,10 @@ public interface PublicServiceAccess {
      * @param price the committed EUR price with its stored scale; the currency is fixed by the
      *        MVP and therefore not part of the contract
      */
-    record PublicService(String name, String description, int durationMinutes, BigDecimal price) {
+    record PublicService(
+            UUID id, String name, String description, int durationMinutes, BigDecimal price) {
         public PublicService {
+            Objects.requireNonNull(id, "id");
             Objects.requireNonNull(name, "name");
             Objects.requireNonNull(price, "price");
         }

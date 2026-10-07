@@ -1,7 +1,9 @@
 package bg.spotyourslot.scheduling;
 
+import bg.spotyourslot.scheduling.domain.AvailabilityPolicy;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -32,6 +34,16 @@ public final class AvailabilityRecords {
             Objects.requireNonNull(calculatedAt, "calculatedAt");
             Objects.requireNonNull(occupiedDuration, "occupiedDuration");
             slots = List.copyOf(slots);
+        }
+
+        /** The first Business-local date of the bookable window: the date of {@link #calculatedAt}. */
+        public LocalDate firstDate() {
+            return LocalDate.ofInstant(calculatedAt, timezone);
+        }
+
+        /** The last Business-local date of the bookable window (the fixed MVP horizon, ADR-0016). */
+        public LocalDate lastDate() {
+            return firstDate().plusDays(AvailabilityPolicy.HORIZON_DAYS - 1L);
         }
     }
 

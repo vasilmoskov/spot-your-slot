@@ -345,6 +345,8 @@ test.describe('Public Business profile: direct access and allowlist', () => {
       expect(text).not.toContain(FULL_CONTACT_EMAIL)
       expect(text).not.toContain(full.ownerEmail)
       expect(text).not.toContain(full.id)
+      // The Service reference is part of the API contract but is never rendered.
+      for (const id of Object.values(full.serviceIds)) expect(text).not.toContain(id)
 
       // The API response matches the approved allowlist, key for key.
       const api = await readPublicApi(context.request, full.slug)
@@ -355,6 +357,10 @@ test.describe('Public Business profile: direct access and allowlist', () => {
       for (const service of profile.services) {
         expect(Object.keys(service).sort()).toEqual(SERVICE_KEYS)
       }
+      // The Service reference is the one identifier (ADR-0026): the ACTIVE Services' own, and never
+      // the inactive Service's.
+      expect(profile.services.map((service) => service.id).sort())
+        .toEqual(FULL_ACTIVE.map((name) => full.serviceIds[name]!).sort())
       expect(profile.slug).toBe(full.slug)
       expect(profile.businessType).toBe('HAIR_SALON')
       expect(profile.services.map((service) => service.name).sort())
@@ -363,11 +369,11 @@ test.describe('Public Business profile: direct access and allowlist', () => {
       await expect(page.getByRole('heading', { level: 3 }))
         .toHaveText(profile.services.map((service) => service.name))
 
-      // Nothing outside the allowlist is serialized: no identifier of the Business, its
-      // owner or a Service, no private contact, no inactive Service, no owner data.
+      // Nothing outside the allowlist is serialized: no identifier of the Business or its owner,
+      // no identifier of an inactive Service, no private contact, no inactive Service, no owner data.
       const forbidden = [
         full.id,
-        ...Object.values(full.serviceIds),
+        full.serviceIds[FULL_INACTIVE]!,
         full.ownerEmail,
         FULL_CONTACT_EMAIL,
         FULL_INACTIVE,
@@ -375,7 +381,9 @@ test.describe('Public Business profile: direct access and allowlist', () => {
         'Europe/Sofia',
       ]
       for (const value of forbidden) expect(api.text).not.toContain(value)
-      for (const key of ['"id"', '"status"', '"version"', '"createdAt"', '"updatedAt"', '"active"',
+      // Exactly one `"id"` per active Service (its reference) and no other identifier member.
+      expect(api.text.split('"id"').length - 1).toBe(FULL_ACTIVE.length)
+      for (const key of ['"status"', '"version"', '"createdAt"', '"updatedAt"', '"active"',
         '"contactEmail"', '"timezone"', '"memberships"', '"owner"', '"customer"', '"notes"',
         '"normalizedName"', '"currency"']) {
         expect(api.text).not.toContain(key)

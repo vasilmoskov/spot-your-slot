@@ -2,6 +2,7 @@ package bg.spotyourslot.publicprofile.application;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * The application-level public profile: the approved allowlist and nothing else. It is built from
@@ -24,6 +25,7 @@ public record PublicProfileView(
     }
 
     public record Service(
+            UUID id,
             String name,
             String description,
             int durationMinutes,

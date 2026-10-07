@@ -70,6 +70,7 @@ public class PublicProfileService {
 
     private PublicProfileView.Service service(PublicService service) {
         return new PublicProfileView.Service(
+                service.id(),
                 service.name(),
                 service.description(),
                 service.durationMinutes(),

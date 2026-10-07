@@ -129,7 +129,7 @@ public class ServiceStore {
      */
     public List<PublicServiceRow> findActivePublicServices(UUID businessId) {
         return execute(() -> jdbc.sql("""
-                        SELECT name, description, duration_minutes, price
+                        SELECT id, name, description, duration_minutes, price
                         FROM service
                         WHERE business_id = :businessId
                           AND active
@@ -137,6 +137,7 @@ public class ServiceStore {
                         """)
                 .param("businessId", businessId)
                 .query((resultSet, rowNumber) -> new PublicServiceRow(
+                        resultSet.getObject("id", UUID.class),
                         resultSet.getString("name"),
                         resultSet.getString("description"),
                         resultSet.getInt("duration_minutes"),

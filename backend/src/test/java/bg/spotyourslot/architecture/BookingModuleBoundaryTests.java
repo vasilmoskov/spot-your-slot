@@ -17,10 +17,10 @@ import org.springframework.modulith.core.ApplicationModule;
 import org.springframework.modulith.core.ApplicationModules;
 
 /**
- * Issue #18 Phases 2 and 4: the {@code booking} module owns Appointment persistence, the real
- * busy-interval source, and the guest booking orchestration. It depends only on the published
+ * Issue #18 Phases 2, 4, and 5: the {@code booking} module owns Appointment persistence, the real
+ * busy-interval source, the guest booking orchestration, and the public abuse limiter. It depends only on the published
  * contracts of Business, Catalog, Workforce, Scheduling, and Customer and on the shared contact
- * canonicalization policy; nothing depends on it, {@code scheduling} never imports it, and exactly
+ * canonicalization policy; only the public booking adapter depends on it, {@code scheduling} never imports it, and exactly
  * one busy-interval source exists.
  */
 class BookingModuleBoundaryTests {
@@ -48,10 +48,15 @@ class BookingModuleBoundaryTests {
     }
 
     @Test
-    void nothingDependsOnTheBookingModule() {
+    void onlyThePublicBookingAdapterDependsOnTheBookingModule() {
         for (ApplicationModule module : modules) {
             String name = module.getIdentifier().toString();
-            if (!name.equals("booking")) {
+            if (name.equals("booking")) {
+                continue;
+            }
+            if (name.equals("publicbooking")) {
+                assertThat(dependenciesOf(name)).as(name).contains("booking");
+            } else {
                 assertThat(dependenciesOf(name)).as(name).doesNotContain("booking");
             }
         }
@@ -140,6 +145,7 @@ class BookingModuleBoundaryTests {
                         "package-info",
                         "GuestBooking",
                         "GuestBookingRequest",
+                        "PublicBookingRateLimiter",
                         "BookingResult",
                         "BookedAppointment",
                         "BookingField",

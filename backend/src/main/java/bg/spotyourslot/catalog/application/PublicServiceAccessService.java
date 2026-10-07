@@ -23,7 +23,11 @@ public class PublicServiceAccessService implements PublicServiceAccess {
         try {
             return store.findActivePublicServices(businessId).stream()
                     .map(row -> new PublicService(
-                            row.name(), row.description(), row.durationMinutes(), row.price()))
+                            row.id(),
+                            row.name(),
+                            row.description(),
+                            row.durationMinutes(),
+                            row.price()))
                     .toList();
         } catch (UnexpectedFailure exception) {
             throw new PublicServiceFailure(exception);

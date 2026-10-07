@@ -150,6 +150,31 @@ public class StaffMemberStore {
                 .list());
     }
 
+    /**
+     * The active StaffMembers of the Business assigned to the Service, in the administration name
+     * order. One statement, no lock, tenant-scoped; only the identifier and display name leave.
+     */
+    public List<PublicStaffRow> findBookableStaff(UUID businessId, UUID serviceId) {
+        return execute(() -> jdbc.sql("""
+                        SELECT id, display_name
+                        FROM staff_member
+                        WHERE business_id = :businessId
+                          AND active
+                          AND id IN (
+                              SELECT staff_member_id
+                              FROM staff_member_service
+                              WHERE business_id = :businessId
+                                AND service_id = :serviceId)
+                        ORDER BY normalized_display_name ASC, id ASC
+                        """)
+                .param("businessId", businessId)
+                .param("serviceId", serviceId)
+                .query((resultSet, rowNumber) -> new PublicStaffRow(
+                        resultSet.getObject("id", UUID.class),
+                        resultSet.getString("display_name")))
+                .list());
+    }
+
     public StaffMemberRow create(NewStaffMemberRow staffMember) {
         return execute(() -> jdbc.sql("""
                         INSERT INTO staff_member(
