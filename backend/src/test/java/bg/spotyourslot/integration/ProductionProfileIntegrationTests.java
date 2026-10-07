@@ -19,7 +19,10 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
         properties = {
             "spotyourslot.security.allowed-origin=https://spotyourslot.bg",
             "server.servlet.session.cookie.secure=true",
-            "server.forward-headers-strategy=framework"
+            "server.forward-headers-strategy=framework",
+            // A synthetic production-style key (not the published non-secret test key).
+            "spotyourslot.booking.fingerprint.active-key-version=7",
+            "spotyourslot.booking.fingerprint.keys.7=c3ludGhldGljLXByb2R1Y3Rpb24tcHJvZmlsZS10ZXN0LWtleS0wMDAx"
         })
 class ProductionProfileIntegrationTests extends PostgresIntegrationTest {
     @Autowired

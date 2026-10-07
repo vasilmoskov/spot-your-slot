@@ -4,6 +4,7 @@ import bg.spotyourslot.workforce.StaffMemberRecords.StaffMemberSortField;
 import bg.spotyourslot.workforce.infrastructure.StaffMemberPersistenceException.UnexpectedFailure;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Types;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -117,6 +118,36 @@ public class StaffMemberStore {
                 .param("staffMemberId", staffMemberId)
                 .query(this::staffMemberRow)
                 .optional());
+    }
+
+    /**
+     * One statement that locks, in ascending identifier order, the active StaffMembers of the
+     * Business assigned to the Service ({@code FOR SHARE}); only {@code requestedStaffMemberId}
+     * when it is not null. The sort precedes the lock, so rows are locked in identifier order.
+     */
+    public List<StaffMemberRow> lockEligibleForBooking(
+            UUID businessId, UUID serviceId, UUID requestedStaffMemberId) {
+        return execute(() -> jdbc.sql("""
+                        SELECT id, business_id, display_name, contact_email, contact_phone,
+                               active, version, created_at, updated_at
+                        FROM staff_member
+                        WHERE business_id = :businessId
+                          AND active
+                          AND (CAST(:requestedStaffMemberId AS uuid) IS NULL
+                               OR id = CAST(:requestedStaffMemberId AS uuid))
+                          AND id IN (
+                              SELECT staff_member_id
+                              FROM staff_member_service
+                              WHERE business_id = :businessId
+                                AND service_id = :serviceId)
+                        ORDER BY id ASC
+                        FOR SHARE
+                        """)
+                .param("businessId", businessId)
+                .param("serviceId", serviceId)
+                .param("requestedStaffMemberId", requestedStaffMemberId, Types.OTHER)
+                .query(this::staffMemberRow)
+                .list());
     }
 
     public StaffMemberRow create(NewStaffMemberRow staffMember) {

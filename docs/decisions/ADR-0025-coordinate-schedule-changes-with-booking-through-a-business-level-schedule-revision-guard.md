@@ -275,6 +275,19 @@ and record the clarifications and the one tightening so the accepted text is not
   rejection. The commit-order tests listed under "Phase 4 commit orders to prove", with real Appointments, Customers, and
   `AvailabilityQuery`, remain Phase 4.
 
+## Implementation notes (Phase 4, 2026-10-06)
+
+The booking side is implemented in `BookingAttemptProcedure`: the guard is taken after the StaffMember locks and
+before the Service lock and before availability (see ADR-0023, Phase 4 note). `GuestBookingScheduleRaceIntegrationTests`
+proves every commit order with the real orchestration, Appointments, Customers, `AvailabilityQuery`, and the real
+mutations, for all 13 audited paths, with a fresh-availability oracle: (1) change committed before the snapshot;
+(2) committed after the snapshot and before the guard: `40001`, retry, two distinct PostgreSQL transactions and
+snapshots, result equal to the oracle; (3) an uncommitted bump held (the guard waits, shown with
+`pg_blocking_pids`), then committed (retry) or rolled back (one attempt, old schedule); (4) the booking holds the
+guard and the mutation waits at the revision `UPDATE`, the booking commits first. **Control runs:** with the guard
+bypassed (test switch) a booking whose availability predates a weekly replacement or closure commits an
+Appointment the fresh view does not offer; with the guard, the same interleaving makes the change wait.
+
 ## Conditions for revisiting
 
 Revisit for Business-configurable horizon or notice, breaks, an impact-check feature

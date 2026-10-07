@@ -223,6 +223,56 @@ Direct evidence: ADR-0006, ADR-0019, ADR-0020, ADR-0022, ADR-0023;
 reports an error on `COMMIT` of an aborted transaction as a rollback; the precise
 driver behavior is not yet observed in this repository and is a Phase 4 test.
 
+## Implementation notes (Phase 4, 2026-10-06)
+
+- **Attempt hash.** SHA-256 over the 36 ASCII bytes of the canonical lowercase UUID v4 text (golden vector in
+  `BookingAttemptIdTests`). The identifier itself is never stored or logged.
+- **Normalization (settles the Proposed note rule).** Name, phone, and email follow the shared contact policy the
+  Customer module applies (NFKC, collapsed whitespace, compact E.164, lowercase email; name at most 200 code points;
+  at least one of phone and email). The note: `CRLF`/`CR` to `LF`, surrounding Unicode white space removed, blank is
+  absent, at most 500 code points, no control character other than tab and line feed, no unpaired surrogate. The start
+  must be a whole-second instant (the encoding stores epoch seconds, so a sub-second difference would otherwise be
+  invisible to the fingerprint).
+- **Encoding version 1 (frozen, golden vectors in `FingerprintEncodingTests`).** `"SYSBFP"` | uint16 version |
+  eight fields, each `tag(1) | uint32 length | value`, in the order Business (16 bytes), Service (16), staff
+  preference (`00` none, or `01` + 16 bytes), start (int64 epoch seconds), name (UTF-8), phone, email, note (each `00`
+  absent or `01` + UTF-8). The attempt identifier and clocks are not encoded; the requested preference, never the
+  assigned member, is.
+- **Keys.** `spotyourslot.booking.fingerprint.active-key-version` and `...keys.<version>` (environment:
+  `SPOTYOURSLOT_BOOKING_FINGERPRINT_ACTIVE_KEY_VERSION`, `SPOTYOURSLOT_BOOKING_FINGERPRINT_KEYS_<version>`), standard
+  Base64 of at least 32 bytes, versions `1..32767`, active version configured. Validated at startup into a fixed
+  reason (`FingerprintConfigurationException`) that never contains a value; values bind as plain text so a binding
+  error cannot echo a key. The `prod` profile rejects any key whose bytes start with `NON-SECRET-TEST-KEY`, the
+  prefix of the committed development (`application-dev.yaml`) and test (`application-test.yaml`) keys, which are
+  non-secret. Production supplies its own keys through the environment; rotation: add the new version, make it
+  active, keep every old version while any Appointment references it. A check that every stored version is
+  configured at startup is **not** implemented; a missing key surfaces on replay as below.
+- **Comparison.** `MessageDigest.isEqual` (constant time) on the recomputed HMAC with the stored versions.
+- **Unverifiable replay.** A missing key or unsupported stored encoding returns `OutcomeUncertain`, writes nothing, logs only
+  the event code, and is never a mismatch (`RequestFingerprinter.UnverifiableFingerprint`).
+- **COMMIT classification (settles the Proposed detail; corrected after review).** The body returning proves
+  `COMMIT` was not issued before it; a failure earlier (including a failed begin or rollback) is a known rollback.
+  After a `Created` body the classification follows the completion status Spring reports to a synchronization
+  registered in the attempt's own transaction, **not** the content of any exception: `COMMITTED` (the database
+  committed, a later callback failed) is `OutcomeUncertain`, never retried, even if the exception carries `40001`,
+  `40P01`, `25P02`, or `UnexpectedRollbackException`; `ROLLED_BACK` is a proven rollback (retry only for
+  `40001`/`40P01`); `UNKNOWN` (the commit call failed) proves a rollback only through a server-reported
+  `40001`/`40P01` (retry) or `25P02` (known), otherwise uncertain; no report is uncertain. A normal completion of a
+  `Created` attempt is additionally confirmed by one read of the Appointment outside any transaction; if it is absent
+  (PostgreSQL's silent rollback of an aborted transaction) the result is the known-rollback outcome without a
+  retry, and if the read fails the result is uncertain (details in the ADR-0023 Phase 4 note).
+  **Evidence, separated.** *Real PostgreSQL and the real transaction manager* (`GuestBookingCommitFailureIntegrationTests`):
+  `afterCommit` failures with wrapped `40001`, `40P01`, `25P02`, an `UnexpectedRollbackException`, and a plain exception
+  (all uncertain, one Appointment and one Customer remain, the repeat replays); a pre-commit failure carrying `40001`
+  (rolled back and retried) and another (known rollback, not retried); a swallowed failure in the body and in a
+  `beforeCommit` callback (no `Created`, nothing persisted, no retry, the repeat creates exactly one Appointment); a
+  terminated connection before the commit (uncertain although nothing committed). *Injected statuses and exceptions*
+  (`GuestBookingServiceTests`, a fake transaction manager): the `UNKNOWN` phase with `40001`, `40P01`, `25P02`,
+  I/O, timeout, `08xxx`, `57xxx`, heuristic, and unknown failures, and the verification outcomes. A real `COMMIT`
+  error with `40001`, `40P01`, or `25P02` could not be provoked (repeatable read without deferred constraints produces
+  none, and an aborted transaction commits as a silent rollback), so the `UNKNOWN`-phase conflict rules rest on
+  injected evidence only.
+
 ## Conditions for revisiting
 
 Revisit for Customer verification or accounts, a snapshot decision, a separate

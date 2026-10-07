@@ -146,7 +146,7 @@ overlap conflict), and `BookingBusyIntervalSource`, which replaced the placehold
 **Decided by issue #18** (ADR-0022 to ADR-0026). The busy-source bullet and the Business schedule revision
 (`business_schedule_revision`, the `ScheduleRevisionBump` and `ScheduleRevisionGuard` contracts, and the
 participation of the weekly-schedule and schedule-exception mutations; Phase 3) are implemented as stated; the first
-bullet describes the Phase 4 transaction, which is planned and not implemented:
+bullet describes the Phase 4 transaction, which is implemented (`booking.application`; refinements in the ADR-0023 Phase 4 note: every qualifying StaffMember and the revision guard are locked before availability is calculated):
 
 - One repeatable-read, read-write transaction per attempt (ADR-0023). The orchestration is invoked with no
   active transaction and rejects an active caller transaction before any work, so every attempt is a separate
@@ -162,7 +162,7 @@ bullet describes the Phase 4 transaction, which is planned and not implemented:
   on the mutation side:** weekly-schedule replacement and every schedule-exception create, replace, and delete
   take Business, Membership, the StaffMember (where scoped), and then advance the revision row in their own
   transaction immediately before the aggregate statement; a rejected or rolled-back mutation leaves the revision
-  unchanged, and schedule writers of one Business serialize on that row. **Planned (Phase 4):** a booking that
+  unchanged, and schedule writers of one Business serialize on that row. **Implemented (Phase 4):** a booking that
   validated against older schedule data fails the guard (`ScheduleRevisionGuard.lockShared`, which requires a
   repeatable-read or serializable caller transaction) with `40001` and retries, or the mutation waits for the
   booking. The other availability-affecting mutations already conflict with the booking's row locks through real

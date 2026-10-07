@@ -17,10 +17,11 @@ import org.springframework.modulith.core.ApplicationModule;
 import org.springframework.modulith.core.ApplicationModules;
 
 /**
- * Issue #18 Phase 2: the {@code booking} module owns Appointment persistence and the real
- * busy-interval source. It depends only on the published Scheduling seam and the shared contact
- * canonicalization policy, nothing depends on it,
- * {@code scheduling} never imports it, and exactly one busy-interval source exists.
+ * Issue #18 Phases 2 and 4: the {@code booking} module owns Appointment persistence, the real
+ * busy-interval source, and the guest booking orchestration. It depends only on the published
+ * contracts of Business, Catalog, Workforce, Scheduling, and Customer and on the shared contact
+ * canonicalization policy; nothing depends on it, {@code scheduling} never imports it, and exactly
+ * one busy-interval source exists.
  */
 class BookingModuleBoundaryTests {
     private final ApplicationModules modules = ApplicationModules.of(SpotYourSlotApplication.class);
@@ -29,9 +30,10 @@ class BookingModuleBoundaryTests {
             .importPackages("bg.spotyourslot");
 
     @Test
-    void theBookingModuleDependsOnlyOnTheSchedulingContractAndTheSharedContactPolicy() {
+    void theBookingModuleDependsOnlyOnThePublishedContractsAndTheSharedContactPolicy() {
         assertThat(modules.getModuleByName("booking")).isPresent();
-        assertThat(dependenciesOf("booking")).containsExactlyInAnyOrder("scheduling", "shared");
+        assertThat(dependenciesOf("booking")).containsExactlyInAnyOrder(
+                "business", "catalog", "workforce", "scheduling", "customer", "shared");
         // The only shared package used is the published contact canonicalization policy.
         for (JavaClass type : main) {
             if (type.getPackageName().startsWith("bg.spotyourslot.booking")) {
@@ -108,7 +110,7 @@ class BookingModuleBoundaryTests {
     }
 
     @Test
-    void phaseTwoCreatesNoControllerPublicContractOrLogging() {
+    void bookingHasNoControllerAndOnlyTheDiagnosticsClassLogs() {
         for (JavaClass type : main) {
             if (!type.getPackageName().startsWith("bg.spotyourslot.booking")) {
                 continue;
@@ -117,18 +119,31 @@ class BookingModuleBoundaryTests {
                     .as(type.getName()).isFalse();
             assertThat(type.isAnnotatedWith(org.springframework.stereotype.Controller.class))
                     .as(type.getName()).isFalse();
+            boolean diagnostics = type.getName().startsWith(
+                    "bg.spotyourslot.booking.application.BookingDiagnostics");
             for (Dependency dependency : type.getDirectDependenciesFromSelf()) {
                 String target = dependency.getTargetClass().getPackageName();
+                if (!diagnostics) {
+                    assertThat(target).as(type.getName() + " -> " + dependency.getTargetClass().getName())
+                            .doesNotStartWith("org.slf4j");
+                }
                 assertThat(target).as(type.getName() + " -> " + dependency.getTargetClass().getName())
-                        .doesNotStartWith("org.slf4j")
                         .doesNotStartWith("java.util.logging")
                         .doesNotStartWith("org.springframework.web");
             }
         }
         assertThat(main.stream()
                 .filter(type -> type.getPackageName().equals("bg.spotyourslot.booking"))
+                .filter(type -> type.getEnclosingClass().isEmpty())
                 .map(JavaClass::getSimpleName)
-                .collect(Collectors.toSet())).containsExactly("package-info");
+                .collect(Collectors.toSet())).containsExactlyInAnyOrder(
+                        "package-info",
+                        "GuestBooking",
+                        "GuestBookingRequest",
+                        "BookingResult",
+                        "BookedAppointment",
+                        "BookingField",
+                        "BookingOrchestrationFailure");
     }
 
     @Test
@@ -141,5 +156,39 @@ class BookingModuleBoundaryTests {
         return module.getDirectDependencies(modules).uniqueModules()
                 .map(dependency -> dependency.getIdentifier().toString())
                 .collect(Collectors.toSet());
+    }
+
+    @Test
+    void bookingReachesOtherModulesOnlyThroughTheirPublishedRootPackages() {
+        for (JavaClass type : main) {
+            if (!type.getPackageName().startsWith("bg.spotyourslot.booking")) {
+                continue;
+            }
+            for (Dependency dependency : type.getDirectDependenciesFromSelf()) {
+                String target = dependency.getTargetClass().getPackageName();
+                for (String module : List.of("business", "catalog", "workforce", "scheduling", "customer")) {
+                    assertThat(target).as(type.getName() + " -> " + dependency.getTargetClass().getName())
+                            .isNotIn(
+                                    "bg.spotyourslot." + module + ".application",
+                                    "bg.spotyourslot." + module + ".infrastructure",
+                                    "bg.spotyourslot." + module + ".domain",
+                                    "bg.spotyourslot." + module + ".web");
+                }
+            }
+        }
+    }
+
+    @Test
+    void theOrchestrationEntryPointIsNotTransactionalAndNeverUsesRequiresNewOrSavepoints() throws Exception {
+        String source = java.nio.file.Files.readString(java.nio.file.Path.of(
+                "src/main/java/bg/spotyourslot/booking/application/GuestBookingService.java"));
+        // Code only: the Javadoc may mention the rejected alternatives.
+        String code = source.replaceAll("(?s)/\\*.*?\\*/", "");
+        assertThat(code).doesNotContain("@Transactional")
+                .doesNotContain("REQUIRES_NEW")
+                .doesNotContain("PROPAGATION_NESTED")
+                .doesNotContain("Savepoint")
+                .doesNotContain("Thread.sleep");
+        assertThat(code).contains("PROPAGATION_REQUIRED").contains("TRANSACTION_REPEATABLE_READ");
     }
 }

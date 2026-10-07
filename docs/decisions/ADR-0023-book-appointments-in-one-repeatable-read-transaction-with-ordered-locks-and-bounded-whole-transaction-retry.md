@@ -205,6 +205,74 @@ already prove a real `40001` under repeatable read; behavior of `FOR SHARE` on a
 updated after the snapshot is documented PostgreSQL behavior, to be proven by the
 Phase 4 tests.
 
+## Implementation notes (Phase 4, 2026-10-06)
+
+Implemented in `booking.application.GuestBookingService` (transaction owner, retry, classification) and
+`BookingAttemptProcedure` (one attempt). No decision above changed except the one refinement marked **(order)**.
+
+- **(order) Locks before availability.** Phase 4 was approved to take the schedule revision guard before the
+  availability validation. Locks are therefore taken first, in the total order, and availability is calculated
+  afterwards (the snapshot is still fixed by the first statement, the Business lock, so the guarantee of ADR-0025 is
+  unchanged: any schedule commit after the snapshot fails the guard with `40001`). Steps: Business `FOR SHARE` by
+  slug; replay lookup; (a non-`ACTIVE` Business ends a new attempt); **every** qualifying StaffMember (active and
+  assigned as of the snapshot, or only the requested one) `FOR SHARE` in one statement in identifier order; the
+  revision guard; the Service `FOR SHARE`; `AvailabilityQuery.calculate`; the start must be an offered slot; the
+  StaffMember is the requested one or the deterministic choice among the slot's free members; Customer; insert;
+  a final read-your-write. The cost of the refinement: for "no preference" all qualifying members are share-locked
+  (not only the chosen one), so an administrative change to any of them waits for, or fails, an open booking.
+  Because one statement locks the set in order, StaffMember locks cannot deadlock each other.
+- **Entry guard.** `TransactionSynchronizationManager.isActualTransactionActive()` or `isSynchronizationActive()`
+  throws `BookingOrchestrationFailure` first, before validation, any clock read, SQL, or collaborator call. Each
+  attempt is `TransactionTemplate` (`REQUIRED`, `REPEATABLE_READ`, read-write); `RecordingJpaTransactionManager`
+  (test) shows one begun transaction per attempt and no suspension.
+- **Only `Created` commits.** Replay, mismatch, every rejection, and Customer outcomes end by rollback.
+- **Retried (max three attempts, immediate):** `ScheduleRevisionConcurrentConflict`, `CustomerConcurrentConflict`,
+  the `ConcurrentConflict` of the Business, Service, and StaffMember booking contracts, and the Appointment store's
+  `ConcurrentFailure` (`40001`, `40P01`), `OverlapConflict` (`23P01`), `DuplicateAttempt`, `DuplicatePublicReference`
+  (each attempt draws a fresh reference). Exhaustion is `SlotUnavailable` if the last failure was an overlap, otherwise
+  the known-rollback `TemporarilyUnavailable`. Everything else before the body returns is a known rollback and not retried.
+- **Assignment rule.** Count of `CONFIRMED` Appointments whose `start_at` lies in the slot's Business-local date
+  `[local midnight, next local midnight)`, then `created_at`, then `UUID.compareTo` of the identifier (the order
+  `AvailabilitySlot` already uses). The lock statement orders by PostgreSQL's bytewise uuid order, which differs
+  from `UUID.compareTo` but is equally deterministic and only orders locks.
+  A single free member needs no count query.
+- **Observed PostgreSQL behavior (real, `GuestBookingConcurrencyIntegrationTests`): exclusion-index deadlocks.**
+  Simultaneous inserts of the same time insert into the exclusion index before either checks and can deadlock
+  (`40P01`, resolved after `deadlock_timeout`, one second). The victims retry in new transactions. With six
+  simultaneous contenders some exhausted the three attempts and received the known-rollback
+  `TemporarilyUnavailable` instead of `SlotUnavailable`. This is a latency and message-quality limitation, **not a
+  data-integrity failure**: the exclusion constraint still admits exactly one Appointment, every loser rolled back
+  completely, and no Customer or Appointment is orphaned. The approved design (shared locks, the exclusion
+  constraint as final arbiter, at most three attempts) is kept unchanged. A contention optimization (for example a
+  per-StaffMember advisory or `FOR UPDATE` lock before the insert) contradicts "bookings do not block each other" and
+  is an **explicit follow-up** that needs its own decision and a measurement of real contention.
+- **Commit outcome: transaction-phase evidence (corrected after review).** A first draft searched the exception
+  chain for `40001`, `40P01`, `25P02`, or `UnexpectedRollbackException`. That is unsound: an exception thrown by an
+  `afterCommit` callback after the database committed can carry any of them. The attempt now registers a
+  synchronization in its own transaction that records the completion status Spring reports
+  (`afterCompletion`: `STATUS_COMMITTED`, `STATUS_ROLLED_BACK`, `STATUS_UNKNOWN`), and classification follows that
+  status: `COMMITTED` means the database committed and a later callback failed, so the result is
+  `OutcomeUncertain`, never retried, whatever the exception contains (the same attempt then replays exactly one
+  Appointment and one Customer); `ROLLED_BACK` is a proven rollback (retried only for `40001` or `40P01`);
+  `UNKNOWN` means the commit call itself failed, and only a server-reported `40001`/`40P01` (retry) or `25P02`
+  (known) proves a rollback, everything else being uncertain; no completion report is uncertain. The SQLState is
+  now only a secondary signal inside a phase that already proves a rollback or a failed commit call. Tested with real
+  PostgreSQL for the `COMMITTED` and `ROLLED_BACK` phases and with injected statuses for `UNKNOWN`.
+- **Silent rollback after the body (corrected after review).** PostgreSQL answers `COMMIT` of an aborted transaction
+  with a silent `ROLLBACK`; neither the driver nor JPA reports it, and Spring reports `COMMITTED`. A
+  `beforeCommit` callback that swallows a failed statement therefore produced `Created` with zero Appointments. The
+  read-your-write at the end of the body does not cover a failure after it. Safeguard: after a `Created` attempt
+  completes normally, **one primary-key read of the Appointment outside any transaction** (autocommit, on a pooled
+  connection after the attempt's transaction ended, so it sees only committed data and needs no `REQUIRES_NEW`)
+  must find it. Present: `Created`. Absent: nothing was committed (Appointments are never deleted), so the
+  attempt is reported as the known-rollback `TemporarilyUnavailable` without an automatic retry, and the same
+  attempt can be repeated. The read fails: `OutcomeUncertain`. Cost: one indexed read per successful booking.
+  Guarantee: `Created` is reported only for an Appointment that is durably visible. Limitation: it cannot say
+  *why* the transaction did not persist, it does not run for non-`Created` results (they wrote nothing), and the
+  Appointment could in theory be committed by a concurrent identical attempt between the commit and the read (then
+  the result is `Created` for a durable Appointment, which is still true). The in-body read-your-write is kept
+  because it turns an abort inside the body into an immediate proven rollback.
+
 ## Conditions for revisiting
 
 Revisit for approved buffers, a measured contention problem, a second application

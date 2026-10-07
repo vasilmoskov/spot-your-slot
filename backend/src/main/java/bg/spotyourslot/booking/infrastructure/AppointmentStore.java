@@ -20,8 +20,11 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -240,6 +243,48 @@ public class AppointmentStore {
                         resultSet.getObject("start_at", OffsetDateTime.class).toInstant(),
                         resultSet.getObject("occupied_until", OffsetDateTime.class).toInstant()))
                 .list());
+    }
+
+    /**
+     * One statement, no lock: for each requested StaffMember of the Business, the number of
+     * {@code CONFIRMED} Appointments whose start lies in {@code [from, to)}, which the booking
+     * assignment rule uses for one Business-local date. Every requested StaffMember is present in
+     * the result (zero when none). An empty StaffMember set or an empty window issues no statement.
+     */
+    public Map<UUID, Long> countConfirmedStartingBetween(
+            UUID businessId, Collection<UUID> staffMemberIds, Instant from, Instant to) {
+        Objects.requireNonNull(businessId, "businessId");
+        Objects.requireNonNull(staffMemberIds, "staffMemberIds");
+        Objects.requireNonNull(from, "from");
+        Objects.requireNonNull(to, "to");
+        Set<UUID> requested = new LinkedHashSet<>(staffMemberIds);
+        Map<UUID, Long> counts = new LinkedHashMap<>();
+        requested.forEach(id -> counts.put(id, 0L));
+        if (requested.isEmpty() || !from.isBefore(to)) {
+            return Collections.unmodifiableMap(counts);
+        }
+        execute(() -> jdbc.sql("""
+                        SELECT staff_member_id, count(*) AS confirmed
+                        FROM appointment
+                        WHERE business_id = :businessId
+                          AND staff_member_id IN (:staffMemberIds)
+                          AND status = 'CONFIRMED'
+                          AND start_at >= :from
+                          AND start_at < :to
+                        GROUP BY staff_member_id
+                        """)
+                .param("businessId", businessId)
+                .param("staffMemberIds", List.copyOf(requested))
+                .param("from", databaseTime(from))
+                .param("to", databaseTime(to))
+                .query((resultSet, rowNumber) -> {
+                    counts.put(
+                            resultSet.getObject("staff_member_id", UUID.class),
+                            resultSet.getLong("confirmed"));
+                    return rowNumber;
+                })
+                .list());
+        return Collections.unmodifiableMap(counts);
     }
 
     private <T> T execute(Supplier<T> operation) {

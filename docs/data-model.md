@@ -228,7 +228,7 @@ date_range)`.
   stamped with their `created_at`; the trigger `business_create_schedule_revision` (`AFTER INSERT ON business`,
   `FOR EACH ROW`) gives every new Business its row in the same statement. Every accepted weekly-schedule
   replacement and every schedule-exception create, replace, and delete advances it by exactly one in its own
-  transaction (`UPDATE ... SET revision = revision + 1`); booking will lock it `FOR SHARE` (Phase 4). Only the
+  transaction (`UPDATE ... SET revision = revision + 1`); every guest booking attempt locks it `FOR SHARE` (Phase 4, `booking.application.BookingAttemptProcedure`). Only the
   `business` module reads or writes it, through the published `ScheduleRevisionBump` and `ScheduleRevisionGuard`.
   Lifecycle, timezone, Service, StaffMember, and assignment changes do not advance it: each already updates the
   Business, Service, or StaffMember row that booking locks (ADR-0025 audit).

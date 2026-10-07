@@ -119,6 +119,24 @@ public class BusinessStore {
     }
 
     /**
+     * One statement that locks the Business row {@code FOR SHARE} at any lifecycle status and
+     * returns only its identifier and status, for the guest booking attempt (ADR-0023).
+     */
+    public Optional<BookingBusinessRow> lockBookingReferenceBySlug(BusinessSlug slug) {
+        return jdbc.sql("""
+                        SELECT id, status
+                        FROM business
+                        WHERE slug = :slug
+                        FOR SHARE
+                        """)
+                .param("slug", slug.value())
+                .query((resultSet, rowNumber) -> new BookingBusinessRow(
+                        resultSet.getObject("id", UUID.class),
+                        BusinessStatus.valueOf(resultSet.getString("status"))))
+                .optional();
+    }
+
+    /**
      * One statement with an explicit public column list and an ACTIVE-only predicate; no lock.
      * A DRAFT, a SUSPENDED, and an unknown slug are indistinguishable.
      */

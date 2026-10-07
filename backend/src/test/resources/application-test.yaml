@@ -5,3 +5,9 @@ spring:
 spotyourslot:
   security:
     allowed-origin: http://localhost:5173
+  booking:
+    fingerprint:
+      # A synthetic, non-secret test key. The production profile rejects it.
+      active-key-version: 1
+      keys:
+        1: Tk9OLVNFQ1JFVC1URVNULUtFWTp0ZXN0LXByb2ZpbGUtb25seS1zeW50aGV0aWMtMDAwMQ==

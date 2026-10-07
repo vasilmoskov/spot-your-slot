@@ -917,15 +917,26 @@ flaky) and uses real PostgreSQL through Testcontainers for persistence, concurre
   `AvailabilityMutationInventoryTests`, the source scan that classifies every write statement. Coordination uses
   latches, futures, and PostgreSQL's own blocking report, never fixed sleeps (`ConcurrencyTestSupport`). The
   booking-against-schedule commit-order tests with real Appointments and Customers belong to Phase 4.
-- **Phase 4 (orchestration):** an active caller transaction rejected before any booking work; each attempt and
-  retry in a distinct PostgreSQL transaction (own transaction identifier and snapshot, no `REQUIRES_NEW`); replay
-  holding only the initial Business lock; zero Customer rows after each failure path; lock order; revalidation against
-  suspension, deactivation, assignment, and Service changes; the assignment rule; fingerprint golden vectors and
-  a matrix (each field changed, preference versus the assigned member, another Business); key and encoding
-  versions with rotation and a missing key; replay after suspension, deactivation, and cancellation;
-  concurrent identical and conflicting attempts; retry classification and exhaustion; proven rollback versus
-  uncertain classification; and the ADR-0025 commit orders for every schedule mutation, with a control run
-  without the guard.
+- **Phase 4 (orchestration; executed, see the Phase 4 record of the task document for exact counts):**
+  `GuestBookingServiceTests` (unit, scripted body and fake transaction manager: entry guard before any work,
+  definition of every attempt, rollback-only for every non-`Created` result, each retryable failure in a new
+  transaction, the three-attempt bound and exhaustion, never-retried failures, and the commit-phase classification with
+  **injected** exceptions, labelled as such); domain and fingerprint tests (attempt ID forms, normalization, golden
+  encoding and HMAC vectors from an independent implementation, a matrix of every changed field, key ring
+  validation, rotation, missing key, unsupported encoding, no key leakage); `BookingFingerprintConfigurationTests`
+  (startup failure reasons, `prod` rejection of non-secret keys); real PostgreSQL classes
+  `GuestBookingIntegrationTests` (ownership, success, assignment rule including the Business-local date),
+  `GuestBookingRejectionIntegrationTests` (every rejection and the atomic rollback of Customer, Appointment, and a
+  consumer-probe write), `GuestBookingReplayIntegrationTests` (exact, equivalent, mismatch for each field and for the
+  preference, replay after suspension and Service/StaffMember/timezone changes, cancelled fixture, the replay holding
+  only the Business lock, unverifiable stored versions), `GuestBookingConcurrencyIntegrationTests` (observed lock
+  order through `FOR UPDATE SKIP LOCKED` probes, exclusion races with lock-wait evidence, identical and mismatched
+  simultaneous attempts, real `40001` and `40P01` through the orchestration, bounded retry, administrative changes
+  waiting for an open booking), `GuestBookingScheduleRaceIntegrationTests` (the ADR-0025 commit orders for all 13
+  audited paths with an availability oracle and two control runs), `GuestBookingCommitFailureIntegrationTests`
+  (real PostgreSQL and transaction-manager commit evidence, labelled; the completion-status classification, the silent-rollback verification, and misleading after-commit exceptions), `GuestBookingKeyRotationIntegrationTests`,
+  `BookingContractsIntegrationTests`, and the boundary tests. Test wiring (`BookingHookConfiguration`) wraps the real
+  collaborators with latches and a recording transaction manager; the wrappers delegate unchanged. Deadlock-victim tests fix the victim with `SET LOCAL deadlock_timeout` on the participant that must not be chosen, because PostgreSQL aborts whichever participant's check finds the cycle first, not the one that waited first.
 - **Phase 5 (public API):** exact key sets and privacy sentinels, Business A/B isolation, guessed identifiers,
   the collapsed 404, unknown-field rejection, the CSRF exemption scope, session independence, limiter capacity,
   expiry, saturation, and replay limiting, the error contract, and no-store with no cookie.

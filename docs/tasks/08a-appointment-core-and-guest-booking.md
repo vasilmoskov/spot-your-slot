@@ -2,8 +2,9 @@
 
 Status: Phase 1 (decisions and documentation) and Phase 2 (the `appointment` schema with its overlap exclusion,
 the internal domain and persistence, and the real busy-interval source) are committed (`a0243f7`, `18052b8`).
-Phase 3 (the Business schedule revision guard and the schedule mutations' participation) is implemented and
-verified and awaits review and commit. Phases 4 to 8 are planned and not started. Issue #18 is closed only on
+Phase 3 (the Business schedule revision guard and the schedule mutations' participation) is committed (`70e31c9`).
+Phase 4 (booking orchestration, idempotency, HMAC fingerprints, bounded retry; internal only) is implemented and
+verified and awaits review and commit. Phases 5 to 8 are planned and not started. Issue #18 is closed only on
 explicit approval; issue #19 is not changed.
 GitHub issue: #18 — Build appointment core and guest booking flow
 Depends on: #16, #17, #20; relates to #19 (partly satisfied here) and #21 (release dependency)
@@ -193,11 +194,11 @@ These stay Proposed until the named phase settles them with evidence:
 3. ~~Final contract and constraint names, and the public-reference alphabet~~ Settled in Phase 2: the constraint names
    are in `docs/data-model.md` and the alphabet is Crockford base32 (ten characters). Published-contract names remain
    Phase 4.
-4. The byte layout of the canonical request encoding (frozen in Phase 4 with golden vectors) and the exact note
-   normalization.
-5. Configuration property names for the fingerprint key ring, the limiter, and startup validation, and whether
-   startup checks that every stored key version is configured (Phases 4 and 5).
-6. Which SQLState and driver conditions prove a server-reported rollback at `COMMIT` (Phase 4 tests).
+4. ~~The byte layout of the canonical request encoding and the exact note normalization~~ Settled in Phase 4
+   (ADR-0024 implementation notes).
+5. Fingerprint key ring names and startup validation settled in Phase 4 (ADR-0024 notes; a startup check of every
+   stored key version is not implemented); the limiter remains Phase 5.
+6. ~~COMMIT classification~~ Settled in Phase 4 (ADR-0024 notes; real commit errors could not be provoked).
 7. The HTTP status of the `GET` routes for an unavailable Service, `Retry-After`, and the fixed problem
    `instance`.
 8. The per-address aggregate limiter budget that prevents one address from exhausting limiter capacity, and the
@@ -557,3 +558,115 @@ booking, the lock order including the Service row, and the rollback of the Custo
   statements written as `INSERT INTO`, `UPDATE`, or `DELETE FROM` followed by a lowercase table name in Java
   sources.
 - Nothing in Phase 3 is visible in the UI, so no visual review applies. Phase 4 remains outstanding.
+
+## Phase 4 record (implemented and verified; awaiting review and commit)
+
+Scope: the internal `GuestBooking` capability: transaction ownership, one attempt, idempotency, HMAC request
+fingerprints, replay, bounded whole-transaction retry, and outcome classification, with the narrow published
+contracts it needs. No HTTP controller, security or CSRF change, limiter, frontend, owner calendar, manual booking,
+cancellation, migration, or dependency was added; V1 to V12 are byte-identical to `HEAD`. Decisions, refinements, and
+observed behavior are ADR implementation notes (ADR-0023, ADR-0024, ADR-0025).
+
+### What was implemented
+
+- **Published contracts (new, narrow, `MANDATORY`, sanitized, cause-free failures):** `business.BusinessBookingAccess`
+  (`lockBySlug`: Business `FOR SHARE` at any lifecycle status, id and status only), `catalog.ServiceBookingAccess`
+  (`lockForBooking`: name, duration, price, active), `workforce.StaffBookingAccess` (`lockEligibleForBooking`:
+  qualifying members locked in one statement in identifier order, display name and creation time). Existing
+  contracts used unchanged: `ScheduleRevisionGuard`, `AvailabilityQuery`, `CustomerIdentification`, and the booking-owned
+  `AppointmentStore` (one added read, `countConfirmedStartingBetween`).
+- **`booking` module:** root contract `GuestBooking`, `GuestBookingRequest`, sealed `BookingResult`
+  (`Created`, `Replayed`, `BusinessUnavailable`, `InvalidRequest`, `ServiceUnavailable`, `StaffMemberUnavailable`,
+  `SlotUnavailable`, `IdentityConflict`, `AttemptMismatch`, `TemporarilyUnavailable` = known rollback,
+  `OutcomeUncertain`), `BookedAppointment`, `BookingField`, `BookingOrchestrationFailure`; `domain` (attempt ID,
+  normalization, encoding v1, assignment policy); `application` (`GuestBookingService`, `BookingAttemptProcedure`,
+  `RequestFingerprinter`, `FingerprintKeyRing`, public reference source, diagnostics); `configuration` (key ring).
+- **Configuration:** `spotyourslot.booking.fingerprint.*` (ADR-0024 notes); non-secret keys in `application-dev.yaml` and
+  `application-test.yaml`; `ProductionProfileIntegrationTests` supplies a synthetic production-style key.
+
+### Verification (executed)
+
+Local only; base `HEAD` `70e31c9` plus the uncommitted Phase 4 working tree (nothing staged). No CI run exists for this state.
+
+- **Final complete `./mvnw --batch-mode verify`** (PostgreSQL 18.4 through Testcontainers): **2943 tests, 0 failures,
+  0 errors, 0 skipped, `BUILD SUCCESS`** (1 min 48 s) on the final code after the review correction below. Phase 3's
+  2594 plus 349.
+- **New classes (347 tests):** `GuestBookingScheduleRaceIntegrationTests` 60, `GuestBookingServiceTests` 90,
+  `GuestBookingRejectionIntegrationTests` 32, `GuestBookingReplayIntegrationTests` 24, `GuestBookingIntegrationTests` 23,
+  `GuestBookingConcurrencyIntegrationTests` 21, `BookingAttemptIdTests` 20, `FingerprintEncodingTests` 19,
+  `NormalizedBookingRequestTests` 12, `FingerprintKeyRingTests` 9, `RequestFingerprinterTests` 8,
+  `BookingContractsIntegrationTests` 7, `StaffAssignmentPolicyTests` 5, `GuestBookingCommitFailureIntegrationTests` 10,
+  `BookingFingerprintConfigurationTests` 4, `GuestBookingKeyRotationIntegrationTests` 3. **Added to existing (2):**
+  `BookingModuleBoundaryTests` 7 to 9. Changed existing assertions: `CustomerModuleBoundaryTests` and
+  `ScheduleRevisionModuleBoundaryTests` (they had asserted that nothing yet depends on Customer or takes the guard),
+  `BookingModuleBoundaryTests` (dependency set, root package, logging limited to the diagnostics class),
+  `ProductionProfileIntegrationTests` (key property), and `ScheduleExceptionLockingIntegrationTests` (one deadlock test, see the flaky-test diagnosis below). No assertion was weakened.
+- **Review correction (second pass).** Commit-outcome handling was corrected after review: classification by
+  Spring's completion status instead of exception content, and a verification read for `Created` (see the
+  limitations below and the ADR-0023 and ADR-0024 notes). It added 26 tests (`GuestBookingServiceTests` 70 to 90,
+  `GuestBookingCommitFailureIntegrationTests` 4 to 10), including real-PostgreSQL regressions where `afterCommit`
+  throws a wrapped `40001`, `40P01`, `25P02`, or an `UnexpectedRollbackException`.
+- **Flaky-test diagnosis (documented reliability standard).** The first complete run after the correction failed
+  once: Phase 3's `ScheduleExceptionLockingIntegrationTests.aLockOrderViolatingCallerDeadlocksOnTheRevisionAndTheVictimIsAConcurrentUpdate`.
+  It is intermittent on the **unmodified Phase 3 code too** (1 failing run in 14 class runs on a pristine `HEAD`
+  export; about 40% of class runs in this working tree, for a reason not identified: the timing differs), and the new
+  `GuestBookingConcurrencyIntegrationTests` deadlock test had the same defect (it failed in several of about a dozen class runs). Root cause: both assumed that PostgreSQL aborts the transaction that began waiting
+  first; it aborts whichever participant's `deadlock_timeout` check finds the cycle first, which depends on timer
+  timing. Fix, without weakening any assertion: the participant that must **not** be the victim runs
+  `SET LOCAL deadlock_timeout = '60s'` (a superuser setting scoped to its transaction), so only the intended victim
+  can run the check. Afterwards 8 of 8 runs of both classes together and 10 of 10 runs of the two tests passed, then the
+  final complete run above.
+- **Iteration history:** a first draft made a collaborator that swallows a failure look like a success (see below,
+  fixed with a final read-your-write); a deadlock test first had the holder as victim and was reordered so the booking
+  waits first; a burst test wrongly expected `SlotUnavailable` for every loser (see the observed deadlocks).
+- **Hygiene:** a search over every new or changed Java file found no compressed empty body and no wildcard or unused
+  import; `git diff --check` and a new-file trailing-whitespace check are clean; V1 to V12 verified unchanged against `HEAD`.
+- The frontend suites were not run: no frontend file changed.
+
+### File inventory (exact, from `git`; 73 changed paths)
+
+| Group | Count | Detail |
+|---|---:|---|
+| New (untracked) | 52 | 30 main (6 `booking` root, 8 `booking.application`, 1 `booking.configuration`, 8 `booking.domain`, 3 `business`, 2 `catalog`, 2 `workforce`) and 22 test files (16 test classes, the base class `BookingIntegrationTest`, `BookingTestHooks`, `BookingHookConfiguration`, `RecordingJpaTransactionManager`, `TransactionLog`, and `AppointmentStoreFailures`) |
+| Modified | 21 | 10 code and configuration files (3 stores `AppointmentStore`, `BusinessStore`, `StaffMemberStore`; `application-dev.yaml`; `application-test.yaml`; 3 boundary tests; `ProductionProfileIntegrationTests`; the Phase 3 test `ScheduleExceptionLockingIntegrationTests`) and **11 Markdown documents** (`README.md` and 10 under `docs/`) |
+| Deleted | 0 | none |
+
+### Evidence by requirement
+
+- **Transaction ownership:** unit and PostgreSQL tests reject an active transaction and a bare synchronization before
+  any clock read, hook point, or SQL; one begun, never suspended transaction per attempt (`RecordingJpaTransactionManager`).
+- **Retries:** real `40001` (Service and StaffMember changed after the snapshot), real `40P01` (a constructed cycle,
+  the booking the victim), real exclusion and unique races, a real Customer conflict; each retry has its own
+  PostgreSQL transaction id and snapshot; exhaustion at three; known rollback leaves nothing.
+- **Idempotency and replay:** see `GuestBookingReplayIntegrationTests`; golden vectors in the domain tests;
+  key rotation with a real second context.
+- **Schedule races:** `GuestBookingScheduleRaceIntegrationTests`, all 13 paths, every ADR-0025 order, two control runs.
+- **Boundaries and privacy:** ArchUnit and Modulith tests; diagnostics tests with sentinel values; contracts reveal only
+  what they need.
+
+### Deviations and limitations (all for review)
+
+- **Order refinement** (ADR-0023 note): locks, including every qualifying StaffMember for "no preference", precede
+  availability, as the Phase 4 instruction required; ADR-0023 step 5 locked only the chosen member.
+- **Observed exclusion-index deadlocks between simultaneous same-time inserts** (ADR-0023 note): retried in new
+  transactions, but a burst of contenders can end as `TemporarilyUnavailable` after three attempts and each deadlock
+  costs `deadlock_timeout` (one second). It is a latency and message-quality limitation, **not a data-integrity
+  failure**: one Appointment, complete rollback of every loser, no orphan. The design (shared locks, exclusion
+  constraint, three attempts) is unchanged; a contention optimization is an **explicit follow-up** needing its own
+  decision and measurement.
+- **Commit outcome (corrected after the first review; ADR-0023 and ADR-0024 notes):** classification no longer reads
+  exception content. It follows the completion status Spring reports to a synchronization registered in the
+  attempt's transaction: `COMMITTED` after a failed callback is `OutcomeUncertain` and never retried (whatever
+  SQLState or `UnexpectedRollbackException` it carries); `ROLLED_BACK` is a proven rollback; `UNKNOWN` needs a
+  server-reported conflict or `25P02`. Real PostgreSQL evidence covers `COMMITTED` and `ROLLED_BACK`; the `UNKNOWN`
+  phase with `40001`, `40P01`, `25P02` rests on injected statuses (a real commit error could not be provoked).
+- **False `Created` after PostgreSQL's silent rollback (corrected):** the in-body read cannot see a failure that
+  happens after it. A normal completion of a `Created` attempt is now confirmed by one primary-key read outside any
+  transaction. Present: `Created`. Absent: the known-rollback `TemporarilyUnavailable`, no automatic retry, the same
+  attempt can be repeated. The read fails: `OutcomeUncertain`. Cost: one indexed read per successful booking. It
+  cannot explain why the transaction did not persist, and no `REQUIRES_NEW`, savepoint, or manager change is used.
+- A retry after an uncertain result is the client's repeat of the same attempt; the server does not auto-resolve.
+- No startup check that every stored key version is configured (ADR-0024 Proposed item); a missing key is an uncertain
+  replay.
+- Nothing is visible in the UI, so no visual review applies. Issue #18 and #19 are not complete; production public
+  booking still depends on Issue #21.

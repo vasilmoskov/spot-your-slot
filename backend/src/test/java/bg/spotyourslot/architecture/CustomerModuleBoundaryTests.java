@@ -137,10 +137,12 @@ class CustomerModuleBoundaryTests {
     }
 
     @Test
-    void nothingOutsideCustomerDependsOnCustomerYet() {
+    void onlyBookingDependsOnCustomerAndThroughTheIdentificationContract() {
         for (ApplicationModule module : modules) {
             String name = module.getIdentifier().toString();
-            if (!name.equals("customer")) {
+            if (name.equals("booking")) {
+                assertThat(dependenciesOf(name)).as(name).contains("customer");
+            } else if (!name.equals("customer")) {
                 assertThat(dependenciesOf(name)).as(name).doesNotContain("customer");
             }
         }

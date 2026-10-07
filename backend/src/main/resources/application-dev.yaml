@@ -6,3 +6,11 @@ spring:
   jpa:
     hibernate:
       ddl-auto: validate
+
+spotyourslot:
+  booking:
+    fingerprint:
+      # A published, non-secret development key. The production profile rejects it.
+      active-key-version: 1
+      keys:
+        1: Tk9OLVNFQ1JFVC1URVNULUtFWTpkZXZlbG9wbWVudC1wcm9maWxlLW9ubHktMDAwMQ==

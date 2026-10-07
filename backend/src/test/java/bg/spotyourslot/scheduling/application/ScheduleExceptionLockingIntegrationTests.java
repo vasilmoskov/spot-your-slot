@@ -543,6 +543,12 @@ class ScheduleExceptionLockingIntegrationTests extends PostgresIntegrationTest {
             // is the reverse of the approved order; the mutation itself never does this.
             CompletableFuture<Throwable> first = CompletableFuture.supplyAsync(
                     () -> captureFailure(() -> transaction().executeWithoutResult(status -> {
+                        // PostgreSQL aborts whichever participant's deadlock check finds the cycle
+                        // first, which depends on timer timing and not on who waited first (a
+                        // pre-existing intermittent failure when the first transaction was chosen). A long
+                        // deadlock_timeout for this transaction (a superuser setting) leaves the second
+                        // transaction as the only one that can run the check, so the victim is fixed.
+                        jdbc.sql("SET LOCAL deadlock_timeout = '60s'").update();
                         exceptions.create(fixture.context(), closure(DATE, DATE));
                         bumped.countDown();
                         await(secondWaiting, "second create was not waiting on the revision");

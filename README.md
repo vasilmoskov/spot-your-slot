@@ -38,14 +38,13 @@ version-guarded edit; creation is blocked for a suspended Business, which can st
 Customers edited). Phase 5 has human visual approval, and Phase 6 added the Customer browser E2E journeys. Issue #20 is
 implemented and verified, pending final review and commit; Booking (#18, in progress below) and the Business calendar (#21) are not implemented.
 Booking, production email, and hosting are not implemented.
-Issue #18 (appointment core and guest booking) has completed Phases 1 and 2 (committed) and has Phase 3
-implemented and verified pending review and commit: its decisions are recorded in
+Issue #18 (appointment core and guest booking) has completed Phases 1 to 3 (committed) and has Phase 4
+(the transactional, idempotent guest booking orchestration, internal only) implemented and verified pending review and commit: its decisions are recorded in
 `docs/tasks/08a-appointment-core-and-guest-booking.md` and ADR-0022 to ADR-0026; Phase 2 added the `appointment`
 table with its database overlap exclusion (`V11`), the internal Appointment domain and store, and the real
 Scheduling busy-interval source in a new `booking` module, replacing the placeholder; Phase 3 adds the
 Business-level schedule revision (`V12`, the `business` guard contracts) that the weekly-schedule and
-schedule-exception mutations advance in their own transactions. There is no booking operation, public endpoint, or UI yet:
-Phases 4 to 8 (booking, public API, frontend, rendered review, and E2E) are planned and not implemented;
+schedule-exception mutations advance in their own transactions. The `GuestBooking` operation exists but has no public endpoint or UI: Phases 5 to 8 (public API, frontend, rendered review, and E2E) are planned and not implemented. The booking request fingerprint needs `spotyourslot.booking.fingerprint.*` keys (development and test profiles ship non-secret keys; production must supply its own through `SPOTYOURSLOT_BOOKING_FINGERPRINT_ACTIVE_KEY_VERSION` and `SPOTYOURSLOT_BOOKING_FINGERPRINT_KEYS_<version>`, Base64 of at least 32 random bytes);
 production public booking is planned to wait for the Business calendar (issue #21).
 Business closures, StaffMember time off, working-day overrides, and additional
 working periods ("Промени в графика") can be administered through an
