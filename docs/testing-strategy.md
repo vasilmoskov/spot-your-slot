@@ -49,6 +49,14 @@ diagnosed, and how verification is reported. `AGENTS.md` and `CLAUDE.md` only po
   load) are targeted diagnostic tools for reproducing a suspected race, not required checks for
   every change.
 
+- **Settle browser audits before asserting or closing.** A test that audits the page's network
+  traffic (for example the public profile's "no cookie was sent") collects every asynchronous
+  read (`request.allHeaders()`), stops listening, and awaits all of them before it asserts and
+  before it navigates on or closes the context. A read that fails (a closed page) is a thrown
+  failure, never a default of "no cookie"; a request the page itself aborted is dropped explicitly.
+  `recordApiRequests(page).stop()` in `frontend/e2e/support/publicProfile.ts` does this, and
+  `frontend/e2e/request-audit.spec.ts` proves it with a fake page and deferred reads.
+
 ### Diagnosing a CI failure
 
 Investigate before calling a failure flaky. Read the failure log and the DOM or assertion output

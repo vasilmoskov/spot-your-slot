@@ -194,6 +194,26 @@ describe('the complete happy path', () => {
   })
 })
 
+describe('the Service context line', () => {
+  it('shows the chosen Service on the middle steps and not on the review, which already lists it', async () => {
+    await openPage()
+    await startFromService('Подстригване')
+    expect(heading()).toHaveTextContent('Избор на служител')
+    expect(document.querySelectorAll('.booking-context')).toHaveLength(1)
+    await next()
+    expect(document.querySelectorAll('.booking-context')).toHaveLength(1)
+    await pickSlot('10:00')
+    await next()
+    expect(heading()).toHaveTextContent('Вашите данни')
+    expect(document.querySelectorAll('.booking-context')).toHaveLength(1)
+    await fillDetails({ name: 'Иван Петров', phone: '0888 123 456', email: '', note: '' })
+    await next()
+    expect(heading()).toHaveTextContent('Преглед и потвърждение')
+    expect(document.querySelectorAll('.booking-context')).toHaveLength(0)
+    expect(document.querySelector('.booking-summary')).toHaveTextContent('Подстригване')
+  })
+})
+
 describe('selection changes and dependent state', () => {
   it('keeps every previous input when moving back and forward between steps', async () => {
     await openPage()

@@ -273,7 +273,7 @@ test.describe('Public Business profile: direct access and allowlist', () => {
   test('an unauthenticated visitor reaches the stable URL, reloads and re-opens it without side effects', async ({ browser }) => {
     const { context, page } = await visitor(browser)
     try {
-      const requests = recordApiRequests(page)
+      const audit = recordApiRequests(page)
       await openPublicPage(page, full.slug)
       await expect(page.getByRole('heading', { level: 1 })).toHaveText(full.name)
       expect(new URL(page.url()).pathname).toBe(`/${full.slug}`)
@@ -282,6 +282,7 @@ test.describe('Public Business profile: direct access and allowlist', () => {
       await expect(page.getByRole('heading', { level: 1 })).toHaveText(full.name)
       expect(new URL(page.url()).pathname).toBe(`/${full.slug}`)
       await page.waitForLoadState('networkidle')
+      const requests = await audit.stop()
 
       // Browser evidence of "no side effect": the only API traffic is the public GET,
       // sent without a cookie, and no session, cookie or storage state appears. There is
@@ -694,7 +695,7 @@ test.describe('Public Business profile: routing', () => {
       await canonical.goto(`/${full.slug}`)
       const baselineLength = await canonical.evaluate(() => history.length)
 
-      const requests = recordApiRequests(page)
+      const audit = recordApiRequests(page)
       await page.goto(`/${full.slug.toUpperCase()}/?ref=card#top`)
       await expect(page.getByRole('heading', { level: 1 })).toHaveText(full.name)
       const url = new URL(page.url())
@@ -704,6 +705,7 @@ test.describe('Public Business profile: routing', () => {
       // Replacement, not an extra step: the history is as long as for the canonical URL,
       // and Back leaves the page instead of returning to a non-canonical spelling.
       expect(await page.evaluate(() => history.length)).toBe(baselineLength)
+      const requests = await audit.stop()
       expect(requests.map((request) => request.path)).toEqual([`/api/public/businesses/${full.slug}`])
       await page.goBack()
       expect(page.url()).toBe('about:blank')
@@ -745,7 +747,7 @@ test.describe('Public Business profile: routing', () => {
   test('deeper paths, reserved roots and hash routes stay with the authenticated application', async ({ browser }) => {
     const { context, page } = await visitor(browser)
     try {
-      const requests = recordApiRequests(page)
+      const audit = recordApiRequests(page)
       const authenticatedPaths = [
         `/${full.slug}/book`,
         '/login',
@@ -763,6 +765,7 @@ test.describe('Public Business profile: routing', () => {
         await expect(page.getByRole('heading', { name: UNAVAILABLE_HEADING })).toHaveCount(0)
       }
       // None of them asked the public endpoint for a Business.
+      const requests = await audit.stop()
       expect(requests.filter((request) => request.path.startsWith('/api/public/'))).toEqual([])
       await expectNoSessionCookie(context)
 
@@ -1074,10 +1077,11 @@ test.describe('Administration regression boundary', () => {
 
       // Visiting the public page in the signed-in context does not alter the session or
       // the hash-route behaviour of the authenticated application.
-      const ownerRequests = recordApiRequests(owner)
+      const ownerAudit = recordApiRequests(owner)
       await openPublicPage(owner, full.slug)
       await expect(owner.getByRole('heading', { level: 1 })).toHaveText(full.name)
       await owner.waitForLoadState('networkidle')
+      const ownerRequests = await ownerAudit.stop()
       expect(ownerRequests.map((request) => request.path)).toEqual([`/api/public/businesses/${full.slug}`])
       expect(ownerRequests.every((request) => !request.hasCookie)).toBe(true)
       await owner.goto('/#/business/services')
@@ -1091,9 +1095,10 @@ test.describe('Administration regression boundary', () => {
     // A fresh visitor of the public page never gets a session or any browser state.
     const guest = await visitor(browser)
     try {
-      const requests = recordApiRequests(guest.page)
+      const guestAudit = recordApiRequests(guest.page)
       await openPublicPage(guest.page, full.slug)
       await guest.page.waitForLoadState('networkidle')
+      const requests = await guestAudit.stop()
       expect(requests.some((request) => request.path.startsWith('/api/auth/'))).toBe(false)
       expect(await guest.context.cookies()).toHaveLength(0)
       await expectBrowserStorageEmpty(guest.page)

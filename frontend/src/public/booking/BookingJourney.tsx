@@ -508,7 +508,9 @@ export function BookingJourney({
         <h1 id="booking-step-heading" ref={headingRef} tabIndex={-1}>
           {heading}
         </h1>
-        {!confirmed && step > STEP_SERVICE && <ServiceContext service={service} />}
+        {!confirmed && step > STEP_SERVICE && step < STEP_REVIEW && (
+          <ServiceContext service={service} />
+        )}
         {body}
       </section>
     </div>

@@ -51,6 +51,11 @@ states, or text-on-action colors only when an implemented component needs them.
 Accessibility and sufficient contrast override exact palette values when
 necessary. Do not communicate meaning through color alone.
 
+The public booking journey (issue #18) additionally uses the derived text tokens
+`--color-danger-text` and `--color-success-text` for its status panels, because the base
+palette colors measure 4.44:1 and 3.85:1 as text on their subtle backgrounds (below 4.5:1).
+Other screens keep the base colors until an approved palette decision.
+
 Error and success panels use their semantic text color, matching subtle
 background, and a balanced full border. Avoid isolated decorative side borders
 that make a state panel appear visually incomplete.

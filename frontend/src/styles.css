@@ -9,11 +9,13 @@
   --color-success: #168f6b;
   --color-success-subtle: #ecfdf3;
   --color-success-border: #a6e0c5;
+  --color-success-text: #0f7a5a;
   --color-warning: #d97706;
   --color-danger: #d92d20;
   --color-disabled-text: #475467;
   --color-disabled-background: #e4e7ec;
   --color-danger-subtle: #fef3f2;
+  --color-danger-text: #b42318;
   --color-border: #e4e7ec;
   --color-focus: #3538cd;
   --space-1: 0.25rem;
@@ -332,6 +334,17 @@ label {
   border: 1px solid var(--color-success);
   color: var(--color-success);
   background: var(--color-success-subtle);
+}
+
+/* The shared palette colors measure 4.44:1 (danger) and 3.85:1 (success) as text on their subtle
+   panels, below the 4.5:1 of the UI guide. The public journey uses darker text tones; the border
+   keeps the palette color. Other screens are unchanged pending an approved palette decision. */
+.booking-journey .status-error {
+  color: var(--color-danger-text);
+}
+
+.booking-journey .status-success {
+  color: var(--color-success-text);
 }
 
 .platform-shell {
@@ -2236,6 +2249,8 @@ label {
 .booking-choice-description,
 .booking-choice-facts {
   color: var(--color-text-secondary);
+  /* The label's own weight is for the title; supporting text stays regular. */
+  font-weight: 400;
   overflow-wrap: anywhere;
   white-space: pre-line;
 }
@@ -2295,6 +2310,9 @@ label {
 
 .booking-date input:checked + .booking-date-face,
 .booking-slot input:checked + .booking-slot-face {
+  /* A thicker border and heavier text, so the selection is not conveyed by color alone. */
+  box-shadow: inset 0 0 0 1px var(--color-action-primary);
+  font-weight: 800;
   border-color: var(--color-action-primary);
   color: var(--color-action-primary-hover);
   background: var(--color-action-primary-subtle);

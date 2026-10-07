@@ -1,7 +1,8 @@
 import type { SubmissionRejection } from './api'
 
-// The approved public Bulgarian wording (ADR-0024, ADR-0026), formal register. The backend text is
-// never rendered; each stable code maps to one fixed sentence here.
+// The approved public Bulgarian wording (ADR-0024, ADR-0026), formal register. The backend's problem
+// text is never rendered; each stable code maps to one fixed sentence here. The only backend text shown
+// is the fixed per-field validation sentence of a 400 `fieldErrors` object (it carries no submitted value).
 
 export const KNOWN_ROLLBACK_MESSAGE = 'Резервацията не беше направена. Опитайте отново.'
 export const UNCERTAIN_MESSAGE = 'Не получихме потвърждение за резервацията. Опитайте отново.'

@@ -321,36 +321,82 @@ export function expectLogicalHeadingHierarchy(levels: number[]): void {
 
 export type RecordedRequest = { method: string, path: string, hasCookie: boolean }
 
+type RequestListener = (request: Request) => void
+
+/** The two events and the listener removal the audit needs; a real Page satisfies it. */
+export type AuditablePage = {
+  on(event: 'request', listener: RequestListener): unknown
+  on(event: 'requestfailed', listener: RequestListener): unknown
+  off(event: 'request', listener: RequestListener): unknown
+  off(event: 'requestfailed', listener: RequestListener): unknown
+}
+
+type PendingRequest = {
+  method: string
+  path: string
+  aborted: boolean
+  headers: Promise<{ hasCookie: boolean } | { failure: string }>
+}
+
+export type ApiRequestAudit = {
+  /**
+   * Stops listening, waits for every started header read, and only then returns the requests the
+   * page sent. A header read that failed for a request the page did not abort throws: a failed read
+   * is never evidence that no cookie was sent. Call it before navigating on or closing the context.
+   * Calling it again returns the same answer.
+   */
+  stop(): Promise<RecordedRequest[]>
+}
+
 /**
- * Records every request the page sends to the API origin, without header values.
- * Requests the page itself aborted are dropped: the Vite development server renders
- * under React StrictMode, which runs a mount effect twice and aborts the first fetch.
- * A production build issues one request, so only requests that were not client-aborted
- * count as sent.
+ * Audits every request the page sends to the API origin (method, path and whether it carried a
+ * `Cookie` header; never a header value). Requests the page itself aborted are dropped explicitly:
+ * the Vite development server renders under React StrictMode, which runs a mount effect twice and
+ * aborts the first fetch, while a production build issues one request. The data is available only
+ * from `stop()`, so no assertion can read a cookie flag whose header read has not finished.
  */
-export function recordApiRequests(page: Page): RecordedRequest[] {
-  const recorded: RecordedRequest[] = []
-  const entries = new Map<Request, RecordedRequest>()
-  page.on('request', (request) => {
+export function recordApiRequests(page: AuditablePage): ApiRequestAudit {
+  const pending = new Map<Request, PendingRequest>()
+  const onRequest = (request: Request): void => {
     if (!request.url().startsWith(API_ORIGIN)) return
-    const entry: RecordedRequest = {
-      method: request.method(),
-      path: new URL(request.url()).pathname,
-      hasCookie: false,
+    const method = request.method()
+    const path = new URL(request.url()).pathname
+    // The read is started here and always has a handler, so a closed page can never raise an
+    // unhandled rejection; the outcome is judged in stop().
+    const headers = request.allHeaders().then(
+      (values) => ({ hasCookie: 'cookie' in values }),
+      (error: unknown) => ({ failure: error instanceof Error ? error.message : String(error) }),
+    )
+    pending.set(request, { method, path, aborted: false, headers })
+  }
+  const onRequestFailed = (request: Request): void => {
+    const entry = pending.get(request)
+    if (entry && request.failure()?.errorText.includes('ABORTED')) entry.aborted = true
+  }
+  page.on('request', onRequest)
+  page.on('requestfailed', onRequestFailed)
+
+  let settled: Promise<RecordedRequest[]> | null = null
+  const settle = async (): Promise<RecordedRequest[]> => {
+    page.off('request', onRequest)
+    page.off('requestfailed', onRequestFailed)
+    const recorded: RecordedRequest[] = []
+    const failures: string[] = []
+    for (const entry of pending.values()) {
+      const outcome = await entry.headers
+      if (entry.aborted) continue
+      if ('failure' in outcome) {
+        failures.push(`${entry.method} ${entry.path}: ${outcome.failure}`)
+        continue
+      }
+      recorded.push({ method: entry.method, path: entry.path, hasCookie: outcome.hasCookie })
     }
-    recorded.push(entry)
-    entries.set(request, entry)
-    void request.allHeaders().then((headers) => {
-      entry.hasCookie = 'cookie' in headers
-    })
-  })
-  page.on('requestfailed', (request) => {
-    const entry = entries.get(request)
-    if (entry && request.failure()?.errorText.includes('ABORTED')) {
-      recorded.splice(recorded.indexOf(entry), 1)
+    if (failures.length > 0) {
+      throw new Error(`The API request audit could not read request headers (${failures.join('; ')})`)
     }
-  })
-  return recorded
+    return recorded
+  }
+  return { stop: () => (settled ??= settle()) }
 }
 
 /** Whether a locator's box lies fully inside the visible viewport width. */

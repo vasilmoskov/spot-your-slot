@@ -814,7 +814,7 @@ only later edits are Markdown.
    `BookingRateLimiterTests.aLaterContactRejectionRetainsTheEarlierAddressCharge` and `anAddressRejectionChangesNoCounterAndTheContactBudgetIsUntouched`,
    and `PublicBookingRateLimitApiIntegrationTests.aContactRejectionRetainsTheAddressChargeAndAnAddressRejectionNeverChargesTheContact` through HTTP.
 
-## Phase 6 record (implemented and verified by automated tests; awaiting review and commit)
+## Phase 6 record (implemented, verified by automated tests, and committed as `584ea32`)
 
 Scope: the public guest-booking frontend inside the existing `/{slug}` page, against the committed Phase 5 contracts, plus the
 documentation. No backend, security, migration (V1 to V12 are byte-identical to `HEAD`), dependency, or configuration change; no
@@ -960,7 +960,7 @@ Review found that the first Phase 6 state machine could lose an unresolved attem
 
 The earlier statement that a rejected retry clears an earlier uncertain send was wrong and is withdrawn here, in ADR-0024, and in the code comments.
 
-### Phase 7 browser-review checklist (not yet performed)
+### Phase 7 browser-review checklist (the input to the Phase 7 record below)
 
 Process: `docs/ui-design-guidelines.md` section 18 and 22. Fixtures are created only through supported APIs or normal application flows (never by writing to the
 database), in the disposable E2E stack or an equivalent review instance; the report lists every record created and how to remove it. Phase 7 prepares the review
@@ -995,3 +995,110 @@ and stay readable (the wide repeated-hour chips included); the review rows stack
 - Accessibility: a screen-reader pass of one step, the review, an error alert, and the dialog; contrast of the chips, the selected state, and the notices; reduced motion is unaffected (no animation exists).
 
 Human approval is required before any of this is recorded in the UI guide, and Phase 8 follows only after it.
+
+## Phase 7 record (developer rendered review performed on 2026-10-07; human visual approval is PENDING)
+
+Scope: a rendered and behavioral review of the committed Phase 6 journey (`584ea32`) against the real backend, with the small frontend
+corrections it found. No backend, migration, dependency, or configuration change; Phase 8 (Playwright journeys) was not started. This is
+**developer review, not human visual approval**: the design, the privacy sentence, and the leave-warning wording remain proposed until a human
+approves them, and nothing here is recorded as an enduring decision in the UI guide.
+
+### Review environment (disposable, supported APIs only)
+
+- Own Compose project `spotyourslot-review` (PostgreSQL `spotyourslot_review`, port 55433), the real backend on 18090 (booking budgets raised
+  through the documented `BOOKING_RATE_LIMIT_*` variables so the review itself is not throttled), and one origin on 15190 that serves the
+  **production build** of the frontend and reverse-proxies `/api` (the same-origin shape of production, so `Retry-After` is readable and no
+  cookie crosses origins). The developer database, its container, and every unrelated port were not touched.
+- A throwaway proxy (outside the repository) can arm a fault for the next booking POST (`drop-after-commit`, `rollback`, `uncertain` with
+  `Retry-After: 2`, `ratelimit` with `Retry-After: 30`, `unreadable201`, `cancelled`, `mismatch`, `slow`). It logs only the attempt ID, a body hash,
+  and the length, never a body, and it closes connections so the browser cannot reuse a dropped one. Faults armed through it are **simulated evidence**.
+- Fixtures were created with the platform-administrator, invitation, Service, StaffMember, assignment, working-schedule and activation APIs,
+  and with the public booking API for competing bookings: `salon-aurora` (7 Services including a 180-character name, a long description, a price with
+  cents, a 120-minute Service, one with no eligible StaffMember, one whose only StaffMember has no working time, and an inactive one; 3 StaffMembers
+  including a 120-character name), `studio-dst` (a Sunday period 01:00–06:00 so 2026-10-25 offers both `03:xx` hours; the review itself consumed that hour) and `studio-chas-2` (the same schedule, left untouched for the human review), `bez-uslugi` (only an inactive
+  Service), `chernova` (DRAFT), `spryan` (SUSPENDED). Real bookings were made in the review database by the review itself.
+  Cleanup: stop the review backend and the review server by their exact process IDs (never by a name pattern), then run
+  `docker compose --project-name spotyourslot-review down --volumes` (this project only; it is never the development project).
+
+### What was reviewed, and how (evidence kinds are kept apart)
+
+- **Rendered, real backend (headless Chromium driven by Playwright, full-page screenshots inspected):** viewports 1280, 1024, 800, 375 (device
+  scale 2), 320, and two *emulations* of 200% zoom: a 640 px-wide viewport at scale 2 (200% of 1280) and a 188 px-wide one (200% of 375). Both
+  entry points and the whole journey (service, StaffMember, date and time, details, review, confirmation) at every width; the profile, the unavailable
+  page (draft, suspended, unknown), a Business with no Services, no eligible StaffMember, no available date, the repeated hour, the review with
+  long text, details with errors, the leave dialog, the restart dialog, and each outcome below. No horizontal overflow at 1280, 1024, 800, 375, 320, or
+  the 640 px emulation. Touch targets were measured: every action and the whole choice, date and time rows are at least 44 px; the only smaller
+  target is the profile's telephone link (24 px tall, the approved Issue #17 profile).
+- **Keyboard (real backend):** the whole journey by keyboard alone (Tab, Arrow keys, Enter), the heading focused on every step, the visible 3 px focus
+  outline on every control, Escape and «Остани» returning focus to the leave button.
+- **Back, Forward, leaving (real browser history):** in-page Back and the browser's Back and Forward keep inputs; a Back that would leave a journey with a
+  chosen time asks «Остани» / «Напусни» (both verified); a clean journey leaves without a dialog; `beforeunload` fired on a reload with details.
+  The Business switch within one tab (history navigation to another slug) showed nothing of the first Business.
+- **Privacy and network (real backend):** in 161 recorded public requests none carried a `Cookie`; every URL was one of five fixed shapes
+  (profile, booking-options, availability with `date` and optional `staffMemberId`, bookings, profile of the other Business) with no personal value;
+  `localStorage`, `sessionStorage`, `document.cookie`, the title, and the URL were empty or fixed with details entered; `history.state` held only
+  `{spyBooking: {journey, step}}` (a random journey marker, never the attempt ID). The backend and proxy logs held no name, telephone, email, or attempt ID.
+- **Real behavior against the real backend:** a successful booking (201), a competing booking of the same slot made through the public API before
+  submit (slot conflict, with «Избор на друг час» recovery), the Service deactivated by the owner before submit, the StaffMember deactivated before
+  submit (both reactivated afterwards), and an identity conflict (a telephone of one Customer with the email of another).
+- **Simulated faults (proxy or browser route, labelled as such):** a response lost after a real commit, followed by the guest's real replay (200);
+  a known rollback and its retry; an uncertain response with `Retry-After: 2` (retry disabled for 2.0 s, no POST meanwhile, then enabled);
+  a `429` with `Retry-After: 30` (gated, no POST); an unreadable 201 followed by the real replay; a `CANCELLED` replay (no cancellation API exists);
+  an attempt mismatch; a later rollback and a later 429 after an earlier lost response (still the same attempt, still frozen, still warned); a double
+  click and an extra click during a slow response (one request); read failures (offline then retry; a read `429` with a gate); server field errors (400).
+- **Frozen attempts (proxy log):** in every scenario with more than one send, the attempt ID and the SHA-256 of the body were identical across sends and
+  the browser sent byte-identical bodies; the retry after an uncertain send was always a user click; no POST occurred while idle (3 s) or during a gate.
+  Observation: when the proxy dropped a response on a *reused* connection, Chromium itself silently re-sent the identical request (same attempt ID and
+  bytes) and the backend answered with a real replay. That is transport behavior, not an application retry, and ADR-0024's idempotency makes it
+  safe; the proxy then closed every connection so the loss became visible to the page.
+- **Accessibility measured (not a screen reader):** computed contrast, the accessibility tree of the review step (alert, disabled retry, named «Промени»
+  buttons, term and definition rows), and the keyboard pass above.
+
+### Defects found and corrected (frontend only; reused shared styles and components)
+
+1. **Description text rendered semibold** (inherited from the shared `label` weight): long Service descriptions were heavy and hard to read. Supporting text of a choice is now regular.
+2. **Duplicate Service line on the review:** the Service context bar repeated the «Услуга» row beneath it (UI guide §20). It is hidden on the review step only; steps 2–4 keep it. Test added (the control run fails without the fix).
+3. **Selection by color alone:** a selected date or time chip differed from the others only by color. It now has a thicker border and heavier text as well.
+4. **Contrast of the journey's status panels:** the shared danger text measured 4.44:1 and the shared success text 3.85:1 on their panels (below 4.5:1). Derived tokens `--color-danger-text` (6.05:1) and `--color-success-text` (5.04:1) apply inside the booking journey only.
+5. A comment in `messages.ts` claimed no backend text is rendered; the fixed per-field validation sentences of a 400 are. The comment was corrected, behavior unchanged.
+
+### Observations that were not changed (for the human review or a later decision)
+
+- **Shared palette:** the same contrast shortfall exists on every administration status panel. Changing it app-wide is a design decision that needs approval; the journey-only tokens are a documented deviation until then.
+- **Public shell minimum width of 320 px:** at 188 px (375 px at 200% zoom) the shell scrolls horizontally. 320 px is the WCAG reflow baseline, so this is outside the criterion and pre-existing in the approved shell; 200% at 1280 and 320 px itself are clean.
+- The profile's telephone link is 24 px tall (meets the 24 px minimum of WCAG 2.2 but not the 44 px used elsewhere); a focus outline is drawn around the heading when the profile first loads under an automated browser. Both belong to the approved Issue #17 profile.
+- The retry gate has no live countdown; the first-send `429` keeps the review editable while the retry is gated (as specified).
+- The server's `fieldErrors` sentences are shown verbatim (they are fixed backend sentences).
+- Primary and secondary buttons share one style, as the guide prescribes; the hierarchy between «Назад» and «Напред» is by order and label only.
+
+### Verification (executed on the final code; local only, base `HEAD` `584ea32` plus the uncommitted Phase 7 working tree)
+
+- `npm run lint` clean; `npm run build` succeeded; `npm test`: **67 test files, 1657 tests, 0 failures** (Phase 6: 1656; +1). The review used the production build of the same code.
+- **Not executed:** any backend test (no backend file changed), Playwright E2E (Phase 8), CI.
+- **Not verified, stated explicitly:** a real screen reader (VoiceOver, NVDA, TalkBack) pass; Safari and its edge-swipe back gesture; real touch input; true browser zoom (it is emulated by a narrower viewport at double scale); real mobile devices. The built-in browser pane showed the page once at 1280 px; every other screenshot is from the Playwright Chromium.
+- Human visual approval, the privacy sentence, and the leave-warning wording: **pending**.
+
+### Phase 7 follow-up: the CI E2E failure of run 37634315740 (commit `584ea32`)
+
+- **Failure:** 1 of 74 browser tests failed in CI: «administration stays reachable, the retired form notes stay absent and public visits create no session», with
+  `request.allHeaders: Target page, context or browser has been closed`. Frontend and backend jobs passed.
+- **Diagnosis (log and code; the mechanism reproduced with fakes):** `recordApiRequests` started `request.allHeaders()` with `void ...then(...)`: no handler for a
+  rejection, `hasCookie` defaulting to `false`, and nothing that waited. In that test the owner page navigated on (`owner.goto('/#/business/services')`) and the
+  `finally` closed the contexts while header reads of API requests were still pending; those reads rejected, nothing handled them, and Playwright attributed the unhandled
+  rejection to the running test. The same shape could also let an assertion read `hasCookie === false` before the read had finished, which is a latent false negative of the privacy
+  assertion. It is a test-support race, not a product defect, and it was not a flaky test to retry.
+- **Change (test support only; no production code, no assertion weakened, no sleep, no timeout, no skipped test):** `recordApiRequests(page)` now returns an audit whose only
+  data accessor is `stop()`. `stop()` removes the listeners, awaits every started header read, drops requests the page aborted (`ERR_ABORTED`, explicit), and **throws**
+  when a read failed for any other request instead of reporting "no cookie"; every read has a handler from the start, so a closing context can no longer raise an unhandled
+  rejection. The five call sites call `stop()` right where they previously asserted, before navigating on or closing. New `e2e/request-audit.spec.ts` (7 tests, fake page and
+  deferred reads, no timers): a pending read is awaited, a missing `Cookie` header is `false` and a present one `true`, a failed read throws, an aborted request is dropped even if its read
+  fails, another failure is judged by its headers, other origins are ignored and listeners are removed, and no unhandled rejection occurs. `docs/testing-strategy.md` records the rule.
+- **Control runs (executed):** treating a failed read as "no cookie" failed 2 of the 7; removing the rejection handler (the original defect) failed 3 of the 7; both were reverted
+  (`diff` against the saved good file is empty).
+- **Executed on this working tree (base `HEAD` `584ea32` plus the uncommitted Phase 7 and follow-up changes), local only:**
+  `eslint e2e` and a strict `tsc` of the two touched specs clean; `npm run lint` clean; `npm run build` succeeded; `npm test` 67 files, 1657 tests, 0 failures;
+  the two affected specs through a copy of `scripts/run-e2e.sh` that differs only by the repository path and the spec arguments: **26 passed**; the failing test repeated 8 times:
+  **8 passed**; and the **complete suite through the unmodified `scripts/run-e2e.sh`: 81 passed, 0 failed** (the earlier 74 plus the 7 audit tests), in the disposable
+  `spotyourslot-e2e` Compose project, which the script removed with its volume. The development database and the review stack were not touched.
+- **Evidence limits:** these are local runs; no CI run exists for this working tree. The original race is timing dependent, so passes alone do not prove its absence; the proof is the
+  deterministic audit spec and the removal of the unhandled and defaulted paths. The original failure was not reproduced in the real browser flow, only its mechanism with fakes.
