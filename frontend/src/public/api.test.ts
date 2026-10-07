@@ -14,7 +14,15 @@ const profileBody = {
     streetNumber: '1',
     details: null,
   },
-  services: [{ name: 'Примерна услуга', description: null, durationMinutes: 45, price: 25 }],
+  services: [
+    {
+      id: '6f1a1d0e-3c52-4a39-9d52-8a1d2b0f9c11',
+      name: 'Примерна услуга',
+      description: null,
+      durationMinutes: 45,
+      price: 25,
+    },
+  ],
 }
 
 const unavailableBody = {
@@ -68,17 +76,12 @@ describe('fetchPublicBusinessProfile', () => {
   })
 
   it('decodes the revised contract in which each Service carries its public reference', async () => {
-    const reference = '6f1a1d0e-3c52-4a39-9d52-8a1d2b0f9c11'
-    useFetch(async () =>
-      respond(200, {
-        ...profileBody,
-        services: profileBody.services.map((service) => ({ ...service, id: reference })),
-      }),
-    )
+    useFetch(async () => respond(200, profileBody))
     const result = await fetchPublicBusinessProfile('example-studio')
-    // The page does not use the reference, so it is dropped and the decoded profile is unchanged.
-    expect(result).toEqual({ kind: 'profile', profile: profileBody })
-    expect(JSON.stringify(result)).not.toContain(reference)
+    expect(result).toMatchObject({
+      kind: 'profile',
+      profile: { services: [{ id: '6f1a1d0e-3c52-4a39-9d52-8a1d2b0f9c11' }] },
+    })
   })
 
   it('keeps only the documented fields of a response', async () => {
@@ -88,11 +91,11 @@ describe('fetchPublicBusinessProfile', () => {
         id: 'internal-id',
         status: 'ACTIVE',
         contactEmail: 'private@example.invalid',
-        services: [{ ...profileBody.services[0], id: 's-1', active: true }],
+        services: [{ ...profileBody.services[0], internalVersion: 's-7', active: true }],
       }),
     )
     const result = await fetchPublicBusinessProfile('example-studio')
-    expect(JSON.stringify(result)).not.toMatch(/internal-id|ACTIVE|private@|s-1|active/)
+    expect(JSON.stringify(result)).not.toMatch(/internal-id|ACTIVE|private@|s-7|active/)
   })
 
   it('reports the single unavailable answer', async () => {
@@ -107,6 +110,11 @@ describe('fetchPublicBusinessProfile', () => {
     ['a 200 with invalid JSON', 200, '<html>'],
     ['a 200 that is not the contract', 200, { hello: 'world' }],
     ['a 200 with a malformed service', 200, { ...profileBody, services: [{ name: 1 }] }],
+    [
+      'a 200 with a Service that has no reference',
+      200,
+      { ...profileBody, services: [{ ...profileBody.services[0], id: undefined }] },
+    ],
     ['a 200 with a malformed address', 200, { ...profileBody, address: { city: 5 } }],
     ['a 200 with a blank name', 200, { ...profileBody, displayName: ' ' }],
     ['a 200 array', 200, []],

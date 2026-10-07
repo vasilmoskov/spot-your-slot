@@ -30,8 +30,20 @@ const profile: PublicBusinessProfile = {
     details: 'вход Б',
   },
   services: [
-    { name: 'Подстригване', description: 'Измиване и оформяне.', durationMinutes: 45, price: 25 },
-    { name: 'Боядисване', description: null, durationMinutes: 120, price: 80.5 },
+    {
+      id: '11111111-1111-4111-8111-111111111111',
+      name: 'Подстригване',
+      description: 'Измиване и оформяне.',
+      durationMinutes: 45,
+      price: 25,
+    },
+    {
+      id: '22222222-2222-4222-8222-222222222222',
+      name: 'Боядисване',
+      description: null,
+      durationMinutes: 120,
+      price: 80.5,
+    },
   ],
 }
 
@@ -112,10 +124,9 @@ describe('profile', () => {
       expect(icon).toHaveAttribute('aria-hidden', 'true')
     }
 
-    // The booking state is part of the main profile flow, not a detached box.
-    const notice = screen.getByText('Онлайн запазването на час все още не е налично.')
-    expect(hero).toContainElement(notice)
-    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+    // The booking entry is part of the main profile flow, not a detached box.
+    expect(hero).toContainElement(screen.getByRole('button', { name: 'Запази час' }))
+    expect(screen.queryByText('Онлайн запазването на час все още не е налично.')).toBeNull()
   })
 
   it('lists the Services directly beneath their heading, each as one standalone item', async () => {
@@ -161,16 +172,21 @@ describe('profile', () => {
     expect(screen.getByRole('heading', { level: 1 })).toHaveFocus()
   })
 
-  it('offers only the telephone link: no booking, availability or administration', async () => {
+  it('offers the telephone link and the booking entries, and no availability or administration', async () => {
     await renderLoaded()
 
     expect(screen.getAllByRole('link')).toHaveLength(1)
-    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+    // Booking starts only from an explicit action; nothing is requested or shown before it.
+    expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual([
+      'Запази час',
+      'Запази час',
+      'Запази час',
+    ])
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
     expect(screen.queryByRole('radio')).not.toBeInTheDocument()
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
     expect(document.body.textContent).not.toMatch(
-      /HAIR_SALON|ACTIVE|DRAFT|SUSPENDED|Запази час|Резервирай|свободн|слот/i,
+      /HAIR_SALON|ACTIVE|DRAFT|SUSPENDED|Резервирай|свободн|слот/i,
     )
   })
 
@@ -230,7 +246,8 @@ describe('profile', () => {
     expect(screen.getByRole('link', { name: '+359 88 000 0000' })).toBeInTheDocument()
     expect(screen.getByText('В момента няма налични услуги за онлайн записване.')).toBeInTheDocument()
     expect(document.querySelector('.public-services')).toBeNull()
-    expect(screen.getByText('Онлайн запазването на час все още не е налично.')).toBeInTheDocument()
+    // With nothing to book there is no booking entry at all.
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
   })
 
   it('omits an empty Service description container', async () => {
@@ -241,6 +258,7 @@ describe('profile', () => {
 
   it('keeps every Service in the order the API returned, however many', async () => {
     const services = Array.from({ length: 30 }, (_, index) => ({
+      id: `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
       name: `Услуга ${30 - index}`,
       description: null,
       durationMinutes: 15,
@@ -250,7 +268,10 @@ describe('profile', () => {
     expect(screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual(
       services.map((service) => service.name),
     )
-    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+    // One booking button per Service, in the same order, plus the general entry in the hero.
+    expect(
+      screen.getAllByRole('button').map((button) => button.getAttribute('aria-label') ?? 'Запази час'),
+    ).toEqual(['Запази час', ...services.map((service) => `Запази час за ${service.name}`)])
   })
 
   it('renders API text as text, never as markup', async () => {
@@ -266,7 +287,15 @@ describe('profile', () => {
     await renderLoaded({
       displayName: longName,
       description: longWord,
-      services: [{ name: longName, description: longWord, durationMinutes: 15, price: 1234.5 }],
+      services: [
+        {
+          id: '33333333-3333-4333-8333-333333333333',
+          name: longName,
+          description: longWord,
+          durationMinutes: 15,
+          price: 1234.5,
+        },
+      ],
     })
     const heading = screen.getByRole('heading', { level: 1 })
     expect(heading).toHaveTextContent(longName)

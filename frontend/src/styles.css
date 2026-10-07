@@ -2081,6 +2081,318 @@ label {
   }
 }
 
+/* Public guest booking journey (issue #18). One column; `gap` is the only spacing between siblings
+   and every child's own margin is zeroed. Choices are native radios, so keyboard and assistive
+   technology behave as a standard radio group. Long names wrap and never widen the page. */
+.public-service-book {
+  justify-self: start;
+}
+
+.booking-journey,
+.booking-step,
+.booking-step-form,
+.booking-review,
+.booking-confirmation,
+.booking-problem {
+  display: grid;
+  min-width: 0;
+}
+
+.booking-journey {
+  gap: var(--space-5);
+}
+
+.booking-step {
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+}
+
+.booking-step > *,
+.booking-step-form > *,
+.booking-review > *,
+.booking-confirmation > *,
+.booking-problem > *,
+.booking-header > * {
+  margin: 0;
+  min-width: 0;
+}
+
+.booking-step h1 {
+  margin: 0;
+  font-size: clamp(1.5rem, 5vw, 2rem);
+  overflow-wrap: anywhere;
+}
+
+.booking-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.booking-business {
+  color: var(--color-action-primary-hover);
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.booking-progress {
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.booking-step-form,
+.booking-review,
+.booking-confirmation,
+.booking-problem {
+  gap: var(--space-4);
+}
+
+.booking-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-control);
+  background: var(--color-action-primary-subtle);
+  overflow-wrap: anywhere;
+}
+
+.booking-context-name {
+  font-weight: 700;
+}
+
+.booking-actions {
+  align-items: flex-start;
+}
+
+.booking-choices,
+.booking-dates,
+.booking-slots,
+.booking-details {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.booking-legend {
+  margin-bottom: var(--space-3);
+  padding: 0;
+  font-weight: 700;
+}
+
+.booking-choice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  cursor: pointer;
+}
+
+.booking-choice:has(input:checked) {
+  border-color: var(--color-action-primary);
+  background: var(--color-action-primary-subtle);
+}
+
+.booking-choice:has(input:focus-visible),
+.booking-date:has(input:focus-visible),
+.booking-slot:has(input:focus-visible) {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.booking-choice input[type="radio"] {
+  width: 1.25rem;
+  height: 1.25rem;
+  min-height: 0;
+  margin: 0.15rem 0 0;
+  padding: 0;
+  accent-color: var(--color-action-primary);
+}
+
+.booking-choice-body {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.booking-choice-title {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.booking-choice-description,
+.booking-choice-facts {
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+
+.booking-date-list,
+.booking-slot-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* The radio is visually hidden; its face is the control, so the whole chip is the touch target. */
+.booking-date,
+.booking-slot {
+  position: relative;
+  display: inline-flex;
+  max-width: 100%;
+}
+
+.booking-date input,
+.booking-slot input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.booking-date-face,
+.booking-slot-face {
+  display: grid;
+  justify-items: center;
+  min-width: 4.5rem;
+  min-height: 2.75rem;
+  align-content: center;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  text-align: center;
+  font-weight: 600;
+}
+
+.booking-slot-face--wide {
+  min-width: 9rem;
+}
+
+.booking-date-weekday {
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
+  text-transform: capitalize;
+}
+
+.booking-date input:checked + .booking-date-face,
+.booking-slot input:checked + .booking-slot-face {
+  border-color: var(--color-action-primary);
+  color: var(--color-action-primary-hover);
+  background: var(--color-action-primary-subtle);
+}
+
+.booking-date input:disabled,
+.booking-slot input:disabled {
+  cursor: not-allowed;
+}
+
+.booking-details textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+.booking-privacy {
+  max-width: 65ch;
+}
+
+.booking-summary,
+.booking-facts {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.booking-summary-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+}
+
+.booking-summary-row > * {
+  margin: 0;
+  min-width: 0;
+}
+
+.booking-summary-row dt,
+.booking-facts dt {
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.booking-summary-row dd {
+  display: grid;
+  gap: var(--space-1);
+  overflow-wrap: anywhere;
+}
+
+.booking-summary-strong {
+  font-weight: 700;
+}
+
+.booking-summary-note {
+  white-space: pre-line;
+}
+
+.booking-facts > div {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.booking-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.booking-reference {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.booking-outcome:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+@media (min-width: 48rem) {
+  .booking-step {
+    padding: var(--space-6);
+  }
+
+  .booking-summary-row {
+    grid-template-columns: 9rem minmax(0, 1fr) auto;
+    align-items: start;
+  }
+
+  .booking-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 /* Customer administration. Long names, phone numbers and e-mail addresses wrap inside their
    cell instead of widening the page. */
 .customer-table td {
@@ -2273,5 +2585,11 @@ label {
 @media (prefers-reduced-motion: reduce) {
   .customer-results {
     transition: none;
+  }
+}
+
+@media (min-width: 48rem) {
+  .public-service-book {
+    grid-column: 1 / -1;
   }
 }

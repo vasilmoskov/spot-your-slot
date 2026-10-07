@@ -960,9 +960,13 @@ flaky) and uses real PostgreSQL through Testcontainers for persistence, concurre
   `PublicStaffAccessServiceTests`, `BookingBodyLimitFilterTests`, and `PublicBookingModuleBoundaryTests`. The public-profile consumers are checked by the frontend public-profile Vitest suites and the existing `public-business-profile` Playwright journey against the final backend. **Evidence boundary:** injected outcomes
   prove only the HTTP mapping; transactions, commits, retries, and idempotency are proven by the Phase 4 classes, and the
   two real-fault 503 tests reuse their mechanism. No test sleeps; time moves only when a test moves the injected clock.
-- **Phase 6 (frontend):** Vitest with fake clocks and deferred promises, abort and stale-response ordering, the
-  frozen uncertain state and exact-payload retry, duplicate-submit protection, and no personal data in the URL,
-  storage, or `history.state`.
+- **Phase 6 (frontend, implemented; not rendered or visually approved):** Vitest and Testing Library over a fake HTTP server that speaks the real Phase 5 response shapes
+  (`src/public/booking/testSupport.tsx`), with responses held open by deferred promises where ordering matters and `vi.useFakeTimers` (only `setTimeout`, `clearTimeout`, and `Date`) for `Retry-After`;
+  no test sleeps and none relies on a larger timeout. `BookingJourney.flow.test.tsx` (happy path, preference, dependent-state reset, date and timezone handling, the repeated hour, abort and stale answers, Business switching),
+  `BookingJourney.submission.test.tsx` (duplicate-submit protection, the exact ID and body across eleven retry outcomes, the frozen uncertain state, an uncertain attempt followed by each of eleven later answers, `Retry-After`, 201, 200, a cancelled replay, every rejection),
+  `BookingJourney.states.test.tsx` (unavailable, empty, network, and rate-limited reads, validation and focus, leaving and the browser history, memory-only privacy), and the unit suites `api.test.ts`, `attempt.test.ts`, and `dates.test.ts`.
+  The date tests were also run with the browser timezone set to `Pacific/Kiritimati`, `America/Los_Angeles`, and `UTC`. These tests prove client behavior; they do not prove the booking transaction, idempotency, or tenant isolation, which the Phase 4 and 5
+  backend tests prove. The `public-business-profile` Playwright spec was updated for the new booking buttons and executed after the Phase 6 correction (19 passed, in the script's own disposable Compose project).
 - **Phase 7 (rendered review):** rendered browser review and explicit human visual approval, separate from every
   automated test, before Phase 8.
 - **Phase 8 (browser E2E):** Playwright journeys with fixtures created only through supported APIs, conflict

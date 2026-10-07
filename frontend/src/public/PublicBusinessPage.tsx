@@ -1,12 +1,15 @@
-import { useEffect, useRef, useState, type RefObject } from 'react'
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { businessTypeLabel } from '../business/businessType'
 import { formatServiceDuration, formatServicePrice } from '../business/services/presentation'
 import { Button } from '../ui/Button'
+import { UnsavedChangesGuardProvider } from '../ui/UnsavedChangesGuard'
 import {
   fetchPublicBusinessProfile,
   type PublicBusinessProfile,
   type PublicProfileResult,
 } from './api'
+import { BookingJourney } from './booking/BookingJourney'
+import { newJourneyId, pushJourneyEntry } from './booking/useJourneyHistory'
 import { addressLines, dialableNumber, truncateAtWord } from './presentation'
 import { usePageMetadata, type PageMetadata } from './usePageMetadata'
 
@@ -37,6 +40,19 @@ function metadataFor(view: Loaded | null): PageMetadata | null {
  * Business stays on screen while another one loads.
  */
 export function PublicBusinessPage({ slug }: { slug: string }) {
+  return (
+    <UnsavedChangesGuardProvider>
+      <PublicBusinessContent slug={slug} />
+    </UnsavedChangesGuardProvider>
+  )
+}
+
+// The guest booking journey of the open page: a random history label and the Service it was opened
+// from. It holds no personal data; the journey's own state does, and it is keyed by this object.
+type OpenJourney = { id: string; serviceId: string | null }
+
+function PublicBusinessContent({ slug }: { slug: string }) {
+  const [journey, setJourney] = useState<OpenJourney | null>(null)
   const [attempt, setAttempt] = useState(0)
   const [loaded, setLoaded] = useState<Loaded | null>(null)
   const headingRef = useRef<HTMLHeadingElement>(null)
@@ -61,8 +77,23 @@ export function PublicBusinessPage({ slug }: { slug: string }) {
   usePageMetadata(metadataFor(view))
 
   useEffect(() => {
-    if (view) headingRef.current?.focus()
-  }, [view])
+    if (view && !journey) headingRef.current?.focus()
+  }, [view, journey])
+
+  // Each step of the journey adds a history entry holding only a step marker (ADR-0026). The entries are
+  // pushed here, in the event handler, so a development double-mount can never push them twice.
+  const openJourney = (serviceId: string | null) => {
+    const id = newJourneyId()
+    pushJourneyEntry(id, 1)
+    if (serviceId !== null) pushJourneyEntry(id, 2)
+    setJourney({ id, serviceId })
+  }
+  const closeJourney = useCallback(() => setJourney(null), [])
+  // The Business turned out to be unavailable while booking: the page shows the unavailable answer.
+  const businessUnavailable = useCallback(() => {
+    setJourney(null)
+    setLoaded({ key, outcome: { kind: 'unavailable' } })
+  }, [key])
 
   return (
     <div className="public-page">
@@ -96,8 +127,25 @@ export function PublicBusinessPage({ slug }: { slug: string }) {
             <p>Проверете адреса или опитайте по-късно.</p>
           </section>
         )}
-        {view && view.outcome !== 'failed' && view.outcome.kind === 'profile' && (
-          <PublicProfile profile={view.outcome.profile} headingRef={headingRef} />
+        {view && view.outcome !== 'failed' && view.outcome.kind === 'profile' && journey && (
+          <BookingJourney
+            key={`${slug}:${journey.id}`}
+            slug={slug}
+            businessName={view.outcome.profile.displayName}
+            businessPhone={view.outcome.profile.phone}
+            services={view.outcome.profile.services}
+            journey={journey.id}
+            initialServiceId={journey.serviceId}
+            onClose={closeJourney}
+            onBusinessUnavailable={businessUnavailable}
+          />
+        )}
+        {view && view.outcome !== 'failed' && view.outcome.kind === 'profile' && !journey && (
+          <PublicProfile
+            profile={view.outcome.profile}
+            headingRef={headingRef}
+            onBook={openJourney}
+          />
         )}
       </main>
     </div>
@@ -123,9 +171,11 @@ function PinIcon() {
 function PublicProfile({
   profile,
   headingRef,
+  onBook,
 }: {
   profile: PublicBusinessProfile
   headingRef: RefObject<HTMLHeadingElement | null>
+  onBook: (serviceId: string | null) => void
 }) {
   const phone = profile.phone?.trim() ?? ''
   const dialable = phone === '' ? null : dialableNumber(phone)
@@ -173,10 +223,13 @@ function PublicProfile({
           </ul>
         )}
 
-        {/* Booking entry: issue #18 replaces this message with, or adds, the real action. */}
-        <div className="public-booking">
-          <p>Онлайн запазването на час все още не е налично.</p>
-        </div>
+        {profile.services.length > 0 && (
+          <div className="public-booking">
+            <Button type="button" onClick={() => onBook(null)}>
+              Запази час
+            </Button>
+          </div>
+        )}
       </section>
 
       <section className="public-services-section" aria-labelledby="public-services-heading">
@@ -185,8 +238,8 @@ function PublicProfile({
           <p className="public-empty">В момента няма налични услуги за онлайн записване.</p>
         ) : (
           <ul className="public-services">
-            {profile.services.map((service, index) => (
-              <li key={`${index}-${service.name}`} className="public-service">
+            {profile.services.map((service) => (
+              <li key={service.id} className="public-service">
                 <div className="public-service-main">
                   <h3>{service.name}</h3>
                   {service.description && (
@@ -203,6 +256,14 @@ function PublicProfile({
                     <dd>{formatServicePrice(service.price)}</dd>
                   </div>
                 </dl>
+                <Button
+                  type="button"
+                  className="public-service-book"
+                  aria-label={`Запази час за ${service.name}`}
+                  onClick={() => onBook(service.id)}
+                >
+                  Запази час
+                </Button>
               </li>
             ))}
           </ul>

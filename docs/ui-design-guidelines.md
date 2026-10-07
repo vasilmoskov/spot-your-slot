@@ -465,9 +465,13 @@ The composition of the read-only public Business profile was approved in issue #
 ([task 06a](tasks/06a-public-business-profile.md)): one coherent Business hero with the
 public identity and the optional approved contact data, an honest booking-unavailable
 state, standalone Service cards without redundant outer card nesting, and a responsive,
-accessible presentation on desktop and mobile. The composition of the actual booking
-journey is a future issue #18 decision. This guide does not authorize public booking work
-or expand the MVP.
+accessible presentation on desktop and mobile. The booking journey (issue #18, Phase 6) is
+implemented inside that page: native radio groups for the Service, the StaffMember preference, the
+date, and the time, a labelled details form that follows section 7, a review with «Промени» actions,
+the shared «Остани» / «Напусни» dialog (section 19), and the shared status messages; the public
+page never copies the administration shell. **Its composition is implemented but not yet visually
+approved:** it becomes an enduring decision of this guide only after the Phase 7 rendered review and
+explicit human approval. This guide does not authorize public booking work or expand the MVP.
 
 ## 15. Paginated tables
 

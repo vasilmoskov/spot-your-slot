@@ -275,7 +275,7 @@ export function asProfile(result: PublicApiResult): PublicProfileJson {
 
 export const UNAVAILABLE_HEADING = 'Страницата не е налична'
 export const UNAVAILABLE_TITLE = 'Страницата не е налична – SpotYourSlot'
-export const BOOKING_NOTICE = 'Онлайн запазването на час все още не е налично.'
+export const BOOKING_ENTRY = 'Запази час'
 export const NO_SERVICES_TEXT = 'В момента няма налични услуги за онлайн записване.'
 export const LOADING_TEXT = 'Зареждане на страницата…'
 export const FAILURE_HEADING = 'Страницата не може да бъде заредена.'

@@ -12,7 +12,7 @@ import { API_ORIGIN, requiredEnvironment } from './support/environment'
 import { signInAsPlatformAdmin } from './support/provisioning'
 import {
   ADDRESS_KEYS,
-  BOOKING_NOTICE,
+  BOOKING_ENTRY,
   FAILURE_HEADING,
   FRONTEND_ORIGIN,
   LOADING_TEXT,
@@ -321,7 +321,7 @@ test.describe('Public Business profile: direct access and allowlist', () => {
       for (const line of ['Улица Аврора 12', '1000 София', 'Вход от двора, етаж 2']) {
         await expect(page.getByText(line, { exact: true })).toBeVisible()
       }
-      await expect(page.getByText(BOOKING_NOTICE, { exact: true })).toBeVisible()
+      await expect(page.getByRole('button', { name: BOOKING_ENTRY, exact: true })).toBeVisible()
       await expect(page.getByRole('heading', { level: 2, name: 'Услуги', exact: true })).toBeVisible()
 
       for (const name of FULL_ACTIVE) {
@@ -338,9 +338,9 @@ test.describe('Public Business profile: direct access and allowlist', () => {
       await expect(page.getByText(FULL_INACTIVE)).toHaveCount(0)
       await expect(page.getByText('Тази услуга вече не се предлага.')).toHaveCount(0)
 
-      // The telephone is the only link and nothing is an action: no booking entry exists.
+      // The telephone is the only link; the only actions are the booking entries (the general one and one per Service).
       await expect(page.getByRole('link')).toHaveCount(1)
-      await expect(page.getByRole('button')).toHaveCount(0)
+      await expect(page.getByRole('button')).toHaveCount(1 + FULL_ACTIVE.length)
       const text = await mainText(page)
       expect(text).not.toContain(FULL_CONTACT_EMAIL)
       expect(text).not.toContain(full.ownerEmail)
@@ -408,7 +408,7 @@ test.describe('Public Business profile: direct access and allowlist', () => {
       await expect(page.getByText('Адрес')).toHaveCount(0)
       await expect(page.locator('.public-description')).toHaveCount(0)
       expect(await mainText(page)).not.toMatch(/публичната страница/)
-      await expect(page.getByText(BOOKING_NOTICE, { exact: true })).toBeVisible()
+      await expect(page.getByRole('button', { name: BOOKING_ENTRY, exact: true })).toBeVisible()
       await expect(serviceItem(page, 'Класическо бръснене').getByText('15.00 €')).toBeVisible()
 
       const profile = asProfile(await readPublicApi(context.request, minimal.slug))
@@ -433,8 +433,8 @@ test.describe('Public Business profile: direct access and allowlist', () => {
       await expect(page.getByRole('button')).toHaveCount(0)
       await expect(page.getByRole('link')).toHaveCount(0)
       await expect(page.getByText('Скрита услуга')).toHaveCount(0)
-      // Honest about booking: the only booking statement is that it is unavailable.
-      await expect(page.getByText(BOOKING_NOTICE, { exact: true })).toBeVisible()
+      // Nothing to book: no booking entry and no booking statement.
+      await expect(page.getByRole('button', { name: BOOKING_ENTRY })).toHaveCount(0)
       const profile = asProfile(await readPublicApi(context.request, empty.slug))
       expect(profile.services).toEqual([])
     } finally {
@@ -1009,7 +1009,7 @@ test.describe('Public Business profile: responsive and accessibility smoke', () 
           await expect(item.getByText('Продължителност', { exact: true })).toBeVisible()
           await expect(item.getByText('Цена', { exact: true })).toBeVisible()
         }
-        await expect(page.getByText(BOOKING_NOTICE)).toBeVisible()
+        await expect(page.getByRole('button', { name: BOOKING_ENTRY, exact: true })).toBeVisible()
 
         // The long fixture shows every one of its ten Services.
         await openPublicPage(page, long.slug)

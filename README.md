@@ -38,8 +38,8 @@ version-guarded edit; creation is blocked for a suspended Business, which can st
 Customers edited). Phase 5 has human visual approval, and Phase 6 added the Customer browser E2E journeys. Issue #20 is
 implemented and verified, pending final review and commit; Booking (#18, in progress below) and the Business calendar (#21) are not implemented.
 Booking, production email, and hosting are not implemented.
-Issue #18 (appointment core and guest booking) has completed Phases 1 to 4 (committed) and has Phase 5
-(the public availability and booking API, backend only) implemented and verified pending review and commit: its decisions are recorded in
+Issue #18 (appointment core and guest booking) has completed Phases 1 to 5 (committed) and has Phase 6
+(the public guest-booking frontend inside `/{slug}`, in memory only, with no rendered review or visual approval yet) implemented and verified by automated tests pending review and commit; Phase 5 (the public availability and booking API, backend only): its decisions are recorded in
 `docs/tasks/08a-appointment-core-and-guest-booking.md` and ADR-0022 to ADR-0026; Phase 2 added the `appointment`
 table with its database overlap exclusion (`V11`), the internal Appointment domain and store, and the real
 Scheduling busy-interval source in a new `booking` module, replacing the placeholder; Phase 3 added the

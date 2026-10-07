@@ -3,8 +3,8 @@ import { API_BASE_URL } from '../identity/api'
 // Mirrors the allowlisted response of `GET /api/public/businesses/{slug}`
 // (ADR-0017). The lifecycle status, other identifiers and booking state are not
 // part of the contract and are deliberately not modelled. Since ADR-0026 each
-// Service also carries its public reference (`id`); this page does not use it,
-// so the decoder still copies only the fields below and drops it.
+// Service carries its public reference (`id`), the only identifier the guest
+// booking journey sends back; every use is Business-scoped on the server.
 export type PublicAddress = {
   city: string | null
   postalCode: string | null
@@ -14,6 +14,7 @@ export type PublicAddress = {
 }
 
 export type PublicService = {
+  id: string
   name: string
   description: string | null
   durationMinutes: number
@@ -79,6 +80,8 @@ function decodeService(value: unknown): PublicService | undefined {
   if (!isRecord(value)) return undefined
   const description = nullableText(value.description)
   if (
+    typeof value.id !== 'string' ||
+    value.id.trim() === '' ||
     typeof value.name !== 'string' ||
     description === undefined ||
     typeof value.durationMinutes !== 'number' ||
@@ -89,6 +92,7 @@ function decodeService(value: unknown): PublicService | undefined {
     return undefined
   }
   return {
+    id: value.id,
     name: value.name,
     description,
     durationMinutes: value.durationMinutes,

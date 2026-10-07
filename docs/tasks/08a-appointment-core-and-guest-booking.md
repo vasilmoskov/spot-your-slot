@@ -4,8 +4,10 @@ Status: Phase 1 (decisions and documentation), Phase 2 (the `appointment` schema
 internal domain and persistence, and the real busy-interval source), Phase 3 (the Business schedule revision guard and the
 schedule mutations' participation), and Phase 4 (booking orchestration, idempotency, HMAC fingerprints, bounded retry)
 are committed (`a0243f7`, `18052b8`, `70e31c9`, `63f6019`). Phase 5 (the public availability and booking API,
-session-independent security, and the bounded limiter; backend only) is implemented and verified and awaits review
-and commit. Phases 6 to 8 are planned and not started. Issue #18 is closed only on explicit approval; issue #19 is not changed.
+session-independent security, and the bounded limiter; backend only) was reviewed and approved and is committed as
+`3576843`. Phase 6 (the public guest-booking frontend) is implemented and verified by automated tests and awaits review and commit; it
+has had **no rendered browser review and no human visual approval**. A safety correction of its attempt state machine (see "Phase 6 correction") is part of it. Phases 7 and 8 are planned and not started. Issue #18 is closed
+only on explicit approval; issue #19 is not changed.
 GitHub issue: #18 — Build appointment core and guest booking flow
 Depends on: #16, #17, #20; relates to #19 (partly satisfied here) and #21 (release dependency)
 Decision records: [ADR-0022](../decisions/ADR-0022-model-appointments-with-snapshots-two-statuses-and-a-database-overlap-exclusion.md),
@@ -204,7 +206,12 @@ These stay Proposed until the named phase settles them with evidence:
    (seconds until the window or capacity frees) and `2` on both `503`; the instance `/api/public/businesses`.
 8. ~~The per-address aggregate limiter budget and the capacity default~~ Settled in Phase 5: 30 bookings and 600 reads
    per address across Businesses per 15 minutes; 50 000 counters.
-9. The wording of the privacy notice and of the confirmation shown when leaving the frozen uncertain state.
+9. The wording of the privacy notice and of the confirmation shown when leaving the frozen uncertain state. **Still Proposed.** Phase 6
+   implemented the recommendation below so that it can be reviewed in the browser in Phase 7; it is not approved. Privacy notice (details
+   step), corrected after review: «Данните ви се предоставят на бизнеса за записване и управление на резервацията.» (it says that the data is given to the Business and does not imply
+   that the Business does not keep it; no legal-consent, retention, or marketing claim). It is wording **awaiting human visual review**, not approved. Leave confirmation while data is entered: «Резервацията не е завършена. / Ако напуснете, въведените данни ще бъдат
+   загубени.»; while sending or uncertain: «Резервацията може вече да е направена. / Ако напуснете, няма да видите резултата.» plus the
+   Business telephone when it is public.
 10. ~~The mechanism that makes public endpoints ignore the session~~ Settled in Phase 5: `PublicBookingRoutes` and
     `DatabaseSessionFilter.shouldNotFilter`.
 
@@ -806,3 +813,185 @@ only later edits are Markdown.
    (`PublicBookingRateLimiter`), ADR-0026, `security.md`, and this record. Deterministic tests:
    `BookingRateLimiterTests.aLaterContactRejectionRetainsTheEarlierAddressCharge` and `anAddressRejectionChangesNoCounterAndTheContactBudgetIsUntouched`,
    and `PublicBookingRateLimitApiIntegrationTests.aContactRejectionRetainsTheAddressChargeAndAnAddressRejectionNeverChargesTheContact` through HTTP.
+
+## Phase 6 record (implemented and verified by automated tests; awaiting review and commit)
+
+Scope: the public guest-booking frontend inside the existing `/{slug}` page, against the committed Phase 5 contracts, plus the
+documentation. No backend, security, migration (V1 to V12 are byte-identical to `HEAD`), dependency, or configuration change; no
+real API defect was found. It has **not** been reviewed in a rendered browser and the design is **not** visually approved (that
+is Phase 7). Playwright journeys are Phase 8 and were not written; the existing `public-business-profile` Playwright spec was
+updated and executed after the Phase 6 correction (19 passed).
+
+### What was implemented
+
+- **Entry and composition.** The profile keeps its approved composition. The hero gains one «Запази час» action (only when the Business
+  has Services) and each Service card gains «Запази час за {Service}» (entering at the StaffMember step with the Service chosen).
+  Opening the journey replaces the profile body inside the same `<main>`; «Към страницата на бизнеса» returns to it. `services[].id` is
+  now decoded (`PublicService.id`) and is the only reference sent back.
+- **`src/public/booking/` (new):** `api.ts` (the three real endpoints, strict decoders, `credentials: 'omit'`, classification of every POST
+  outcome), `attempt.ts` (the pure submission state machine and the request body), `dates.ts` (date-only versus instant handling, Business
+  timezone formatting, the repeated-hour test), `details.ts` (Customer validation through the shared contact policies and the 500 code
+  point note), `hooks.ts` (`useRead`: abortable, key-scoped reads; `useWaiting`: a retry gate), `useJourneyHistory.ts` (step markers
+  only), `messages.ts` (the approved wording), the step components (`steps.tsx`, `DetailsStep.tsx`, `ReviewStep.tsx`,
+  `ConfirmationView.tsx`), and `BookingJourney.tsx` (state, reads, history, guard, submission). `testSupport.tsx` is test support.
+- **Shared change:** `UnsavedChangesGuard` accepts an optional `{label, lines}` notice (default unchanged), so the public journey reuses the shared
+  «Остани» / «Напусни» dialog with its own sentences. `PublicBusinessPage` wraps itself in the guard provider.
+- **Steps (neutral headings, formal register):** «Избор на услуга», «Избор на служител» (with «Без предпочитание», preselected, and the text that
+  the member is determined at confirmation), «Дата и час» (date radios from `availableDates`, slot radios, a note that times are in the Business
+  timezone), «Вашите данни» (name, phone, email, optional note with a code point counter, privacy sentence), «Преглед и потвърждение», then the
+  result. Each is a native radio group or a labelled form; focus moves to the step heading on every step change; the step progress is text.
+
+### Behavior and rules
+
+- **Reads.** `booking-options` is keyed by Business and Service only, so a date change never reloads it (test). `availability` is keyed by
+  Service, preference, and requested date; the first request uses the server's `firstDate`, then the first available date is selected and
+  its slots shown (no second request when it is the same date). Every key change aborts the previous request, and an answer, failure, or abort
+  for another key is never shown. Leaving a read's step discards its result, so returning always loads fresh data (a taken slot is never shown
+  from an earlier answer). The chosen time counts only while the current offer contains it. A Service change clears preference, date, and time; a preference change
+  clears date and time; a date change clears the time. Nothing is computed in the frontend: no slot, price, duration, end, or assignment.
+- **Dates.** `yyyy-MM-dd` is parsed to numeric parts and formatted in UTC from those parts, so no browser timezone can shift the day; an instant
+  is formatted in the returned Business timezone. The repeated hour is detected by formatting the neighbouring hours in that timezone, and a
+  repeated time carries its offset («03:30 (UTC+03:00)»). Verified with the browser timezone set to `Pacific/Kiritimati`,
+  `America/Los_Angeles`, and `UTC`.
+- **Attempt lifetime (applies ADR-0024; corrected, see "Phase 6 correction").** One attempt is one browser-generated ID (`crypto.randomUUID()`, with a
+  `getRandomValues` UUID-v4 fallback and no `Math.random`) together with the **exact JSON text of its first send**, held only in component memory. Once any send of it ends
+  uncertain, `possiblyCommitted` is **sticky**: nothing but a valid success (201, or a 200 replay including `CANCELLED`) or the warned abandonment resolves it.
+
+| Answer to a send | First send of the attempt | After an earlier uncertain send of the same attempt |
+|---|---|---|
+| network failure, abort, timeout, unreadable or malformed 2xx, any 5xx other than the documented rollback, 408, `503 BOOKING_OUTCOME_UNCERTAIN`, or **any 4xx that is not a documented code on its documented status** | **uncertain**: frozen, possibly committed | uncertain, same attempt |
+| `503 BOOKING_TEMPORARILY_UNAVAILABLE` (proven rollback of *that* request) | retryable: same ID and bytes, or change a choice (drops the attempt) | **uncertain**, same attempt (it says nothing about the earlier send) |
+| `429 RATE_LIMITED` | retryable (refused before booking work) | uncertain (rate-limited message), same attempt |
+| documented rejection: `400 VALIDATION_ERROR`, `404 BUSINESS_PAGE_UNAVAILABLE`, `409` slot, Service, StaffMember or identity conflict, `413 REQUEST_TOO_LARGE`, `415 UNSUPPORTED_MEDIA_TYPE` | attempt **dropped**; the next submit draws a **new** ID (a `404` ends the journey) | **uncertain**, same attempt; the journey stays mounted (a `404` shows that the Business page is unavailable, with the telephone and the leave warning) |
+| `409 BOOKING_ATTEMPT_MISMATCH` | **unresolved**, not a rejection: it means an Appointment exists under this ID with other data; frozen **and marked possibly committed** (same ID and bytes), only the warned restart | same |
+| `201` / `200` (`CONFIRMED` or `CANCELLED`) | confirmed; customer details cleared from memory | **resolves** the attempt |
+
+  A new ID is therefore created only when no live attempt exists: at the first submit, after a first-send documented rejection, after the guest changed a choice following a first-send
+  proven rollback or `429`, or after an explicit restart through the warning. It is never created because of a timeout, network error, rate limit, uncertain response, rerender, or
+  navigation, and an unresolved attempt cannot be edited. A page-level callback never discards an unresolved attempt (the journey is not unmounted by a Business-unavailable answer
+  while an attempt is unresolved). Residual risks (unchanged, ADR-0024): a refresh or closed tab discards the in-memory attempt, so a second booking is possible; `beforeunload` is best effort.
+- **Duplicate submission.** A synchronous ref guard, plus a disabled control and a frozen review while sending. Nothing is posted on mount, refresh,
+  navigation, a timer, or a rerender; the only POST trigger is the explicit button.
+- **`Retry-After`.** Seconds or an IMF-fixdate (anything else is ignored), clamped to one hour, turned into a retry gate that is released by one
+  timer; it never submits. Tested with a fake clock and no sleeps.
+- **History and leaving (ADR-0026).** Each step pushes one history entry whose state is only `{spyBooking: {journey, step}}`; the URL, the
+  title, storage, and cookies are never touched. In-page Back is a history traversal; a traversal the choices do not allow, or one that would leave a frozen
+  review or a confirmation, is undone. Leaving to the profile asks «Остани» / «Напусни» only when there is data to lose (a chosen time or any
+  detail), a send is pending, or the outcome is uncertain; from the browser's Back the shown entry is restored first, then the question is asked. `beforeunload` is armed
+  under the same condition and is best effort. A Business switch remounts the page, so state and pending answers end with it.
+- **Confirmation.** Only the server's facts: status, reference (informational), Service and StaffMember snapshots, date and time in the returned
+  timezone with offsets where repeated, duration, EUR price, timezone. A `CANCELLED` replay shows «Резервацията е отменена» with no success
+  styling. The text states that no email or SMS is sent and to contact the Business to change or cancel; there is no lookup, cancellation, payment, or
+  notification promise.
+
+### Verification (executed)
+
+Local only; base `HEAD` `3576843` plus the uncommitted Phase 6 working tree (nothing staged). No CI run exists for this state.
+
+- **Focused:** `npx vitest run src/public src/ui/UnsavedChangesGuard` (275 tests), three consecutive times, and again with
+  `TZ=Pacific/Kiritimati`, `TZ=America/Los_Angeles`, and `TZ=UTC`.
+- **Complete frontend suite (`npm test`): 67 test files, 1656 tests, 0 failures** (Phase 5: 61 files, 1443 tests; +6 files, +213 tests), after the correction below.
+  `npm run lint` clean; `npm run build` succeeded (`tsc -b && vite build`).
+- **Test files (211 new tests):** `BookingJourney.flow.test.tsx` 16, `BookingJourney.submission.test.tsx` 57, `BookingJourney.states.test.tsx` 32,
+  `api.test.ts` 57, `attempt.test.ts` 39, `dates.test.ts` 10 (all under `src/public/booking/`); +1 in `src/public/api.test.ts`, +1 in `UnsavedChangesGuard.test.tsx`.
+  Existing public-profile assertions changed only where the contract legitimately changed (the Service `id`; the profile now has booking buttons instead of the
+  «все още не е налично» notice); none was weakened.
+- **Flaky-test diagnosis.** One intermittent failure was found while writing the tests (about 1 run in 8 in one test) and diagnosed, not retried away: the test
+  asserted before the refreshed offer had cleared a stale selected time, which exposed a real one-render inconsistency (the next action was enabled for a time the
+  list no longer offered). The step now derives that state in the same render, and the test waits for the refreshed list. 60 consecutive runs of that test then passed.
+- **Control runs.** Making the submit always draw a new attempt failed 15 of 40 submission tests; classifying an unreadable success as a rejection failed 4; after the correction, disabling the sticky-uncertainty branch failed 22 of 203 booking tests (before the final mismatch correction) and letting the Business-unavailable callbacks unmount an unresolved journey failed 2. All mutations were reverted and the suites re-run green.
+- **Playwright, executed after the correction:** the existing `public-business-profile` spec (edited for the new booking buttons) ran against the final frontend and the working-tree backend through a copy of
+  `scripts/run-e2e.sh` that differs only by naming that spec and fixing the repository path: **19 passed**, in the script's own disposable `spotyourslot-e2e` Compose project, which was removed with its volume afterwards. The development database and containers were not touched.
+- **Not executed:** any rendered browser review and any backend test (no backend file changed); the booking journey itself has no Playwright coverage (Phase 8).
+- **Hygiene:** `git diff --check` clean; V1 to V12 byte-identical to `HEAD` (hashes in the review archive).
+
+### File inventory
+
+Frontend source and tests: 13 new files in `src/public/booking/` (12 source files and the `testSupport.tsx` support file; 6 test files in addition), changed:
+`PublicBusinessPage.tsx`, `api.ts`, `styles.css`, `UnsavedChangesGuard.tsx`, and the tests `PublicBusinessPage.test.tsx`, `api.test.ts`,
+`UnsavedChangesGuard.test.tsx`; `e2e/public-business-profile.spec.ts` and `e2e/support/publicProfile.ts`; nine documents. The review archive carries the exact list.
+
+### Evidence by requirement
+
+- **Happy path with the real shapes, explicit and no preference:** `BookingJourney.flow.test.tsx` (the request key set and order, the null preference,
+  the server-assigned member in the result, the advertised versus final price and duration).
+- **Dependent-state reset, options not reloaded on a date change, retained values on Back and Forward:** the same file.
+- **Timezone, date-only values, repeated hour:** `dates.test.ts`, the flow tests for 25 October (both `03:30` starts, the review, and the result).
+- **Stale answers, aborted reads, Business switching:** the flow tests with deferred promises (signals observed aborted; late answers never rendered; a late POST
+  answer after a Business switch is ignored).
+- **Validation, retained values, focus:** `BookingJourney.states.test.tsx` (blur, wrapped inline errors, first invalid control, contact group, 500 and 501 code points
+  counted as code points, server field errors).
+- **Duplicate-submit protection, exact ID and body on every retry path, no new attempt while uncertain, `Retry-After`:** `BookingJourney.submission.test.tsx`
+  (a table of eleven outcomes, repeated uncertain results, the frozen review, browser Back refused, the leave warning with the telephone, fake-clock waits) and `attempt.test.ts`.
+- **Uncertainty preserved across later answers:** `BookingJourney.submission.test.tsx` (uncertain followed by each of eleven answers: rollback, 429, slot, Service, StaffMember, identity conflict, validation, oversized request, an unknown 4xx, an unavailable Business, a mismatch; the same ID and bytes, edits and the page unchanged, the leave warning still in force; a 200 replay and a `CANCELLED` replay each resolve it; the unavailable Business does not unmount the journey) and `attempt.test.ts` (the same matrix on the pure state machine).
+- **201, 200, CANCELLED replay, malformed success:** the submission tests and `api.test.ts` (a table of eleven uncertain classifications and the documented rejections).
+- **Unavailable, empty, network, 429, and backend-rejection states:** the states tests and the submission rejection tests.
+- **Navigation guards and memory-only privacy:** the states tests (history entries carry only the marker; URL, title, head, storage, cookie, GET URLs, and `history.state`
+  contain no sentinel detail or attempt ID; credentials omitted; no details in the DOM after success).
+- **Regressions:** the public-profile suites and the whole suite (administration, platform, Customer, schedule) pass unchanged.
+
+The frontend tests prove client behavior against stubbed HTTP; they do not prove the booking transaction, idempotency, or tenant isolation, which the backend Phase 4 and 5 tests prove.
+
+### Deviations and limitations (all for review)
+
+- **Undo of a refused traversal** uses `history.go`; it is verified in jsdom, which processes history traversals asynchronously, so the tests use bounded waits for the final state, never sleeps.
+  Real browsers, especially Safari's swipe-back, must be reviewed in Phase 7.
+- **Rapid repeated Back** while the leave dialog is open is not specially handled beyond the shared guard (one pending confirmation).
+- **Retry gate granularity.** The wait is released by one timer and is not shown as a live countdown.
+- **No server-side hint of the Business timezone before the first read;** the step shows it after `booking-options` loads.
+- **Playwright** covers only the revised `public-business-profile` expectations (19 passed); the booking journey has no browser E2E until Phase 8.
+- **Proposed items remain:** the wording in Proposed detail 9 (the corrected privacy sentence and the leave warnings, awaiting human visual review). The design is not visually approved.
+- **Release dependency (unchanged):** production public booking waits for Issue #21. Issue #18 and #19 are not complete, and GitHub and the board are unchanged.
+
+### Phase 6 correction (2026-10-07, before commit)
+
+Review found that the first Phase 6 state machine could lose an unresolved attempt. Corrected evidence boundary:
+
+1. **Sticky uncertainty.** `applyOutcome` no longer clears `possiblyCommitted` on a later rollback and no longer drops the attempt on a later rejection. After an uncertain send, a later rollback,
+   429, validation, slot, Service, StaffMember, identity, size, unknown 4xx, Business-unavailable, or mismatch answer keeps the same attempt (same ID, same bytes), keeps edits and new attempts blocked, and keeps the leave warning. Only a valid
+   success (201, a 200 replay, or a `CANCELLED` replay) or the warned restart or leave resolves it. The frozen state has a `cause` (`unknown`, `rate-limited`, `mismatch`, `business-unavailable`) that only selects the message.
+2. **No silent loss through callbacks.** The Business-unavailable callback (from a booking answer or a read) no longer unmounts the journey while an attempt is unresolved; the review stays with an unavailable-page notice, the telephone, and the leave warning.
+3. **Classification.** `BOOKING_ATTEMPT_MISMATCH` is no longer an ordinary rejection (it is unresolved even as a first answer). A problem code now counts only with its documented HTTP status (`400` validation, `404`
+   Business, `409` slot, Service, StaffMember, identity, mismatch, `413`, `415`, `429` `RATE_LIMITED`, `503` rollback); every other answer, including an unknown 4xx, a proxy refusal, a documented code on the wrong status, and an unreadable body, is
+   conservatively unresolved. Genuinely proven first-send failures stay editable. No POST is ever retried automatically.
+4. **Privacy copy.** «Данните ви се използват само за тази резервация и са достъпни за бизнеса.» was replaced by «Данните ви се предоставят на бизнеса за записване и управление на резервацията.» (still wording awaiting human visual review).
+5. **Tests.** Tests that expected an unknown 4xx to be a definite failure or a mismatch to allow a new attempt were replaced; 46 tests were added (unit matrix, API classification table, and the uncertain-then-answer integration matrix).
+6. **Mismatch invariant (final correction).** A first mismatch now also marks the attempt `possiblyCommitted` (exact ID and body preserved), so the state machine itself, not only the UI hiding the retry button, keeps it frozen. A later rollback, rate limit, ordinary or unavailable-Business rejection, or unknown answer cannot make it editable or discard it; only a valid success (including a `CANCELLED` replay) or the warned abandonment resolves it. 8 sequential unit tests were added (frozen mark, five follow-up answers, two resolving replays).
+
+The earlier statement that a rejected retry clears an earlier uncertain send was wrong and is withdrawn here, in ADR-0024, and in the code comments.
+
+### Phase 7 browser-review checklist (not yet performed)
+
+Process: `docs/ui-design-guidelines.md` section 18 and 22. Fixtures are created only through supported APIs or normal application flows (never by writing to the
+database), in the disposable E2E stack or an equivalent review instance; the report lists every record created and how to remove it. Phase 7 prepares the review
+app; this list is its input. Today is 2026-10-07, so the booking window is 2026-10-07 to 2026-11-05 and includes the 2026-10-25 clock change.
+
+**Fixtures**
+
+1. **Full Business** (ACTIVE, public telephone and address): at least three active Services, one with a long description, one 120 minutes with cents in the price, one with a 180-character name;
+   at least two active StaffMembers assigned to them (one with a 120-character name) with weekly schedules covering weekdays so that several dates have slots.
+2. **Repeated hour:** a StaffMember whose Sunday working period includes 02:00 to 06:00, so that 2026-10-25 offers both `03:xx` starts (summer and winter time).
+3. **No eligible StaffMember:** an active Service with no assigned active StaffMember. **No availability:** a Service whose only StaffMember has no working periods in the window (or a Business closure over the whole window).
+4. **Suspended and DRAFT Business** (the single unavailable page) and a Business with no Services (no booking entry).
+5. **Races that need two browser tabs:** (a) in tab A reach the review for a slot, book that slot in tab B, submit in A (slot rejection); (b) deactivate the Service in the administration, then submit (Service rejection);
+   (c) deactivate or unassign the StaffMember, then submit (StaffMember rejection); (d) book the same contact repeatedly (identity and rate limit; the review instance may set small `BOOKING_RATE_LIMIT_*` budgets).
+6. **Throwaway mock proxy** (never the database) in front of the real backend for states that cannot be produced on demand: a response dropped after the backend committed (real uncertain outcome, then a real `200` replay on retry); `503
+   BOOKING_TEMPORARILY_UNAVAILABLE`; `503 BOOKING_OUTCOME_UNCERTAIN` with `Retry-After: 2`; `429` with `Retry-After: 30`; an unreadable `201`; a `200` replay with `status: CANCELLED` (no cancellation exists yet); a slow response for the duplicate-click check.
+
+**Per viewport (about 1280, 1024, 800, 375, and 200% zoom at 1280 and 375):** no horizontal page scroll; profile unchanged until a booking action is used; the hero action and each Service action wrap and keep a 44 px target; date chips and time chips wrap
+and stay readable (the wide repeated-hour chips included); the review rows stack at narrow widths; long names wrap without breaking the layout; dialogs are content-sized; there is no excessive empty space and no adjacent elements stuck together.
+
+**Walkthrough and states (record desktop and mobile):**
+
+- Step 1 to 5 from the hero and from a Service card; progress text and heading correct; focus lands on the heading at every step; the keyboard alone can complete the whole journey (radio groups by arrow keys, visible focus everywhere).
+- Back and Forward in the page and with the browser's Back and Forward (and the Safari edge swipe); inputs retained; changing the Service or the preference clears the dependent choices.
+- Loading, no eligible StaffMember, no available date, a read failure (offline) with retry, a read `429` with the retry gate, an unavailable Service or StaffMember on a read.
+- Details: untouched form, blur errors, wrapped long errors, submit with several errors (focus on the first), contact-or-email hint, 500 and 501 characters (including emoji) in the note, the privacy sentence wording.
+- Review: summary content, the «not reserved until confirmed» sentence, «Промени» actions, the duplicate-click check (one request in the network panel), the pending state.
+- Each outcome: success (201), replay (200), cancelled replay, slot, Service, StaffMember, identity conflict, mismatch (restart), validation (inline field errors), the known rollback and its retry, the unprocessed `429` and its gate, the **frozen uncertain state** (nothing editable, only «Опитайте отново», the telephone, the warning on leave and on restart),
+  retry after a real dropped response returning the same booking, and the repeated-hour result (both `03:30` offsets distinguishable in the list, review, and confirmation).
+- Leaving: nothing entered (no dialog), data entered (dialog, «Остани» and «Напусни», Escape), the browser Back out of a dirty journey, a closed or reloaded tab (the browser's own prompt appears and a reload restarts), after confirmation (no prompt).
+- Network panel and storage: every public request without cookies, no personal data in any URL, `localStorage`, `sessionStorage`, `history.state`, or the title; a Business switch (another slug in the same tab) shows nothing from the first.
+- Accessibility: a screen-reader pass of one step, the review, an error alert, and the dialog; contrast of the chips, the selected state, and the notices; reduced motion is unaffected (no animation exists).
+
+Human approval is required before any of this is recorded in the UI guide, and Phase 8 follows only after it.

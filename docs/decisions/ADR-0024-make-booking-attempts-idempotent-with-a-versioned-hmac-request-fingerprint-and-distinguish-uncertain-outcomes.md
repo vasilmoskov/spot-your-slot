@@ -273,6 +273,25 @@ driver behavior is not yet observed in this repository and is a Phase 4 test.
   none, and an aborted transaction commits as a silent rollback), so the `UNKNOWN`-phase conflict rules rest on
   injected evidence only.
 
+## Implementation notes (Phase 6, 2026-10-07)
+
+The public frontend applies the decisions above without changing them; the refinements are recorded here.
+
+- **Attempt lifetime.** An attempt is the browser-generated ID (`crypto.randomUUID()`, falling back to a `getRandomValues` UUID version 4, and never to
+  `Math.random`) with the exact JSON text of its first send, held only in component memory. Every resend posts that same string. A **new** ID is drawn only when no
+  live attempt exists: the first submit, after a **first-send** documented rejection (`400`, `404`, `409` other than a mismatch, `413`, `415`; the attempt is dropped), after the guest changes a choice following
+  a first-send proven rollback or `429` (the attempt is dropped), or after an explicit restart that went through the leave warning. It is not drawn for a timeout, a network failure,
+  a rate limit, an uncertain response, a rerender, or navigation.
+- **Uncertainty is sticky (corrected).** A send that ends uncertain marks the attempt possibly committed. A **later** request's proven rollback, `429`, rejection (including Business unavailable and a mismatch),
+  or unknown answer says nothing about the **earlier** send, so none of them clears the mark, drops the attempt, unfreezes the review, or permits a new attempt. Only a valid success, including a `CANCELLED`
+  replay, resolves it, or the guest abandons the journey after the warning. An earlier draft of this note wrongly treated a rejected retry as proof that the earlier send did not commit; that is withdrawn.
+- **Client-side classification (corrected).** Uncertain: a transport failure, an unreadable or schema-invalid `200`/`201`, a `408`, any `5xx` other than the documented
+  `BOOKING_TEMPORARILY_UNAVAILABLE`, `BOOKING_OUTCOME_UNCERTAIN`, and **any 4xx that is not a documented code on its documented status**. A problem code is trusted only with its own status. Known rollback: `BOOKING_TEMPORARILY_UNAVAILABLE`
+  on a first send. A `429 RATE_LIMITED` is a refusal before booking work. `BOOKING_ATTEMPT_MISMATCH` is **not** evidence that no Appointment exists (it means one exists under this ID with other data): the attempt is frozen, marked possibly committed with its exact ID and body, and only the warned restart is offered; no later answer except a success can resolve it.
+- **Frozen state.** While uncertain the review ignores every edit, the browser Back is undone, leaving or restarting asks first (showing the Business telephone when it is public), and only the same attempt can be sent again;
+  a retry that is refused by the limiter, rolled back, or rejected stays frozen. `Retry-After` (whole seconds or an IMF-fixdate, clamped to one hour) only releases the retry control; nothing is ever sent by a timer.
+- The wording of the leave warning remains Proposed (task 08a, Proposed detail 9).
+
 ## Conditions for revisiting
 
 Revisit for Customer verification or accounts, a snapshot decision, a separate

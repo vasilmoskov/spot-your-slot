@@ -370,6 +370,18 @@ the container tests.
   failure on other routes to a 500, which is an existing behavior this phase does not change.)
 - The privacy notice text remains Proposed (Phase 6).
 
+## Implementation notes (Phase 6, 2026-10-07)
+
+Phase 6 implemented the public journey on the Phase 5 contracts without changing any contract or decision; it is verified by automated tests only and is **not visually approved** (Phase 7).
+
+- The journey lives inside the existing `/{slug}` page and is keyed by Business, so a Business switch discards its state and pending answers. Steps, choices, details, the note, and the attempt are in component memory only. Each step
+  adds a history entry whose state is `{spyBooking: {journey, step}}` (a random per-journey label and the step number; no URL change, no personal data, no attempt ID). A refresh starts a new journey.
+- All public requests use `credentials: 'omit'`. `booking-options` is read once per Service and `availability` once per Service, preference, and date, with the previous request aborted and any answer for another key ignored.
+- Date-only values are never converted through the browser timezone; instants are formatted in the returned Business timezone, and a repeated wall-clock time carries its offset.
+- The Customer details use the shared contact policies and the approved public field messages; the note is limited to 500 code points.
+- The privacy sentence (corrected to «Данните ви се предоставят на бизнеса за записване и управление на резервацията.») and the leave warnings remain **Proposed**, wording awaiting human visual review (task 08a, Proposed detail 9). The confirmation promises no email, SMS, lookup, cancellation, or payment.
+- The attempt and uncertain-state rules are in the ADR-0024 Phase 6 notes.
+
 ## Conditions for revisiting
 
 Revisit for contact verification, Customer accounts, trusted-proxy or edge rate

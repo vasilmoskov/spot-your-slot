@@ -10,14 +10,27 @@ import {
 } from 'react'
 import { Button } from './Button'
 
+// Wording of the confirmation. The default is the shared "unsaved changes" text; a screen whose
+// data is not a form (the public booking journey) supplies its own accessible name and sentences.
+export type GuardNotice = {
+  label: string
+  lines: readonly string[]
+}
+
+const DEFAULT_NOTICE: GuardNotice = {
+  label: 'Незапазени промени',
+  lines: ['Имате незапазени промени.', 'Ако напуснете, те ще бъдат загубени.'],
+}
+
 type PendingNavigation = {
   proceed: () => void
   onCancel: (() => void) | undefined
+  notice: GuardNotice
 }
 
 export type UnsavedChangesGuardApi = {
   isDirty: boolean
-  registerDirty: (dirty: boolean, discard: () => void) => void
+  registerDirty: (dirty: boolean, discard: () => void, notice?: GuardNotice) => void
   unregisterDirty: () => void
   guard: (proceed: () => void, onCancel?: () => void) => void
 }
@@ -34,18 +47,21 @@ export function UnsavedChangesGuardProvider({ children }: { children: ReactNode 
   // reads this ref rather than the isDirty state value.
   const isDirtyRef = useRef(false)
   const discardRef = useRef<() => void>(() => undefined)
+  const noticeRef = useRef<GuardNotice>(DEFAULT_NOTICE)
   const [pending, setPending] = useState<PendingNavigation | null>(null)
   const continueButtonRef = useRef<HTMLButtonElement>(null)
   const invokerRef = useRef<HTMLElement | null>(null)
 
-  const registerDirty = useCallback((dirty: boolean, discard: () => void) => {
+  const registerDirty = useCallback((dirty: boolean, discard: () => void, notice?: GuardNotice) => {
     discardRef.current = discard
+    noticeRef.current = notice ?? DEFAULT_NOTICE
     isDirtyRef.current = dirty
     setIsDirty(dirty)
   }, [])
 
   const unregisterDirty = useCallback(() => {
     discardRef.current = () => undefined
+    noticeRef.current = DEFAULT_NOTICE
     isDirtyRef.current = false
     setIsDirty(false)
   }, [])
@@ -64,7 +80,7 @@ export function UnsavedChangesGuardProvider({ children }: { children: ReactNode 
       invokerRef.current = document.activeElement instanceof HTMLElement
         ? document.activeElement
         : null
-      return { proceed, onCancel }
+      return { proceed, onCancel, notice: noticeRef.current }
     })
   }, [])
 
@@ -122,11 +138,16 @@ export function UnsavedChangesGuardProvider({ children }: { children: ReactNode 
             className="confirmation-panel unsaved-changes-panel"
             role="alertdialog"
             aria-modal="true"
-            aria-label="Незапазени промени"
-            aria-describedby="unsaved-changes-description-1 unsaved-changes-description-2"
+            aria-label={pending.notice.label}
+            aria-describedby={pending.notice.lines
+              .map((_, index) => `unsaved-changes-description-${index + 1}`)
+              .join(' ')}
           >
-            <p id="unsaved-changes-description-1">Имате незапазени промени.</p>
-            <p id="unsaved-changes-description-2">Ако напуснете, те ще бъдат загубени.</p>
+            {pending.notice.lines.map((line, index) => (
+              <p key={line} id={`unsaved-changes-description-${index + 1}`}>
+                {line}
+              </p>
+            ))}
             <div className="action-group unsaved-changes-actions">
               <Button
                 ref={continueButtonRef}
@@ -155,19 +176,26 @@ export function useUnsavedChangesGuard(): UnsavedChangesGuardApi {
   return context
 }
 
-export function useGuardedFormState(isDirty: boolean, discard: () => void): UnsavedChangesGuardApi {
+export function useGuardedFormState(
+  isDirty: boolean,
+  discard: () => void,
+  notice?: GuardNotice,
+): UnsavedChangesGuardApi {
   const guard = useUnsavedChangesGuard()
   const { registerDirty, unregisterDirty } = guard
   const discardRef = useRef(discard)
   discardRef.current = discard
+  const noticeRef = useRef(notice)
+  noticeRef.current = notice
+  const noticeKey = notice ? `${notice.label}\n${notice.lines.join('\n')}` : ''
 
   // Layout effects, so the guard's dirty state is updated in the same commit
   // as the DOM the user sees. With passive effects there is a window where a
   // cleared form (for example after a successful save) is still registered
   // dirty and a click in that window would show a false prompt.
   useLayoutEffect(() => {
-    registerDirty(isDirty, () => discardRef.current())
-  }, [isDirty, registerDirty])
+    registerDirty(isDirty, () => discardRef.current(), noticeRef.current)
+  }, [isDirty, registerDirty, noticeKey])
 
   useLayoutEffect(() => () => unregisterDirty(), [unregisterDirty])
 

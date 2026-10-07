@@ -274,4 +274,35 @@ describe('UnsavedChangesGuard', () => {
     expect(screen.queryAllByRole('alertdialog')).toHaveLength(0)
     expect(screen.getByLabelText('Поле')).toHaveValue('-navigated')
   })
+
+  it('shows the supplied accessible name and sentences, and the default again once it is replaced', () => {
+    function Custom({ notice }: { notice: { label: string; lines: string[] } | undefined }) {
+      const guard = useGuardedFormState(true, () => undefined, notice)
+      return (
+        <Button type="button" onClick={() => guard.guard(() => undefined)}>
+          Излез
+        </Button>
+      )
+    }
+    const { rerender } = render(
+      <UnsavedChangesGuardProvider>
+        <Custom notice={{ label: 'Друго име', lines: ['Първо.', 'Второ.', 'Трето.'] }} />
+      </UnsavedChangesGuardProvider>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Излез' }))
+    const dialog = screen.getByRole('alertdialog', { name: 'Друго име' })
+    expect(within(dialog).getAllByText(/^(Първо|Второ|Трето)\.$/)).toHaveLength(3)
+    expect(dialog.getAttribute('aria-describedby')?.split(' ')).toHaveLength(3)
+    fireEvent.click(screen.getByRole('button', { name: 'Остани' }))
+
+    rerender(
+      <UnsavedChangesGuardProvider>
+        <Custom notice={undefined} />
+      </UnsavedChangesGuardProvider>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Излез' }))
+    expect(screen.getByRole('alertdialog', { name: 'Незапазени промени' })).toHaveTextContent(
+      'Имате незапазени промени.Ако напуснете, те ще бъдат загубени.',
+    )
+  })
 })

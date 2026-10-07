@@ -424,6 +424,12 @@ start so a future slot cannot be released early.
   counted in bytes actually read before the JSON tree is built (chunked, absent, and false `Content-Length` included); more is a
   sanitized `413 REQUEST_TOO_LARGE` with the fixed instance and `no-store`, charged once to the address budgets and never to the
   contact budget, with no booking or database work. Private endpoints are unchanged.
+- **Frontend memory-only handling (implemented, Phase 6, not yet visually approved).** The public journey keeps the guest's choices, details, note, and
+  attempt identity only in component memory: never in the URL, `history.state` (only a step marker), `localStorage`, `sessionStorage`, cookies, the page title or
+  metadata, logs, or analytics. Every public request uses `credentials: 'omit'`. The details are cleared from memory as soon as the server has answered a
+  booking, a Business switch discards the whole journey and ignores its pending answers, and an uncertain outcome keeps the one frozen attempt (same ID, same bytes) until the
+  guest explicitly abandons it after a warning. `beforeunload` is best effort; a refresh discards the in-memory attempt (residual risk, ADR-0024). Evidence: the Vitest suites under
+  `frontend/src/public/booking/` (they test client behavior against stubbed HTTP and do not prove backend guarantees).
 - **Abuse protection (implemented, Phase 5).** A Booking-owned, bounded, process-local, fixed-window limiter charged before
   any database work (a rejected request writes nothing and reaches no orchestration). Defaults per 15 minutes: bookings 10
   per address and Business, 30 per address across Businesses, and 5 per Business and canonical phone or email (each supplied
