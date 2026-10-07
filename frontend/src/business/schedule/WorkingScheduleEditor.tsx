@@ -737,11 +737,11 @@ export function WorkingScheduleEditor({
             // destructive operation, available only from read-only mode
             // below.
             <div className="action-group">
-              <Button ref={saveButtonRef} type="button" disabled={saving} onClick={() => void submit()}>
-                {saving ? 'Запазване…' : 'Запази промените'}
-              </Button>
               <Button type="button" variant="secondary" disabled={saving} onClick={cancel}>
                 Отказ
+              </Button>
+              <Button ref={saveButtonRef} type="button" disabled={saving} onClick={() => void submit()}>
+                {saving ? 'Запазване…' : 'Запази промените'}
               </Button>
             </div>
           ) : (
@@ -854,11 +854,11 @@ export function WorkingScheduleEditor({
             </div>
             <FieldError id="period-dialog-range" error={periodDialog.errors.range} />
             <div className="action-group">
-              <Button type="button" onClick={submitPeriodDialog}>
-                {periodDialog.clientId ? 'Запази' : 'Добави'}
-              </Button>
               <Button type="button" variant="secondary" onClick={closePeriodDialog}>
                 Отказ
+              </Button>
+              <Button type="button" onClick={submitPeriodDialog}>
+                {periodDialog.clientId ? 'Запази' : 'Добави'}
               </Button>
             </div>
           </div>
@@ -934,13 +934,13 @@ export function WorkingScheduleEditor({
               )}
             </div>
             <div className="action-group">
+              <Button type="button" variant="secondary" onClick={closeCopyDialog}>
+                Отказ
+              </Button>
               <Button type="button" disabled={copyDialog.targets.size === 0} onClick={confirmCopy}>
                 {Array.from(copyDialog.targets).some((weekday) => draftGroups[weekday].length > 0)
                   ? 'Копирай и замени'
                   : 'Копирай'}
-              </Button>
-              <Button type="button" variant="secondary" onClick={closeCopyDialog}>
-                Отказ
               </Button>
             </div>
           </div>
@@ -970,9 +970,6 @@ export function WorkingScheduleEditor({
             </p>
             <p id="schedule-clear-weekday-description-2">Сигурни ли сте, че искате да продължите?</p>
             <div className="action-group">
-              <Button type="button" variant="destructive" onClick={confirmClearWeekday}>
-                Изчисти графика за деня
-              </Button>
               <Button
                 ref={clearWeekdaySafeButton}
                 type="button"
@@ -980,6 +977,9 @@ export function WorkingScheduleEditor({
                 onClick={closeClearWeekdayDialog}
               >
                 Отказ
+              </Button>
+              <Button type="button" variant="destructive" onClick={confirmClearWeekday}>
+                Изчисти графика за деня
               </Button>
             </div>
           </div>
@@ -1007,14 +1007,6 @@ export function WorkingScheduleEditor({
             <p id="schedule-clear-all-description-2">Сигурни ли сте, че искате да продължите?</p>
             <div className="action-group">
               <Button
-                type="button"
-                variant="destructive"
-                disabled={clearingAll}
-                onClick={() => void confirmClearAll()}
-              >
-                {clearingAll ? 'Изчистване…' : 'Изчисти графика'}
-              </Button>
-              <Button
                 ref={clearAllSafeButton}
                 type="button"
                 variant="secondary"
@@ -1022,6 +1014,14 @@ export function WorkingScheduleEditor({
                 onClick={closeClearAllDialog}
               >
                 Отказ
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={clearingAll}
+                onClick={() => void confirmClearAll()}
+              >
+                {clearingAll ? 'Изчистване…' : 'Изчисти графика'}
               </Button>
             </div>
           </div>

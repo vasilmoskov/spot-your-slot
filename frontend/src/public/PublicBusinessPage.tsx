@@ -47,9 +47,9 @@ export function PublicBusinessPage({ slug }: { slug: string }) {
   )
 }
 
-// The guest booking journey of the open page: a random history label and the Service it was opened
-// from. It holds no personal data; the journey's own state does, and it is keyed by this object.
-type OpenJourney = { id: string; serviceId: string | null }
+// The guest booking journey of the open page: only a random history label. It holds no personal data;
+// the journey's own state does, and it is keyed by this object.
+type OpenJourney = { id: string }
 
 function PublicBusinessContent({ slug }: { slug: string }) {
   const [journey, setJourney] = useState<OpenJourney | null>(null)
@@ -82,11 +82,10 @@ function PublicBusinessContent({ slug }: { slug: string }) {
 
   // Each step of the journey adds a history entry holding only a step marker (ADR-0026). The entries are
   // pushed here, in the event handler, so a development double-mount can never push them twice.
-  const openJourney = (serviceId: string | null) => {
+  const openJourney = () => {
     const id = newJourneyId()
     pushJourneyEntry(id, 1)
-    if (serviceId !== null) pushJourneyEntry(id, 2)
-    setJourney({ id, serviceId })
+    setJourney({ id })
   }
   const closeJourney = useCallback(() => setJourney(null), [])
   // The Business turned out to be unavailable while booking: the page shows the unavailable answer.
@@ -135,7 +134,6 @@ function PublicBusinessContent({ slug }: { slug: string }) {
             businessPhone={view.outcome.profile.phone}
             services={view.outcome.profile.services}
             journey={journey.id}
-            initialServiceId={journey.serviceId}
             onClose={closeJourney}
             onBusinessUnavailable={businessUnavailable}
           />
@@ -175,7 +173,7 @@ function PublicProfile({
 }: {
   profile: PublicBusinessProfile
   headingRef: RefObject<HTMLHeadingElement | null>
-  onBook: (serviceId: string | null) => void
+  onBook: () => void
 }) {
   const phone = profile.phone?.trim() ?? ''
   const dialable = phone === '' ? null : dialableNumber(phone)
@@ -224,11 +222,9 @@ function PublicProfile({
         )}
 
         {profile.services.length > 0 && (
-          <div className="public-booking">
-            <Button type="button" onClick={() => onBook(null)}>
-              Запази час
-            </Button>
-          </div>
+          <Button type="button" className="public-hero-action" onClick={onBook}>
+            Запази час
+          </Button>
         )}
       </section>
 
@@ -256,14 +252,6 @@ function PublicProfile({
                     <dd>{formatServicePrice(service.price)}</dd>
                   </div>
                 </dl>
-                <Button
-                  type="button"
-                  className="public-service-book"
-                  aria-label={`Запази час за ${service.name}`}
-                  onClick={() => onBook(service.id)}
-                >
-                  Запази час
-                </Button>
               </li>
             ))}
           </ul>

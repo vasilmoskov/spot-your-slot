@@ -297,3 +297,7 @@ The public frontend applies the decisions above without changing them; the refin
 Revisit for Customer verification or accounts, a snapshot decision, a separate
 idempotency store, key-management tooling, a server-side status lookup that does
 not need the payload, or measured abuse of replay.
+
+## Amendment note (ADR-0027, 2026-10-07)
+
+The decision above is preserved. ADR-0027 amends it: encoding version 2 encodes an ordered set of Service identifiers (ascending UUID: the unsigned lexicographic order of the 16 big-endian bytes, never Java's signed `UUID.compareTo`) and the reviewed per-Service duration and price, and is used for every new attempt; encoding version 1 stays supported for ever so every stored attempt keeps replaying; a request with reviewed facts or several Services cannot equal a version 1 attempt. The review-change rejection is a known outcome, distinct from the uncertain outcome; after an earlier uncertain send of the same attempt the frozen attempt, the exact identifier and bytes, and sticky uncertainty are unchanged. Effective when the orchestration phase of the multi-Service extension is implemented.

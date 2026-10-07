@@ -180,7 +180,6 @@ function CustomerFormBody({
         )}
       </fieldset>
       <div className="action-group">
-        <Button disabled={busy}>{busy ? 'Запазване…' : submitLabel}</Button>
         {onCancel && (
           <Button
             type="button"
@@ -191,6 +190,7 @@ function CustomerFormBody({
             Отказ
           </Button>
         )}
+        <Button disabled={busy}>{busy ? 'Запазване…' : submitLabel}</Button>
       </div>
     </form>
   )

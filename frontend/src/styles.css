@@ -9,6 +9,7 @@
   --color-success: #168f6b;
   --color-success-subtle: #ecfdf3;
   --color-success-border: #a6e0c5;
+  /* Text tones for status text on the subtle panels: the base colors keep borders, buttons and icons. */
   --color-success-text: #0f7a5a;
   --color-warning: #d97706;
   --color-danger: #d92d20;
@@ -326,25 +327,14 @@ label {
 
 .status-error {
   border: 1px solid var(--color-danger);
-  color: var(--color-danger);
+  color: var(--color-danger-text);
   background: var(--color-danger-subtle);
 }
 
 .status-success {
   border: 1px solid var(--color-success);
-  color: var(--color-success);
-  background: var(--color-success-subtle);
-}
-
-/* The shared palette colors measure 4.44:1 (danger) and 3.85:1 (success) as text on their subtle
-   panels, below the 4.5:1 of the UI guide. The public journey uses darker text tones; the border
-   keeps the palette color. Other screens are unchanged pending an approved palette decision. */
-.booking-journey .status-error {
-  color: var(--color-danger-text);
-}
-
-.booking-journey .status-success {
   color: var(--color-success-text);
+  background: var(--color-success-subtle);
 }
 
 .platform-shell {
@@ -878,7 +868,7 @@ label {
 }
 
 .status-badge-success {
-  color: var(--color-success);
+  color: var(--color-success-text);
   background: var(--color-success-subtle);
 }
 
@@ -1950,19 +1940,9 @@ label {
   font-weight: 600;
 }
 
-.public-booking {
+.public-hero-action {
   width: fit-content;
   max-width: 100%;
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
-  color: var(--color-text-primary);
-  background: var(--color-surface);
-}
-
-.public-booking > * {
-  margin: 0;
-  overflow-wrap: anywhere;
 }
 
 .public-services-section {
@@ -2097,10 +2077,6 @@ label {
 /* Public guest booking journey (issue #18). One column; `gap` is the only spacing between siblings
    and every child's own margin is zeroed. Choices are native radios, so keyboard and assistive
    technology behave as a standard radio group. Long names wrap and never widen the page. */
-.public-service-book {
-  justify-self: start;
-}
-
 .booking-journey,
 .booking-step,
 .booking-step-form,
@@ -2185,7 +2161,6 @@ label {
 }
 
 .booking-choices,
-.booking-dates,
 .booking-slots,
 .booking-details {
   display: grid;
@@ -2220,7 +2195,6 @@ label {
 }
 
 .booking-choice:has(input:focus-visible),
-.booking-date:has(input:focus-visible),
 .booking-slot:has(input:focus-visible) {
   outline: 3px solid var(--color-focus);
   outline-offset: 2px;
@@ -2255,7 +2229,6 @@ label {
   white-space: pre-line;
 }
 
-.booking-date-list,
 .booking-slot-list {
   display: flex;
   flex-wrap: wrap;
@@ -2263,14 +2236,12 @@ label {
 }
 
 /* The radio is visually hidden; its face is the control, so the whole chip is the touch target. */
-.booking-date,
 .booking-slot {
   position: relative;
   display: inline-flex;
   max-width: 100%;
 }
 
-.booking-date input,
 .booking-slot input {
   position: absolute;
   inset: 0;
@@ -2283,7 +2254,6 @@ label {
   cursor: pointer;
 }
 
-.booking-date-face,
 .booking-slot-face {
   display: grid;
   justify-items: center;
@@ -2302,13 +2272,6 @@ label {
   min-width: 9rem;
 }
 
-.booking-date-weekday {
-  color: var(--color-text-secondary);
-  font-size: 0.8125rem;
-  text-transform: capitalize;
-}
-
-.booking-date input:checked + .booking-date-face,
 .booking-slot input:checked + .booking-slot-face {
   /* A thicker border and heavier text, so the selection is not conveyed by color alone. */
   box-shadow: inset 0 0 0 1px var(--color-action-primary);
@@ -2318,18 +2281,172 @@ label {
   background: var(--color-action-primary-subtle);
 }
 
-.booking-date input:disabled,
 .booking-slot input:disabled {
   cursor: not-allowed;
+}
+
+/* One shared section: the monthly calendar and the slots of the selected date, side by side from the
+   tablet breakpoint and stacked below it. */
+.booking-picker {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+}
+
+.booking-picker > * {
+  margin: 0;
+  min-width: 0;
+}
+
+.booking-picker-summary {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.booking-picker-summary:empty {
+  display: none;
+}
+
+.booking-slots-date {
+  margin: 0;
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.booking-calendar {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.booking-calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.booking-calendar-title {
+  flex: 1;
+  margin: 0;
+  font-weight: 800;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.booking-calendar-nav {
+  min-width: 2.75rem;
+  padding-inline: var(--space-2);
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+/* The disabled palette without the native attribute, so a focused control never loses focus. */
+.booking-calendar-nav[aria-disabled="true"] {
+  --button-border: var(--color-disabled-text);
+  --button-text: var(--color-disabled-text);
+  --button-background: var(--color-disabled-background);
+  --button-hover-border: var(--color-disabled-text);
+  --button-hover-text: var(--color-disabled-text);
+  --button-hover-background: var(--color-disabled-background);
+  cursor: not-allowed;
+}
+
+.booking-calendar-grid {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 2px;
+  table-layout: fixed;
+}
+
+.booking-calendar-grid th {
+  padding: var(--space-1) 0;
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.booking-day {
+  height: 2.75rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  text-align: center;
+  vertical-align: middle;
+  user-select: none;
+}
+
+.booking-day--available {
+  border-color: var(--color-border);
+  color: var(--color-text-primary);
+  background: var(--color-surface);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.booking-day--available:hover {
+  border-color: var(--color-action-primary);
+  background: var(--color-action-primary-subtle);
+}
+
+.booking-day--unavailable,
+.booking-day--outside {
+  color: var(--color-text-secondary);
+  font-weight: 400;
+  cursor: not-allowed;
+}
+
+.booking-day--outside {
+  opacity: 0.55;
+}
+
+.booking-day--today > span {
+  border-bottom: 3px solid currentColor;
+  padding-bottom: 1px;
+}
+
+.booking-day--selected,
+.booking-day--selected:hover {
+  border-color: var(--color-action-primary);
+  color: var(--color-surface);
+  background: var(--color-action-primary);
+  font-weight: 800;
+  box-shadow: inset 0 0 0 2px var(--color-surface);
+}
+
+.booking-day:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+@media (min-width: 48rem) {
+  .booking-picker {
+    grid-template-columns: minmax(17rem, 21rem) minmax(0, 1fr);
+    align-items: start;
+    gap: var(--space-5) var(--space-5);
+    padding: var(--space-5);
+  }
+
+  .booking-picker-slots {
+    padding-left: var(--space-5);
+    border-left: 1px solid var(--color-border);
+  }
+
+  .booking-picker-summary {
+    grid-column: 1 / -1;
+  }
 }
 
 .booking-details textarea {
   width: 100%;
   resize: vertical;
-}
-
-.booking-privacy {
-  max-width: 65ch;
 }
 
 .booking-summary,
@@ -2383,12 +2500,6 @@ label {
 .booking-facts dd {
   margin: 0;
   overflow-wrap: anywhere;
-}
-
-.booking-reference {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-weight: 700;
-  letter-spacing: 0.06em;
 }
 
 .booking-outcome:focus-visible {

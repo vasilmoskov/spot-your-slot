@@ -265,11 +265,11 @@ export function PeriodListEditor({
             </div>
             <FieldError id={`${id}-range`} error={dialog.errors.range} />
             <div className="action-group">
-              <Button type="button" onClick={submit}>
-                {dialog.clientId ? 'Запази' : 'Добави'}
-              </Button>
               <Button type="button" variant="secondary" onClick={close}>
                 Отказ
+              </Button>
+              <Button type="button" onClick={submit}>
+                {dialog.clientId ? 'Запази' : 'Добави'}
               </Button>
             </div>
           </div>

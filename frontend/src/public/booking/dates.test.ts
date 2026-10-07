@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import {
   elapsedMinutes,
   formatDateOnlyLong,
-  formatDateOnlyShort,
   formatTimeDistinct,
   formatTimeInZone,
   isRepeatedLocalTime,
@@ -27,7 +26,6 @@ describe('date-only values', () => {
     expect(formatDateOnlyLong('2026-01-01')).toBe('четвъртък, 1 януари 2026 г.')
     expect(formatDateOnlyLong('2026-12-31')).toBe('четвъртък, 31 декември 2026 г.')
     expect(formatDateOnlyLong('2026-10-25')).toBe('неделя, 25 октомври 2026 г.')
-    expect(formatDateOnlyShort('2026-10-07')).toEqual({ weekday: 'ср', dayMonth: '7 окт' })
   })
 })
 

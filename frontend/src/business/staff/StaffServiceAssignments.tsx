@@ -392,15 +392,15 @@ export function StaffServiceAssignments({
         <div className="action-group">
           {editing ? (
             <>
+              <Button type="button" variant="secondary" disabled={saving} onClick={cancel}>
+                Отказ
+              </Button>
               <Button
                 type="button"
                 disabled={saving || catalogLoading || !!catalogError || !isDirty}
                 onClick={() => void submit()}
               >
                 {saving ? 'Запазване…' : 'Запази промените'}
-              </Button>
-              <Button type="button" variant="secondary" disabled={saving} onClick={cancel}>
-                Отказ
               </Button>
             </>
           ) : (

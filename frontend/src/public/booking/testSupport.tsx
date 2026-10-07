@@ -229,8 +229,11 @@ export async function startFromHero() {
   await click(button('Запази час'))
 }
 
+/** The hero action, then the named Service at the first step, then the StaffMember step. */
 export async function startFromService(name: string) {
-  await click(button(`Запази час за ${name}`))
+  await startFromHero()
+  await click(screen.getByRole('radio', { name: new RegExp(name) }))
+  await next()
 }
 
 export async function next() {
@@ -241,12 +244,17 @@ export async function chooseStaff(label: string) {
   await click(screen.getByRole('radio', { name: new RegExp(label) }))
 }
 
+/** A date by its long name; the cell name may carry a suffix (today, no free time). */
 export async function pickDate(longName: string | RegExp) {
-  await click(screen.getByRole('radio', { name: longName }))
+  const name =
+    typeof longName === 'string'
+      ? new RegExp(`^${longName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`)
+      : longName
+  await click(screen.getByRole('gridcell', { name }))
 }
 
 export async function pickSlot(text: string | RegExp) {
-  const group = screen.getByRole('group', { name: 'Час' })
+  const group = screen.getByRole('group', { name: 'Свободни часове' })
   await click(within(group).getByRole('radio', { name: text }))
 }
 

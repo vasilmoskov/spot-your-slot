@@ -346,14 +346,6 @@ export function ServiceDetail({
                   </p>
                   <div className="action-group">
                     <Button
-                      type="button"
-                      variant="destructive"
-                      disabled={lifecycleBusy}
-                      onClick={() => void deactivate()}
-                    >
-                      {lifecycleBusy ? 'Запазване…' : 'Потвърди деактивирането'}
-                    </Button>
-                    <Button
                       ref={cancelDeactivationButton}
                       type="button"
                       variant="secondary"
@@ -364,6 +356,14 @@ export function ServiceDetail({
                       }}
                     >
                       Отказ
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      disabled={lifecycleBusy}
+                      onClick={() => void deactivate()}
+                    >
+                      {lifecycleBusy ? 'Запазване…' : 'Потвърди деактивирането'}
                     </Button>
                   </div>
                 </div>

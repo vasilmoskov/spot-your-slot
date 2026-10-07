@@ -54,6 +54,9 @@ export function useJourneyHistory({ journey, step, verdict, onStep, onLeft }: Op
   latest.current = { step, verdict, onStep, onLeft }
   // Traversals that this hook started itself and must not interpret.
   const ignored = useRef(0)
+  // The highest entry index that exists. Entries beyond the shown step are forward history, which a
+  // push removes; keeping it lets a return to an earlier-visited step go forward instead of pushing.
+  const top = useRef(step)
 
   useEffect(() => {
     const onPop = (event: PopStateEvent) => {
@@ -85,7 +88,26 @@ export function useJourneyHistory({ journey, step, verdict, onStep, onLeft }: Op
   const advance = useCallback(
     (next: number) => {
       pushJourneyEntry(journey, next)
+      top.current = next
       latest.current.onStep(next)
+    },
+    [journey],
+  )
+
+  // Moves to `target` keeping the entry index equal to the step ordinal. An earlier step is a history
+  // traversal back, a step that still has its forward entry a traversal forward (so the browser's
+  // Back and Forward stay coherent), and any other later step pushes the entries up to it.
+  const goTo = useCallback(
+    (target: number) => {
+      const current = latest.current.step
+      if (target === current) return
+      if (target <= top.current) {
+        window.history.go(target - current)
+        return
+      }
+      for (let entry = current + 1; entry <= target; entry += 1) pushJourneyEntry(journey, entry)
+      top.current = target
+      latest.current.onStep(target)
     },
     [journey],
   )
@@ -99,5 +121,5 @@ export function useJourneyHistory({ journey, step, verdict, onStep, onLeft }: Op
     window.history.go(-latest.current.step)
   }, [])
 
-  return { advance, back, rewindToProfile }
+  return { advance, goTo, back, rewindToProfile }
 }

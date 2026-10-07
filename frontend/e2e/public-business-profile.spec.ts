@@ -322,7 +322,10 @@ test.describe('Public Business profile: direct access and allowlist', () => {
       for (const line of ['Улица Аврора 12', '1000 София', 'Вход от двора, етаж 2']) {
         await expect(page.getByText(line, { exact: true })).toBeVisible()
       }
+      // One primary action in the hero; the Service cards are informational and hold no control.
       await expect(page.getByRole('button', { name: BOOKING_ENTRY, exact: true })).toBeVisible()
+      await expect(page.getByRole('button', { name: /Запази час/ })).toHaveCount(1)
+      await expect(page.locator('.public-service button, .public-service a')).toHaveCount(0)
       await expect(page.getByRole('heading', { level: 2, name: 'Услуги', exact: true })).toBeVisible()
 
       for (const name of FULL_ACTIVE) {
@@ -339,9 +342,10 @@ test.describe('Public Business profile: direct access and allowlist', () => {
       await expect(page.getByText(FULL_INACTIVE)).toHaveCount(0)
       await expect(page.getByText('Тази услуга вече не се предлага.')).toHaveCount(0)
 
-      // The telephone is the only link; the only actions are the booking entries (the general one and one per Service).
+      // The telephone is the only link.
       await expect(page.getByRole('link')).toHaveCount(1)
-      await expect(page.getByRole('button')).toHaveCount(1 + FULL_ACTIVE.length)
+      // The only control of the page is the hero action; the Service cards hold none.
+      await expect(page.getByRole('button')).toHaveCount(1)
       const text = await mainText(page)
       expect(text).not.toContain(FULL_CONTACT_EMAIL)
       expect(text).not.toContain(full.ownerEmail)
@@ -981,7 +985,7 @@ test.describe('Public Business profile: responsive and accessibility smoke', () 
           expectLogicalHeadingHierarchy(await headingLevels(page))
           await expectNoHorizontalOverflow(page)
           await expectWithinViewportWidth(page, 'main h1')
-          await expectNoClippedContent(page, '.public-hero, .public-booking, .public-service')
+          await expectNoClippedContent(page, '.public-hero, .public-hero-action, .public-service')
         }
 
         for (const business of [full, long]) {

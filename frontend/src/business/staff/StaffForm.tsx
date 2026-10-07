@@ -140,12 +140,12 @@ export function StaffForm({
         <FieldError id="staff-contact-phone" error={errors.contactPhone} />
       </div>
       <div className="action-group">
-        <Button disabled={busy}>{busy ? 'Запазване…' : submitLabel}</Button>
         {onCancel && (
           <Button type="button" variant="secondary" disabled={busy} onClick={requestCancel}>
             Отказ
           </Button>
         )}
+        <Button disabled={busy}>{busy ? 'Запазване…' : submitLabel}</Button>
       </div>
     </form>
   )

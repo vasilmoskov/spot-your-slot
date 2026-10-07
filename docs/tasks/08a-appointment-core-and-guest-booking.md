@@ -173,6 +173,9 @@ overlapping work with deferred promises, diagnose CI failures before calling the
 | **7** | **Rendered browser review and human visual approval** | Standard | **Stop for human approval** |
 | 8 | Browser E2E and final acceptance | Standard | Closure only on explicit approval |
 
+**Amendment (2026-10-07):** the multi-Service extension (ADR-0027, task 08b) adds seven separately approved phases M1 to M7 after Phase 7 and **replaces Phase 8**: the browser E2E and final acceptance are phase M7, covering the
+single-Service and the multi-Service journeys. Phase 8 as written above has not been started and does not start before the extension is complete.
+
 Phase 7 follows the UI guide process (§18): exact startup, fixtures created only through supported APIs,
 viewports about 1280, 1024, 800, and 375, 200% zoom, keyboard-only use, wrapped validation errors, the
 frozen uncertain state, replay and cancelled results, a repeated DST hour, duplicate-submit protection. It
@@ -219,7 +222,7 @@ These stay Proposed until the named phase settles them with evidence:
 
 Customer accounts and login; contact verification; marketing consent; self-service cancellation and
 rescheduling; email and SMS; the Business calendar and manual creation (#21); deferred #19 requirements;
-payments; waiting lists; slot holds or reservations; recurring, group, or multi-Service appointments; buffers;
+payments; waiting lists; slot holds or reservations; recurring or group appointments; multi-Service appointments (*originally excluded; since decided on 2026-10-07, see the multi-Service extension below and ADR-0027, and not yet implemented*); buffers;
 Business-configurable horizon or notice; impact warnings for confirmed appointments; a read-by-reference
 endpoint; trusted-proxy, edge, or shared rate limiting; hosting.
 
@@ -825,7 +828,7 @@ updated and executed after the Phase 6 correction (19 passed).
 ### What was implemented
 
 - **Entry and composition.** The profile keeps its approved composition. The hero gains one «Запази час» action (only when the Business
-  has Services) and each Service card gains «Запази час за {Service}» (entering at the StaffMember step with the Service chosen).
+  has Services) and each Service card gains «Запази час за {Service}» (entering at the StaffMember step with the Service chosen). *(Superseded by the Phase 7 UX correction: the cards are informational again and the hero holds the only action.)*
   Opening the journey replaces the profile body inside the same `<main>`; «Към страницата на бизнеса» returns to it. `services[].id` is
   now decoded (`PublicService.id`) and is the only reference sent back.
 - **`src/public/booking/` (new):** `api.ts` (the three real endpoints, strict decoders, `credentials: 'omit'`, classification of every POST
@@ -1102,3 +1105,205 @@ approves them, and nothing here is recorded as an enduring decision in the UI gu
   `spotyourslot-e2e` Compose project, which the script removed with its volume. The development database and the review stack were not touched.
 - **Evidence limits:** these are local runs; no CI run exists for this working tree. The original race is timing dependent, so passes alone do not prove its absence; the proof is the
   deterministic audit spec and the removal of the unhandled and defaulted paths. The original failure was not reproduced in the real browser flow, only its mechanism with fakes.
+
+## Phase 7 UX correction after the human review (2026-10-07; human visual approval still PENDING)
+
+Base `HEAD` `41e13fb` (the request-audit correction is committed) plus the uncommitted working tree. Scope: the frontend only. No backend booking
+semantics, migration, API contract, or dependency changed, and Phase 8 was not started. Every item below is the developer's implementation of the human feedback;
+none is a human approval, and the composition stays «awaiting human visual approval».
+
+### What changed
+
+1. **Profile.** One «Запази час» action in the hero, no box around it; the Service cards are informational and hold no button, link, or other control (a unit and a
+   browser test assert it). The journey always starts at the Service step (the `initialServiceId` entry and its history entry were removed).
+2. **Single-Service booking is unchanged.** The Service stays a radio group and one booking is one Service, one StaffMember, one POST. Existing combined Services stay bookable through the
+   current contract.
+3. **Date and time.** One shared section: a monthly calendar (`BookingCalendar.tsx`, pure arithmetic in `calendar.ts`) beside the slots of the selected date from 48rem up, stacked below it.
+   Bulgarian fixed month and weekday names, Monday first, month buttons limited to the booking horizon (`booking-options` `firstDate` and `lastDate`), a polite month title, a polite
+   «Избрано: …» summary. A date is selectable only when `availableDates` lists it; nothing is computed. «Today» is the Business-local date of the browser clock in the returned timezone, used only to
+   label that cell (the contract defines `firstDate` as the first bookable date, not as today). The technical timezone identifier is no longer shown anywhere; the page says
+   «Часовете са по местното време на бизнеса.» and the offset label stays only for the repeated hour. No dependency was added: the grid is small, its arithmetic is pure and
+   tested, and a date-picker library would have brought its own markup, locale data, and styling to override.
+   Accessibility follows the WAI-ARIA date picker grid pattern: `role="grid"` labelled by the month, `gridcell` with `aria-selected`, `aria-disabled`, and `aria-current="date"`, a labelled cell
+   («сряда, 7 октомври 2026 г., днес, няма свободни часове»), one tab stop, arrow keys by day and week, Home and End within the week, Page Up and Page Down by month, Enter and Space to select.
+4. **Hierarchy and details.** The selected-Service line sits above the heading on steps 2 to 4 and is absent on step 1 and the review. The permanent «0 / 500 знака» counter is gone; from 400 code points the
+   form shows «Остават N знака.» (and «Надвишавате ограничението с N знака.» past 500); the input is never truncated and the 500-code-point validation is unchanged. The approved privacy sentence is
+   unchanged and uses the form's width (the 65ch limit was removed).
+5. **Editing from the review.** «Промени» opens the step in an edit mode (`editing` in the journey state, ended on reaching the review). While a time is still chosen each step offers «Към прегледа» in place of «Напред».
+   A Service or StaffMember change clears exactly the dependent choices (time; date; the preference after a Service change), the details are preserved, and the guest is asked only for what was cleared.
+   The way back is the browser's own history: `useJourneyHistory` now tracks the highest existing entry (`top`) and `goTo` goes forward through it when the entry exists, otherwise pushes the missing entries, so the
+   entry index still equals the step ordinal and Back and Forward stay coherent. The browser's Forward to a review that is no longer reachable is refused as before, a sending or unresolved attempt is still uneditable, and
+   the recovery buttons of the review (another time, Service, StaffMember, details) use the same edit mode.
+6. **Confirmation.** One heading; the server's Service, StaffMember, date, time, duration and price; «Запазете данните за резервацията.»; the Business contact. The duplicate success sentences, the status row, the
+   reference row, and the timezone row are not rendered (the reference and timezone stay in the decoded answer and in the state, and the date and time use the returned timezone with offsets only where repeated).
+   A `CANCELLED` replay keeps its own heading and its error-styled notice. No notification is implied.
+7. **Action order.** Audit of every `action-group`: 18 groups in 13 files put the confirming action before Cancel or the safe action. They were reordered in the DOM, with no behavior change: Cancel before Save or Create
+   (the profile and Customer, Service, StaffMember, Business, schedule-change, and working-schedule forms, the StaffMember Service assignments, and the period dialogs), the safe action before the confirming one in every
+   confirmation (deactivation, lifecycle, resend invitation, clear day, clear schedule, delete schedule change, copy). The shared unsaved-changes dialog already had «Остани» first. The authoritative rule is in
+   `docs/ui-design-guidelines.md` section 6, with pointers in `AGENTS.md` and `CLAUDE.md`, and `src/ui/actionOrder.test.ts` enforces it. One existing test asserted the old destructive-first order and was updated.
+   Groups that are neither cancelling nor confirming (an «Редактирай» beside an «Изтрий», a retry beside a link back to a list) were left as they are and are covered by no rule: that is the one deliberate exception.
+
+### Earlier proposed follow-up: booking several Services in one visit (SUPERSEDED by the approved decisions of the multi-Service extension below; still NOT implemented)
+
+The request to choose several Services needs product and contract decisions before any code. Radios were not replaced by checkboxes, and no multi-Service booking is simulated with several POSTs. Decisions required:
+
+- **StaffMembers:** one StaffMember for all Services, or a possibly different one per Service; how «Без предпочитание» resolves; whether each Service needs its own eligible StaffMember.
+- **Order:** who decides the order of the Services, whether the guest can change it, and how it is shown and stored.
+- **Totals:** the total duration and total price rules (sum, rounding, a package price), and whether buffers exist between Services (the MVP has none).
+- **Continuous availability:** whether the Services must be back to back, how a continuous block is found by the backend (the frontend must never compute it), and how gaps or a DST change inside the block behave.
+- **Atomic reservation:** one transaction for all parts or none; how the overlap exclusion and the schedule revision guard of ADR-0023 and ADR-0025 apply to several intervals; the partial-failure and rollback semantics.
+- **Snapshots:** whether a booking holds several Appointment records or one with parts, what each snapshots (Service name, duration, price, StaffMember), and how the owner's calendar and Customer history show them.
+- **Idempotency:** one attempt identity and one request fingerprint for the whole selection (ADR-0024), the uncertain-outcome and replay response for several parts, and the confirmation and cancelled-replay shapes.
+- **Contract:** a new endpoint or a versioned change of `POST …/bookings` (an API contract change, Strict work), the rate-limit budgets, and the public wording.
+
+It would be proposed as a separate ADR and issue with its own review; until then a Business that wants a combined visit offers a combined Service.
+
+### Verification (executed on this working tree, local only)
+
+- `npm run lint` clean; `npm run build` succeeded; `npm test`: **71 test files, 1706 tests, 0 failures** (before this correction: 67 files, 1657 tests). New: `calendar.test.ts` (13), `BookingJourney.calendar.test.tsx` (19), `BookingJourney.edit.test.tsx` (12),
+  `actionOrder.test.ts` (4) and a counter test. Existing public-profile, journey, and administration tests changed only where the contract legitimately changed; none was weakened, and every attempt-ID, exact-body, sticky-uncertainty,
+  retry-gate, and privacy test passes unchanged.
+- **Control runs (executed, each reverted):** never offering «Към прегледа» failed 12 tests; allowing the browser's Forward to a stale review failed 1; allowing an unavailable date failed 2; a counter from 300 code points failed 1; `goTo` always pushing failed 4;
+  unbounded month navigation failed 1; an edit that never ends failed 1 (found by this run, then covered by a new assertion); a confirming action first in a form group failed the action-order test.
+- **Browser:** the complete suite through the unmodified `scripts/run-e2e.sh`: the first run found **1 failure**, a stale assertion that still counted one booking button per Service («the page shows exactly the approved public information of the full Business»);
+  it was updated to the new contract and the **second complete run passed 81 of 81**. The disposable `spotyourslot-e2e` project was removed by the script; the development database was not touched.
+- **Rendered, real backend (Playwright Chromium, screenshots inspected):** 1280, 800, 375, and 320 px viewports, the profile, the calendar and slots, month navigation, the details with the counter, the review, the edit mode, the confirmation, and the
+  repeated hour of 2026-10-25 (`03:30 (UTC+03:00)` and `03:30 (UTC+02:00)`, in the list and in the summary). No horizontal overflow at any of them. Keyboard, run in the real browser: Tab reaches the month buttons and then the grid's single tab stop; Arrow, Page Down and Page Up, Home, End, and Enter
+  behave as specified; every focused control shows a 3 px outline. Contrast measured: selected day 5.15:1, available day text 16.27:1, the weekday names and the unavailable days 4.97:1 on white.
+- **Viewport emulation, not real zoom:** every width above is a Playwright viewport size, and 320 px approximates 400% zoom of 1280 px. **No real browser zoom was performed**, and no screen reader, Safari, touch input, or real device was used.
+
+### Observations and limits (for the human review or a later decision)
+
+- At 320 px a day cell is 30 px wide and 44 px tall (the 24 px WCAG 2.2 minimum holds, a 44 px square does not); at 375 px it is 38 x 44. The month title wraps to two lines at 320 px.
+- Days outside the booking period are shown at reduced emphasis (inactive content, not a control) and are announced as outside the period.
+- The shared danger and success palette still measures 4.44:1 and 3.85:1 as panel text; only the booking journey uses the darker text tokens (see the Phase 7 record above).
+- A discrepancy found by the action-order audit and **not changed** (it is behavior, not order): the Business lifecycle confirmation in the platform administration (`BusinessDetail.tsx`) moves initial focus to its confirming button, which is the destructive one for a
+  suspension, while section 19 says a destructive confirmation never receives default focus. It needs a decision before it is changed.
+- The profile's telephone link (24 px tall) and the heading focus ring on first load belong to the approved Issue #17 profile and were not touched.
+- Human visual approval of the redesigned composition, the privacy sentence, and the leave-warning wording: **pending**.
+
+## Phase 7 human-review corrections, second round (2026-10-07; human visual approval still PENDING)
+
+Base `HEAD` `41e13fb` plus the uncommitted working tree. Frontend only: no backend semantics, migration, API contract, or dependency changed, and Phase 8 was not started. Booking several Services is a
+**requested capability, since decided in ADR-0027** ([task 08b](08b-multi-service-guest-booking-plan.md), see the multi-Service extension at the end of this record); **it is not implemented, and the product books exactly one Service per booking.**
+
+### Wording amendment (approved by the human review)
+
+| Place | Before | After |
+|---|---|---|
+| Missing or blank name | «Въведете име до 200 знака.» | «Въведете име.» |
+| Invalid or overlong name | the same combined sentence | «Проверете въведеното име.» (no number; the 200-character rule is unchanged; the input is never truncated) |
+| Backend `displayName` field error | shown verbatim | mapped to the same public sentence; no backend field text is shown for any field |
+| Identity conflict (`409 BOOKING_NOT_COMPLETED_ONLINE` only) | «Не можем да завършим резервацията онлайн. Моля, свържете се с бизнеса.» | «Телефонът и имейлът не съответстват. Проверете ги или въведете само единия контакт.» |
+| Date and time step | «Часовете са по местното време на бизнеса.» | removed (the calculation and the offset label of the repeated hour are unchanged) |
+
+ADR-0020 and task 07a still quote the earlier conflict sentence as history; this record is the amendment (accepted ADRs are not rewritten, `docs/decisions/README.md`). The administration wording («Въведете име на клиента до 200 знака.») is unchanged.
+
+### Diagnosis of the observed rejection
+
+- **What it was.** The sentence belongs to exactly one outcome: `BookingResult.IdentityConflict`, mapped by `PublicProblems` to `409 BOOKING_NOT_COMPLETED_ONLINE`.
+- **The precise condition** (ADR-0020 rows 8 to 10, conservative matching): the guest supplied **both** a telephone and an email, and they do not both belong to the same stored Customer of that Business. That is: the telephone belongs to one Customer
+  and the email to another; or the telephone belongs to a Customer who has no email or a different one and the email is held by nobody; or the same with the roles reversed. Matching never merges, attaches, moves, or overwrites a contact,
+  and a single supplied contact never conflicts.
+- **Evidence for the original event, and its limits.** The review proxy recorded 54 booking requests since its last start: all earlier `409` answers came from the review's own scripted races, and exactly one came after them (request 54, 21:39 local time) with no scripted fault; that is the one the human saw. The proxy
+  logs only the attempt identifier, a body hash and length, and the status, so **the response body of that event was not retained and its problem code cannot be proven from the log**. The sentence reported by the human, the status, and the state of the data are consistent with an identity conflict
+  and with no other documented `409`.
+- **The data.** The review Business held six Customers read through the owner's Customer API (shapes only): three with a telephone only, two with an email only, one with both. The telephone-only Customers were created by the review's own automated bookings, which reused a few telephone numbers without an email.
+  A guest who then enters one of those telephones **with an email** matches row 9.
+- **Reproduction (a reproduction, not the original event).** On a clean review Business, with synthetic contacts and the supported public API, the matrix was reproduced exactly: a new telephone and email creates a Customer (201); the same pair again is an existing Customer (201); a telephone only creates (201) and
+  again finds it (201); the same telephone with a new email is `409 BOOKING_NOT_COMPLETED_ONLINE`; an email only creates, and the same email with a new telephone is `409 BOOKING_NOT_COMPLETED_ONLINE`; the telephone of one Customer with the email of another is `409 BOOKING_NOT_COMPLETED_ONLINE`. After the conflicts the Customers still
+  had exactly the contacts they started with (read back through the owner API): nothing was attached, merged, or overwritten.
+- **Verdict.** An **expected conservative contact conflict** on **polluted review fixtures** (phone-only Customers reused by earlier automated runs). **Not a product defect:** the matching policy was not changed and was not weakened to make the review booking pass. The product cost, accepted in ADR-0020, is that a
+  returning guest who adds an email later cannot complete online; the new sentence tells the guest what to do (check both, or enter only one contact) instead of sending them to the Business.
+- **Privacy note on the new sentence.** It names neither the contact that matched nor whether a Customer exists. As before, an unauthenticated visitor can tell a conflict from a success (the existing, rate-limited oracle of ADR-0020 and ADR-0026); the wording does not widen it.
+- **Scope of the wording.** Used only for the documented status and code (`409` with `BOOKING_NOT_COMPLETED_ONLINE`); any other `409` code, an unknown 4xx, or a documented code on another status keeps its own handling. The entered details are kept, «Промяна на данните» returns to them, and the Business telephone stays shown when configured.
+
+### Clean synthetic fixtures for manual validation
+
+Business `kontakti-demo` («Студио Контакти (за проверка)»), created and filled only through supported APIs (platform administration, invitation, Service, StaffMember, schedule, and the public booking API); no database write. It holds the scenarios below; the contact values are synthetic and are given to the reviewer in the handoff, not in this document.
+
+| Scenario | Prepared state | Guest enters | Expected result |
+|---|---|---|---|
+| New Customer | nothing | an unused telephone and an unused email | booking confirmed; a Customer with both contacts is created |
+| Existing Customer, exactly matching | a Customer with both contacts | exactly those two | booking confirmed; the same Customer is used |
+| Conflict, telephone with another email | a Customer with a telephone only | that telephone and a new email | the new conflict sentence; details kept; «Промяна на данните» |
+| Conflict, two Customers | one telephone-only and one email-only Customer | the telephone of one and the email of the other | the new conflict sentence |
+
+### Destructive-focus correction
+
+The platform Business confirmations (suspend, activate, reactivate, resend invitation) moved initial focus to the confirming button, which is destructive for a suspension, against section 19. Initial focus now lands on the safe «Отказ» (the first button in the DOM, before the confirming one);
+after a cancellation the focus returns to the control that opened the confirmation («Спри временно», «Активирай», «Изпрати покана»). These confirmations are inline `alertdialog` panels, not modal: they have no focus trap and Tab leaves the panel to the next control, as before; that existing containment behavior is
+unchanged and not claimed to be modal. Regression tests: `BusinessDetail.test.tsx` (initial focus, the order, the destructive variant, focus restoration, and the resend dialog).
+
+### Shared status text contrast
+
+The base danger and success colors stay for borders, buttons, and icons. The text of `status-error`, `status-success`, and the success status badge now uses the shared tokens `--color-danger-text` and `--color-success-text`; the booking-journey-only override was removed.
+
+| Text | Before | After |
+|---|---|---|
+| danger panel (`#d92d20` → `#b42318` on `#fef3f2`) | 4.44:1 | 6.05:1 |
+| success panel and success badge (`#168f6b` → `#0f7a5a` on `#ecfdf3`) | 3.85:1 | 5.04:1 |
+| `field-error` (danger on white, unchanged) | 4.83:1 | 4.83:1 |
+
+Material visual change: status text is a shade darker; panel backgrounds, borders, and buttons are unchanged. Inspected at 1280 and 375 px in the public booking journey (the conflict notice) and the platform administration (the success panel «Промените са запазени.», the concurrent-edit error panel, and the status badge).
+**Not changed and needing a decision:** the warning badge text (`#d97706` on the page background) measures 3.0:1. `src/ui/contrast.test.ts` pins the corrected ratios from the shared CSS.
+
+### Verification (executed on this working tree, local only)
+
+Commands and results on the final code (base `HEAD` `41e13fb` plus the uncommitted working tree; local only, no CI run):
+
+- `npm run lint` clean; `npm run build` succeeded; `npm test`: **72 test files, 1715 tests, 0 failures** (previous entry: 71 files, 1706 tests); the strict `tsc` of the E2E specs clean.
+- The complete browser suite through the unmodified `scripts/run-e2e.sh`: **81 passed, 0 failed**, run twice on the final code (the second after the control runs below); the disposable `spotyourslot-e2e` project was removed by the script.
+- **Control runs (executed, each reverted and the suite re-run green):** a blank name using the invalid-name sentence failed 4 tests; the conflict sentence leaking to a slot rejection failed 5; focus on the confirming action failed 3; focus not restored after a cancellation failed 3; the base
+  danger color as panel text failed the contrast test. One slip is recorded: the first attempt to back the files up did not run (a shell word-splitting error), so the five mutations stayed applied until they were reverted by their exact inverses; the restored tree was then verified by the full unit suite (1715 passed), lint, the type check, and the second complete browser run.
+- **Migration integrity:** no backend file changed (`git diff -- backend` is empty); `V1` to `V12` are byte-identical to `HEAD`; no migration was added. The checksums are in the review archive.
+- **Evidence limits:** local runs only; the diagnosis of the original rejection rests on the proxy's status log and the data shapes, not on the lost response body; the destructive-focus fix was keyboard-checked in Chromium, not with a screen reader; the contrast figures are computed from the shared CSS and read from the browser's computed styles,
+  not from an assistive-technology audit; real browser zoom, Safari, touch, and real devices were not used.
+
+Rendered, real backend (Playwright Chromium, screenshots inspected at 1280 and 375 px): the blank and the overlong name errors with focus on the first invalid field; the date and time step without the timezone note and the repeated
+hour (`03:30` at both offsets); the conflict message, the Business telephone, the kept details, and the way back; the suspension confirmation by keyboard (initial focus «Отказ», Tab order, focus back on «Спри временно»); the admin success and error panels. **Not used:** a screen reader, Safari, touch, real browser zoom.
+
+## Multi-Service extension: decisions and documentation phase (2026-10-07)
+
+**Documentation phase only. Nothing is implemented, no backend, schema, API, or checkbox change was made, the product still books exactly one Service per booking, and issue #18 is not complete.** The product owner approved the model; it is
+recorded in [ADR-0027](../decisions/ADR-0027-book-several-services-as-one-atomic-visit-with-service-lines-a-versioned-set-fingerprint-and-an-explicit-review-consistency-check.md) (which amends ADR-0013, 0016, 0022, 0023, 0024, and 0026 through amendment notes that preserve their text) and planned in [task 08b](08b-multi-service-guest-booking-plan.md).
+
+### Approved decisions and where they are specified
+
+| Decision | Specified in |
+|---|---|
+| A visit of one to five distinct active Services, one StaffMember, consecutively | ADR-0027 section 1 |
+| `appointment_service` line table with per-Service snapshots and visit totals on the Appointment; migration `V13` with a backfill; no committed migration edited | sections 3 and 11 |
+| Execution order is the public-profile order; click order affects neither execution nor request identity (fingerprint: ascending UUID) | section 2 |
+| At most 5 Services and 480 total minutes | sections 1 and 8 |
+| Eligible StaffMembers support every Service; one continuous interval for the summed duration; an empty intersection is explained at the staff step with a return to the Service selection | sections 4 and 10 |
+| One atomic submission; no separate POSTs, partial bookings, or cosmetic multi-selection | sections 1 and 7 |
+| Legacy single-Service requests and historical replays preserved; encoding v1 kept, encoding v2 for new attempts | sections 5 and 11 |
+| Cancellation and replay describe the whole visit; no cancellation endpoint | section 9 |
+| **Explicit review-consistency check** (reviewed duration and price per Service, integer minutes and cents, inside the fingerprint, compared with the locked Services before availability, the Customer, and any write; `409 BOOKING_REVIEW_CHANGED`; a proven first-send rejection permits a fresh attempt; after an earlier uncertain send the attempt stays frozen) | section 6 |
+
+### Reconciliation of this record
+
+- The earlier proposed follow-up above (the list of open questions) is answered by the table; its policy on price and duration drift (the server silently authoritative) is **superseded** by the review-consistency check.
+- The Phase 6 attempt rules (sticky uncertainty, exact frozen body, a first-send documented rejection drops the attempt) are unchanged; `BOOKING_REVIEW_CHANGED` joins the documented first-send rejections and, after an earlier uncertain send, the frozen causes.
+- The final UI of the extension keeps the Phase 7 corrections and adds real checkboxes, the selected-Service summary with the total duration and EUR price before «Напред», and one whole-visit review; it enters the UI guide after human approval.
+- Permanent documents reconciled: `docs/data-model.md`, `docs/architecture.md`, `docs/product-spec.md`, `docs/security.md`, `docs/testing-strategy.md`, `docs/implementation-plan.md`, `docs/product-roadmap.md`, `docs/ui-design-guidelines.md`, and the `docs/decisions/README.md` index.
+- Unchanged: issue #19 (incomplete), the release dependency on issue #21, the human visual approval still pending for the Phase 7 composition, and the proposed wording (the new codes' messages and sentences are **Proposed**).
+
+### Contradictions and open product questions
+
+No contradiction needs a product decision. Two judgements were resolved as routine technical choices and are recorded for the review: (1) "request identity independent of click order" and "execution in profile order" are both met by using
+two orders (ascending Service UUID for the fingerprint, which a rename cannot change; the profile order for the stored positions); (2) the legacy single-Service request shape carries no reviewed facts and therefore **is not review-checked**; it
+exists for compatibility and direct API callers, the frontend always sends the new shape, and retiring the legacy shape is a later decision.
+
+### Specification corrections before M1 (2026-10-07; documentation only)
+
+Two gaps found in the ADR-0027 specification were closed before any implementation; neither changes an approved decision.
+
+1. **Capacity of the visit total.** A Service price is at most `9 999 999 999.99` (10 integer digits, `numeric(12,2)`), so a visit of five such Services totals `49 999 999 999.95` (11 integer digits), which does not fit the `numeric(12,2)` of `appointment.price_eur`.
+   `V13` widens only that column to `numeric(13,2)` (maximum `99 999 999 999.99`); `service.price` and the line prices stay `numeric(12,2)`; no guest limit is added. The widening keeps every stored value (the plan tests this, including that the table is not rewritten);
+   all arithmetic is exact (`BigDecimal` with `addExact` on integer cents, `numeric` in SQL, integer cents in the browser); the bounds are `999 999 999 999` cents per Service and `4 999 999 999 995` cents per visit. ADR-0027 section 3 and the M1 and money test plan are updated.
+2. **UUID order.** "Ascending UUID" is defined as the unsigned lexicographic order of the 16 big-endian bytes (equal to the canonical hexadecimal order and to PostgreSQL's `uuid` order), **not** Java's `UUID.compareTo`, which is signed. For `00000000-0000-4000-8000-000000000001`, `7fffffff-ffff-4fff-bfff-ffffffffffff`, `80000000-0000-4000-8000-000000000000`,
+   `ffffffff-ffff-4fff-bfff-ffffffffffff` the specified order is A, B, C, D and Java's is C, D, A, B. The fingerprint v2 order uses the unsigned comparator; **lock order is the order of the locking statement's `ORDER BY id ASC FOR SHARE`** (the existing `ServiceStore.lockReferences` and StaffMember statements), and the application never pre-sorts identifiers to decide a lock.
+   The golden vectors, a PostgreSQL ordering test, a lock-statement test, a deadlock test across the high-bit boundary, and a guard against `UUID.compareTo` are in the plan. **Observation, not changed:** committed code uses Java's signed order for the published availability slot's StaffMember list invariant and for the final identifier tie-break of the deterministic
+   StaffMember assignment; neither decides a lock, and aligning them would change which StaffMember a tie assigns, so it is a separate decision.

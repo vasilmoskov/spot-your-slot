@@ -6,9 +6,15 @@ import {
 import { canonicalOptional, codePointLength, trimApproved } from '../../business/text'
 import { Button } from '../../ui/Button'
 import { FieldError, fieldControlProps, useFieldValidation } from '../../ui/formValidation'
-import { NOTE_MAX_CODE_POINTS, type BookingDetails } from './attempt'
+import type { BookingDetails } from './attempt'
 import type { BookingFieldErrors } from './api'
-import { DETAILS_FIELD_ORDER, validateDetails, type DetailsField } from './details'
+import {
+  DETAILS_FIELD_ORDER,
+  localFieldErrors,
+  noteCounter,
+  validateDetails,
+  type DetailsField,
+} from './details'
 import { StepActions } from './steps'
 
 const CONTACT_ERROR_ID = 'booking-contact-error'
@@ -25,6 +31,7 @@ export function DetailsStep({
   details,
   serverErrors,
   frozen,
+  nextLabel,
   onChange,
   onNext,
   onBack,
@@ -33,6 +40,7 @@ export function DetailsStep({
   // Field messages from a rejected submission; each disappears when its field is edited.
   serverErrors: BookingFieldErrors | null
   frozen: boolean
+  nextLabel: string
   onChange: (patch: Partial<BookingDetails>) => void
   onNext: () => void
   onBack: () => void
@@ -55,11 +63,11 @@ export function DetailsStep({
   useEffect(() => {
     if (serverErrors && serverErrors !== appliedErrors) {
       setAppliedErrors(serverErrors)
-      applyServerErrors(serverErrors)
+      applyServerErrors(localFieldErrors(serverErrors, details))
     }
-  }, [serverErrors, appliedErrors, applyServerErrors])
+  }, [serverErrors, appliedErrors, applyServerErrors, details])
 
-  const noteLength = codePointLength(trimApproved(details.note))
+  const counter = noteCounter(codePointLength(trimApproved(details.note)))
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -154,9 +162,9 @@ export function DetailsStep({
           <textarea
             {...fieldControlProps('booking-note', errors.note)}
             aria-describedby={
-              [errors.note ? 'booking-note-error' : undefined, 'booking-note-count']
+              [errors.note ? 'booking-note-error' : undefined, counter ? 'booking-note-count' : undefined]
                 .filter(Boolean)
-                .join(' ')
+                .join(' ') || undefined
             }
             ref={controlRef('note')}
             name="note"
@@ -169,9 +177,11 @@ export function DetailsStep({
             }}
           />
           <FieldError id="booking-note" error={errors.note} />
-          <p id="booking-note-count" className="field-note">
-            {noteLength} / {NOTE_MAX_CODE_POINTS} знака
-          </p>
+          {counter && (
+            <p id="booking-note-count" className="field-note">
+              {counter.text}
+            </p>
+          )}
         </div>
         <p className="field-note booking-privacy">
           Данните ви се предоставят на бизнеса за записване и управление на резервацията.
@@ -182,7 +192,7 @@ export function DetailsStep({
           Назад
         </Button>
         <Button type="submit" disabled={frozen}>
-          Напред
+          {nextLabel}
         </Button>
       </StepActions>
     </form>

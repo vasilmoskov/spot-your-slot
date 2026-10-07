@@ -415,10 +415,18 @@ describe('BusinessDetail', () => {
           'Бизнесът ще стане активен, ако има активен собственик.',
         )
       }
-      const confirm = dialog.querySelector('button:not(.button--secondary)') as HTMLButtonElement
-      expect(confirm).toHaveFocus()
+      // The safe «Отказ» comes first in the DOM and receives the initial focus, never the confirming
+      // (for a suspension destructive) action; the tab order follows the DOM.
+      const buttons = Array.from(dialog.querySelectorAll('button'))
+      expect(buttons.map((button) => button.textContent)).toEqual(['Отказ', buttons[1]!.textContent])
+      expect(buttons[0]).toHaveFocus()
+      expect(buttons[1]).not.toHaveFocus()
+      if (status === 'ACTIVE') expect(buttons[1]).toHaveClass('button--destructive')
       fireEvent.click(screen.getByRole('button', { name: 'Отказ' }))
       expect(mockedChangeBusinessStatus).not.toHaveBeenCalled()
+      // After the cancellation the focus returns to the control that opened the confirmation.
+      expect(screen.queryByRole('alertdialog')).toBeNull()
+      expect(screen.getByRole('button', { name: actionLabel })).toHaveFocus()
 
       fireEvent.click(screen.getByRole('button', { name: actionLabel }))
       const confirmation = screen.getByRole('alertdialog')
@@ -489,8 +497,16 @@ describe('BusinessDetail', () => {
     expect(resend).toHaveTextContent('Предишната активна покана')
     expect(mockedInviteBusinessOwner).toHaveBeenCalledOnce()
     const confirm = screen.getByRole('button', { name: 'Потвърди изпращането' })
-    expect(confirm).toHaveFocus()
-    fireEvent.click(confirm)
+    expect(screen.getByRole('button', { name: 'Отказ' })).toHaveFocus()
+    expect(confirm).not.toHaveFocus()
+    fireEvent.click(screen.getByRole('button', { name: 'Отказ' }))
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Изпрати покана' })).toHaveFocus()
+    expect(mockedInviteBusinessOwner).toHaveBeenCalledOnce()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Изпрати покана' }))
+    await screen.findByRole('alertdialog', { name: 'Изпращане на нова покана' })
+    fireEvent.click(screen.getByRole('button', { name: 'Потвърди изпращането' }))
     await waitFor(() => expect(mockedInviteBusinessOwner).toHaveBeenCalledTimes(2))
   })
 

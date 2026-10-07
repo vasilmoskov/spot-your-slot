@@ -177,11 +177,16 @@ describe('profile', () => {
 
     expect(screen.getAllByRole('link')).toHaveLength(1)
     // Booking starts only from an explicit action; nothing is requested or shown before it.
+    // One primary action in the hero; the Service cards are informational and hold no control.
     expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual([
       'Запази час',
-      'Запази час',
-      'Запази час',
     ])
+    expect(
+      screen.getByRole('button', { name: 'Запази час' }).closest('.public-hero'),
+    ).not.toBeNull()
+    for (const card of document.querySelectorAll('.public-service')) {
+      expect(card.querySelector('button, a, input, select, textarea, [tabindex], [role=button]')).toBeNull()
+    }
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
     expect(screen.queryByRole('radio')).not.toBeInTheDocument()
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
@@ -268,10 +273,8 @@ describe('profile', () => {
     expect(screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)).toEqual(
       services.map((service) => service.name),
     )
-    // One booking button per Service, in the same order, plus the general entry in the hero.
-    expect(
-      screen.getAllByRole('button').map((button) => button.getAttribute('aria-label') ?? 'Запази час'),
-    ).toEqual(['Запази час', ...services.map((service) => `Запази час за ${service.name}`)])
+    // However many Services there are, the only control is the one action in the hero.
+    expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual(['Запази час'])
   })
 
   it('renders API text as text, never as markup', async () => {

@@ -152,6 +152,8 @@ working periods were delivered by issue #16 (see Phase 5).
   orchestration, contracts, Customer integration, retries, and idempotency; (5) the public API, security, and
   abuse protection; (6) the frontend; (7) rendered browser review and human visual approval (a stop gate);
   (8) browser E2E and final acceptance. Production public booking waits for the Business calendar (issue #21).
+- Multi-Service booking (a visit of one to five Services) was decided on 2026-10-07 (ADR-0027, `docs/tasks/08b-multi-service-guest-booking-plan.md`) and is planned as seven separately approved phases M1 to M7
+  (persistence `V13`; availability and eligibility; orchestration and fingerprinting; HTTP; frontend; rendered review; browser E2E). **None has started**; the original Phase 8 of issue #18 is replaced by M7 and does not start before it.
 - Amended by ADR-0022 (the earlier text said: "Use only `CONFIRMED`, `CANCELLED_BY_CUSTOMER`,
   `CANCELLED_BY_BUSINESS`, `COMPLETED`, and `NO_SHOW`."): use only `CONFIRMED` and `CANCELLED`; cancellation
   attribution, the late flag, and `COMPLETED`/`NO_SHOW` arrive with the issues that implement them.

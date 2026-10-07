@@ -358,14 +358,6 @@ export function StaffDetail({
                   </p>
                   <div className="action-group">
                     <Button
-                      type="button"
-                      variant="destructive"
-                      disabled={lifecycleBusy}
-                      onClick={() => void deactivate()}
-                    >
-                      {lifecycleBusy ? 'Запазване…' : 'Потвърди деактивирането'}
-                    </Button>
-                    <Button
                       ref={cancelDeactivationButton}
                       type="button"
                       variant="secondary"
@@ -376,6 +368,14 @@ export function StaffDetail({
                       }}
                     >
                       Отказ
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      disabled={lifecycleBusy}
+                      onClick={() => void deactivate()}
+                    >
+                      {lifecycleBusy ? 'Запазване…' : 'Потвърди деактивирането'}
                     </Button>
                   </div>
                 </div>

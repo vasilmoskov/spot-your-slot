@@ -51,10 +51,13 @@ states, or text-on-action colors only when an implemented component needs them.
 Accessibility and sufficient contrast override exact palette values when
 necessary. Do not communicate meaning through color alone.
 
-The public booking journey (issue #18) additionally uses the derived text tokens
-`--color-danger-text` and `--color-success-text` for its status panels, because the base
-palette colors measure 4.44:1 and 3.85:1 as text on their subtle backgrounds (below 4.5:1).
-Other screens keep the base colors until an approved palette decision.
+Status text on the subtle state backgrounds uses the derived text tokens `--color-danger-text`
+(`#b42318`) and `--color-success-text` (`#0f7a5a`), because the base palette colors measure 4.44:1
+(danger) and 3.85:1 (success) as text on their subtle backgrounds, below the 4.5:1 of section 11.
+The tokens apply to the status panels (`status-error`, `status-success`) and the success status
+badge everywhere (6.05:1 and 5.04:1); borders, buttons, and icons keep the base colors. Warning text
+(`#d97706` on the page background, 3.0:1) is not yet corrected and needs its own decision.
+`src/ui/contrast.test.ts` pins these ratios from the shared CSS.
 
 Error and success panels use their semantic text color, matching subtle
 background, and a balanced full border. Avoid isolated decorative side borders
@@ -164,6 +167,27 @@ radius, focus-visible outline, and transition:
   detach from its trigger, and defines its Escape (closes and restores focus
   to the trigger), outside-click, scroll, and resize behavior; every listener
   it registers is removed when it closes or unmounts.
+
+### Action order (authoritative)
+
+Inside one action group the order of the controls is the order of the DOM and therefore of the
+keyboard focus; it is never produced by reversing the layout with CSS. One rule applies everywhere:
+
+- **Journey navigation:** «Назад» comes before «Напред», «Към прегледа», and «Потвърди резервацията».
+  A step with no previous step has no «Назад».
+- **Forms:** «Отказ» comes before «Запази», «Създай», and every other submitting action.
+- **Confirmation dialogs and inline confirmations:** the safe secondary action («Отказ», «Остани»)
+  comes before the confirming action, destructive or not. A destructive confirmation never receives
+  initial focus; the safe action does (section 19).
+- **Responsive layouts** wrap the same order: a wrapped group reads and tabs in the same sequence, and
+  no breakpoint reorders controls.
+- Actions that are neither cancelling nor confirming (a «Редактирай» beside an «Изтрий», a retry beside
+  a link back to a list) keep the order of the screen's own task; they are not covered by this rule.
+
+`src/ui/actionOrder.test.ts` reads every component source and fails when a cancelling action follows a
+confirming one in an action group, when Back follows Next in the booking journey, or when the CSS
+reverses a flex direction. A deliberate exception is recorded in the task document that introduces it.
+This rule orders controls only; it does not change the button palette described above.
 
 Do not apply the non-destructive action colors to destructive or disabled controls,
 selected navigation/tab states, status badges, plain text links, or native
@@ -470,13 +494,55 @@ The composition of the read-only public Business profile was approved in issue #
 ([task 06a](tasks/06a-public-business-profile.md)): one coherent Business hero with the
 public identity and the optional approved contact data, an honest booking-unavailable
 state, standalone Service cards without redundant outer card nesting, and a responsive,
-accessible presentation on desktop and mobile. The booking journey (issue #18, Phase 6) is
-implemented inside that page: native radio groups for the Service, the StaffMember preference, the
-date, and the time, a labelled details form that follows section 7, a review with «Промени» actions,
-the shared «Остани» / «Напусни» dialog (section 19), and the shared status messages; the public
-page never copies the administration shell. **Its composition is implemented but not yet visually
-approved:** it becomes an enduring decision of this guide only after the Phase 7 rendered review and
-explicit human approval. This guide does not authorize public booking work or expand the MVP.
+accessible presentation on desktop and mobile.
+
+The booking journey (issue #18) is implemented inside that page. Its present composition, after the
+developer review of Phase 7 and the human feedback on it:
+
+- **Profile:** exactly one primary action, «Запази час», in the Business hero, with no extra border or
+  box around it. The Service cards stay informational: they hold no button, link, or other control.
+- **Selected Service context:** on the StaffMember, date and time, and details steps a compact line with the
+  chosen Service sits above the step heading; it is not repeated on the first step or on the review.
+- **Date and time:** one shared section. A monthly calendar (Bulgarian month and weekday names, Monday first,
+  month navigation limited to the booking horizon of the API) and the slots of the selected date sit side by
+  side from the tablet width and stacked below it. The calendar follows the WAI-ARIA date picker grid pattern: one
+  tab stop, arrow keys by day and week, Home and End within the week, Page Up and Page Down by month, Enter
+  or Space to select; an unavailable date is announced as such and cannot be chosen. States use a shape or text
+  cue as well as color (selected: filled, heavier text and an inner ring; today: underlined and announced as
+  today; unavailable: regular weight without a border). The selected date and time are summarized in a polite
+  status line. Times are in the Business timezone; the page does not explain this and never shows a technical
+  identifier, and an offset label is added only to the repeated hour of the clock change. Only the availability
+  answer decides what is selectable; nothing is computed or invented.
+- **Details:** a labelled form that follows section 7. The note counter appears only from 400 code points
+  («Остават N знака.»), is never truncated, and the 500-code-point validation is unchanged. The privacy sentence
+  uses the form's width without an artificial maximum. A missing name says «Въведете име.», an invalid or
+  overlong one «Проверете въведеното име.» (no number, never truncated); a backend field error is mapped to the
+  same public sentence and the backend text is not shown.
+- **Contact conflict:** when the telephone and the email do not belong to the same stored Customer the review shows
+  «Телефонът и имейлът не съответстват. Проверете ги или въведете само единия контакт.» with the Business
+  telephone, keeps the entered details, and offers «Промяна на данните». The wording names neither the contact
+  that matched nor whether a Customer exists.
+- **Review:** «Промени» opens the step in review-edit mode. Each step then offers «Към прегледа»; after a
+  Service or StaffMember change only the invalidated selections are asked again and the guest returns directly
+  once they are valid; the review is never reachable (also not with the browser's Forward) with a time that is no
+  longer valid; a frozen or sending attempt cannot be edited.
+- **Confirmation:** one heading, the server-returned Service, StaffMember, date and time, duration and price,
+  «Запазете данните за резервацията.» and the Business contact. No reference number, status row, or timezone is
+  shown (they stay in the API contract), and a cancelled replay keeps its own distinct presentation.
+- The shared «Остани» / «Напусни» dialog (section 19), the shared status messages, and the action-order rule
+  of section 6 apply; the public page never copies the administration shell.
+
+Booking several Services in one visit is **decided but not implemented**: today each booking is for exactly one Service
+and one StaffMember, and the journey offers one choice at the first step. The approved model
+([ADR-0027](decisions/ADR-0027-book-several-services-as-one-atomic-visit-with-service-lines-a-versioned-set-fingerprint-and-an-explicit-review-consistency-check.md),
+[task 08b](tasks/08b-multi-service-guest-booking-plan.md)) replaces that choice with real checkboxes in a labelled group,
+at most five Services and 480 minutes (the limits explained next to the disabled boxes), a polite summary of the selected
+Services with the total duration and the total EUR price before «Напред», one whole-visit review, and a confirmation that
+lists the returned Services; the Services are shown in the public-profile order whatever the order they were ticked. These
+rules enter this guide as an enduring decision only after the frontend phase is built and approved by a human.
+
+**This composition is implemented but not yet visually approved by a human:** it becomes an enduring decision of
+this guide only after that approval. This guide does not authorize public booking work or expand the MVP.
 
 ## 15. Paginated tables
 

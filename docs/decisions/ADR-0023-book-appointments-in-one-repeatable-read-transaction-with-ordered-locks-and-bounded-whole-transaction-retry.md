@@ -277,3 +277,7 @@ Implemented in `booking.application.GuestBookingService` (transaction owner, ret
 
 Revisit for approved buffers, a measured contention problem, a second application
 instance that changes the retry or limiter assumptions, or Customer verification.
+
+## Amendment note (ADR-0027, 2026-10-07)
+
+The decision above is preserved. ADR-0027 amends the attempt: the eligible StaffMembers are those assigned to every selected Service, all selected Services are locked `FOR SHARE` in ascending identifier order, the order of the locking statement's `ORDER BY id` (PostgreSQL's unsigned bytewise `uuid` order, not Java's signed `UUID.compareTo`; one level of the unchanged total lock order), a review-consistency check against the locked Services runs before availability and before any write, and the Appointment and its lines are inserted in the one transaction. Retry, transaction ownership, and the guarantees are unchanged; a review change is a deterministic rejection and is never retried. Effective when the orchestration phase of the multi-Service extension is implemented.

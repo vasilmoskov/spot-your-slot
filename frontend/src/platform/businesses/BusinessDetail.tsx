@@ -135,7 +135,13 @@ export function BusinessDetail({
   const updateInProgress = useRef(false)
   const lifecycleInProgress = useRef(false)
   const invitationInProgress = useRef(false)
-  const confirmationButton = useRef<HTMLButtonElement>(null)
+  // Confirmations focus their safe «Отказ» first (UI guide section 19); after a cancellation the focus returns
+  // to the control that opened the confirmation.
+  const lifecycleCancel = useRef<HTMLButtonElement>(null)
+  const resendCancel = useRef<HTMLButtonElement>(null)
+  const lifecycleTrigger = useRef<HTMLButtonElement>(null)
+  const invitationSubmit = useRef<HTMLButtonElement>(null)
+  const restoreFocusTo = useRef<'lifecycle' | 'invitation' | null>(null)
   const profileSection = useRef<HTMLDetailsElement>(null)
   const invitationSection = useRef<HTMLDetailsElement>(null)
   const lifecycleSection = useRef<HTMLDetailsElement>(null)
@@ -188,10 +194,20 @@ export function BusinessDetail({
   }, [load])
 
   useLayoutEffect(() => {
-    if (lifecycleConfirmation || resendEmail) {
-      confirmationButton.current?.focus()
+    if (lifecycleConfirmation) lifecycleCancel.current?.focus()
+    else if (restoreFocusTo.current === 'lifecycle') {
+      restoreFocusTo.current = null
+      lifecycleTrigger.current?.focus()
     }
-  }, [lifecycleConfirmation, resendEmail])
+  }, [lifecycleConfirmation])
+
+  useLayoutEffect(() => {
+    if (resendEmail) resendCancel.current?.focus()
+    else if (restoreFocusTo.current === 'invitation') {
+      restoreFocusTo.current = null
+      invitationSubmit.current?.focus()
+    }
+  }, [resendEmail])
 
   useLayoutEffect(() => {
     if (profileFeedback?.kind === 'error') {
@@ -530,7 +546,7 @@ export function BusinessDetail({
                   }}
                 />
               </label>
-              <Button disabled={invitationBusy}>
+              <Button ref={invitationSubmit} disabled={invitationBusy}>
                 {invitationBusy ? 'Изпращане…' : 'Изпрати покана'}
               </Button>
             </form>
@@ -546,23 +562,24 @@ export function BusinessDetail({
                 </p>
                 <div className="action-group">
                   <Button
-                    ref={confirmationButton}
-                    type="button"
-                    disabled={invitationBusy}
-                    onClick={() => void sendInvitation(resendEmail)}
-                  >
-                    Потвърди изпращането
-                  </Button>
-                  <Button
+                    ref={resendCancel}
                     type="button"
                     variant="secondary"
                     disabled={invitationBusy}
                     onClick={() => {
+                      restoreFocusTo.current = 'invitation'
                       setResendEmail(null)
                       setInvitationFeedback(null)
                     }}
                   >
                     Отказ
+                  </Button>
+                  <Button
+                    type="button"
+                    disabled={invitationBusy}
+                    onClick={() => void sendInvitation(resendEmail)}
+                  >
+                    Потвърди изпращането
                   </Button>
                 </div>
               </div>
@@ -608,6 +625,7 @@ export function BusinessDetail({
             <FeedbackReloadControl feedback={lifecycleFeedback} onReload={load} />
             {!lifecycleConfirmation && (
               <Button
+                ref={lifecycleTrigger}
                 type="button"
                 variant={lifecycle.danger ? 'destructive' : 'primary'}
                 onClick={() => {
@@ -631,24 +649,25 @@ export function BusinessDetail({
                 <p>{lifecycle.confirmationText}</p>
                 <div className="action-group">
                   <Button
-                    ref={confirmationButton}
+                    ref={lifecycleCancel}
+                    type="button"
+                    variant="secondary"
+                    disabled={lifecycleBusy}
+                    onClick={() => {
+                      restoreFocusTo.current = 'lifecycle'
+                      setLifecycleConfirmation(false)
+                      setLifecycleFeedback(null)
+                    }}
+                  >
+                    Отказ
+                  </Button>
+                  <Button
                     type="button"
                     variant={lifecycle.danger ? 'destructive' : 'primary'}
                     disabled={lifecycleBusy}
                     onClick={() => void changeStatus()}
                   >
                     {lifecycleBusy ? 'Запазване…' : lifecycle.confirmationLabel}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    disabled={lifecycleBusy}
-                    onClick={() => {
-                      setLifecycleConfirmation(false)
-                      setLifecycleFeedback(null)
-                    }}
-                  >
-                    Отказ
                   </Button>
                 </div>
               </div>

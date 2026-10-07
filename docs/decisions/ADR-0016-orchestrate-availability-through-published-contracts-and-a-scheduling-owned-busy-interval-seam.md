@@ -219,3 +219,7 @@ tests were deleted, and the required-bean fail-fast tests now use test stubs. Th
 availability endpoint" remains true until the public API phase. **Phase 3:** `AvailabilityQuery` is unchanged;
 the Business schedule revision (ADR-0025) coordinates schedule mutations with the future booking transaction
 without touching the availability calculation, its four reads, or its transaction requirement.
+
+## Amendment note (ADR-0027, 2026-10-07)
+
+The decision above is preserved. ADR-0027 amends the published `AvailabilityQuery` contract: a set-based `calculate(businessId, serviceIds, staffMemberIdOrNull)` is added (the one-Service method stays and delegates), and the StaffMember eligibility contract reports the intersection of the assignments of the selected Services. Effective when the availability phase of the multi-Service extension is implemented.

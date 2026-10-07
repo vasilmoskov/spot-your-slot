@@ -21,6 +21,7 @@ import {
   stubAttemptIds,
   submit,
   typeInto,
+  startFromService,
   type FakeServer,
 } from './testSupport'
 
@@ -272,7 +273,7 @@ describe('a known rollback and the rate limit', () => {
     await click(screen.getByRole('button', { name: 'Промени данните' }))
     await waitFor(() => expect(heading()).toHaveTextContent('Вашите данни'))
     typeInto('Име', 'Иван Георгиев')
-    await next()
+    await returnToReview()
     await submit()
 
     expect(randomUuid).toHaveBeenCalledTimes(2)
@@ -294,7 +295,7 @@ describe('a known rollback and the rate limit', () => {
     await submit()
     await click(screen.getByRole('button', { name: 'Промени данните' }))
     await waitFor(() => expect(heading()).toHaveTextContent('Вашите данни'))
-    await next()
+    await returnToReview()
     expect(screen.getByRole('alert')).toHaveTextContent(ROLLBACK)
     await click(button('Опитайте отново'))
     expect(server.posts[1]!.body).toBe(server.posts[0]!.body)
@@ -404,8 +405,11 @@ describe('successful responses', () => {
     await reachReview()
     await submit()
     expect(heading()).toHaveTextContent('Резервацията е потвърдена')
-    expect(screen.getByText('Тази резервация вече беше потвърдена.')).toBeInTheDocument()
-    expect(document.querySelector('.status-success')).not.toBeNull()
+    // One heading says it; there is no second success sentence and no status panel.
+    expect(document.body.textContent).not.toContain('Тази резервация вече беше потвърдена')
+    expect(document.body.textContent).not.toContain('Часът е запазен')
+    expect(document.querySelector('.status-success')).toBeNull()
+    expect(screen.getAllByRole('heading')).toHaveLength(1)
   })
 
   it('shows a replay of a cancelled reservation as cancelled, never as a confirmed booking', async () => {
@@ -416,7 +420,7 @@ describe('successful responses', () => {
 
     expect(heading()).toHaveTextContent('Резервацията е отменена')
     expect(screen.getByText('Тази резервация е отменена и часът не е запазен.')).toBeInTheDocument()
-    expect(document.querySelector('.booking-facts')).toHaveTextContent('Отменена')
+    expect(document.querySelector('.booking-facts')).not.toHaveTextContent('Статус')
     expect(document.body.textContent).not.toContain('Резервацията е потвърдена')
     expect(document.body.textContent).not.toContain('Часът е запазен')
     expect(document.querySelector('.status-success')).toBeNull()
@@ -429,6 +433,8 @@ describe('successful responses', () => {
     const text = document.body.textContent ?? ''
     expect(text).not.toMatch(/плащ|отмяна онлайн|изпратихме|ще получите|имейл потвърждение/i)
     expect(screen.getByText(/За промяна или отмяна се свържете с бизнеса/)).toBeInTheDocument()
+    expect(screen.getByText('Запазете данните за резервацията.')).toBeInTheDocument()
+    expect(text).not.toMatch(/Не изпращаме|по имейл или SMS/)
     expect(screen.queryByRole('link', { name: /отмени|провери/i })).toBeNull()
   })
 })
@@ -457,8 +463,8 @@ describe('rejections', () => {
     expect(server.of('GET', '/availability').length).toBeGreaterThanOrEqual(2)
 
     await pickSlot('11:00')
-    await next()
-    await next()
+    // Only the invalidated selection was asked for again; the details were kept.
+    await returnToReview()
     await submit()
     expect(randomUuid).toHaveBeenCalledTimes(2)
     expect(parsedBody(server.posts[1])).toMatchObject({
@@ -495,16 +501,25 @@ describe('rejections', () => {
     expect(server.of('GET', '/booking-options').length).toBeGreaterThanOrEqual(2)
   })
 
-  it('an identity conflict gives the generic message, the telephone and no retry', async () => {
+  it('an identity conflict says the telephone and the email do not match, keeps the details and offers the way back', async () => {
     scriptPosts(() => json(409, problem('BOOKING_NOT_COMPLETED_ONLINE', 409)))
     await openPage()
     await reachReview()
     await submit()
     const alert = screen.getByRole('alert')
-    expect(alert).toHaveTextContent('Не можем да завършим резервацията онлайн. Моля, свържете се с бизнеса.')
+    expect(alert).toHaveTextContent(
+      'Телефонът и имейлът не съответстват. Проверете ги или въведете само единия контакт.',
+    )
+    // The Business telephone stays available; nothing says which contact matched or that a Customer exists.
     expect(alert).toHaveTextContent('+359 88 000 0000')
+    expect(alert.textContent).not.toMatch(/клиент|съществува|намерен|свържете се с бизнеса/i)
     expect(screen.queryByRole('button', { name: /Потвърди|Опитайте отново/ })).toBeNull()
     expect(button('Промяна на данните')).toBeEnabled()
+    // The entered details are kept for the correction.
+    await click(button('Промяна на данните'))
+    await waitFor(() => expect(heading()).toHaveTextContent('Вашите данни'))
+    expect(screen.getByLabelText('Име')).toHaveValue('Иван Петров')
+    expect(screen.getByLabelText('Телефон')).toHaveValue('0888 123 456')
   })
 
   it('a mismatch is unresolved, not a rejection: the attempt stays frozen and only the warned restart is offered', async () => {
@@ -559,6 +574,30 @@ describe('rejections', () => {
     // Editing a field drops its backend message.
     typeInto('Телефон', '0888 123 457')
     expect(screen.queryByText('Въведеният телефонен номер не е валиден.')).toBeNull()
+  })
+
+  it('maps a backend displayName error to the public name wording and never shows the backend sentence', async () => {
+    scriptPosts(() =>
+      json(
+        400,
+        problem('VALIDATION_ERROR', 400, {
+          fieldErrors: { displayName: 'Въведете име до 200 знака.' },
+        }),
+      ),
+    )
+    await openPage()
+    await reachReview()
+    await submit()
+    await click(button('Промяна на данните'))
+    await waitFor(() => expect(heading()).toHaveTextContent('Вашите данни'))
+
+    const name = screen.getByLabelText('Име')
+    expect(name).toHaveFocus()
+    expect(name).toHaveAttribute('aria-invalid', 'true')
+    // The name is present, so the invalid-name sentence is shown, without a number.
+    expect(screen.getByText('Проверете въведеното име.')).toBeInTheDocument()
+    expect(document.body.textContent).not.toContain('до 200 знака')
+    expect(name).toHaveValue('Иван Петров')
   })
 
   it('the unavailable Business ends the journey with the unavailable page', async () => {
@@ -761,6 +800,12 @@ async function reachReviewFromStart() {
   await next()
 }
 
+// «Към прегледа» goes forward in the browser history, which a browser (and jsdom) completes after the click.
+async function returnToReview() {
+  await click(button('Към прегледа'))
+  await waitFor(() => expect(heading()).toHaveTextContent('Преглед и потвърждение'))
+}
+
 async function startFromColour() {
-  await click(button('Запази час за Боядисване'))
+  await startFromService('Боядисване')
 }

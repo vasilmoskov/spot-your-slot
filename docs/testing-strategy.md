@@ -94,6 +94,18 @@ ranges, and rescheduling. The database constraint must key on
 `staff_member_id`. The issue #18 verification (planned by phase, not yet executed) is in "Appointment and
 guest booking verification" below.
 
+### Multi-Service booking (ADR-0027; decided, not implemented)
+
+The plan is in [task 08b](tasks/08b-multi-service-guest-booking-plan.md); every item runs against real PostgreSQL where persistence, locks, or concurrency are claimed, with deterministic coordination and no sleeps.
+Required evidence: the **upgrade and backfill** of a database migrated to V12 (one line per existing Appointment, totals and headline equal to it, the migration failing on a corrupt fixture, V1 to V12 checksums
+unchanged); the **visit constraints** (line count, positions, sums, headline, distinct Services, cross-Business references, deferred violation at commit, immutable lines, the overlap exclusion over the whole visit);
+**historical replay** (rows written by the current code replay with the legacy request, the new shape against a v1 row is a mismatch, an unknown stored encoding or key version is uncertain and never a mismatch, golden
+vectors for encoding v2, the click order not changing the fingerprint); **atomic rollback** (a failure after every step leaves no Appointment, line, or Customer); **money capacity** (the widened visit total at the maximum of five maximum-price Services, values and the table file unchanged by the widening, exact arithmetic in Java, SQL, and the browser); **UUID order** (the unsigned bytewise order, never Java's signed `UUID.compareTo`, proven by identifiers across the high-bit boundary in the comparator, PostgreSQL's `ORDER BY id`, the lock statements, the fingerprint golden vectors, and a deadlock test); **concurrency** (identical visits, overlapping visits for one
+StaffMember, partially overlapping Service sets, one attempt with different Services, a Service or assignment change racing the booking, opposite click orders without deadlock); **price and duration drift** (every changed
+reviewed fact is `BOOKING_REVIEW_CHANGED` with nothing written, the precedence against `BOOKING_SERVICE_UNAVAILABLE`, a vanished slot, and the Customer, a replay after the terms changed still replaying, the claims never
+persisted); and the **frontend uncertainty** rules (a first-send review change drops the attempt and requires a new explicit confirmation with refreshed figures; after an earlier uncertain send the attempt stays frozen with the
+same identifier and exact bytes; no automatic retry; privacy sentinels).
+
 ### Tenant isolation and workforce linkage
 
 Create Business A and Business B with distinct Memberships/fixtures. For every

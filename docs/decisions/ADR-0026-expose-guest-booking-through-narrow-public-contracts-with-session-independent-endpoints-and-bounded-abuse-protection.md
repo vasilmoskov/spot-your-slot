@@ -387,3 +387,7 @@ Phase 6 implemented the public journey on the Phase 5 contracts without changing
 Revisit for contact verification, Customer accounts, trusted-proxy or edge rate
 limiting, multi-instance deployment, per-field public visibility, CDN caching,
 measured abuse, or server-rendered public pages.
+
+## Amendment note (ADR-0027, 2026-10-07)
+
+The decision above is preserved as the single-Service record. ADR-0027 amends the public contracts: two read routes take a repeated `serviceId` query parameter, the booking request gains a second shape with `services[]` carrying the reviewed duration and price of each Service (the legacy shape stays), the response gains `services`, `totalDurationMinutes`, and `totalPrice` for that shape, and the codes `BOOKING_REVIEW_CHANGED` and `BOOKING_SELECTION_TOO_LONG` are added; every other route, code, message, budget, and the body bound are unchanged. Effective when the HTTP phase of the multi-Service extension is implemented.

@@ -235,3 +235,7 @@ Revisit for approved buffers, additional lifecycle states, a pending state,
 Customer contact snapshots (for example for notifications or legal retention),
 multiple Services or StaffMembers per appointment, or a measured need for
 different time columns.
+
+## Amendment note (ADR-0027, 2026-10-07)
+
+The decision above is preserved as the record of the single-Service Appointment. ADR-0027 amends it: a booking is a visit with one to five Service lines in a new `appointment_service` table (migration `V13`), the Appointment's `duration_minutes` and `price_eur` become the visit totals (`price_eur` is widened to `numeric(13,2)` so five Services of the largest valid price fit), `service_id` and `service_name` stay as the headline copy of line 1, and `service_count` is added; the overlap exclusion, the statuses, and the idempotency columns are unchanged and now protect the whole visit. Existing Appointments are backfilled with one line each. Effective when the persistence phase of the multi-Service extension is implemented.

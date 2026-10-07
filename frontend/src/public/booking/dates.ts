@@ -54,24 +54,10 @@ const longDate = new Intl.DateTimeFormat(LOCALE, {
   timeZone: 'UTC',
 })
 
-const shortWeekday = new Intl.DateTimeFormat(LOCALE, { weekday: 'short', timeZone: 'UTC' })
-// Fixed abbreviations, so the chip reads the same whatever the ICU data of the browser says.
-const SHORT_MONTHS = ['яну', 'фев', 'мар', 'апр', 'май', 'юни', 'юли', 'авг', 'сеп', 'окт', 'ное', 'дек']
-
 /** "сряда, 8 октомври 2026 г." for a Business-local date. */
 export function formatDateOnlyLong(value: string): string {
   const date = parseDateOnly(value)
   return date ? longDate.format(utcNoon(date)) : value
-}
-
-/** The two short lines of a date button: the weekday and the day with its month. */
-export function formatDateOnlyShort(value: string): { weekday: string; dayMonth: string } {
-  const date = parseDateOnly(value)
-  if (!date) return { weekday: '', dayMonth: value }
-  return {
-    weekday: shortWeekday.format(utcNoon(date)),
-    dayMonth: `${date.day} ${SHORT_MONTHS[date.month - 1]}`,
-  }
 }
 
 function timeFormat(timeZone: string): Intl.DateTimeFormat {
@@ -150,4 +136,57 @@ export function elapsedMinutes(start: string, end: string): number | null {
   const from = parseInstant(start)
   const to = parseInstant(end)
   return from === null || to === null ? null : Math.round((to - from) / 60_000)
+}
+
+// ---- calendar vocabulary and Business-local "today" ----
+
+// Fixed names, so the calendar reads the same whatever the ICU data of the browser says. Monday is first.
+export const MONTH_NAMES = [
+  'Януари',
+  'Февруари',
+  'Март',
+  'Април',
+  'Май',
+  'Юни',
+  'Юли',
+  'Август',
+  'Септември',
+  'Октомври',
+  'Ноември',
+  'Декември',
+] as const
+
+export const WEEKDAY_SHORT = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'] as const
+export const WEEKDAY_LONG = [
+  'понеделник',
+  'вторник',
+  'сряда',
+  'четвъртък',
+  'петък',
+  'събота',
+  'неделя',
+] as const
+
+/** "Октомври 2026". */
+export function formatMonthTitle(year: number, month: number): string {
+  return `${MONTH_NAMES[month - 1]} ${year}`
+}
+
+/**
+ * The Business-local calendar date of an instant, as `yyyy-MM-dd`. It only labels "today" in the
+ * calendar; whether a date can be booked always comes from the availability answer.
+ */
+export function businessLocalDate(now: number, timeZone: string): string | null {
+  if (!isValidTimeZone(timeZone)) return null
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    timeZone,
+  }).formatToParts(new Date(now))
+  const part = (type: string) => parts.find((entry) => entry.type === type)?.value
+  const year = part('year')
+  const month = part('month')
+  const day = part('day')
+  return year && month && day ? `${year}-${month}-${day}` : null
 }

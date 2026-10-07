@@ -107,7 +107,7 @@ describe('public Business page layout', () => {
     expect(css).toMatch(
       /\.public-hero > \*,\n\.public-hero-identity > \*,\n\.public-services-section > \*,\n\.public-state > \* \{\s*margin: 0;/,
     )
-    for (const selector of ['.public-type-chip', '.public-booking']) {
+    for (const selector of ['.public-type-chip', '.public-hero-action']) {
       expect(rule(selector), selector).toContain('width: fit-content')
       expect(rule(selector), selector).toContain('max-width: 100%')
     }

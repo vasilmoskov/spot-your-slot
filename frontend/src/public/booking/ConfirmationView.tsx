@@ -29,18 +29,17 @@ function ContactBusiness({ phone, lead }: { phone: string | null; lead: string }
 
 /**
  * The result of a successful response. Every fact comes from the server's answer (the Service and
- * StaffMember snapshots, the instants in the returned timezone, the EUR price); nothing is taken from
- * the form. A cancelled reservation (a replay of an attempt whose Appointment was cancelled later) is
- * shown as cancelled and never as a confirmed booking.
+ * StaffMember snapshots, the instants in the returned Business timezone, the EUR price); nothing is taken
+ * from the form. The reference and the timezone stay in the answer but are not shown. A cancelled
+ * reservation (a replay of an attempt whose Appointment was cancelled later) is shown as cancelled and
+ * never as a confirmed booking. The page makes no claim that a message was sent.
  */
 export function ConfirmationView({
   booking,
-  replayed,
   businessPhone,
   onClose,
 }: {
   booking: ConfirmedBooking
-  replayed: boolean
   businessPhone: string | null
   onClose: () => void
 }) {
@@ -48,28 +47,12 @@ export function ConfirmationView({
   const { timezone } = booking
   return (
     <div className="booking-confirmation">
-      {cancelled ? (
+      {cancelled && (
         <div className="status-message status-error" role="status">
           <p>Тази резервация е отменена и часът не е запазен.</p>
         </div>
-      ) : (
-        <div className="status-message status-success" role="status">
-          <p>
-            {replayed
-              ? 'Тази резервация вече беше потвърдена.'
-              : 'Часът е запазен. Резервацията е потвърдена.'}
-          </p>
-        </div>
       )}
       <dl className="booking-facts">
-        <div>
-          <dt>Статус</dt>
-          <dd>{cancelled ? 'Отменена' : 'Потвърдена'}</dd>
-        </div>
-        <div>
-          <dt>Референтен номер</dt>
-          <dd className="booking-reference">{booking.reference}</dd>
-        </div>
         <div>
           <dt>Услуга</dt>
           <dd>{booking.service.name}</dd>
@@ -96,10 +79,6 @@ export function ConfirmationView({
           <dt>Цена</dt>
           <dd>{formatServicePrice(booking.service.price)}</dd>
         </div>
-        <div>
-          <dt>Часова зона</dt>
-          <dd>{timezone}</dd>
-        </div>
       </dl>
       {cancelled ? (
         <ContactBusiness
@@ -108,7 +87,7 @@ export function ConfirmationView({
         />
       ) : (
         <>
-          <p>Не изпращаме потвърждение по имейл или SMS. Запишете си тези данни.</p>
+          <p>Запазете данните за резервацията.</p>
           <ContactBusiness
             phone={businessPhone}
             lead="За промяна или отмяна се свържете с бизнеса."

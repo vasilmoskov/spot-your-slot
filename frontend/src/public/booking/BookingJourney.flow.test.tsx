@@ -61,9 +61,9 @@ describe('the complete happy path', () => {
     await next()
 
     expect(heading()).toHaveTextContent('Дата и час')
-    expect(screen.getByText('Часовете са по времето на бизнеса (Europe/Sofia).')).toBeInTheDocument()
+    expect(document.body.textContent).not.toContain('Часовете са по')
     // The first available date is selected and its slots are those of the server.
-    expect(screen.getByRole('radio', { name: /7 октомври 2026/ })).toBeChecked()
+    expect(screen.getByRole('gridcell', { name: /^сряда, 7 октомври 2026/ })).toHaveAttribute('aria-selected', 'true')
     await pickSlot('10:00')
     await next()
 
@@ -115,16 +115,24 @@ describe('the complete happy path', () => {
     expect(heading()).toHaveTextContent('Резервацията е потвърдена')
     expect(heading()).toHaveFocus()
     const facts = document.querySelector('.booking-facts') as HTMLElement
-    expect(facts).toHaveTextContent('Потвърдена')
-    expect(facts).toHaveTextContent('K7M2Q9XW4B')
+    // The reference and the status stay in the answer but are not shown.
+    expect(facts).not.toHaveTextContent('K7M2Q9XW4B')
+    expect(facts).not.toHaveTextContent('Статус')
+    expect(facts).not.toHaveTextContent('Референтен номер')
     expect(facts).toHaveTextContent('Подстригване')
     expect(facts).toHaveTextContent('Мария Иванова')
     expect(facts).toHaveTextContent('сряда, 7 октомври 2026 г.')
     expect(facts).toHaveTextContent('10:00 – 10:45')
     expect(facts).toHaveTextContent('45 мин.')
     expect(facts).toHaveTextContent('25.00 €')
-    expect(facts).toHaveTextContent('Europe/Sofia')
-    expect(screen.getByText(/Не изпращаме потвърждение по имейл или SMS/)).toBeInTheDocument()
+    expect(facts).not.toHaveTextContent('Europe/Sofia')
+    expect(facts).not.toHaveTextContent('Часова зона')
+    expect(screen.getByText('Запазете данните за резервацията.')).toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/Не изпращаме|имейл или SMS/)
+    // One heading and no duplicate success sentence or status panel.
+    expect(screen.getAllByRole('heading')).toHaveLength(1)
+    expect(document.body.textContent).not.toContain('Часът е запазен')
+    expect(document.querySelector('.status-success')).toBeNull()
     // Customer details leave memory once the server has answered.
     expect(document.body.textContent).not.toContain('0888 123 456')
     expect(document.body.textContent).not.toContain('Иван Петров')
@@ -228,7 +236,7 @@ describe('selection changes and dependent state', () => {
 
     await click(button('Назад'))
     await waitFor(() => expect(heading()).toHaveTextContent('Дата и час'))
-    expect(screen.getByRole('radio', { name: /7 октомври 2026/ })).toBeChecked()
+    expect(screen.getByRole('gridcell', { name: /^сряда, 7 октомври 2026/ })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('radio', { name: '10:00' })).toBeChecked()
 
     await click(button('Назад'))
@@ -240,7 +248,7 @@ describe('selection changes and dependent state', () => {
     await openPage()
     await startFromService('Подстригване')
     await next()
-    await pickDate(/8 октомври 2026/)
+    await pickDate('четвъртък, 8 октомври 2026 г.')
     await pickSlot('09:00')
     expect(screen.getByRole('radio', { name: '09:00' })).toBeChecked()
 
@@ -250,7 +258,7 @@ describe('selection changes and dependent state', () => {
     await next()
 
     // The earlier date and slot are gone; the first date of the new preference is selected.
-    expect(screen.getByRole('radio', { name: /7 октомври 2026/ })).toBeChecked()
+    expect(screen.getByRole('gridcell', { name: /^сряда, 7 октомври 2026/ })).toHaveAttribute('aria-selected', 'true')
     expect(screen.queryByRole('radio', { name: '09:00' })).toBeNull()
     expect(screen.getByRole('radio', { name: '10:00' })).not.toBeChecked()
     expect(button('Напред')).toBeDisabled()
@@ -287,9 +295,9 @@ describe('selection changes and dependent state', () => {
     await next()
     expect(server.of('GET', '/booking-options')).toHaveLength(1)
 
-    await pickDate(/8 октомври 2026/)
-    await pickDate(/7 октомври 2026/)
-    await pickDate(/25 октомври 2026/)
+    await pickDate('четвъртък, 8 октомври 2026 г.')
+    await pickDate('сряда, 7 октомври 2026 г.')
+    await pickDate('неделя, 25 октомври 2026 г.')
 
     expect(server.of('GET', '/booking-options')).toHaveLength(1)
     // Each date loads its own slots; the first request already loaded the first date.
@@ -306,7 +314,7 @@ describe('selection changes and dependent state', () => {
     await startFromService('Подстригване')
     await next()
     await pickSlot('11:00')
-    await pickDate(/8 октомври 2026/)
+    await pickDate('четвъртък, 8 октомври 2026 г.')
     expect(button('Напред')).toBeDisabled()
     expect(screen.getByRole('radio', { name: '09:00' })).not.toBeChecked()
   })
@@ -317,9 +325,9 @@ describe('dates, timezone and the repeated daylight-saving hour', () => {
     await openPage()
     await startFromService('Подстригване')
     await next()
-    expect(screen.getByRole('radio', { name: 'сряда, 7 октомври 2026 г.' })).toBeInTheDocument()
-    expect(screen.getByRole('radio', { name: 'четвъртък, 8 октомври 2026 г.' })).toBeInTheDocument()
-    expect(screen.getByRole('radio', { name: 'неделя, 25 октомври 2026 г.' })).toBeInTheDocument()
+    expect(screen.getByRole('gridcell', { name: /^сряда, 7 октомври 2026 г\./ })).toBeInTheDocument()
+    expect(screen.getByRole('gridcell', { name: /^четвъртък, 8 октомври 2026 г\./ })).toBeInTheDocument()
+    expect(screen.getByRole('gridcell', { name: /^неделя, 25 октомври 2026 г\./ })).toBeInTheDocument()
   })
 
   it('tells the two 03:30 slots of the repeated hour apart, in the list, the review and the result', async () => {
@@ -335,9 +343,9 @@ describe('dates, timezone and the repeated daylight-saving hour', () => {
     await openPage()
     await startFromService('Подстригване')
     await next()
-    await pickDate(/25 октомври 2026/)
+    await pickDate('неделя, 25 октомври 2026 г.')
 
-    const group = screen.getByRole('group', { name: 'Час' })
+    const group = screen.getByRole('group', { name: 'Свободни часове' })
     const labels = within(group)
       .getAllByRole('radio')
       .map((radio) => radio.closest('label')?.textContent)
@@ -369,7 +377,8 @@ describe('dates, timezone and the repeated daylight-saving hour', () => {
     await reachReview()
     await submit()
     expect(document.querySelector('.booking-facts')).toHaveTextContent('09:00 – 09:45')
-    expect(document.querySelector('.booking-facts')).toHaveTextContent('Europe/Berlin')
+    // The timezone identifier is never shown.
+    expect(document.querySelector('.booking-facts')).not.toHaveTextContent('Europe/Berlin')
   })
 })
 
@@ -384,19 +393,19 @@ describe('reads: cancellation, stale answers and Business switching', () => {
     await openPage()
     await startFromService('Подстригване')
     await next()
-    await pickDate(/8 октомври 2026/)
+    await pickDate('четвъртък, 8 октомври 2026 г.')
     expect(screen.getByText('Зареждане на свободните часове…')).toBeInTheDocument()
     const stale = server.of('GET', '/availability').at(-1)!
 
     // The guest picks another date before the first answer arrives.
-    await pickDate(/25 октомври 2026/)
+    await pickDate('неделя, 25 октомври 2026 г.')
     expect(stale.signal?.aborted).toBe(true)
     slow.resolve(json(200, availabilityBody('2026-10-08')))
     await flush()
 
     // The late answer for 8 October never reaches the screen.
     expect(screen.queryByRole('radio', { name: '09:00' })).toBeNull()
-    expect(screen.getByRole('radio', { name: /25 октомври 2026/ })).toBeChecked()
+    expect(screen.getByRole('gridcell', { name: /^неделя, 25 октомври 2026/ })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getAllByRole('radio', { name: /03:30/ })).toHaveLength(2)
   })
 

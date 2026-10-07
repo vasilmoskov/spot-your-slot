@@ -399,10 +399,10 @@ describe('WorkingScheduleEditor — clear one weekday (inside editing)', () => {
       within(dialog).getByText('Всички работни часове за понеделник ще бъдат премахнати.'),
     ).toBeInTheDocument()
     expect(within(dialog).getByText('Сигурни ли сте, че искате да продължите?')).toBeInTheDocument()
-    // Destructive action visually first, safe "Отказ" second, but the safe
-    // action still receives initial focus.
+    // The safe "Отказ" comes before the destructive action (action-order standard, UI guide
+    // section 6), and the safe action receives initial focus.
     const buttons = within(dialog).getAllByRole('button')
-    expect(buttons.map((button) => button.textContent)).toEqual(['Изчисти графика за деня', 'Отказ'])
+    expect(buttons.map((button) => button.textContent)).toEqual(['Отказ', 'Изчисти графика за деня'])
     expect(within(dialog).getByRole('button', { name: 'Отказ' })).toHaveFocus()
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Изчисти графика за деня' }))

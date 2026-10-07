@@ -124,7 +124,7 @@ describe('reads: unavailable, empty and failing states', () => {
     await openPage()
     await startFromService('Подстригване')
     await next()
-    await pickDate(/8 октомври 2026/)
+    await pickDate('четвъртък, 8 октомври 2026 г.')
     expect(screen.getByText('Няма свободни часове за тази дата.')).toBeInTheDocument()
     expect(button('Напред')).toBeDisabled()
   })
@@ -240,16 +240,52 @@ describe('the Customer details', () => {
     await openDetails()
     const name = screen.getByLabelText('Име')
     fireEvent.blur(name)
-    expect(screen.getByText('Въведете име до 200 знака.')).toBeInTheDocument()
+    expect(screen.getByText('Въведете име.')).toBeInTheDocument()
     expect(name).toHaveAttribute('aria-invalid', 'true')
-    expect(name).toHaveAccessibleDescription('Въведете име до 200 знака.')
+    expect(name).toHaveAccessibleDescription('Въведете име.')
     typeInto('Име', 'Иван')
-    expect(screen.queryByText('Въведете име до 200 знака.')).toBeNull()
+    expect(screen.queryByText('Въведете име.')).toBeNull()
 
     typeInto('Телефон', '12ab')
     expect(screen.getByText('Въведеният телефонен номер не е валиден.')).toBeInTheDocument()
     typeInto('Имейл', 'not-an-email')
     expect(screen.getByText('Въведеният имейл адрес не е валиден.')).toBeInTheDocument()
+  })
+
+  it('tells a missing name from an invalid or overlong one and shows no number', async () => {
+    await openDetails()
+    const name = screen.getByLabelText('Име')
+    fireEvent.blur(name)
+    expect(screen.getByText('Въведете име.')).toBeInTheDocument()
+    expect(name).toHaveAccessibleDescription('Въведете име.')
+
+    // A blank name is a missing name.
+    typeInto('Име', '   ')
+    expect(screen.getByText('Въведете име.')).toBeInTheDocument()
+
+    // 201 characters: invalid. The text is kept, never truncated, and the message names no limit.
+    typeInto('Име', 'А'.repeat(201))
+    expect(screen.getByText('Проверете въведеното име.')).toBeInTheDocument()
+    expect(screen.queryByText('Въведете име.')).toBeNull()
+    expect(name).toHaveAttribute('aria-invalid', 'true')
+    expect(name).toHaveAccessibleDescription('Проверете въведеното име.')
+    expect(name).toHaveValue('А'.repeat(201))
+    expect(document.body.textContent).not.toMatch(/200|знака\./)
+
+    // Exactly 200 characters is valid, as before.
+    typeInto('Име', 'А'.repeat(200))
+    expect(screen.queryByText('Проверете въведеното име.')).toBeNull()
+    expect(name).not.toHaveAttribute('aria-invalid', 'true')
+  })
+
+  it('focuses the first invalid control for an overlong name on submit', async () => {
+    await openDetails()
+    typeInto('Име', 'А'.repeat(201))
+    typeInto('Телефон', '0888 123 456')
+    await click(button('Напред'))
+    expect(heading()).toHaveTextContent('Вашите данни')
+    expect(screen.getByLabelText('Име')).toHaveFocus()
+    expect(screen.getByText('Проверете въведеното име.')).toBeInTheDocument()
   })
 
   it('shows every error on submit, focuses the first invalid control and keeps the values', async () => {
@@ -258,7 +294,7 @@ describe('the Customer details', () => {
     await click(button('Напред'))
     expect(heading()).toHaveTextContent('Вашите данни')
     expect(screen.getByLabelText('Име')).toHaveFocus()
-    expect(screen.getByText('Въведете име до 200 знака.')).toBeInTheDocument()
+    expect(screen.getByText('Въведете име.')).toBeInTheDocument()
     expect(screen.getByText('Въведеният телефонен номер не е валиден.')).toBeInTheDocument()
     expect(screen.getByLabelText('Телефон')).toHaveValue('12ab')
   })
@@ -282,15 +318,34 @@ describe('the Customer details', () => {
     typeInto('Име', 'Иван Петров')
     typeInto('Телефон', '0888 123 456')
     typeInto(/Бележка/, '😀'.repeat(500))
-    expect(screen.getByText('500 / 500 знака')).toBeInTheDocument()
+    expect(screen.getByText('Остават 0 знака.')).toBeInTheDocument()
     expect(document.querySelector('.field-error')).toBeNull()
 
     typeInto(/Бележка/, '😀'.repeat(501))
-    expect(screen.getByText('501 / 500 знака')).toBeInTheDocument()
+    expect(screen.getByText('Надвишавате ограничението с 1 знака.')).toBeInTheDocument()
     expect(screen.getByText('Бележката може да съдържа най-много 500 знака.')).toBeInTheDocument()
+    // The input is never truncated.
+    expect(Array.from((screen.getByLabelText(/Бележка/) as HTMLTextAreaElement).value)).toHaveLength(501)
     await click(button('Напред'))
     expect(heading()).toHaveTextContent('Вашите данни')
     expect(screen.getByLabelText(/Бележка/)).toHaveFocus()
+  })
+
+  it('shows no counter until 400 code points, then the remaining characters', async () => {
+    await openDetails()
+    expect(document.querySelector('#booking-note-count')).toBeNull()
+    expect(document.body.textContent).not.toMatch(/\d+ \/ 500/)
+    typeInto(/Бележка/, 'а'.repeat(399))
+    expect(document.querySelector('#booking-note-count')).toBeNull()
+    expect(screen.getByLabelText(/Бележка/)).not.toHaveAttribute('aria-describedby')
+
+    typeInto(/Бележка/, 'а'.repeat(400))
+    expect(screen.getByText('Остават 100 знака.')).toBeInTheDocument()
+    expect(screen.getByLabelText(/Бележка/)).toHaveAttribute('aria-describedby', 'booking-note-count')
+
+    // Emoji count as one character each.
+    typeInto(/Бележка/, '😀'.repeat(450))
+    expect(screen.getByText('Остават 50 знака.')).toBeInTheDocument()
   })
 
   it('sends a blank note as null and a note as plain text', async () => {
@@ -393,7 +448,7 @@ describe('leaving the journey', () => {
     await waitFor(() => expect(heading()).toHaveTextContent('Вашите данни'))
     window.history.back()
     await waitFor(() => expect(heading()).toHaveTextContent('Дата и час'))
-    await pickDate(/8 октомври 2026/)
+    await pickDate('четвъртък, 8 октомври 2026 г.')
     window.history.forward()
     // The slot was cleared by the new date, so the details entry is refused and undone.
     await waitFor(() => expect(heading()).toHaveTextContent('Дата и час'))

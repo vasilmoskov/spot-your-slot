@@ -112,6 +112,9 @@ over the default risk level.
   interaction patterns, do not introduce a conflicting visual style, and update
   the guide when a human-approved decision changes it. Include a manual visual
   checkpoint when meaningful UI becomes available.
+- Action groups follow the authoritative action-order rule in `docs/ui-design-guidelines.md`
+  (section 6): Back before Next, Cancel before Save, the safe action before a confirming one, in DOM
+  order and never reversed with CSS. `src/ui/actionOrder.test.ts` enforces it.
 - Authenticated, user-editable forms follow the shared unsaved-changes
   behavior defined in `docs/ui-design-guidelines.md`. User-facing paginated
   tables follow the shared table standard in the same guide. Before

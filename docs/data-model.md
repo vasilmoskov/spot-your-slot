@@ -232,6 +232,14 @@ date_range)`.
   `business` module reads or writes it, through the published `ScheduleRevisionBump` and `ScheduleRevisionGuard`.
   Lifecycle, timezone, Service, StaffMember, and assignment changes do not advance it: each already updates the
   Business, Service, or StaffMember row that booking locks (ADR-0025 audit).
+- **appointment_service** (multi-Service extension, [ADR-0027](decisions/ADR-0027-book-several-services-as-one-atomic-visit-with-service-lines-a-versioned-set-fingerprint-and-an-explicit-review-consistency-check.md); **decided, not implemented: planned `V13__add_appointment_services.sql`**; until it exists an Appointment is exactly one Service
+  and the statements about the `appointment` columns above are complete): the immutable per-Service snapshot lines of a visit: `appointment_id`, `position` (1 to 5, primary key `(appointment_id, position)`),
+  `business_id`, `service_id`, `service_name`, `duration_minutes` (1 to 480), `price_eur` (at least 0), composite same-Business foreign keys to `appointment` and `service` (both restrictive), a unique `(appointment_id, service_id)`
+  (distinct Services), the same canonical-name check as `appointment`. `appointment` gains `service_count` (1 to 5, default 1). From V13 `appointment.price_eur` is widened to `numeric(13,2)` (a visit of five Services of the largest valid price, `9 999 999 999.99` each, totals `49 999 999 999.95` and would not fit `numeric(12,2)`; existing values are unchanged and the lines and `service.price` stay `numeric(12,2)`), and the Appointment's `duration_minutes` and `price_eur` are the **visit totals**
+  (`end_at` and `occupied_until` cover the whole visit, so the existing overlap exclusion protects the whole visit and needs no change), and `service_id` and `service_name` are the headline copy of line 1 (the first Service in
+  the public-profile order). V13 backfills one line per existing Appointment from its own snapshot, verifies it, and then creates a deferred constraint trigger (line count, positions `1..n`, sums equal to the totals, headline
+  equal to line 1) and a trigger that rejects every update and delete of a line. Lines are never changed or deleted; cancelling a visit is one status change on the `appointment` row. The idempotency columns are unchanged;
+  `fingerprint_encoding_version` 2 identifies the multi-Service encoding and 1 stays valid for every stored attempt.
 - **appointment_event:** `business_id`, Appointment, type, actor, timestamp,
   non-sensitive summary/correlation ID.
 - **cancellation_token:** `business_id`, Appointment, token hash and lifecycle.

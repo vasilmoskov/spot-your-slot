@@ -385,6 +385,8 @@ start so a future slot cannot be released early.
 
 ### Guest booking (issue #18; decided in ADR-0022 to ADR-0026; the backend is implemented, the frontend is not)
 
+- **Multi-Service extension (decided in [ADR-0027](decisions/ADR-0027-book-several-services-as-one-atomic-visit-with-service-lines-a-versioned-set-fingerprint-and-an-explicit-review-consistency-check.md), not implemented).** The new read routes and the second booking request shape follow the same rules as the routes above: exact matchers, session independence, `no-store`, `credentials: 'omit'`, Business-scoped resolution of every identifier (a foreign or missing Service is the same `BOOKING_SERVICE_UNAVAILABLE`), no personal data in URLs, logs, errors, or storage, and the unchanged limiter budgets and 16 KiB body bound. The reviewed duration and price in a request are **claims that are compared with the locked Services and never persisted**; a difference creates no Appointment and no Customer and answers `409 BOOKING_REVIEW_CHANGED` without any figure. The claims are part of the request fingerprint, so a replay with other claims is a mismatch. `appointment_service` lines carry `business_id` with composite same-Business foreign keys, and the Services of a visit are locked `FOR SHARE` in ascending identifier order.
+
 - **Public surface (implemented, Phase 5).** Beyond the profile, exactly `GET …/{slug}/services/{serviceId}/booking-options`,
   `GET …/{slug}/services/{serviceId}/availability`, and `POST …/{slug}/bookings` are public, each with its one verb
   and an exact path (no wildcard); every other verb, sibling, or deeper path under `/api/public/businesses/` stays denied

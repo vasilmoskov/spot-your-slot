@@ -1265,9 +1265,6 @@ function Profile({ session, busy, feedback, setFeedback, action, guard }: Profil
                       </div>
                     </dl>
                     <div className="action-group">
-                      <Button disabled={busy}>
-                        Запази промените
-                      </Button>
                       <Button
                         type="button"
                         variant="secondary"
@@ -1275,6 +1272,9 @@ function Profile({ session, busy, feedback, setFeedback, action, guard }: Profil
                         onClick={() => guard.guard(exitPersonalEditing)}
                       >
                         Отказ
+                      </Button>
+                      <Button disabled={busy}>
+                        Запази промените
                       </Button>
                     </div>
                   </form>

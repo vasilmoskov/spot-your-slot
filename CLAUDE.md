@@ -127,6 +127,8 @@ material ambiguity.
 
 ## Visual and manual validation
 
+- Place actions by the action-order rule in `docs/ui-design-guidelines.md` section 6 (Back before
+  Next, Cancel before Save, the safe action before a confirming one, DOM order, no CSS reversal).
 - Frontend work must read and follow `docs/ui-design-guidelines.md` and perform
   its documented visual and error-state checks, including wrapped validation
   errors, dialogs, and desktop, tablet, mobile, and 200% zoom review.

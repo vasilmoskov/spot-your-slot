@@ -9,12 +9,8 @@ import {
   type ReadUnavailable,
   type Slot,
 } from './api'
-import {
-  formatDateOnlyLong,
-  formatDateOnlyShort,
-  formatTimeDistinct,
-  isRepeatedLocalTime,
-} from './dates'
+import { BookingCalendar } from './BookingCalendar'
+import { formatDateOnlyLong, formatTimeDistinct, isRepeatedLocalTime } from './dates'
 import { useWaiting, type ReadView } from './hooks'
 import {
   NO_PREFERENCE_LABEL,
@@ -124,12 +120,14 @@ export function ServiceStep({
   services,
   serviceId,
   frozen,
+  nextLabel,
   onSelect,
   onNext,
 }: {
   services: PublicService[]
   serviceId: string | null
   frozen: boolean
+  nextLabel: string
   onSelect: (id: string) => void
   onNext: () => void
 }) {
@@ -168,7 +166,7 @@ export function ServiceStep({
       </fieldset>
       <StepActions>
         <Button type="submit" disabled={serviceId === null || frozen}>
-          Напред
+          {nextLabel}
         </Button>
       </StepActions>
     </form>
@@ -181,6 +179,7 @@ export function StaffStep({
   view,
   staffId,
   frozen,
+  nextLabel,
   onSelect,
   onReload,
   onChooseService,
@@ -190,6 +189,7 @@ export function StaffStep({
   view: ReadView<{ kind: 'options'; options: BookingOptions } | ReadUnavailable>
   staffId: string | null
   frozen: boolean
+  nextLabel: string
   onSelect: (id: string | null) => void
   onReload: () => void
   onChooseService: () => void
@@ -287,7 +287,7 @@ export function StaffStep({
       <StepActions>
         {back}
         <Button type="submit" disabled={frozen}>
-          Напред
+          {nextLabel}
         </Button>
       </StepActions>
     </form>
@@ -299,10 +299,14 @@ export function StaffStep({
 export function DateTimeStep({
   view,
   availableDates,
+  firstDate,
+  lastDate,
   timezone,
+  today,
   date,
   slot,
   frozen,
+  nextLabel,
   onSelectDate,
   onSelectSlot,
   onReload,
@@ -314,10 +318,15 @@ export function DateTimeStep({
   view: ReadView<{ kind: 'availability'; availability: Availability } | ReadUnavailable>
   // The dates of the last answer for this Service and preference; they stay while a date's slots load.
   availableDates: string[] | null
+  // The booking horizon from the booking options.
+  firstDate: string
+  lastDate: string
   timezone: string
+  today: string | null
   date: string | null
   slot: Slot | null
   frozen: boolean
+  nextLabel: string
   onSelectDate: (date: string) => void
   onSelectSlot: (slot: Slot) => void
   onReload: () => void
@@ -383,65 +392,63 @@ export function DateTimeStep({
       }}
       noValidate
     >
-      <p className="field-note">Часовете са по времето на бизнеса ({timezone}).</p>
-      <fieldset className="booking-dates" disabled={frozen}>
-        <legend className="booking-legend">Дата</legend>
-        <div className="booking-date-list">
-          {availableDates.map((value) => {
-            const short = formatDateOnlyShort(value)
-            return (
-              <label key={value} className="booking-date">
-                <input
-                  type="radio"
-                  name="booking-date"
-                  value={value}
-                  checked={value === date}
-                  aria-label={formatDateOnlyLong(value)}
-                  onChange={() => onSelectDate(value)}
-                />
-                <span className="booking-date-face" aria-hidden="true">
-                  <span className="booking-date-weekday">{short.weekday}</span>
-                  <span>{short.dayMonth}</span>
-                </span>
-              </label>
-            )
-          })}
-        </div>
-      </fieldset>
-      {date !== null && (
-        <fieldset className="booking-slots" disabled={frozen}>
-          <legend className="booking-legend">Час</legend>
-          {slots === null ? (
-            <Loading>Зареждане на свободните часове…</Loading>
-          ) : slots.length === 0 ? (
-            <p className="public-empty">Няма свободни часове за тази дата.</p>
-          ) : (
-            <div className="booking-slot-list">
-              {slots.map((candidate) => {
-                const repeated = isRepeatedLocalTime(candidate.start, timezone)
-                return (
-                  <label key={candidate.start} className="booking-slot">
-                    <input
-                      type="radio"
-                      name="booking-slot"
-                      value={candidate.start}
-                      checked={slot?.start === candidate.start}
-                      onChange={() => onSelectSlot(candidate)}
-                    />
-                    <span className={repeated ? 'booking-slot-face booking-slot-face--wide' : 'booking-slot-face'}>
-                      {formatTimeDistinct(candidate.start, timezone)}
-                    </span>
-                  </label>
-                )
-              })}
-            </div>
+      <div className="booking-picker">
+        <BookingCalendar
+          firstDate={firstDate}
+          lastDate={lastDate}
+          availableDates={availableDates}
+          selected={date}
+          today={today}
+          disabled={frozen}
+          onSelect={onSelectDate}
+        />
+        <div className="booking-picker-slots">
+          {date === null ? null : (
+            <fieldset className="booking-slots" disabled={frozen}>
+              <legend className="booking-legend">Свободни часове</legend>
+              <p className="booking-slots-date">{formatDateOnlyLong(date)}</p>
+              {slots === null ? (
+                <Loading>Зареждане на свободните часове…</Loading>
+              ) : slots.length === 0 ? (
+                <p className="public-empty">Няма свободни часове за тази дата.</p>
+              ) : (
+                <div className="booking-slot-list">
+                  {slots.map((candidate) => {
+                    const repeated = isRepeatedLocalTime(candidate.start, timezone)
+                    return (
+                      <label key={candidate.start} className="booking-slot">
+                        <input
+                          type="radio"
+                          name="booking-slot"
+                          value={candidate.start}
+                          checked={slot?.start === candidate.start}
+                          onChange={() => onSelectSlot(candidate)}
+                        />
+                        <span
+                          className={
+                            repeated ? 'booking-slot-face booking-slot-face--wide' : 'booking-slot-face'
+                          }
+                        >
+                          {formatTimeDistinct(candidate.start, timezone)}
+                        </span>
+                      </label>
+                    )
+                  })}
+                </div>
+              )}
+            </fieldset>
           )}
-        </fieldset>
-      )}
+        </div>
+        <p className="booking-picker-summary" role="status">
+          {offered && date !== null && slot !== null
+            ? `Избрано: ${formatDateOnlyLong(date)}, ${formatTimeDistinct(slot.start, timezone)} – ${formatTimeDistinct(slot.end, timezone)}`
+            : ''}
+        </p>
+      </div>
       <StepActions>
         {back}
         <Button type="submit" disabled={!offered || frozen}>
-          Напред
+          {nextLabel}
         </Button>
       </StepActions>
     </form>

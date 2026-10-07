@@ -115,6 +115,11 @@ the Customer policies, a short privacy notice is shown, and there is no verifica
 marketing consent; a displayed slot is never a reservation; the assigned person for “Без предпочитание” is shown
 after confirmation. Production public booking waits for the Business calendar (issue #21).
 
+Multi-Service visit (decided in [ADR-0027](decisions/ADR-0027-book-several-services-as-one-atomic-visit-with-service-lines-a-versioned-set-fingerprint-and-an-explicit-review-consistency-check.md) and [task 08b](tasks/08b-multi-service-guest-booking-plan.md); **not implemented: today a booking is exactly one Service**): the guest may choose one to five distinct Services with
+checkboxes (at most 480 minutes in total), sees the selected Services with the total duration and the total EUR price before continuing, and books them as one visit with one StaffMember who supports every selected Service, in one
+continuous interval, reserved by one atomic submission. The Services are performed in the public-profile order, whatever order they were ticked. If a reviewed Service's duration or price changes before the guest confirms, nothing is
+booked and the guest is asked to review and confirm again. Confirmation and replay describe the whole visit.
+
 Issue #17 delivers only the profile part of this page (decisions in
 [task 06a](tasks/06a-public-business-profile.md); the read contract `GET /api/public/businesses/{slug}` and the page are implemented and browser-verified): display
 name, Business type, optional description, optional telephone and structured

@@ -25,6 +25,7 @@ import { ConfirmationView } from './ConfirmationView'
 import { DetailsStep } from './DetailsStep'
 import { EMPTY_DETAILS, detailsAreValid, hasEnteredDetails } from './details'
 import { useRead } from './hooks'
+import { businessLocalDate } from './dates'
 import { NO_PREFERENCE_LABEL } from './messages'
 import { ReviewStep } from './ReviewStep'
 import {
@@ -65,6 +66,8 @@ type State = {
   details: BookingDetails
   submission: Submission
   detailsErrors: BookingFieldErrors | null
+  // True while the guest edits a step they reached from the review: the steps offer «Към прегледа».
+  editing: boolean
 }
 
 type Action =
@@ -75,29 +78,34 @@ type Action =
   | { type: 'slot'; slot: Slot | null }
   | { type: 'details'; patch: Partial<BookingDetails> }
   | { type: 'submission'; submission: Submission }
+  | { type: 'editing'; value: boolean }
   | { type: 'reset' }
 
-function initialState(serviceId: string | null): State {
+function initialState(): State {
   return {
-    step: serviceId === null ? STEP_SERVICE : STEP_STAFF,
-    serviceId,
+    step: STEP_SERVICE,
+    serviceId: null,
     staffId: null,
     date: null,
     slot: null,
     details: EMPTY_DETAILS,
     submission: INITIAL_SUBMISSION,
     detailsErrors: null,
+    editing: false,
   }
 }
 
 // A frozen review (sending, uncertain, confirmed) ignores every edit, so no choice can change while a
 // booking may exist. A change to a Service or a StaffMember invalidates every dependent choice.
 function reducer(state: State, action: Action): State {
-  if (action.type === 'reset') return initialState(null)
+  if (action.type === 'reset') return initialState()
+  if (action.type === 'editing') return { ...state, editing: action.value }
   if (action.type === 'step') {
     return {
       ...state,
       step: action.step,
+      // Reaching the review ends an edit that began there.
+      editing: action.step === STEP_REVIEW ? false : state.editing,
       detailsErrors: action.step === STEP_DETAILS ? state.detailsErrors : null,
     }
   }
@@ -148,7 +156,6 @@ export type BookingJourneyProps = {
   businessPhone: string | null
   services: PublicService[]
   journey: string
-  initialServiceId: string | null
   onClose: () => void
   onBusinessUnavailable: () => void
   // Injected so that tests control time and identity; the defaults are the real clock and a
@@ -169,13 +176,12 @@ export function BookingJourney({
   businessPhone,
   services,
   journey,
-  initialServiceId,
   onClose,
   onBusinessUnavailable,
   now = Date.now,
   makeAttemptId = newAttemptId,
 }: BookingJourneyProps) {
-  const [state, dispatch] = useReducer(reducer, initialServiceId, initialState)
+  const [state, dispatch] = useReducer(reducer, undefined, initialState)
   const latest = useRef(state)
   latest.current = state
   const headingRef = useRef<HTMLHeadingElement>(null)
@@ -306,8 +312,12 @@ export function BookingJourney({
       onClose()
     })
 
-  const jumpTo = (target: number) => {
-    if (target !== latest.current.step) window.history.go(target - latest.current.step)
+  const jumpTo = (target: number) => nav.goTo(target)
+
+  // Editing a step from the review: the guest returns directly once everything after the edit is valid.
+  const editFromReview = (target: number) => {
+    dispatch({ type: 'editing', value: true })
+    jumpTo(target)
   }
 
   const restart = () =>
@@ -352,6 +362,16 @@ export function BookingJourney({
 
   // ---- rendering ----
 
+  // After an edit that left a chosen time standing, every later step is still valid (details are only
+  // changed on their own step, and a validated form is required to leave it), so the way back is direct.
+  const returning = state.editing && slot !== null
+  const nextLabel = returning ? 'Към прегледа' : 'Напред'
+  const forward = (from: number) => {
+    if (returning) nav.goTo(STEP_REVIEW)
+    else nav.advance(from + 1)
+  }
+  const today = options ? businessLocalDate(now(), options.timezone) : null
+
   const confirmed = submission.phase === 'confirmed' ? submission : null
   const frozen = isFrozen(submission)
   const staffLabel =
@@ -395,7 +415,6 @@ export function BookingJourney({
     body = (
       <ConfirmationView
         booking={confirmed.booking}
-        replayed={confirmed.replayed}
         businessPhone={businessPhone}
         onClose={leave}
       />
@@ -406,8 +425,9 @@ export function BookingJourney({
         services={services}
         serviceId={serviceId}
         frozen={frozen}
+        nextLabel={nextLabel}
         onSelect={(id) => dispatch({ type: 'service', id })}
-        onNext={() => nav.advance(STEP_STAFF)}
+        onNext={() => forward(STEP_SERVICE)}
       />
     )
   } else if (step === STEP_STAFF) {
@@ -416,10 +436,11 @@ export function BookingJourney({
         view={optionsRead.view}
         staffId={staffId}
         frozen={frozen}
+        nextLabel={nextLabel}
         onSelect={(id) => dispatch({ type: 'staff', id })}
         onReload={optionsRead.reload}
         onChooseService={chooseAnotherService}
-        onNext={() => nav.advance(STEP_DATE_TIME)}
+        onNext={() => forward(STEP_STAFF)}
         onBack={nav.back}
       />
     )
@@ -428,10 +449,14 @@ export function BookingJourney({
       <DateTimeStep
         view={availabilityRead.view}
         availableDates={availableDates}
+        firstDate={options!.firstDate}
+        lastDate={options!.lastDate}
         timezone={options!.timezone}
+        today={today}
         date={date}
         slot={slot}
         frozen={frozen}
+        nextLabel={nextLabel}
         onSelectDate={(value) => dispatch({ type: 'date', date: value })}
         onSelectSlot={(value) => dispatch({ type: 'slot', slot: value })}
         onReload={availabilityRead.reload}
@@ -441,7 +466,7 @@ export function BookingJourney({
           optionsRead.reload()
           jumpTo(STEP_STAFF)
         }}
-        onNext={() => nav.advance(STEP_DETAILS)}
+        onNext={() => forward(STEP_DATE_TIME)}
         onBack={nav.back}
       />
     ))
@@ -451,8 +476,9 @@ export function BookingJourney({
         details={details}
         serverErrors={state.detailsErrors}
         frozen={frozen}
+        nextLabel={nextLabel}
         onChange={(patch) => dispatch({ type: 'details', patch })}
-        onNext={() => nav.advance(STEP_REVIEW)}
+        onNext={() => forward(STEP_DETAILS)}
         onBack={nav.back}
       />
     )
@@ -471,20 +497,23 @@ export function BookingJourney({
         recovery={{
           chooseSlot: () => {
             dispatch({ type: 'slot', slot: null })
-            jumpTo(STEP_DATE_TIME)
+            editFromReview(STEP_DATE_TIME)
           },
-          chooseService: chooseAnotherService,
+          chooseService: () => {
+            dispatch({ type: 'service', id: null })
+            editFromReview(STEP_SERVICE)
+          },
           chooseStaff: () => {
             dispatch({ type: 'staff', id: null })
             optionsRead.reload()
-            jumpTo(STEP_STAFF)
+            editFromReview(STEP_STAFF)
           },
-          editDetails: () => jumpTo(STEP_DETAILS),
+          editDetails: () => editFromReview(STEP_DETAILS),
           restart,
         }}
         onSubmit={() => void send()}
         onBack={nav.back}
-        onEdit={jumpTo}
+        onEdit={editFromReview}
       />
     ))
   }
@@ -505,12 +534,12 @@ export function BookingJourney({
             Стъпка {step} от {FORM_STEPS}
           </p>
         )}
-        <h1 id="booking-step-heading" ref={headingRef} tabIndex={-1}>
-          {heading}
-        </h1>
         {!confirmed && step > STEP_SERVICE && step < STEP_REVIEW && (
           <ServiceContext service={service} />
         )}
+        <h1 id="booking-step-heading" ref={headingRef} tabIndex={-1}>
+          {heading}
+        </h1>
         {body}
       </section>
     </div>

@@ -209,3 +209,7 @@ against primary documentation for this record (inference).
 Revisit for Business-configurable horizon, notice, or grid; approved buffers;
 exact-midnight boundaries; per-occurrence blocking in an overlap; or a
 requirement to merge working periods.
+
+## Amendment note (ADR-0027, 2026-10-07)
+
+The decision above is preserved. ADR-0027 amends it for a visit of several Services: the occupied duration of a slot becomes the sum of the selected Services' durations (still whole minutes of elapsed time, zero buffers), and the eligible StaffMembers are those assigned to every selected Service. The interval, precedence, 15-minute grid, and DST rules are unchanged. Effective when the availability phase of the multi-Service extension is implemented.
