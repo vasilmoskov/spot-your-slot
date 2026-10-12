@@ -2,10 +2,10 @@
 
 ## Status
 
-**Decided and documented. Phase M1 (persistence) is implemented and verified and awaits review; M2 to M7 are not started.** The product owner approved the multi-Service model on 2026-10-07 and the decisions are recorded in
+**Decided and documented. Phases M1 (persistence) and M2 (availability and eligibility) are implemented and verified and await review; M3 to M7 are not started.** The product owner approved the multi-Service model on 2026-10-07 and the decisions are recorded in
 [ADR-0027](../decisions/ADR-0027-book-several-services-as-one-atomic-visit-with-service-lines-a-versioned-set-fingerprint-and-an-explicit-review-consistency-check.md)
 (read it for the normative contract, schema, fingerprint encoding, and review-consistency check; this task lists the work and the verification). The documentation
-phase and M1 are done. **Until the remaining phases below are completed and approved, the product books exactly one Service per booking**: one StaffMember, one POST, one
+phase, M1, and M2 are done. **Until the remaining phases below are completed and approved, the product books exactly one Service per booking**: one StaffMember, one POST, one
 Appointment. The single-Service limitation is real and is not hidden in the interface. Issue #18 is not complete, issue #19 is unchanged, and production public booking still
 waits for issue #21. The original Phase 8 of issue #18 (browser journeys) is **not started**; the multi-Service browser journeys are phase M7 below and replace it.
 
@@ -56,7 +56,7 @@ Each phase is its own change with its own approval, is verified before the next 
 | Phase | Scope | Main verification |
 |---|---|---|
 | **M1 Persistence** (implemented, verified, awaiting review; see the M1 record) | `V13__add_appointment_services.sql` (the `price_eur` widening to `numeric(13,2)`, the table, `service_count`, backfill, end-of-migration verification, deferred visit-consistency trigger, immutability trigger); the visit-total price rule of the Appointment domain (11 integer digits, exact `BigDecimal`); `AppointmentStore` writes and reads the lines; the Appointment domain records carry the lines; typed translation of the new constraint | real-PostgreSQL migration and constraint tests (below); V1 to V12 byte-identical |
-| **M2 Availability and eligibility** | set-based `AvailabilityQuery`; the staff-eligibility contract reports the intersection; summed duration; the booking-options read model; no HTTP | engine and integration tests including a visit across 2026-10-25 |
+| **M2 Availability and eligibility** (implemented, verified, awaiting review; see the M2 record) | set-based `AvailabilityQuery`; the staff-eligibility contract reports the intersection; summed duration; the booking-options read model; no HTTP | engine and integration tests including a visit across 2026-10-25 |
 | **M3 Orchestration and fingerprinting** | normalized multi-Service request; encoding v2 with golden vectors and v1 kept; the shared unsigned UUID comparator; Service locks through the `ORDER BY id` statement; the review-consistency check; the single insert of the visit and lines; replay of both shapes | transaction, replay-compatibility, concurrency, rollback, and drift tests |
 | **M4 HTTP contract** | strict parser for both shapes; the two read routes; the new response; the two codes; exact security matchers; limiter and body bound unchanged | contract, privacy, security-routing, and compatibility tests |
 | **M5 Frontend** | checkboxes, selected-Service summary with the total duration and EUR price before «Напред», set state, staff-step empty state, one whole-visit review, confirmation, the reviewed facts in the frozen body, the review-change handling | unit and component tests, lint, build; no attempt or privacy test weakened |
@@ -151,4 +151,37 @@ Scope: the `V13` migration, the Appointment domain's Service lines and visit rul
 - `appointment_visit_is_consistent()` fixes its `search_path` at creation (`SET search_path FROM CURRENT`); the immutability function needs none.
 - The domain's single-Service constructors keep the whole existing API; nothing outside the store reads `serviceLines` yet.
 
-M2 (availability and eligibility) is the next phase and needs its own approval.
+## Phase M2 record: availability and eligibility (implemented and verified 2026-10-12; awaiting review and commit)
+
+Scope: the set-based availability calculation, the intersection eligibility contract, the summed duration with the 480-minute ceiling, and the internal booking-options read model. **No migration, Appointment persistence, booking orchestration, fingerprint, HTTP route, rate limiting, or frontend code changed**, `BookingAttemptProcedure` still calls the one-Service method, and M3 was not started. Base `HEAD` `95017f9` (M1 committed) plus the uncommitted working tree.
+
+### What was implemented
+
+- **Catalog** (`ServiceAvailabilityAccess`): `findBookableServices(businessId, serviceIds)`, one statement through the existing `ServiceStore.findReferences`, returning the active requested Services of the Business with their durations in the public-profile order; a missing, foreign, or inactive Service is simply absent. The one-Service method is unchanged.
+- **Workforce** (`StaffAvailabilityAccess`): `findEligibleForServices(businessId, serviceIds)`, one joined statement whatever the number of Services or StaffMembers: the active StaffMembers whose assignments inside the requested set number exactly the set size (the intersection), each with its recurring periods, ordered by id. `PublicStaffAccess.findBookableStaffForServices` is the same intersection with display names in the existing name order. The one-Service methods delegate to the set forms with a one-element set. A caller error (empty, duplicated, or null selection) is an `IllegalArgumentException`/`NullPointerException` raised in the access service (not in the `@Repository` store, whose exceptions Spring translates).
+- **Scheduling** (`AvailabilityQuery`): `calculate(businessId, Collection<UUID> serviceIds, staffMemberIdOrNull)` returns the new published `SelectionAvailability(snapshot, eligibleStaffMemberIds)`; the one-Service method delegates to it with `List.of(serviceId)` and returns its snapshot (the same records, the same exceptions, the same transaction rules, the clock read once). The engine, the 15-minute grid, the notice, the horizon, the interval precedence, the Business-lifecycle rule, and the timezone/DST handling are untouched: the engine receives one `occupiedDuration`, the sum of the individually verified whole-minute durations.
+  - Selection validation before any clock or data read: one to five distinct non-null identifiers, otherwise `IllegalArgumentException` (the future HTTP adapter rejects these as validation errors first).
+  - Order of failures: `BusinessNotBookable`, then `ServiceNotBookable` (any requested Service not returned by the Catalog), then the new `SelectionTooLong` (current durations sum to more than 480; carries no data), then `StaffMemberNotEligible` (an explicit StaffMember not in the intersection, or nobody eligible), then success.
+  - **Nobody supports the complete selection versus eligible StaffMembers without time:** `SelectionAvailability.eligibleStaffMemberIds()` is empty in the first case (the snapshot has no slots and no exceptions or busy intervals are read), and non-empty with an empty slot list in the second (`hasEligibleStaffMembers()`).
+  - Statement count: Business, the Services (one bulk read), eligible StaffMembers with periods, exceptions, busy intervals; five statements for one Service or five, three when nobody is eligible. There is no per-slot and no per-Service query.
+- **Public read model** (`PublicAvailabilityService`, internal; no controller, route, or response changed): `bookingOptions(slug, Collection<UUID>)` and `availability(slug, Collection<UUID>, date, staffOrNull)`; the staff choices are the intersection (empty when nobody supports the combination, the window is still reported). New `PublicBookingUnavailable.SelectionTooLong`. The one-Service methods delegate and return equal results.
+
+### Verification (executed; local only, no CI run for this state)
+
+- **Focused, all passing:** new `AvailabilityQueryServiceSelectionTests` (30; real engine over mocked contracts: summed duration, an interval fitting each Service but not the sum, the last fitting start, a busy interval over any part of the visit and inside its second part, half-open adjacency on both sides, a visit across the repeated hour of 2026-10-25 and across the skipped hour of 2027-03-28 measured in elapsed time with distinct offsets, no-preference aggregation, explicit StaffMember rules, nobody-eligible versus no-time, empty/duplicate/null/over-five selections that touch neither clock nor data, 1 and 5 Services, exactly 480 and 481 minutes, missing-before-too-long ordering, corrupt Catalog data as sanitized failures, exactly one bulk read of each kind and no single-Service read, the one-Service delegation, the clock read once),
+  `BookingAvailabilitySelectionIntegrationTests` (12; real PostgreSQL: assignment intersection and the inactive StaffMember, the union of partial assignments is not eligible, per-slot aggregation, an explicit StaffMember who supports only part of the selection, a foreign StaffMember, missing/foreign/inactive/deactivated Services, SUSPENDED and DRAFT Businesses, caller errors, five Services of exactly 480 minutes and one minute more, a committed Appointment over a 60-minute visit with adjacency on both sides, the one-Service equality),
+  `PublicAvailabilitySelectionIntegrationTests` (7), the added cases of the Catalog, Workforce, and Public-StaffMember access tests and of `AvailabilityQueryStatementCountIntegrationTests` (five statements for five Services in a fixed order, three when nobody is eligible, a read-committed outer transaction refused before any SQL), and the unchanged availability, booking-availability, and boundary tests.
+- **Existing tests adapted, not weakened:** `AvailabilityQueryHarness` and three stubs in `AvailabilityQueryServiceTests` now stub the bulk contracts the one-Service path delegates to; `PublicStaffAccessServiceTests` stubs the set store method; `BookingHookConfiguration` wraps both `AvailabilityQuery` methods (the booking hook still fires once per attempt). No assertion was relaxed.
+- **Control runs (executed, each reverted and byte-compared):** replacing the intersection (`= :serviceCount`) by "assigned to at least one" failed 7 tests; replacing the duration sum by the maximum failed 14.
+- **Complete backend `./mvnw verify`: 3302 tests, 0 failures, 0 errors, 0 skipped, `BUILD SUCCESS` (3240 before M2; 62 added)** on the final code.
+- **Migration integrity:** V1 to V13 unchanged (`git diff HEAD` over the migrations is empty; V13 sha-256 `12526a8c5e5c9fab3abaa647a56da46732539544f066d97c734915da88cace4e`). **Formatting:** no compressed empty body and no wildcard import in any changed Java file.
+- **Not executed:** the frontend suites and the browser E2E (no frontend or API file changed), and the later phases.
+
+### Deviations and limitations (for review)
+
+- The set-based reads are additions to existing published contracts (no new module dependency); `AvailabilityModuleBoundaryTests` and `PublicBookingModuleBoundaryTests` pass unchanged.
+- `SelectionTooLong` is a fifth typed availability failure; it is raised only on the set-based path and cannot occur for one Service (the Service maximum equals the ceiling).
+- `AvailabilitySlot` keeps its existing StaffMember-list invariant (ascending by Java `UUID.compareTo`, which is a signed comparison). It is not the unsigned PostgreSQL order that ADR-0027 mandates for request identity and locks; this phase does not use slot lists for either, and the difference is recorded for M3.
+- An explicit StaffMember that is not in the intersection is `StaffMemberNotEligible`; the contract does not say which Service is unsupported (no information beyond the existing code).
+
+M3 (orchestration and fingerprinting) is the next phase and needs its own approval.

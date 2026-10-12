@@ -9,8 +9,10 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
 import org.springframework.dao.DataAccessException;
@@ -155,20 +157,34 @@ public class StaffMemberStore {
      * order. One statement, no lock, tenant-scoped; only the identifier and display name leave.
      */
     public List<PublicStaffRow> findBookableStaff(UUID businessId, UUID serviceId) {
+        return findBookableStaffForServices(businessId, List.of(serviceId));
+    }
+
+    /**
+     * The intersection: a StaffMember qualifies only when its assignments inside the requested
+     * set number exactly the set size (the assignment key is StaffMember plus Service).
+     */
+    public List<PublicStaffRow> findBookableStaffForServices(
+            UUID businessId, Collection<UUID> serviceIds) {
+        Set<UUID> distinct = new HashSet<>(serviceIds);
+        if (distinct.isEmpty() || distinct.size() != serviceIds.size()) {
+            throw new IllegalArgumentException("Service identifiers must be non-empty and distinct");
+        }
         return execute(() -> jdbc.sql("""
                         SELECT id, display_name
                         FROM staff_member
                         WHERE business_id = :businessId
                           AND active
-                          AND id IN (
-                              SELECT staff_member_id
-                              FROM staff_member_service
-                              WHERE business_id = :businessId
-                                AND service_id = :serviceId)
+                          AND (SELECT count(*)
+                               FROM staff_member_service
+                               WHERE business_id = :businessId
+                                 AND staff_member_id = staff_member.id
+                                 AND service_id IN (:serviceIds)) = :serviceCount
                         ORDER BY normalized_display_name ASC, id ASC
                         """)
                 .param("businessId", businessId)
-                .param("serviceId", serviceId)
+                .param("serviceIds", distinct)
+                .param("serviceCount", distinct.size())
                 .query((resultSet, rowNumber) -> new PublicStaffRow(
                         resultSet.getObject("id", UUID.class),
                         resultSet.getString("display_name")))

@@ -3,6 +3,8 @@ package bg.spotyourslot.scheduling.application;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -30,6 +32,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -104,13 +107,25 @@ final class AvailabilityQueryHarness {
     }
 
     AvailabilityQueryHarness service(Duration duration) {
-        when(services.findBookableService(BUSINESS, SERVICE))
-                .thenReturn(Optional.of(new BookableService(SERVICE, duration)));
+        return services(new BookableService(SERVICE, duration));
+    }
+
+    /**
+     * The bookable Services of the mocked Catalog, in public-profile order. A request returns the
+     * ones it names, like the real bulk read: an unknown Service is simply absent.
+     */
+    AvailabilityQueryHarness services(BookableService... catalog) {
+        List<BookableService> known = List.of(catalog);
+        doAnswer(invocation -> {
+            Collection<UUID> requested = invocation.getArgument(1);
+            return known.stream().filter(found -> requested.contains(found.id())).toList();
+        }).when(services).findBookableServices(eq(BUSINESS), anyCollection());
         return this;
     }
 
     AvailabilityQueryHarness staff(EligibleStaffMember... members) {
-        when(staffMembers.findEligibleForService(BUSINESS, SERVICE)).thenReturn(List.of(members));
+        doReturn(List.of(members))
+                .when(staffMembers).findEligibleForServices(eq(BUSINESS), anyCollection());
         return this;
     }
 

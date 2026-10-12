@@ -9,6 +9,7 @@ import bg.spotyourslot.integration.PostgresIntegrationTest;
 import bg.spotyourslot.scheduling.AvailabilityApplicationException.AvailabilityFailure;
 import bg.spotyourslot.scheduling.AvailabilityQuery;
 import bg.spotyourslot.scheduling.AvailabilityRecords.AvailabilitySnapshot;
+import bg.spotyourslot.scheduling.AvailabilityRecords.SelectionAvailability;
 import bg.spotyourslot.scheduling.domain.NewScheduleException;
 import bg.spotyourslot.scheduling.domain.ScheduleExceptionContent;
 import bg.spotyourslot.scheduling.infrastructure.ScheduleExceptionStore;
@@ -16,6 +17,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.sql.Connection;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -109,6 +111,56 @@ class AvailabilityQueryStatementCountIntegrationTests extends PostgresIntegratio
         assertThat(statements).hasSize(3);
     }
 
+    @Test
+    void aFiveServiceSelectionUsesTheSameFiveStatementsInTheSameOrder() {
+        UUID business = fixtures.business("ACTIVE", "Europe/Sofia");
+        List<UUID> selection = new ArrayList<>();
+        for (int index = 0; index < 5; index++) {
+            selection.add(fixtures.service(business, 30, true));
+        }
+        for (int index = 0; index < 4; index++) {
+            UUID staff = fixtures.staffMember(business, true);
+            for (UUID service : selection) {
+                fixtures.assign(business, staff, service);
+            }
+            fixtures.everyDay(business, staff, "09:00", "18:00");
+        }
+        SelectionAvailability[] result = new SelectionAvailability[1];
+
+        List<String> statements = record(
+                () -> result[0] = availability.calculate(business, selection, null));
+
+        assertThat(result[0].snapshot().occupiedDuration()).isEqualTo(Duration.ofMinutes(150));
+        assertThat(result[0].eligibleStaffMemberIds()).hasSize(4);
+        assertThat(result[0].snapshot().slots()).isNotEmpty();
+        assertThat(statements).hasSize(5);
+        assertThat(normalized(statements.get(0))).contains("from business");
+        assertThat(normalized(statements.get(1))).contains("from service");
+        assertThat(normalized(statements.get(2)))
+                .contains("from staff_member m")
+                .contains("staff_working_period")
+                .contains("staff_member_service");
+        assertThat(normalized(statements.get(3))).contains("from schedule_exception e");
+        assertThat(normalized(statements.get(4))).contains("from appointment");
+    }
+
+    @Test
+    void aSelectionNobodySupportsStopsAfterThreeStatements() {
+        UUID business = fixtures.business("ACTIVE", "Europe/Sofia");
+        UUID first = fixtures.service(business, 30, true);
+        UUID second = fixtures.service(business, 30, true);
+        UUID staff = fixtures.staffMember(business, true);
+        fixtures.assign(business, staff, first);
+        fixtures.everyDay(business, staff, "09:00", "18:00");
+        SelectionAvailability[] result = new SelectionAvailability[1];
+
+        List<String> statements = record(
+                () -> result[0] = availability.calculate(business, List.of(first, second), null));
+
+        assertThat(statements).hasSize(3);
+        assertThat(result[0].hasEligibleStaffMembers()).isFalse();
+    }
+
     // ---- transaction isolation precondition, each case with an explicit outer transaction ----
 
     @Test
@@ -135,6 +187,25 @@ class AvailabilityQueryStatementCountIntegrationTests extends PostgresIntegratio
                 .hasMessage("Availability calculation failed");
         assertThat(failure[0].getMessage()).doesNotContain(scenario.business().toString());
         assertThat(failure[0].getMessage()).doesNotContainIgnoringCase("isolation");
+    }
+
+    @Test
+    void aSelectionInsideAReadCommittedTransactionFailsBeforeAnyAvailabilitySql() {
+        UUID business = fixtures.business("ACTIVE", "Europe/Sofia");
+        List<UUID> selection = List.of(
+                fixtures.service(business, 30, true), fixtures.service(business, 30, true));
+        Throwable[] failure = new Throwable[1];
+
+        List<String> statements = record(() -> failure[0] = catchThrowable(() -> {
+            TransactionTemplate template = new TransactionTemplate(transactions);
+            template.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
+            template.executeWithoutResult(
+                    status -> availability.calculate(business, selection, null));
+        }));
+
+        assertThat(statements).isEmpty();
+        assertThat(failure[0]).isInstanceOf(AvailabilityFailure.class);
+        assertThat(failure[0].getMessage()).doesNotContain(business.toString());
     }
 
     @Test

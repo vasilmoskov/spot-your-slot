@@ -10,11 +10,15 @@ import bg.spotyourslot.customer.CustomerMatchOutcome;
 import bg.spotyourslot.customer.application.CustomerIdentificationService;
 import bg.spotyourslot.integration.MutableTestClock;
 import bg.spotyourslot.scheduling.AvailabilityQuery;
+import bg.spotyourslot.scheduling.AvailabilityRecords.AvailabilitySnapshot;
+import bg.spotyourslot.scheduling.AvailabilityRecords.SelectionAvailability;
 import bg.spotyourslot.scheduling.application.AvailabilityQueryService;
 import bg.spotyourslot.workforce.StaffBookingAccess;
 import bg.spotyourslot.workforce.application.StaffBookingAccessService;
 import jakarta.persistence.EntityManagerFactory;
 import java.time.Instant;
+import java.util.Collection;
+import java.util.UUID;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
@@ -79,9 +83,20 @@ public class BookingHookConfiguration {
     @Bean
     @Primary
     AvailabilityQuery hookedAvailabilityQuery(AvailabilityQueryService delegate, BookingTestHooks hooks) {
-        return (businessId, serviceId, staffMemberIdOrNull) -> {
-            hooks.fire(Point.BEFORE_AVAILABILITY);
-            return delegate.calculate(businessId, serviceId, staffMemberIdOrNull);
+        return new AvailabilityQuery() {
+            @Override
+            public AvailabilitySnapshot calculate(
+                    UUID businessId, UUID serviceId, UUID staffMemberIdOrNull) {
+                hooks.fire(Point.BEFORE_AVAILABILITY);
+                return delegate.calculate(businessId, serviceId, staffMemberIdOrNull);
+            }
+
+            @Override
+            public SelectionAvailability calculate(
+                    UUID businessId, Collection<UUID> serviceIds, UUID staffMemberIdOrNull) {
+                hooks.fire(Point.BEFORE_AVAILABILITY);
+                return delegate.calculate(businessId, serviceIds, staffMemberIdOrNull);
+            }
         };
     }
 

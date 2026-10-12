@@ -2,6 +2,7 @@ package bg.spotyourslot.workforce.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import bg.spotyourslot.workforce.PublicStaffAccess.PublicStaffFailure;
@@ -28,7 +29,7 @@ class PublicStaffAccessServiceTests {
 
     @Test
     void mapsEachRowToExactlyTheIdentifierAndTheDisplayNameInStoreOrder() {
-        when(store.findBookableStaff(BUSINESS, SERVICE)).thenReturn(List.of(
+        when(store.findBookableStaffForServices(BUSINESS, List.of(SERVICE))).thenReturn(List.of(
                 new PublicStaffRow(SECOND, "Алфа"), new PublicStaffRow(FIRST, "Бета")));
 
         List<PublicStaffMember> staff = new PublicStaffAccessService(store).findBookableStaff(BUSINESS, SERVICE);
@@ -38,10 +39,47 @@ class PublicStaffAccessServiceTests {
 
     @Test
     void wrapsPersistenceFailuresWithoutExposingTheirDetail() {
-        when(store.findBookableStaff(BUSINESS, SERVICE))
+        when(store.findBookableStaffForServices(BUSINESS, List.of(SERVICE)))
                 .thenThrow(new UnexpectedFailure(new RuntimeException("sql detail")));
 
         assertThatThrownBy(() -> new PublicStaffAccessService(store).findBookableStaff(BUSINESS, SERVICE))
+                .isInstanceOf(PublicStaffFailure.class)
+                .hasMessage("Public StaffMember access failed");
+    }
+
+    @Test
+    void theSetFormMapsTheIntersectionRowsInStoreOrder() {
+        UUID other = UUID.fromString("00000000-0000-0000-0000-000000000003");
+        when(store.findBookableStaffForServices(BUSINESS, List.of(SERVICE, other))).thenReturn(List.of(
+                new PublicStaffRow(SECOND, "Алфа"), new PublicStaffRow(FIRST, "Бета")));
+
+        List<PublicStaffMember> staff = new PublicStaffAccessService(store)
+                .findBookableStaffForServices(BUSINESS, List.of(SERVICE, other));
+
+        assertThat(staff).containsExactly(
+                new PublicStaffMember(SECOND, "Алфа"), new PublicStaffMember(FIRST, "Бета"));
+    }
+
+    @Test
+    void theSetFormRejectsEmptyDuplicatedAndNullSelectionsBeforeTheStore() {
+        PublicStaffAccessService access = new PublicStaffAccessService(store);
+
+        assertThatThrownBy(() -> access.findBookableStaffForServices(BUSINESS, List.of()))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> access.findBookableStaffForServices(BUSINESS, List.of(SERVICE, SERVICE)))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> access.findBookableStaffForServices(BUSINESS, null))
+                .isInstanceOf(NullPointerException.class);
+        verifyNoInteractions(store);
+    }
+
+    @Test
+    void theSetFormWrapsPersistenceFailuresWithoutExposingTheirDetail() {
+        when(store.findBookableStaffForServices(BUSINESS, List.of(SERVICE)))
+                .thenThrow(new UnexpectedFailure(new RuntimeException("sql detail")));
+
+        assertThatThrownBy(() -> new PublicStaffAccessService(store)
+                .findBookableStaffForServices(BUSINESS, List.of(SERVICE)))
                 .isInstanceOf(PublicStaffFailure.class)
                 .hasMessage("Public StaffMember access failed");
     }

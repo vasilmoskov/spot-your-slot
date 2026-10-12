@@ -7,6 +7,7 @@ package bg.spotyourslot.publicbooking.application;
 public abstract sealed class PublicBookingUnavailable extends RuntimeException
         permits PublicBookingUnavailable.Business,
                 PublicBookingUnavailable.Service,
+                PublicBookingUnavailable.SelectionTooLong,
                 PublicBookingUnavailable.Staff {
     private PublicBookingUnavailable(String message) {
         super(message, null, false, false);
@@ -23,6 +24,13 @@ public abstract sealed class PublicBookingUnavailable extends RuntimeException
     public static final class Service extends PublicBookingUnavailable {
         public Service() {
             super("Public Service is unavailable");
+        }
+    }
+
+    /** A valid selection whose current Service durations sum to more than the visit ceiling. */
+    public static final class SelectionTooLong extends PublicBookingUnavailable {
+        public SelectionTooLong() {
+            super("Public Service selection is too long");
         }
     }
 

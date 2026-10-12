@@ -8,11 +8,13 @@ import bg.spotyourslot.catalog.ServiceAvailabilityAccess.BookableService;
 import bg.spotyourslot.scheduling.AvailabilityApplicationException;
 import bg.spotyourslot.scheduling.AvailabilityApplicationException.AvailabilityFailure;
 import bg.spotyourslot.scheduling.AvailabilityApplicationException.BusinessNotBookable;
+import bg.spotyourslot.scheduling.AvailabilityApplicationException.SelectionTooLong;
 import bg.spotyourslot.scheduling.AvailabilityApplicationException.ServiceNotBookable;
 import bg.spotyourslot.scheduling.AvailabilityApplicationException.StaffMemberNotEligible;
 import bg.spotyourslot.scheduling.AvailabilityQuery;
 import bg.spotyourslot.scheduling.AvailabilityRecords.AvailabilitySlot;
 import bg.spotyourslot.scheduling.AvailabilityRecords.AvailabilitySnapshot;
+import bg.spotyourslot.scheduling.AvailabilityRecords.SelectionAvailability;
 import bg.spotyourslot.scheduling.BusyIntervalSource;
 import bg.spotyourslot.scheduling.BusyIntervalSource.BusyWindow;
 import bg.spotyourslot.scheduling.domain.AvailabilityEngine;
@@ -37,6 +39,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -58,14 +61,18 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  * remain in the engine (ADR-0013). Snapshot and query design is ADR-0016,
  * including the enforced repeatable-read precondition.
  *
- * <p>Real SQL statements, in order: Business context, active Service, eligible
- * StaffMembers with their periods, schedule exceptions. The busy-interval call
- * is a fifth bulk read that currently issues no SQL.
+ * <p>Real SQL statements, in order: Business context, the selected active Services (one
+ * bulk statement), eligible StaffMembers with their periods (one joined statement), schedule
+ * exceptions; the count does not depend on the number of Services (ADR-0027). The busy-interval call
+ * is a fifth bulk read: the booking-owned {@link BusyIntervalSource} reads the persisted
+ * Appointments of the eligible StaffMembers in one statement.
  */
 @Service
 public class AvailabilityQueryService implements AvailabilityQuery {
     private static final long MIN_SERVICE_MINUTES = 1;
     private static final long MAX_SERVICE_MINUTES = 480;
+    private static final int MAX_SERVICES = 5;
+    private static final long MAX_VISIT_MINUTES = 480;
 
     private final BusinessScheduleContextAccess businesses;
     private final ServiceAvailabilityAccess services;
@@ -100,17 +107,49 @@ public class AvailabilityQueryService implements AvailabilityQuery {
             })
     public AvailabilitySnapshot calculate(
             UUID businessId, UUID serviceId, UUID staffMemberIdOrNull) {
-        Objects.requireNonNull(businessId, "businessId");
         Objects.requireNonNull(serviceId, "serviceId");
+        return calculate(businessId, List.of(serviceId), staffMemberIdOrNull).snapshot();
+    }
+
+    @Override
+    @Transactional(
+            isolation = Isolation.REPEATABLE_READ,
+            readOnly = true,
+            noRollbackFor = {
+                BusinessNotBookable.class,
+                ServiceNotBookable.class,
+                SelectionTooLong.class,
+                StaffMemberNotEligible.class
+            })
+    public SelectionAvailability calculate(
+            UUID businessId, Collection<UUID> serviceIds, UUID staffMemberIdOrNull) {
+        Objects.requireNonNull(businessId, "businessId");
+        Set<UUID> selection = validatedSelection(serviceIds);
         requireSnapshotIsolation();
         Instant calculatedAt = clock.instant();
         try {
-            return calculateSnapshot(businessId, serviceId, staffMemberIdOrNull, calculatedAt);
+            return calculateSelection(businessId, selection, staffMemberIdOrNull, calculatedAt);
         } catch (AvailabilityApplicationException exception) {
             throw exception;
         } catch (RuntimeException exception) {
             throw new AvailabilityFailure(exception);
         }
+    }
+
+    /** A caller error, rejected before any clock or data read: 1..5 distinct non-null identifiers. */
+    private static Set<UUID> validatedSelection(Collection<UUID> serviceIds) {
+        Objects.requireNonNull(serviceIds, "serviceIds");
+        if (serviceIds.isEmpty() || serviceIds.size() > MAX_SERVICES) {
+            throw new IllegalArgumentException("A selection holds one to five Services");
+        }
+        Set<UUID> distinct = new HashSet<>();
+        for (UUID serviceId : serviceIds) {
+            Objects.requireNonNull(serviceId, "serviceId");
+            if (!distinct.add(serviceId)) {
+                throw new IllegalArgumentException("A selection holds each Service once");
+            }
+        }
+        return Set.copyOf(distinct);
     }
 
     /**
@@ -134,21 +173,21 @@ public class AvailabilityQueryService implements AvailabilityQuery {
         }
     }
 
-    private AvailabilitySnapshot calculateSnapshot(
-            UUID businessId, UUID serviceId, UUID staffMemberIdOrNull, Instant calculatedAt) {
+    private SelectionAvailability calculateSelection(
+            UUID businessId, Set<UUID> serviceIds, UUID staffMemberIdOrNull, Instant calculatedAt) {
         BusinessScheduleContext context = businesses.findScheduleContext(businessId)
                 .filter(found -> found.status() == LifecycleStatus.ACTIVE)
                 .orElseThrow(BusinessNotBookable::new);
         ZoneId zone = context.timezone();
 
-        BookableService service = services.findBookableService(businessId, serviceId)
-                .orElseThrow(ServiceNotBookable::new);
-        Duration occupiedDuration = verifiedDuration(service, serviceId);
+        Duration occupiedDuration = visitDuration(
+                serviceIds, services.findBookableServices(businessId, serviceIds));
 
         List<EligibleStaffMember> eligible = selectEligible(
-                staffMembers.findEligibleForService(businessId, serviceId), staffMemberIdOrNull);
+                staffMembers.findEligibleForServices(businessId, serviceIds), staffMemberIdOrNull);
         if (eligible.isEmpty()) {
-            return snapshot(zone, calculatedAt, occupiedDuration, List.of());
+            return new SelectionAvailability(
+                    snapshot(zone, calculatedAt, occupiedDuration, List.of()), List.of());
         }
         List<UUID> staffMemberIds = eligible.stream().map(EligibleStaffMember::id).toList();
 
@@ -182,20 +221,42 @@ public class AvailabilityQueryService implements AvailabilityQuery {
 
         List<AvailableSlot> slots = AvailabilityEngine.calculate(new AvailabilityRequest(
                 zone, occupiedDuration, calculatedAt, closures, inputs));
-        return snapshot(zone, calculatedAt, occupiedDuration, publishedSlots(slots));
+        return new SelectionAvailability(
+                snapshot(zone, calculatedAt, occupiedDuration, publishedSlots(slots)),
+                staffMemberIds);
     }
 
-    private static Duration verifiedDuration(BookableService service, UUID requestedServiceId) {
-        if (!requestedServiceId.equals(service.id())) {
-            throw new IllegalStateException("Catalog returned a different Service");
+    /**
+     * Every requested Service must come back exactly once; a missing, foreign, or inactive one
+     * (absent from the bookable list) makes the whole selection unbookable. The visit lasts the
+     * sum of the individually verified durations and may not exceed the visit ceiling.
+     */
+    private static Duration visitDuration(Set<UUID> requested, List<BookableService> bookable) {
+        Set<UUID> seen = new HashSet<>();
+        long totalMinutes = 0;
+        for (BookableService service : bookable) {
+            if (!requested.contains(service.id()) || !seen.add(service.id())) {
+                throw new IllegalStateException("Catalog returned an unrequested or repeated Service");
+            }
+            totalMinutes += verifiedMinutes(service);
         }
+        if (seen.size() != requested.size()) {
+            throw new ServiceNotBookable();
+        }
+        if (totalMinutes > MAX_VISIT_MINUTES) {
+            throw new SelectionTooLong();
+        }
+        return Duration.ofMinutes(totalMinutes);
+    }
+
+    private static long verifiedMinutes(BookableService service) {
         long minutes = service.duration().toMinutes();
         if (!service.duration().equals(Duration.ofMinutes(minutes))
                 || minutes < MIN_SERVICE_MINUTES
                 || minutes > MAX_SERVICE_MINUTES) {
             throw new IllegalStateException("Service duration violates the committed invariant");
         }
-        return service.duration();
+        return minutes;
     }
 
     /** Validates the published list, then narrows it to the requested StaffMember. */

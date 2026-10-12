@@ -3,6 +3,7 @@ package bg.spotyourslot.workforce.application;
 import bg.spotyourslot.workforce.PublicStaffAccess;
 import bg.spotyourslot.workforce.infrastructure.StaffMemberPersistenceException;
 import bg.spotyourslot.workforce.infrastructure.StaffMemberStore;
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -21,10 +22,18 @@ public class PublicStaffAccessService implements PublicStaffAccess {
     @Override
     @Transactional(propagation = Propagation.MANDATORY, readOnly = true)
     public List<PublicStaffMember> findBookableStaff(UUID businessId, UUID serviceId) {
-        Objects.requireNonNull(businessId, "businessId");
         Objects.requireNonNull(serviceId, "serviceId");
+        return findBookableStaffForServices(businessId, List.of(serviceId));
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY, readOnly = true)
+    public List<PublicStaffMember> findBookableStaffForServices(
+            UUID businessId, Collection<UUID> serviceIds) {
+        Objects.requireNonNull(businessId, "businessId");
+        ServiceSelection.require(serviceIds);
         try {
-            return store.findBookableStaff(businessId, serviceId).stream()
+            return store.findBookableStaffForServices(businessId, serviceIds).stream()
                     .map(row -> new PublicStaffMember(row.id(), row.displayName()))
                     .toList();
         } catch (StaffMemberPersistenceException exception) {

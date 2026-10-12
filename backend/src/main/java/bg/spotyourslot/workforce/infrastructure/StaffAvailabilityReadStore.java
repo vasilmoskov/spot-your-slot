@@ -7,9 +7,12 @@ import java.sql.SQLException;
 import java.time.DayOfWeek;
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -29,25 +32,41 @@ public class StaffAvailabilityReadStore {
     }
 
     public List<EligibleStaffRow> findEligibleForService(UUID businessId, UUID serviceId) {
+        return findEligibleForServices(businessId, List.of(serviceId));
+    }
+
+    /**
+     * The StaffMember must hold an assignment to every requested Service: the number of its
+     * assignments inside the requested set equals the set size. The assignment key is
+     * (StaffMember, Service), so each counted row is a distinct Service.
+     */
+    public List<EligibleStaffRow> findEligibleForServices(
+            UUID businessId, Collection<UUID> serviceIds) {
+        Set<UUID> distinct = new HashSet<>(serviceIds);
+        if (distinct.isEmpty() || distinct.size() != serviceIds.size()) {
+            throw new IllegalArgumentException("Service identifiers must be non-empty and distinct");
+        }
         List<PeriodRow> rows;
         try {
             rows = jdbc.sql("""
                             SELECT m.id AS staff_member_id,
                                    p.weekday, p.start_time, p.end_time
                             FROM staff_member m
-                            JOIN staff_member_service a
-                              ON a.business_id = m.business_id
-                             AND a.staff_member_id = m.id
                             LEFT JOIN staff_working_period p
                               ON p.business_id = m.business_id
                              AND p.staff_member_id = m.id
                             WHERE m.business_id = :businessId
-                              AND a.service_id = :serviceId
                               AND m.active
+                              AND (SELECT count(*)
+                                   FROM staff_member_service a
+                                   WHERE a.business_id = m.business_id
+                                     AND a.staff_member_id = m.id
+                                     AND a.service_id IN (:serviceIds)) = :serviceCount
                             ORDER BY m.id ASC, p.weekday ASC, p.start_time ASC, p.end_time ASC
                             """)
                     .param("businessId", businessId)
-                    .param("serviceId", serviceId)
+                    .param("serviceIds", distinct)
+                    .param("serviceCount", distinct.size())
                     .query(this::periodRow)
                     .list();
         } catch (DataAccessException exception) {

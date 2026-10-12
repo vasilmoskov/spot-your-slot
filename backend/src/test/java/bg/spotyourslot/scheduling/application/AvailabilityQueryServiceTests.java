@@ -16,6 +16,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -115,7 +117,7 @@ class AvailabilityQueryServiceTests {
     @Test
     void missingForeignOrInactiveServiceIsNotBookable() {
         AvailabilityQueryHarness harness = harness();
-        when(harness.services.findBookableService(BUSINESS, SERVICE)).thenReturn(Optional.empty());
+        harness.services();
 
         assertThatThrownBy(() -> harness.calculate(null)).isInstanceOf(ServiceNotBookable.class);
 
@@ -139,9 +141,8 @@ class AvailabilityQueryServiceTests {
     @Test
     void serviceIdMismatchBecomesASanitizedFailure() {
         AvailabilityQueryHarness harness = harness();
-        when(harness.services.findBookableService(BUSINESS, SERVICE)).thenReturn(Optional.of(
-                new BookableService(
-                        UUID.randomUUID(), Duration.ofMinutes(30))));
+        doReturn(List.of(new BookableService(UUID.randomUUID(), Duration.ofMinutes(30))))
+                .when(harness.services).findBookableServices(eq(BUSINESS), anyCollection());
 
         assertSanitizedFailure(harness);
     }
@@ -445,10 +446,10 @@ class AvailabilityQueryServiceTests {
                 "SELECT * FROM business WHERE id = " + BUSINESS + " constraint x_fk");
         switch (failing) {
             case "business" -> when(harness.businesses.findScheduleContext(BUSINESS)).thenThrow(leak);
-            case "service" -> when(harness.services.findBookableService(BUSINESS, SERVICE))
-                    .thenThrow(new ServiceAvailabilityFailure(leak));
-            case "staff" -> when(harness.staffMembers.findEligibleForService(BUSINESS, SERVICE))
-                    .thenThrow(new StaffAvailabilityFailure(leak));
+            case "service" -> doThrow(new ServiceAvailabilityFailure(leak))
+                    .when(harness.services).findBookableServices(eq(BUSINESS), anyCollection());
+            case "staff" -> doThrow(new StaffAvailabilityFailure(leak))
+                    .when(harness.staffMembers).findEligibleForServices(eq(BUSINESS), anyCollection());
             default -> when(harness.exceptions.findOverlappingForStaff(
                     eq(BUSINESS), any(), any(), anyCollection()))
                     .thenThrow(new ScheduleExceptionPersistenceException.UnexpectedFailure(leak));
@@ -568,7 +569,7 @@ class AvailabilityQueryServiceTests {
                 () -> subject.calculate(null, SERVICE, null)))
                 .isInstanceOf(NullPointerException.class);
         assertThatThrownBy(() -> AvailabilityQueryHarness.inRepeatableReadTransaction(
-                () -> subject.calculate(BUSINESS, null, null)))
+                () -> subject.calculate(BUSINESS, (UUID) null, null)))
                 .isInstanceOf(NullPointerException.class);
     }
 

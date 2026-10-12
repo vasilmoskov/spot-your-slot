@@ -6,16 +6,19 @@ import bg.spotyourslot.publicbooking.application.PublicBookingViews.BookingOptio
 import bg.spotyourslot.publicbooking.application.PublicBookingViews.Slot;
 import bg.spotyourslot.publicbooking.application.PublicBookingViews.Staff;
 import bg.spotyourslot.scheduling.AvailabilityApplicationException.BusinessNotBookable;
+import bg.spotyourslot.scheduling.AvailabilityApplicationException.SelectionTooLong;
 import bg.spotyourslot.scheduling.AvailabilityApplicationException.ServiceNotBookable;
 import bg.spotyourslot.scheduling.AvailabilityApplicationException.StaffMemberNotEligible;
 import bg.spotyourslot.scheduling.AvailabilityQuery;
 import bg.spotyourslot.scheduling.AvailabilityRecords.AvailabilitySlot;
 import bg.spotyourslot.scheduling.AvailabilityRecords.AvailabilitySnapshot;
+import bg.spotyourslot.scheduling.AvailabilityRecords.SelectionAvailability;
 import bg.spotyourslot.workforce.PublicStaffAccess;
 import java.sql.Connection;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.TreeSet;
@@ -55,11 +58,28 @@ public class PublicAvailabilityService {
      */
     @Transactional(isolation = Isolation.REPEATABLE_READ, readOnly = true)
     public BookingOptions bookingOptions(String slug, UUID serviceId) {
-        requireSnapshotIsolation();
         Objects.requireNonNull(serviceId, "serviceId");
+        return bookingOptions(slug, List.of(serviceId));
+    }
+
+    /**
+     * The booking choices for one visit of one to five distinct Services (ADR-0027). The staff
+     * are the intersection: the active StaffMembers assigned to every Service, empty when nobody
+     * supports the combination. The window is still reported for a combination nobody supports.
+     *
+     * @throws PublicBookingUnavailable.Business when the Business is not public
+     * @throws PublicBookingUnavailable.Service when any Service is missing, foreign, or inactive
+     * @throws PublicBookingUnavailable.SelectionTooLong when the durations sum to over 480 minutes
+     * @throws IllegalArgumentException for an empty, oversized, or duplicated selection (a
+     *         caller error that the future HTTP adapter rejects as a validation error first)
+     */
+    @Transactional(isolation = Isolation.REPEATABLE_READ, readOnly = true)
+    public BookingOptions bookingOptions(String slug, Collection<UUID> serviceIds) {
+        requireSnapshotIsolation();
+        Objects.requireNonNull(serviceIds, "serviceIds");
         UUID businessId = resolveBusiness(slug);
-        AvailabilitySnapshot snapshot = calculate(businessId, serviceId, null);
-        List<Staff> choices = staff.findBookableStaff(businessId, serviceId).stream()
+        AvailabilitySnapshot snapshot = calculate(businessId, serviceIds, null).snapshot();
+        List<Staff> choices = staff.findBookableStaffForServices(businessId, serviceIds).stream()
                 .map(member -> new Staff(member.id(), member.displayName()))
                 .toList();
         return new BookingOptions(
@@ -73,11 +93,27 @@ public class PublicAvailabilityService {
     @Transactional(isolation = Isolation.REPEATABLE_READ, readOnly = true)
     public Availability availability(
             String slug, UUID serviceId, LocalDate date, UUID staffMemberIdOrNull) {
-        requireSnapshotIsolation();
         Objects.requireNonNull(serviceId, "serviceId");
+        return availability(slug, List.of(serviceId), date, staffMemberIdOrNull);
+    }
+
+    /**
+     * The offered slots of one visit of one to five distinct Services; each slot starts a
+     * continuous interval of the summed duration. A requested StaffMember must be eligible for
+     * the complete selection.
+     *
+     * @throws PublicBookingUnavailable.Staff when a requested StaffMember does not support every
+     *         selected Service
+     */
+    @Transactional(isolation = Isolation.REPEATABLE_READ, readOnly = true)
+    public Availability availability(
+            String slug, Collection<UUID> serviceIds, LocalDate date, UUID staffMemberIdOrNull) {
+        requireSnapshotIsolation();
+        Objects.requireNonNull(serviceIds, "serviceIds");
         Objects.requireNonNull(date, "date");
         UUID businessId = resolveBusiness(slug);
-        AvailabilitySnapshot snapshot = calculate(businessId, serviceId, staffMemberIdOrNull);
+        AvailabilitySnapshot snapshot =
+                calculate(businessId, serviceIds, staffMemberIdOrNull).snapshot();
         ZoneId zone = snapshot.timezone();
 
         TreeSet<LocalDate> dates = new TreeSet<>();
@@ -98,13 +134,16 @@ public class PublicAvailabilityService {
                 .orElseThrow(PublicBookingUnavailable.Business::new);
     }
 
-    private AvailabilitySnapshot calculate(UUID businessId, UUID serviceId, UUID staffMemberIdOrNull) {
+    private SelectionAvailability calculate(
+            UUID businessId, Collection<UUID> serviceIds, UUID staffMemberIdOrNull) {
         try {
-            return availability.calculate(businessId, serviceId, staffMemberIdOrNull);
+            return availability.calculate(businessId, serviceIds, staffMemberIdOrNull);
         } catch (BusinessNotBookable exception) {
             throw new PublicBookingUnavailable.Business();
         } catch (ServiceNotBookable exception) {
             throw new PublicBookingUnavailable.Service();
+        } catch (SelectionTooLong exception) {
+            throw new PublicBookingUnavailable.SelectionTooLong();
         } catch (StaffMemberNotEligible exception) {
             throw new PublicBookingUnavailable.Staff();
         }

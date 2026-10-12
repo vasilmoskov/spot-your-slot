@@ -1,6 +1,8 @@
 package bg.spotyourslot.catalog;
 
 import java.time.Duration;
+import java.util.Collection;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -17,6 +19,16 @@ public interface ServiceAvailabilityAccess {
      * @return the Service, or empty when it does not exist in the Business or is inactive
      */
     Optional<BookableService> findBookableService(UUID businessId, UUID serviceId);
+
+    /**
+     * Reads inside the caller's transaction with one statement, whatever the number of Services;
+     * a caller without a transaction is rejected.
+     *
+     * @return the active Services of the Business among the requested identifiers, in the
+     *         public-profile order (canonical name, then identifier). A missing, foreign, or
+     *         inactive Service is simply absent, so the caller compares the sizes.
+     */
+    List<BookableService> findBookableServices(UUID businessId, Collection<UUID> serviceIds);
 
     /**
      * @param duration the committed Service duration; the Catalog invariant is one

@@ -183,6 +183,85 @@ class StaffAvailabilityAccessIntegrationTests extends PostgresIntegrationTest {
                 .isInstanceOf(IllegalTransactionStateException.class);
     }
 
+    // ---- the set-based form (ADR-0027) ----
+
+    private List<EligibleStaffMember> findAll(UUID businessId, UUID... serviceIds) {
+        return transaction.execute(
+                status -> access.findEligibleForServices(businessId, List.of(serviceIds)));
+    }
+
+    @Test
+    void theSetFormReturnsOnlyActiveStaffMembersAssignedToEveryServiceInIdOrder() {
+        UUID business = fixtures.business("ACTIVE", "Europe/Sofia");
+        UUID first = fixtures.service(business, 30, true);
+        UUID second = fixtures.service(business, 30, true);
+        UUID third = fixtures.service(business, 30, true);
+        UUID all = fixtures.staffMember(business, true);
+        UUID alsoAll = fixtures.staffMember(business, true);
+        UUID missingThird = fixtures.staffMember(business, true);
+        UUID onlyFirst = fixtures.staffMember(business, true);
+        UUID inactive = fixtures.staffMember(business, false);
+        for (UUID service : List.of(first, second, third)) {
+            fixtures.assign(business, all, service);
+            fixtures.assign(business, alsoAll, service);
+            fixtures.assign(business, inactive, service);
+        }
+        fixtures.assign(business, missingThird, first);
+        fixtures.assign(business, missingThird, second);
+        fixtures.assign(business, onlyFirst, first);
+        fixtures.period(business, all, DayOfWeek.MONDAY, "09:00", "10:00");
+
+        assertThat(findAll(business, first, second, third)).extracting(EligibleStaffMember::id)
+                .containsExactlyInAnyOrder(all, alsoAll)
+                .isSortedAccordingTo(Comparator.comparing(UUID::toString));
+        assertThat(findAll(business, first, second)).extracting(EligibleStaffMember::id)
+                .containsExactlyInAnyOrder(all, alsoAll, missingThird);
+        assertThat(findAll(business, first)).extracting(EligibleStaffMember::id)
+                .containsExactlyInAnyOrder(all, alsoAll, missingThird, onlyFirst);
+        assertThat(findAll(business, first, second, third).stream()
+                .filter(member -> member.id().equals(all)).findFirst().orElseThrow().weeklyPeriods())
+                .containsExactly(period(DayOfWeek.MONDAY, 9, 0, 10, 0));
+    }
+
+    @Test
+    void theSetFormOfOneServiceEqualsTheOneServiceForm() {
+        UUID business = fixtures.business("ACTIVE", "Europe/Sofia");
+        UUID service = fixtures.service(business, 30, true);
+        UUID staff = fixtures.staffMember(business, true);
+        fixtures.assign(business, staff, service);
+        fixtures.period(business, staff, DayOfWeek.TUESDAY, "09:00", "10:00");
+
+        assertThat(findAll(business, service)).isEqualTo(find(business, service));
+    }
+
+    @Test
+    void theSetFormNeverReturnsAStaffMemberOfAnotherBusinessOrForAForeignService() {
+        UUID business = fixtures.business("ACTIVE", "Europe/Sofia");
+        UUID other = fixtures.business("ACTIVE", "Europe/Sofia");
+        UUID service = fixtures.service(business, 30, true);
+        UUID foreign = fixtures.service(other, 30, true);
+        UUID staff = fixtures.staffMember(business, true);
+        UUID foreignStaff = fixtures.staffMember(other, true);
+        fixtures.assign(business, staff, service);
+        fixtures.assign(other, foreignStaff, foreign);
+
+        assertThat(findAll(business, service, foreign)).isEmpty();
+        assertThat(findAll(business, service)).extracting(EligibleStaffMember::id)
+                .containsExactly(staff);
+    }
+
+    @Test
+    void theSetFormRejectsEmptyAndDuplicatedSelectionsAndRequiresATransaction() {
+        UUID business = fixtures.business("ACTIVE", "Europe/Sofia");
+        UUID service = fixtures.service(business, 30, true);
+
+        assertThatThrownBy(() -> findAll(business)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> findAll(business, service, service))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> access.findEligibleForServices(business, List.of(service)))
+                .isInstanceOf(IllegalTransactionStateException.class);
+    }
+
     private static WorkingPeriod period(
             DayOfWeek day, int startHour, int startMinute, int endHour, int endMinute) {
         return new WorkingPeriod(

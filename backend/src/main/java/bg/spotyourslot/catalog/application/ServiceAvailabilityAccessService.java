@@ -4,6 +4,8 @@ import bg.spotyourslot.catalog.ServiceAvailabilityAccess;
 import bg.spotyourslot.catalog.infrastructure.ServicePersistenceException.UnexpectedFailure;
 import bg.spotyourslot.catalog.infrastructure.ServiceStore;
 import java.time.Duration;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
@@ -26,6 +28,21 @@ public class ServiceAvailabilityAccessService implements ServiceAvailabilityAcce
                     .filter(row -> row.active())
                     .map(row -> new BookableService(
                             row.id(), Duration.ofMinutes(row.durationMinutes())));
+        } catch (UnexpectedFailure exception) {
+            throw new ServiceAvailabilityFailure(exception);
+        }
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY, readOnly = true)
+    public List<BookableService> findBookableServices(
+            UUID businessId, Collection<UUID> serviceIds) {
+        try {
+            return store.findReferences(businessId, serviceIds).stream()
+                    .filter(row -> row.active())
+                    .map(row -> new BookableService(
+                            row.id(), Duration.ofMinutes(row.durationMinutes())))
+                    .toList();
         } catch (UnexpectedFailure exception) {
             throw new ServiceAvailabilityFailure(exception);
         }

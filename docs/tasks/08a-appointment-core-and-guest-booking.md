@@ -1308,6 +1308,10 @@ Two gaps found in the ADR-0027 specification were closed before any implementati
    The golden vectors, a PostgreSQL ordering test, a lock-statement test, a deadlock test across the high-bit boundary, and a guard against `UUID.compareTo` are in the plan. **Observation, not changed:** committed code uses Java's signed order for the published availability slot's StaffMember list invariant and for the final identifier tie-break of the deterministic
    StaffMember assignment; neither decides a lock, and aligning them would change which StaffMember a tie assigns, so it is a separate decision.
 
+### Multi-Service phase M2 (availability and eligibility) implemented (2026-10-12)
+
+The set-based `AvailabilityQuery`, the intersection eligibility contracts, the summed duration with the 480-minute ceiling, and the internal booking-options read model are implemented and verified; the record is in [task 08b](08b-multi-service-guest-booking-plan.md). **Multi-Service booking is still not implemented**: orchestration, fingerprinting, HTTP, and the frontend are untouched, the booking still calls the one-Service method, the product still books one Service, issue #18 is not complete, and M3 has not started.
+
 ### Multi-Service phase M1 (persistence) implemented (2026-10-07)
 
 `V13` (the `appointment_service` lines, `service_count`, the widened visit total, the backfill, and the deferred and immutability triggers), the Appointment domain's Service lines, and the store's writing and reading of them are implemented and verified (complete backend `verify`: 3240 tests, 0 failures); the record is in

@@ -48,6 +48,31 @@ public final class AvailabilityRecords {
     }
 
     /**
+     * The result of a calculation for a selection of one to five Services (ADR-0027).
+     *
+     * @param snapshot the slots of the whole visit; {@link AvailabilitySnapshot#occupiedDuration()}
+     *        is the sum of the selected Service durations
+     * @param eligibleStaffMemberIds the active StaffMembers assigned to every selected Service
+     *        that were considered, ordered by ID: all of them for "no preference", exactly the
+     *        requested one otherwise. Empty means that nobody supports the complete selection,
+     *        which differs from a non-empty list whose snapshot has no slots (eligible
+     *        StaffMembers without available time). Internal application information, not a
+     *        public-exposure decision.
+     */
+    public record SelectionAvailability(
+            AvailabilitySnapshot snapshot, List<UUID> eligibleStaffMemberIds) {
+        public SelectionAvailability {
+            Objects.requireNonNull(snapshot, "snapshot");
+            eligibleStaffMemberIds = List.copyOf(eligibleStaffMemberIds);
+        }
+
+        /** Whether at least one StaffMember supports the complete selection. */
+        public boolean hasEligibleStaffMembers() {
+            return !eligibleStaffMemberIds.isEmpty();
+        }
+    }
+
+    /**
      * One bookable start instant. The instant is the identity; the offset keeps a
      * repeated wall-clock time distinguishable. The StaffMember IDs are internal
      * application information for future deterministic assignment, ordered by

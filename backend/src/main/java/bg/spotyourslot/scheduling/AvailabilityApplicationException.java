@@ -8,6 +8,7 @@ package bg.spotyourslot.scheduling;
 public abstract sealed class AvailabilityApplicationException extends RuntimeException
         permits AvailabilityApplicationException.BusinessNotBookable,
                 AvailabilityApplicationException.ServiceNotBookable,
+                AvailabilityApplicationException.SelectionTooLong,
                 AvailabilityApplicationException.StaffMemberNotEligible,
                 AvailabilityApplicationException.AvailabilityFailure {
     private AvailabilityApplicationException(String safeMessage, Throwable cause) {
@@ -25,6 +26,16 @@ public abstract sealed class AvailabilityApplicationException extends RuntimeExc
     public static final class ServiceNotBookable extends AvailabilityApplicationException {
         public ServiceNotBookable() {
             super("Service is not available for booking", null);
+        }
+    }
+
+    /**
+     * The current durations of an otherwise valid Service selection sum to more than the
+     * 480-minute visit ceiling (ADR-0027). Raised only after every Service was found bookable.
+     */
+    public static final class SelectionTooLong extends AvailabilityApplicationException {
+        public SelectionTooLong() {
+            super("Selected Services exceed the maximum visit duration", null);
         }
     }
 

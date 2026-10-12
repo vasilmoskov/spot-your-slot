@@ -2,7 +2,7 @@
 
 ## Metadata
 
-- **Status:** Accepted (the product decisions were approved by the product owner on 2026-10-07; this record has not yet had an independent review, and **nothing in it is implemented**)
+- **Status:** Accepted (the product decisions were approved by the product owner on 2026-10-07; this record has not yet had an independent review; phases M1 (persistence) and M2 (availability and eligibility) are implemented, everything from section 5 on is not)
 - **Decision date:** 2026-10-07
 - **Recorded date:** 2026-10-07
 - **Related issues:** #18 (production public booking still waits for #21; #19 is unchanged)
@@ -239,7 +239,17 @@ Phase M1 implemented sections 3 and 11 (persistence only) in `V13__add_appointme
 - **Triggers.** The deferred whole-visit rule is two constraint triggers (after insert or update of the Appointment, after insert of a line) running one function; both are `DEFERRABLE INITIALLY DEFERRED` and appear in `pg_constraint` with kind `t`. The immutability rule is an ordinary `BEFORE UPDATE OR DELETE` row trigger. The verification block at the end of the migration runs before the triggers are created.
 - **Failure translation.** The line foreign keys are `UnknownReference`; the new checks, the two line unique constraints, `22003`, and a not-null violation of a line column are `InvalidData`; the immutability violation (`23000`) is an `UnexpectedFailure` that keeps only its SQLState; every translated failure is fixed text without a cause.
 - **ADR-0025 inventory.** `AppointmentStore INSERT appointment_service` is classified as the booking's own write; no schedule revision bump is involved.
-- **Not yet implemented:** everything from section 4 on (availability, normalization and the fingerprint, locks and the review check, HTTP, frontend).
+- **Not yet implemented (at M1):** everything from section 4 on; section 4 is implemented in M2 below.
+
+## Implementation notes (phase M2, 2026-10-12)
+
+Phase M2 implemented section 4 (availability and eligibility) and the internal part of the booking-options read model of section 8; the record and the evidence are in [task 08b](../tasks/08b-multi-service-guest-booking-plan.md). Refinements of this record:
+
+- **Contract shape.** `AvailabilityQuery.calculate(businessId, serviceIds, staffMemberIdOrNull)` returns `SelectionAvailability(snapshot, eligibleStaffMemberIds)`; the one-Service method delegates and returns the snapshot. An empty `eligibleStaffMemberIds` is "nobody supports the complete selection"; non-empty with no slots is "eligible but no available time".
+- **Bulk reads.** The Services come from one bulk statement (`ServiceAvailabilityAccess.findBookableServices`, the existing `findReferences`), the intersection from one statement (`StaffAvailabilityAccess.findEligibleForServices`, `PublicStaffAccess.findBookableStaffForServices`: the count of a StaffMember's assignments inside the requested set equals the set size). The statement count does not depend on the number of Services.
+- **Failures.** A selection that is empty, duplicated, or larger than five is a caller error (`IllegalArgumentException`, before any clock or data read); a missing, foreign, or inactive Service is `ServiceNotBookable` and takes precedence over the new typed `SelectionTooLong` (durations summing above 480 minutes); the public read model maps these to `PublicBookingUnavailable.Service` and `.SelectionTooLong`. The HTTP codes (`BOOKING_SERVICE_UNAVAILABLE`, `BOOKING_SELECTION_TOO_LONG`) remain M4.
+- **Unsigned order not needed here.** No M2 code orders identifiers for locks or request identity. The slot StaffMember list keeps its existing Java-order invariant; the unsigned comparator remains an M3 deliverable.
+- **Not yet implemented:** everything from section 5 on (normalization and the fingerprint, locks and the review check, HTTP, frontend).
 
 ## Conditions for revisiting
 

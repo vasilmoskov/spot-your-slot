@@ -1,6 +1,7 @@
 package bg.spotyourslot.workforce;
 
 import bg.spotyourslot.workforce.StaffWorkingScheduleRecords.WorkingPeriod;
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -21,6 +22,17 @@ public interface StaffAvailabilityAccess {
      * here.
      */
     List<EligibleStaffMember> findEligibleForService(UUID businessId, UUID serviceId);
+
+    /**
+     * The set-based form (ADR-0027): one joined statement whatever the number of Services or
+     * StaffMembers, inside the caller's transaction. Returns only the active StaffMembers of the
+     * Business assigned to <em>every</em> requested Service (the intersection), ordered by ID,
+     * each with its recurring periods. A single Service gives exactly
+     * {@link #findEligibleForService}. No Service's own active state is checked here.
+     *
+     * @param serviceIds one or more distinct identifiers; anything else is rejected
+     */
+    List<EligibleStaffMember> findEligibleForServices(UUID businessId, Collection<UUID> serviceIds);
 
     /**
      * @param weeklyPeriods recurring local periods ordered by weekday, start, then end

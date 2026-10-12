@@ -9,6 +9,7 @@ import bg.spotyourslot.integration.AvailabilityFixtures;
 import bg.spotyourslot.integration.PostgresIntegrationTest;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -93,6 +94,52 @@ class ServiceAvailabilityAccessIntegrationTests extends PostgresIntegrationTest 
         UUID service = fixtures.service(business, 30, true);
 
         assertThatThrownBy(() -> access.findBookableService(business, service))
+                .isInstanceOf(IllegalTransactionStateException.class);
+    }
+
+    // ---- the bulk form (ADR-0027) ----
+
+    private List<BookableService> findAll(UUID businessId, UUID... serviceIds) {
+        return transaction.execute(
+                status -> access.findBookableServices(businessId, List.of(serviceIds)));
+    }
+
+    @Test
+    void theBulkFormReturnsTheActiveRequestedServicesWithTheirDurations() {
+        UUID business = fixtures.business("ACTIVE", "Europe/Sofia");
+        UUID first = fixtures.service(business, 30, true);
+        UUID second = fixtures.service(business, 45, true);
+        UUID inactive = fixtures.service(business, 60, false);
+        UUID unrequested = fixtures.service(business, 15, true);
+
+        assertThat(findAll(business, first, second, inactive))
+                .containsExactlyInAnyOrder(
+                        new BookableService(first, Duration.ofMinutes(30)),
+                        new BookableService(second, Duration.ofMinutes(45)));
+        assertThat(findAll(business, first)).containsExactly(
+                new BookableService(first, Duration.ofMinutes(30)));
+        assertThat(unrequested).isNotIn(findAll(business, first, second)
+                .stream().map(BookableService::id).toList());
+    }
+
+    @Test
+    void theBulkFormOmitsForeignAndUnknownServices() {
+        UUID businessA = fixtures.business("ACTIVE", "Europe/Sofia");
+        UUID businessB = fixtures.business("ACTIVE", "Europe/Sofia");
+        UUID ownService = fixtures.service(businessA, 30, true);
+        UUID serviceOfB = fixtures.service(businessB, 30, true);
+
+        assertThat(findAll(businessA, ownService, serviceOfB, UUID.randomUUID()))
+                .extracting(BookableService::id).containsExactly(ownService);
+        assertThat(findAll(businessA, serviceOfB)).isEmpty();
+    }
+
+    @Test
+    void theBulkFormRequiresTheCallersTransaction() {
+        UUID business = fixtures.business("ACTIVE", "Europe/Sofia");
+        UUID service = fixtures.service(business, 30, true);
+
+        assertThatThrownBy(() -> access.findBookableServices(business, List.of(service)))
                 .isInstanceOf(IllegalTransactionStateException.class);
     }
 }

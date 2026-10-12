@@ -1,5 +1,6 @@
 package bg.spotyourslot.workforce;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -17,6 +18,16 @@ public interface PublicStaffAccess {
      *         canonical display name and then identifier (the existing StaffMember name order)
      */
     List<PublicStaffMember> findBookableStaff(UUID businessId, UUID serviceId);
+
+    /**
+     * The set-based form (ADR-0027): the intersection, that is the active StaffMembers assigned
+     * to every requested Service, in the same order. One statement whatever the number of
+     * Services; empty when nobody supports the whole selection.
+     *
+     * @param serviceIds one or more distinct identifiers; anything else is rejected
+     */
+    List<PublicStaffMember> findBookableStaffForServices(
+            UUID businessId, Collection<UUID> serviceIds);
 
     /**
      * @param id a public reference only inside its Business and never an authority (ADR-0026)
