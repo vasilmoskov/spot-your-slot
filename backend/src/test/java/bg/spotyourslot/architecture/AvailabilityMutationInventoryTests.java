@@ -84,6 +84,8 @@ class AvailabilityMutationInventoryTests {
         put(inventory, Protection.BUMPED, "ScheduleExceptionStore", "INSERT", "schedule_exception_period");
         // Booking and the revision itself.
         put(inventory, Protection.BOOKING_WRITE, "AppointmentStore", "INSERT", "appointment");
+        // The Service lines of a visit (ADR-0027): the booking's own write, in the same transaction.
+        put(inventory, Protection.BOOKING_WRITE, "AppointmentStore", "INSERT", "appointment_service");
         put(inventory, Protection.REVISION_ROW,
                 "ScheduleRevisionStore", "UPDATE", "business_schedule_revision");
         return inventory;

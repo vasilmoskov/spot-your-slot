@@ -3,6 +3,7 @@ package bg.spotyourslot.booking.domain;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -32,7 +33,8 @@ public record Appointment(
         BookingAttempt attempt,
         long version,
         Instant createdAt,
-        Instant updatedAt) {
+        Instant updatedAt,
+        List<AppointmentServiceLine> serviceLines) {
     public Appointment {
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(businessId, "businessId");
@@ -51,6 +53,7 @@ public record Appointment(
         Objects.requireNonNull(publicReference, "publicReference");
         Objects.requireNonNull(createdAt, "createdAt");
         Objects.requireNonNull(updatedAt, "updatedAt");
+        Objects.requireNonNull(serviceLines, "serviceLines");
         AppointmentRules.requireInstant(startAt);
         AppointmentRules.requireInstant(endAt);
         AppointmentRules.requireDuration(durationMinutes);
@@ -60,12 +63,14 @@ public record Appointment(
         if (!occupiedUntil.equals(endAt)) {
             throw new IllegalArgumentException("Appointment occupied end must equal its end");
         }
-        priceEur = AppointmentRules.requirePrice(priceEur);
+        priceEur = AppointmentRules.requireVisitPrice(priceEur);
         AppointmentRules.requireTimezone(timezone);
         AppointmentRules.requireSnapshotName(serviceName);
         AppointmentRules.requireSnapshotName(staffDisplayName);
         AppointmentRules.requireNote(customerNote);
         AppointmentRules.requirePublicReference(publicReference);
+        serviceLines = AppointmentRules.requireVisit(
+                serviceLines, serviceId, serviceName, durationMinutes, priceEur);
         if (version < 0) {
             throw new IllegalArgumentException("Appointment version must not be negative");
         }
@@ -75,6 +80,62 @@ public record Appointment(
         if (source == AppointmentSource.ONLINE && attempt == null) {
             throw new IllegalArgumentException("An online Appointment requires a booking attempt");
         }
+    }
+
+    /**
+     * A single-Service Appointment: its one line is copied from the headline values (ADR-0027), so
+     * code written before multi-Service visits keeps working unchanged.
+     */
+    public Appointment(
+            UUID id,
+            UUID businessId,
+            UUID customerId,
+            UUID serviceId,
+            UUID staffMemberId,
+            AppointmentSource source,
+            AppointmentStatus status,
+            Instant startAt,
+            Instant endAt,
+            Instant occupiedUntil,
+            String timezone,
+            int durationMinutes,
+            BigDecimal priceEur,
+            String serviceName,
+            String staffDisplayName,
+            String customerNote,
+            String publicReference,
+            BookingAttempt attempt,
+            long version,
+            Instant createdAt,
+            Instant updatedAt) {
+        this(
+                id,
+                businessId,
+                customerId,
+                serviceId,
+                staffMemberId,
+                source,
+                status,
+                startAt,
+                endAt,
+                occupiedUntil,
+                timezone,
+                durationMinutes,
+                priceEur,
+                serviceName,
+                staffDisplayName,
+                customerNote,
+                publicReference,
+                attempt,
+                version,
+                createdAt,
+                updatedAt,
+                List.of(new AppointmentServiceLine(1, serviceId, serviceName, durationMinutes, priceEur)));
+    }
+
+    /** The number of Services in the visit, one to five. */
+    public int serviceCount() {
+        return serviceLines.size();
     }
 
     /** Only a {@code CONFIRMED} Appointment blocks its StaffMember's time. */

@@ -61,15 +61,72 @@ class AppointmentStoreFailureTranslationTests {
         "appointment_public_reference_format", "appointment_attempt_hash_length",
         "appointment_fingerprint_length", "appointment_fingerprint_versions_positive",
         "appointment_idempotency_all_or_none", "appointment_online_requires_idempotency",
-        "appointment_version_nonnegative", "appointment_timestamps_finite_ordered"})
+        "appointment_version_nonnegative", "appointment_timestamps_finite_ordered",
+        // The V13 constraints of the visit and its Service lines.
+        "appointment_service_count_range", "appointment_service_position_range",
+        "appointment_service_duration_range", "appointment_service_price_nonnegative",
+        "appointment_service_line_name_canonical", "appointment_visit_consistent"})
     void everyApprovedCheckConstraintIsInvalidData(String constraint) {
         assertThat(translate(error("23514", constraint, null, null))).isInstanceOf(InvalidData.class);
     }
 
     @Test
-    void theStoreKnowsExactlyTheNineteenChecksAndFourForeignKeysOfTheMigration() {
-        assertThat(AppointmentStore.CHECK_CONSTRAINTS).hasSize(19);
-        assertThat(AppointmentStore.FOREIGN_KEYS).hasSize(4);
+    void theStoreKnowsExactlyTheChecksAndForeignKeysOfV11AndV13() {
+        // Nineteen checks and four foreign keys of V11, plus six checks and two foreign keys of V13.
+        assertThat(AppointmentStore.CHECK_CONSTRAINTS).hasSize(25);
+        assertThat(AppointmentStore.FOREIGN_KEYS).hasSize(6);
+        assertThat(AppointmentStore.LINE_UNIQUE_CONSTRAINTS)
+                .containsExactlyInAnyOrder("appointment_service_pkey", "appointment_service_distinct");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"appointment_service_appointment_fk", "appointment_service_service_fk"})
+    void everyLineForeignKeyIsAnUnknownReference(String constraint) {
+        assertThat(translate(error("23503", constraint, null, null)))
+                .isInstanceOf(UnknownReference.class);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"appointment_service_pkey", "appointment_service_distinct"})
+    void aDuplicateServiceOrPositionInOneVisitIsInvalidDataNotAnOrdinaryConflict(String constraint) {
+        assertThat(translate(error("23505", constraint, null, null))).isInstanceOf(InvalidData.class);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"appointment_id", "position", "business_id", "service_id", "service_name",
+        "duration_minutes", "price_eur"})
+    void aNotNullViolationOfAServiceLineColumnIsInvalidData(String column) {
+        assertThat(translate(error("23502", null, "appointment_service", column)))
+                .isInstanceOf(InvalidData.class);
+    }
+
+    @Test
+    void aNumericOverflowIsInvalidDataWithoutAConstraint() {
+        assertThat(translate(error("22003", null, null, null))).isInstanceOf(InvalidData.class);
+    }
+
+    @Test
+    void theImmutabilityViolationIsAnUnexpectedFailureThatKeepsOnlyItsSqlState() {
+        var failure = translate(error("23000", "appointment_service_immutable", "appointment_service", null));
+
+        assertThat(failure).isInstanceOf(UnexpectedFailure.class);
+        assertThat(((UnexpectedFailure) failure).sqlState()).isEqualTo("23000");
+        assertThat(failure.getMessage()).isEqualTo("Appointment persistence operation failed");
+        assertThat(failure.getCause()).isNull();
+    }
+
+    @Test
+    void aLineConstraintNameUnderTheWrongSqlStateOrTableIsNotClassified() {
+        assertThat(translate(error("23514", "appointment_service_pkey", null, null)))
+                .isInstanceOf(UnexpectedFailure.class);
+        assertThat(translate(error("23505", "appointment_service_line_name_canonical", null, null)))
+                .isInstanceOf(UnexpectedFailure.class);
+        assertThat(translate(error("23503", "appointment_visit_consistent", null, null)))
+                .isInstanceOf(UnexpectedFailure.class);
+        assertThat(translate(error("23502", null, "appointment_service", "service_count")))
+                .isInstanceOf(UnexpectedFailure.class);
+        assertThat(translate(error("23502", null, "customer", "position")))
+                .isInstanceOf(UnexpectedFailure.class);
     }
 
     @ParameterizedTest

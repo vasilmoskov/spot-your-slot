@@ -3,6 +3,7 @@ package bg.spotyourslot.booking.domain;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -32,7 +33,8 @@ public record NewAppointment(
         String customerNote,
         String publicReference,
         BookingAttempt attempt,
-        Instant createdAt) {
+        Instant createdAt,
+        List<AppointmentServiceLine> serviceLines) {
     public NewAppointment {
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(businessId, "businessId");
@@ -47,19 +49,69 @@ public record NewAppointment(
         Objects.requireNonNull(staffDisplayName, "staffDisplayName");
         Objects.requireNonNull(publicReference, "publicReference");
         Objects.requireNonNull(createdAt, "createdAt");
+        Objects.requireNonNull(serviceLines, "serviceLines");
         AppointmentRules.requireInstant(startAt);
         AppointmentRules.requireInstant(createdAt);
         AppointmentRules.requireDuration(durationMinutes);
         AppointmentRules.requireInstant(startAt.plus(Duration.ofMinutes(durationMinutes)));
-        priceEur = AppointmentRules.requirePrice(priceEur);
+        priceEur = AppointmentRules.requireVisitPrice(priceEur);
         AppointmentRules.requireTimezone(timezone);
         AppointmentRules.requireSnapshotName(serviceName);
         AppointmentRules.requireSnapshotName(staffDisplayName);
         AppointmentRules.requireNote(customerNote);
         AppointmentRules.requirePublicReference(publicReference);
+        serviceLines = AppointmentRules.requireVisit(
+                serviceLines, serviceId, serviceName, durationMinutes, priceEur);
         if (source == AppointmentSource.ONLINE && attempt == null) {
             throw new IllegalArgumentException("An online Appointment requires a booking attempt");
         }
+    }
+
+    /**
+     * A single-Service Appointment: its one line is copied from the headline values, so every caller
+     * written before multi-Service visits (ADR-0027) keeps working unchanged. The duration and price
+     * are then the totals of that one line.
+     */
+    public NewAppointment(
+            UUID id,
+            UUID businessId,
+            UUID customerId,
+            UUID serviceId,
+            UUID staffMemberId,
+            AppointmentSource source,
+            Instant startAt,
+            int durationMinutes,
+            BigDecimal priceEur,
+            String timezone,
+            String serviceName,
+            String staffDisplayName,
+            String customerNote,
+            String publicReference,
+            BookingAttempt attempt,
+            Instant createdAt) {
+        this(
+                id,
+                businessId,
+                customerId,
+                serviceId,
+                staffMemberId,
+                source,
+                startAt,
+                durationMinutes,
+                priceEur,
+                timezone,
+                serviceName,
+                staffDisplayName,
+                customerNote,
+                publicReference,
+                attempt,
+                createdAt,
+                List.of(new AppointmentServiceLine(1, serviceId, serviceName, durationMinutes, priceEur)));
+    }
+
+    /** The number of Services in the visit, one to five. */
+    public int serviceCount() {
+        return serviceLines.size();
     }
 
     /** The Service end: the start plus the snapshotted duration in elapsed time. */

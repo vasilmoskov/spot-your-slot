@@ -92,7 +92,7 @@ class AppointmentSchemaIntegrationTests extends PostgresIntegrationTest {
     // ---- migration integrity -------------------------------------------------
 
     @Test
-    void migrationsFromEmptyAreExactlyV1ThroughV12WithV12Newest() {
+    void migrationsFromEmptyAreExactlyV1ThroughV13WithV13Newest() {
         List<String> versions = jdbc.sql("""
                         SELECT version
                         FROM flyway_schema_history
@@ -103,7 +103,7 @@ class AppointmentSchemaIntegrationTests extends PostgresIntegrationTest {
                 .list();
 
         assertThat(versions)
-                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12");
+                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13");
     }
 
     @Test
@@ -194,7 +194,7 @@ class AppointmentSchemaIntegrationTests extends PostgresIntegrationTest {
                 "occupied_until|timestamp with time zone|NO||,",
                 "timezone|character varying|NO|100|,",
                 "duration_minutes|integer|NO||32,0",
-                "price_eur|numeric|NO||12,2",
+                "price_eur|numeric|NO||13,2",
                 "service_name|character varying|NO|200|,",
                 "staff_display_name|character varying|NO|200|,",
                 "customer_note|character varying|YES|500|,",
@@ -205,7 +205,8 @@ class AppointmentSchemaIntegrationTests extends PostgresIntegrationTest {
                 "fingerprint_key_version|smallint|YES||16,0",
                 "version|bigint|NO||64,0",
                 "created_at|timestamp with time zone|NO||,",
-                "updated_at|timestamp with time zone|NO||,");
+                "updated_at|timestamp with time zone|NO||,",
+                "service_count|smallint|NO||16,0");
     }
 
     @Test
@@ -228,6 +229,7 @@ class AppointmentSchemaIntegrationTests extends PostgresIntegrationTest {
                 "appointment_instants_finite", "appointment_duration_minutes_range",
                 "appointment_end_matches_duration", "appointment_occupied_until_equals_end",
                 "appointment_price_nonnegative", "appointment_timezone_not_blank",
+                "appointment_service_count_range",
                 "appointment_service_name_canonical", "appointment_staff_display_name_canonical",
                 "appointment_customer_note_plain_text", "appointment_public_reference_format",
                 "appointment_attempt_hash_length", "appointment_fingerprint_length",
@@ -237,8 +239,11 @@ class AppointmentSchemaIntegrationTests extends PostgresIntegrationTest {
                 "appointment_business_id_id_unique",
                 "appointment_business_public_reference_unique",
                 "appointment_business_attempt_hash_unique",
-                "appointment_staff_no_overlap");
+                "appointment_staff_no_overlap",
+                // The deferred whole-visit trigger of V13 is registered as a constraint of kind t.
+                "appointment_visit_consistent_on_appointment");
         assertThat(constraints.values().stream().filter("f"::equals).count()).isEqualTo(4);
+        assertThat(constraints.get("appointment_visit_consistent_on_appointment")).isEqualTo("t");
         assertThat(constraints.get("appointment_staff_no_overlap")).isEqualTo("x");
         assertThat(constraints.get("appointment_pkey")).isEqualTo("p");
 
@@ -470,7 +475,7 @@ class AppointmentSchemaIntegrationTests extends PostgresIntegrationTest {
                     : violationOf(() -> fixtures.insertRow(row));
             if (domainAccepts) {
                 fixtures.insertRow(row);
-                jdbc.sql("DELETE FROM appointment").update();
+                jdbc.sql("TRUNCATE appointment CASCADE").update();
             } else {
                 assertThat(violation.sqlState()).as(column).isEqualTo(CHECK_VIOLATION);
                 assertThat(violation.constraint()).as(column).isIn(

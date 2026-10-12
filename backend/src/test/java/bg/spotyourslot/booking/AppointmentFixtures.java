@@ -48,6 +48,11 @@ public final class AppointmentFixtures {
         return new Tenant(business, service, staff, customer(business));
     }
 
+    /** An additional active Service of the Business (the line tests need several). */
+    public UUID service(UUID business, int minutes) {
+        return availability.service(business, minutes, true);
+    }
+
     public UUID staffMember(UUID business, UUID service) {
         UUID staff = availability.staffMember(business, true);
         availability.assign(business, staff, service);
@@ -156,8 +161,27 @@ public final class AppointmentFixtures {
         return OffsetDateTime.ofInstant(instant, ZoneOffset.UTC);
     }
 
-    /** Inserts the row exactly as given, so a test can break exactly one column. */
+    /**
+     * Inserts the row exactly as given, so a test can break exactly one column, together with its
+     * one headline Service line (ADR-0027). The two statements run as one implicit transaction, so
+     * the deferred whole-visit trigger of V13 sees both at commit, and a violation of the Appointment
+     * row is raised by the first statement exactly as before.
+     */
     public void insertRow(Map<String, Object> row) {
+        String columns = String.join(", ", row.keySet());
+        String names = String.join(", ", row.keySet().stream().map(name -> ":" + name).toList());
+        JdbcClient.StatementSpec statement = jdbc.sql(
+                "INSERT INTO appointment(" + columns + ") VALUES (" + names + "); "
+                        + "INSERT INTO appointment_service(appointment_id, position, business_id, "
+                        + "service_id, service_name, duration_minutes, price_eur) "
+                        + "SELECT id, 1, business_id, service_id, service_name, duration_minutes, "
+                        + "price_eur FROM appointment WHERE id = :id");
+        row.forEach(statement::param);
+        statement.update();
+    }
+
+    /** Inserts only the Appointment row, with no line: for tests of the whole-visit rule itself. */
+    public void insertRowWithoutLines(Map<String, Object> row) {
         String columns = String.join(", ", row.keySet());
         String names = String.join(", ", row.keySet().stream().map(name -> ":" + name).toList());
         JdbcClient.StatementSpec statement = jdbc.sql(

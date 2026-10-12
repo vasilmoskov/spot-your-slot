@@ -2,10 +2,10 @@
 
 ## Status
 
-**Decided and documented; not implemented.** The product owner approved the multi-Service model on 2026-10-07 and the decisions are recorded in
+**Decided and documented. Phase M1 (persistence) is implemented and verified and awaits review; M2 to M7 are not started.** The product owner approved the multi-Service model on 2026-10-07 and the decisions are recorded in
 [ADR-0027](../decisions/ADR-0027-book-several-services-as-one-atomic-visit-with-service-lines-a-versioned-set-fingerprint-and-an-explicit-review-consistency-check.md)
 (read it for the normative contract, schema, fingerprint encoding, and review-consistency check; this task lists the work and the verification). The documentation
-phase is the only phase done. **Until the implementation phases below are completed and approved, the product books exactly one Service per booking**: one StaffMember, one POST, one
+phase and M1 are done. **Until the remaining phases below are completed and approved, the product books exactly one Service per booking**: one StaffMember, one POST, one
 Appointment. The single-Service limitation is real and is not hidden in the interface. Issue #18 is not complete, issue #19 is unchanged, and production public booking still
 waits for issue #21. The original Phase 8 of issue #18 (browser journeys) is **not started**; the multi-Service browser journeys are phase M7 below and replace it.
 
@@ -55,7 +55,7 @@ Each phase is its own change with its own approval, is verified before the next 
 
 | Phase | Scope | Main verification |
 |---|---|---|
-| **M1 Persistence** | `V13__add_appointment_services.sql` (the `price_eur` widening to `numeric(13,2)`, the table, `service_count`, backfill, end-of-migration verification, deferred visit-consistency trigger, immutability trigger); the visit-total price rule of the Appointment domain (11 integer digits, exact `BigDecimal`); `AppointmentStore` writes and reads the lines; the Appointment domain records carry the lines; typed translation of the new constraint | real-PostgreSQL migration and constraint tests (below); V1 to V12 byte-identical |
+| **M1 Persistence** (implemented, verified, awaiting review; see the M1 record) | `V13__add_appointment_services.sql` (the `price_eur` widening to `numeric(13,2)`, the table, `service_count`, backfill, end-of-migration verification, deferred visit-consistency trigger, immutability trigger); the visit-total price rule of the Appointment domain (11 integer digits, exact `BigDecimal`); `AppointmentStore` writes and reads the lines; the Appointment domain records carry the lines; typed translation of the new constraint | real-PostgreSQL migration and constraint tests (below); V1 to V12 byte-identical |
 | **M2 Availability and eligibility** | set-based `AvailabilityQuery`; the staff-eligibility contract reports the intersection; summed duration; the booking-options read model; no HTTP | engine and integration tests including a visit across 2026-10-25 |
 | **M3 Orchestration and fingerprinting** | normalized multi-Service request; encoding v2 with golden vectors and v1 kept; the shared unsigned UUID comparator; Service locks through the `ORDER BY id` statement; the review-consistency check; the single insert of the visit and lines; replay of both shapes | transaction, replay-compatibility, concurrency, rollback, and drift tests |
 | **M4 HTTP contract** | strict parser for both shapes; the two read routes; the new response; the two codes; exact security matchers; limiter and body bound unchanged | contract, privacy, security-routing, and compatibility tests |
@@ -105,3 +105,50 @@ The stable acceptance for the final UI (M5 and M6): real checkboxes in a labelle
 ## Remaining questions
 
 None blocks starting M1. For the human review: the wording of `BOOKING_REVIEW_CHANGED`, `BOOKING_SELECTION_TOO_LONG`, the frozen-state sentence, the staff-step sentence, and the limit explanation is **Proposed**; the legacy request shape is kept for compatibility without the review check and its retirement is a later decision.
+
+## Phase M1 record: persistence (implemented and verified 2026-10-07; awaiting review and commit)
+
+Scope: the `V13` migration, the Appointment domain's Service lines and visit rules, and the store's writing and reading of the lines. **No availability, orchestration, fingerprint, HTTP, or frontend code changed**, no booking behavior changed (every booking still creates exactly one line), and M2 was not started. Base `HEAD` `010bce1` plus the uncommitted working tree.
+
+### What was implemented
+
+- **`V13__add_appointment_services.sql`** (new; V1 to V12 byte-identical): `appointment.price_eur` widened to `numeric(13,2)`; `service_count smallint NOT NULL DEFAULT 1` with `appointment_service_count_range`; the `appointment_service` table exactly as in ADR-0027 section 3
+  (primary key `(appointment_id, position)`, same-Business restrictive foreign keys `appointment_service_appointment_fk` and `appointment_service_service_fk`, `appointment_service_position_range`, `appointment_service_distinct`, `appointment_service_duration_range`,
+  `appointment_service_price_nonnegative`, `appointment_service_line_name_canonical`, the index `appointment_service_service_idx`); the deterministic backfill of one line per Appointment; the end-of-migration verification `DO` block; the deferred constraint triggers
+  `appointment_visit_consistent_on_appointment` (after insert or update of an Appointment) and `appointment_visit_consistent_on_line` (after insert of a line) running `appointment_visit_is_consistent()` (line count, positions `1..n`, exact sums of duration and price, headline equals line 1; raises `23514`
+  with constraint name `appointment_visit_consistent`); and the `BEFORE UPDATE OR DELETE` trigger `appointment_service_immutable` (raises `23000`, constraint name `appointment_service_immutable`).
+- **Domain:** `AppointmentServiceLine`; `NewAppointment` and `Appointment` gain `serviceLines` (and `serviceCount()`), validated by `AppointmentRules.requireVisit` (one to five lines, positions 1 to n, distinct Services, headline equals line 1, exact sums) and `requireVisitPrice` (exact cents,
+  at most `4 999 999 999 995`); the line price keeps the 10-integer-digit Service limit. The pre-existing constructors remain and copy the headline into one line, so every existing caller is unchanged.
+- **Store:** `AppointmentStore.insert` writes the Appointment row and then its lines (one multi-row statement) in the caller's transaction; `find` and `findByAttemptHash` read the lines (a second statement, Business-scoped); a stored line count that disagrees with `service_count` is an unexpected failure, never a trusted read.
+  The translation maps the new foreign keys to `UnknownReference`, the new checks, the two line unique constraints, the numeric overflow `22003`, and a not-null violation of a line column to `InvalidData`, and leaves the immutability violation as an `UnexpectedFailure` that keeps only its SQLState.
+
+### Verification (executed; local only, no CI run for this state)
+
+- **Focused:** the new classes `AppointmentServiceMigrationIntegrationTests` (6), `AppointmentServiceSchemaIntegrationTests` (33), `AppointmentServiceStoreIntegrationTests` (11), and `AppointmentVisitDomainTests` (17), the extended `AppointmentStoreFailureTranslationTests`, and the existing Appointment, store, busy-interval, and overlap-concurrency tests, all passing.
+- **Complete backend `./mvnw verify`: 3240 tests, 0 failures, 0 errors, 0 skipped, `BUILD SUCCESS`** (162 test classes), on the final code. The first complete run found 9 failures in other classes that legitimately encode the migration count or the write-statement inventory; they were updated, not weakened:
+  the migration lists of the Business, Customer, Schedule exception, Schedule revision, and Working schedule schema tests (and their "latest version" counts) now end at V13, and `AvailabilityMutationInventoryTests` classifies `AppointmentStore INSERT appointment_service` as the booking's own write.
+  One genuine defect of the first implementation was found by an existing translation test (a null constraint name made `Set.contains` throw) and fixed before the final run.
+- **Upgrade and backfill (real PostgreSQL, a schema migrated to V12 with Appointments of every state, then to V13):** CONFIRMED and CANCELLED, ONLINE with and MANUAL without idempotency columns, prices `9 999 999 999.99`, `0.00`, `0.01`, `25.00`, a 480-minute visit across the 2026-10-25 clock change, two Businesses. Every pre-existing column of every row is identical after the upgrade (compared as JSON), the price text is identical,
+  every Appointment has exactly one line equal to its snapshot with `service_count = 1`.
+- **Does the widening preserve the physical table file? Yes, measured:** `pg_class.relfilenode` of `appointment` is **identical before and after V13** (asserted by the test), so PostgreSQL 18.4 did not rewrite the table when `price_eur` went from `numeric(12,2)` to `numeric(13,2)`. (The same migration adds `service_count` with a constant default, which also needs no rewrite.) No rewrite means no measurable migration impact beyond the
+  constraint validation scans.
+- **A controlled corrupt fixture** (V11's name check dropped and a non-canonical snapshot name stored in a V12 schema) makes V13 fail with a `FlywayException` and **leaves nothing of V13**: no `appointment_service` table, no `service_count`, `price_eur` still `numeric(12,2)`, no successful version 13 in the history. The verification `DO` block, extracted from the migration file, refuses an Appointment without its line (`23514`).
+  An upgraded schema equals a fresh installation (columns, constraints, indexes, triggers, functions compared with the schema name normalized).
+- **Maximum aggregate price:** five lines of `9 999 999 999.99` commit with the exact total `49 999 999 999.95` (also in a schema upgraded from V12), a total one cent higher is refused at commit, a value above the column capacity is `22003`, a single line price of ten billion is `22003`; the store returns and re-reads the exact `BigDecimal` with scale 2; the domain accepts exactly the bound and rejects one cent more (`MAX_VISIT_PRICE_CENTS = 4 999 999 999 995`).
+- **Deferred constraints, immutability, tenant isolation, overlap, adjacency, rollback:** statements succeed inside the transaction and only the commit judges the visit; fewer or more lines than `service_count`, skipped or non-initial positions, a wrong duration sum, a total one cent more or less, a headline that is not line 1, an Appointment without a line, and a totals change without the lines are each refused at commit with `appointment_visit_consistent`
+  and leave nothing; duplicate Services and duplicate positions, position 0 and 6, duration 0 and 481, a negative price, and non-canonical names are each refused by their named constraint; a line with another Business's Service or Appointment is refused by the same-Business keys; lines cannot be updated or deleted, and an Appointment with lines cannot be deleted; a visit blocks its StaffMember for the whole summed interval, adjacency before and after is allowed,
+  another StaffMember is not blocked, an overlapping second visit is refused as a whole with no stray lines, a cancelled visit stops blocking; a failure after the visit and its lines were written, and a line that fails after the Appointment row succeeded, each roll the whole visit back; a foreign Business never reads a visit or its lines.
+- **Control runs (executed, each reverted, V13 restored and its hash verified):** a rule that only warns failed 14 of the new tests; removing the immutability trigger failed 4; not widening `price_eur` failed 6; allowing duplicate Services failed 3; a Service foreign key that is not same-Business failed 4; skipping the backfill failed 5; making the rule immediate instead of deferred failed 12.
+- **Migration integrity:** V1 to V12 are byte-identical to `HEAD` (`git diff HEAD` over the migrations is empty, and every checksum is pinned by `AppointmentServiceMigrationIntegrationTests`); one file was added, `V13__add_appointment_services.sql` (sha-256 `12526a8c5e5c9fab3abaa647a56da46732539544f066d97c734915da88cace4e`).
+- **Formatting:** a search over every changed Java file found no compressed empty body and no wildcard import.
+- **Not executed:** the frontend suites and the browser E2E (no frontend or API file changed), and any test of the later phases.
+
+### Deviations and limitations (for review)
+
+- The Appointment row and its lines are two statements (the row, then a multi-row insert of the lines) in the caller's transaction, so the store's earlier "every write is a single statement" comment is amended; the deferred trigger makes the order and the number of statements irrelevant to correctness.
+- The consistency trigger on `appointment` also runs on a status update (it re-checks one Appointment; it never fails for a consistent row). Both consistency triggers are visible in `pg_constraint` as kind `t`, which the existing exact-constraint test of the Appointment table now lists.
+- Direct-SQL test fixtures must write a line with the Appointment: `AppointmentFixtures.insertRow` now sends the row and its headline line in one implicit transaction, and `insertRowWithoutLines` exists for tests of the rule itself.
+- `appointment_visit_is_consistent()` fixes its `search_path` at creation (`SET search_path FROM CURRENT`); the immutability function needs none.
+- The domain's single-Service constructors keep the whole existing API; nothing outside the store reads `serviceLines` yet.
+
+M2 (availability and eligibility) is the next phase and needs its own approval.

@@ -8,7 +8,7 @@
 - Mutable records use audit fields; security/business events are append-only.
 - Appointment instants use UTC `timestamptz`; recurring schedules use local
   date/time interpreted in the Business IANA timezone.
-- EUR money uses Java `BigDecimal` and PostgreSQL `numeric(12,2)`.
+- EUR money uses Java `BigDecimal` and PostgreSQL `numeric(12,2)`; the one exception is the Appointment visit total (`appointment.price_eur`), which is `numeric(13,2)` since `V13` (ADR-0027).
 - Appointments are retained and status-transitioned, not physically deleted.
 
 ## Identity and tenancy
@@ -232,8 +232,8 @@ date_range)`.
   `business` module reads or writes it, through the published `ScheduleRevisionBump` and `ScheduleRevisionGuard`.
   Lifecycle, timezone, Service, StaffMember, and assignment changes do not advance it: each already updates the
   Business, Service, or StaffMember row that booking locks (ADR-0025 audit).
-- **appointment_service** (multi-Service extension, [ADR-0027](decisions/ADR-0027-book-several-services-as-one-atomic-visit-with-service-lines-a-versioned-set-fingerprint-and-an-explicit-review-consistency-check.md); **decided, not implemented: planned `V13__add_appointment_services.sql`**; until it exists an Appointment is exactly one Service
-  and the statements about the `appointment` columns above are complete): the immutable per-Service snapshot lines of a visit: `appointment_id`, `position` (1 to 5, primary key `(appointment_id, position)`),
+- **appointment_service** (multi-Service extension, [ADR-0027](decisions/ADR-0027-book-several-services-as-one-atomic-visit-with-service-lines-a-versioned-set-fingerprint-and-an-explicit-review-consistency-check.md); **implemented by `V13__add_appointment_services.sql` in phase M1 (persistence only): the migration, the Appointment domain's lines and visit rules, and the store's writing and reading of lines; no availability, orchestration, fingerprint, HTTP, or frontend code uses more than one line yet, so every booking still creates exactly one line**; before V13 an Appointment was exactly one Service,
+  which the statements about the `appointment` columns above describe): the immutable per-Service snapshot lines of a visit: `appointment_id`, `position` (1 to 5, primary key `(appointment_id, position)`),
   `business_id`, `service_id`, `service_name`, `duration_minutes` (1 to 480), `price_eur` (at least 0), composite same-Business foreign keys to `appointment` and `service` (both restrictive), a unique `(appointment_id, service_id)`
   (distinct Services), the same canonical-name check as `appointment`. `appointment` gains `service_count` (1 to 5, default 1). From V13 `appointment.price_eur` is widened to `numeric(13,2)` (a visit of five Services of the largest valid price, `9 999 999 999.99` each, totals `49 999 999 999.95` and would not fit `numeric(12,2)`; existing values are unchanged and the lines and `service.price` stay `numeric(12,2)`), and the Appointment's `duration_minutes` and `price_eur` are the **visit totals**
   (`end_at` and `occupied_until` cover the whole visit, so the existing overlap exclusion protects the whole visit and needs no change), and `service_id` and `service_name` are the headline copy of line 1 (the first Service in

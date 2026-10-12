@@ -1307,3 +1307,8 @@ Two gaps found in the ADR-0027 specification were closed before any implementati
    `ffffffff-ffff-4fff-bfff-ffffffffffff` the specified order is A, B, C, D and Java's is C, D, A, B. The fingerprint v2 order uses the unsigned comparator; **lock order is the order of the locking statement's `ORDER BY id ASC FOR SHARE`** (the existing `ServiceStore.lockReferences` and StaffMember statements), and the application never pre-sorts identifiers to decide a lock.
    The golden vectors, a PostgreSQL ordering test, a lock-statement test, a deadlock test across the high-bit boundary, and a guard against `UUID.compareTo` are in the plan. **Observation, not changed:** committed code uses Java's signed order for the published availability slot's StaffMember list invariant and for the final identifier tie-break of the deterministic
    StaffMember assignment; neither decides a lock, and aligning them would change which StaffMember a tie assigns, so it is a separate decision.
+
+### Multi-Service phase M1 (persistence) implemented (2026-10-07)
+
+`V13` (the `appointment_service` lines, `service_count`, the widened visit total, the backfill, and the deferred and immutability triggers), the Appointment domain's Service lines, and the store's writing and reading of them are implemented and verified (complete backend `verify`: 3240 tests, 0 failures); the record is in
+[task 08b](08b-multi-service-guest-booking-plan.md). **Multi-Service booking is not implemented**: availability, orchestration, fingerprinting, HTTP, and the frontend are untouched, every booking still creates exactly one Service line, the product still books one Service, issue #18 is not complete, and M2 has not started.

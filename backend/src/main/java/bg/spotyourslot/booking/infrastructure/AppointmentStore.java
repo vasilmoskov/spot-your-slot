@@ -1,6 +1,7 @@
 package bg.spotyourslot.booking.infrastructure;
 
 import bg.spotyourslot.booking.domain.Appointment;
+import bg.spotyourslot.booking.domain.AppointmentServiceLine;
 import bg.spotyourslot.booking.domain.AppointmentSource;
 import bg.spotyourslot.booking.domain.AppointmentStatus;
 import bg.spotyourslot.booking.domain.BlockingWindow;
@@ -15,6 +16,7 @@ import bg.spotyourslot.booking.infrastructure.AppointmentPersistenceException.Un
 import bg.spotyourslot.booking.infrastructure.AppointmentPersistenceException.UnknownReference;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.math.BigDecimal;
 import java.sql.Types;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -41,7 +43,9 @@ import org.springframework.stereotype.Repository;
  *
  * <p>Transaction semantics: the store opens no transaction of its own and joins the caller's, so a
  * rollback of the caller restores the previous state. Every write is a single statement, and no
- * read takes a lock. Every statement is scoped by {@code business_id}, so a lookup in another
+ * read takes a lock. An Appointment is written as its row plus its Service lines (ADR-0027), in two
+ * statements of the caller's transaction; the deferred {@code V13} trigger judges the whole visit at
+ * commit. Every statement is scoped by {@code business_id}, so a lookup in another
  * Business behaves exactly like a missing Appointment. Overlap protection is the database
  * exclusion constraint of {@code V11}, never an application pre-check.
  *
@@ -58,7 +62,9 @@ public class AppointmentStore {
             "appointment_business_fk",
             "appointment_customer_fk",
             "appointment_service_fk",
-            "appointment_staff_member_fk");
+            "appointment_staff_member_fk",
+            "appointment_service_appointment_fk",
+            "appointment_service_service_fk");
     static final Set<String> CHECK_CONSTRAINTS = Set.of(
             "appointment_source_valid",
             "appointment_status_valid",
@@ -78,17 +84,30 @@ public class AppointmentStore {
             "appointment_idempotency_all_or_none",
             "appointment_online_requires_idempotency",
             "appointment_version_nonnegative",
-            "appointment_timestamps_finite_ordered");
+            "appointment_timestamps_finite_ordered",
+            "appointment_service_count_range",
+            "appointment_service_position_range",
+            "appointment_service_duration_range",
+            "appointment_service_price_nonnegative",
+            "appointment_service_line_name_canonical",
+            "appointment_visit_consistent");
+    /** Duplicate Services or positions in one visit: invalid data, never an ordinary conflict. */
+    static final Set<String> LINE_UNIQUE_CONSTRAINTS = Set.of(
+            "appointment_service_pkey", "appointment_service_distinct");
 
     private static final int MAX_CAUSE_DEPTH = 16;
     private static final String TABLE = "appointment";
+    private static final String LINE_TABLE = "appointment_service";
+    private static final Set<String> LINE_COLUMNS = Set.of(
+            "appointment_id", "position", "business_id", "service_id", "service_name",
+            "duration_minutes", "price_eur");
     private static final Set<String> COLUMNS = Set.of(
             "id", "business_id", "customer_id", "service_id", "staff_member_id", "source",
             "status", "start_at", "end_at", "occupied_until", "timezone", "duration_minutes",
             "price_eur", "service_name", "staff_display_name", "customer_note",
             "public_reference", "booking_attempt_hash", "request_fingerprint",
             "fingerprint_encoding_version", "fingerprint_key_version", "version", "created_at",
-            "updated_at");
+            "updated_at", "service_count");
 
     private static final String UNIQUE_VIOLATION = "23505";
     private static final String FOREIGN_KEY_VIOLATION = "23503";
@@ -96,6 +115,7 @@ public class AppointmentStore {
     private static final String NOT_NULL_VIOLATION = "23502";
     private static final String EXCLUSION_VIOLATION = "23P01";
     private static final String VALUE_TOO_LONG = "22001";
+    private static final String NUMERIC_OUT_OF_RANGE = "22003";
     private static final String DATETIME_OVERFLOW = "22008";
     private static final String SERIALIZATION_FAILURE = "40001";
     private static final String DEADLOCK_DETECTED = "40P01";
@@ -105,7 +125,7 @@ public class AppointmentStore {
             start_at, end_at, occupied_until, timezone, duration_minutes, price_eur,
             service_name, staff_display_name, customer_note, public_reference,
             booking_attempt_hash, request_fingerprint, fingerprint_encoding_version,
-            fingerprint_key_version, version, created_at, updated_at
+            fingerprint_key_version, version, created_at, updated_at, service_count
             """;
 
     private final JdbcClient jdbc;
@@ -115,27 +135,32 @@ public class AppointmentStore {
     }
 
     /**
-     * Inserts a new {@code CONFIRMED} Appointment at version 0 in one statement. A time that
-     * overlaps another {@code CONFIRMED} Appointment of the StaffMember is reported as
-     * {@link OverlapConflict}; the caller's transaction is then aborted and must be abandoned.
+     * Inserts a new {@code CONFIRMED} Appointment at version 0 together with its Service lines. A
+     * time that overlaps another {@code CONFIRMED} Appointment of the StaffMember is reported as
+     * {@link OverlapConflict}; the caller's transaction is then aborted and must be abandoned. The
+     * Appointment row is one statement and the lines (one to five) are a second one; neither is
+     * committed unless the caller commits, and a visit that violates the whole-visit rule is
+     * refused at commit by the database.
      */
     public Appointment insert(NewAppointment appointment) {
         BookingAttempt attempt = appointment.attempt();
-        return execute(() -> jdbc.sql("""
+        Row inserted = execute(() -> jdbc.sql("""
                         INSERT INTO appointment(
                             id, business_id, customer_id, service_id, staff_member_id,
                             source, status, start_at, end_at, occupied_until, timezone,
                             duration_minutes, price_eur, service_name, staff_display_name,
                             customer_note, public_reference, booking_attempt_hash,
                             request_fingerprint, fingerprint_encoding_version,
-                            fingerprint_key_version, version, created_at, updated_at)
+                            fingerprint_key_version, version, created_at, updated_at,
+                            service_count)
                         VALUES (
                             :id, :businessId, :customerId, :serviceId, :staffMemberId,
                             :source, 'CONFIRMED', :startAt, :endAt, :occupiedUntil, :timezone,
                             :durationMinutes, :priceEur, :serviceName, :staffDisplayName,
                             :customerNote, :publicReference, :attemptHash,
                             :requestFingerprint, :encodingVersion,
-                            :keyVersion, 0, :createdAt, :createdAt)
+                            :keyVersion, 0, :createdAt, :createdAt,
+                            :serviceCount)
                         RETURNING
                         """ + RETURNING_COLUMNS)
                 .param("id", appointment.id())
@@ -168,15 +193,86 @@ public class AppointmentStore {
                         attempt == null ? null : attempt.keyVersion(),
                         Types.SMALLINT)
                 .param("createdAt", databaseTime(appointment.createdAt()))
-                .query(this::appointment)
+                .param("serviceCount", appointment.serviceCount(), Types.SMALLINT)
+                .query(this::row)
                 .single());
+        execute(() -> insertLines(appointment));
+        return toAppointment(inserted, appointment.serviceLines());
     }
 
-    /** One statement; no lock. A foreign-Business identifier behaves like a missing one. */
+    private int insertLines(NewAppointment appointment) {
+        List<AppointmentServiceLine> lines = appointment.serviceLines();
+        StringBuilder values = new StringBuilder();
+        for (int index = 0; index < lines.size(); index++) {
+            if (index > 0) {
+                values.append(", ");
+            }
+            values.append("(:appointmentId, :position").append(index)
+                    .append(", :businessId, :serviceId").append(index)
+                    .append(", :serviceName").append(index)
+                    .append(", :durationMinutes").append(index)
+                    .append(", :priceEur").append(index).append(')');
+        }
+        JdbcClient.StatementSpec statement = jdbc.sql(
+                "INSERT INTO appointment_service(appointment_id, position, business_id, "
+                        + "service_id, service_name, duration_minutes, price_eur) VALUES "
+                        + values)
+                .param("appointmentId", appointment.id())
+                .param("businessId", appointment.businessId());
+        for (int index = 0; index < lines.size(); index++) {
+            AppointmentServiceLine line = lines.get(index);
+            statement = statement
+                    .param("position" + index, (short) line.position(), Types.SMALLINT)
+                    .param("serviceId" + index, line.serviceId())
+                    .param("serviceName" + index, line.serviceName())
+                    .param("durationMinutes" + index, line.durationMinutes())
+                    .param("priceEur" + index, line.priceEur());
+        }
+        return statement.update();
+    }
+
+    /** One statement for the Service lines of an Appointment of the Business, in position order. */
+    private List<AppointmentServiceLine> findLines(UUID businessId, UUID appointmentId) {
+        return jdbc.sql("""
+                        SELECT position, service_id, service_name, duration_minutes, price_eur
+                        FROM appointment_service
+                        WHERE business_id = :businessId AND appointment_id = :appointmentId
+                        ORDER BY position
+                        """)
+                .param("businessId", businessId)
+                .param("appointmentId", appointmentId)
+                .query((resultSet, rowNumber) -> new AppointmentServiceLine(
+                        resultSet.getInt("position"),
+                        resultSet.getObject("service_id", UUID.class),
+                        resultSet.getString("service_name"),
+                        resultSet.getInt("duration_minutes"),
+                        resultSet.getBigDecimal("price_eur")))
+                .list();
+    }
+
+    private Optional<Appointment> withLines(Optional<Row> row) {
+        return row.map(found -> toAppointment(
+                found, readLines(found.businessId(), found.id(), found.serviceCount())));
+    }
+
+    private List<AppointmentServiceLine> readLines(UUID businessId, UUID appointmentId, int expected) {
+        try {
+            List<AppointmentServiceLine> lines = findLines(businessId, appointmentId);
+            if (lines.size() != expected) {
+                throw new CorruptRow();
+            }
+            return lines;
+        } catch (IllegalArgumentException | NullPointerException corrupt) {
+            // A stored line that violates a domain invariant is a persistence failure, not input.
+            throw new CorruptRow();
+        }
+    }
+
+    /** Two statements, no lock. A foreign-Business identifier behaves like a missing one. */
     public Optional<Appointment> find(UUID businessId, UUID id) {
         Objects.requireNonNull(businessId, "businessId");
         Objects.requireNonNull(id, "id");
-        return execute(() -> jdbc.sql("""
+        return execute(() -> withLines(jdbc.sql("""
                         SELECT
                         """ + RETURNING_COLUMNS + """
                         FROM appointment
@@ -184,18 +280,18 @@ public class AppointmentStore {
                         """)
                 .param("businessId", businessId)
                 .param("id", id)
-                .query(this::appointment)
-                .optional());
+                .query(this::row)
+                .optional()));
     }
 
     /**
-     * One statement; no lock. Finds the Appointment this Business created for a booking attempt,
+     * Two statements, no lock. Finds the Appointment this Business created for a booking attempt,
      * for the idempotent replay of ADR-0024. A foreign-Business attempt is not found.
      */
     public Optional<Appointment> findByAttemptHash(UUID businessId, byte[] attemptHash) {
         Objects.requireNonNull(businessId, "businessId");
         Objects.requireNonNull(attemptHash, "attemptHash");
-        return execute(() -> jdbc.sql("""
+        return execute(() -> withLines(jdbc.sql("""
                         SELECT
                         """ + RETURNING_COLUMNS + """
                         FROM appointment
@@ -203,8 +299,8 @@ public class AppointmentStore {
                         """)
                 .param("businessId", businessId)
                 .param("attemptHash", attemptHash.clone(), Types.BINARY)
-                .query(this::appointment)
-                .optional());
+                .query(this::row)
+                .optional()));
     }
 
     /**
@@ -333,6 +429,9 @@ public class AppointmentStore {
             if (ATTEMPT_HASH_UNIQUE.equals(constraint)) {
                 return new DuplicateAttempt();
             }
+            if (constraint != null && LINE_UNIQUE_CONSTRAINTS.contains(constraint)) {
+                return new InvalidData();
+            }
         } else if (FOREIGN_KEY_VIOLATION.equals(sqlState)) {
             if (constraint != null && FOREIGN_KEYS.contains(constraint)) {
                 return new UnknownReference();
@@ -345,9 +444,14 @@ public class AppointmentStore {
             if (TABLE.equals(table) && column != null && COLUMNS.contains(column)) {
                 return new InvalidData();
             }
-        } else if (VALUE_TOO_LONG.equals(sqlState) || DATETIME_OVERFLOW.equals(sqlState)) {
+            if (LINE_TABLE.equals(table) && column != null && LINE_COLUMNS.contains(column)) {
+                return new InvalidData();
+            }
+        } else if (VALUE_TOO_LONG.equals(sqlState)
+                || DATETIME_OVERFLOW.equals(sqlState)
+                || NUMERIC_OUT_OF_RANGE.equals(sqlState)) {
             // PostgreSQL reports no constraint for these states; every Appointment statement
-            // writes only the length-limited and date-time Appointment columns.
+            // writes only the length-limited, date-time, and numeric Appointment and line columns.
             return new InvalidData();
         } else if (SERIALIZATION_FAILURE.equals(sqlState) || DEADLOCK_DETECTED.equals(sqlState)) {
             return new ConcurrentFailure();
@@ -366,7 +470,33 @@ public class AppointmentStore {
         return null;
     }
 
-    private Appointment appointment(ResultSet resultSet, int rowNumber) throws SQLException {
+    /** A stored Appointment row without its Service lines. */
+    private record Row(
+            UUID id,
+            UUID businessId,
+            UUID customerId,
+            UUID serviceId,
+            UUID staffMemberId,
+            AppointmentSource source,
+            AppointmentStatus status,
+            Instant startAt,
+            Instant endAt,
+            Instant occupiedUntil,
+            String timezone,
+            int durationMinutes,
+            BigDecimal priceEur,
+            String serviceName,
+            String staffDisplayName,
+            String customerNote,
+            String publicReference,
+            BookingAttempt attempt,
+            long version,
+            Instant createdAt,
+            Instant updatedAt,
+            int serviceCount) {
+    }
+
+    private Row row(ResultSet resultSet, int rowNumber) throws SQLException {
         try {
             byte[] attemptHash = resultSet.getBytes("booking_attempt_hash");
             BookingAttempt attempt = attemptHash == null
@@ -376,7 +506,7 @@ public class AppointmentStore {
                             resultSet.getBytes("request_fingerprint"),
                             resultSet.getInt("fingerprint_encoding_version"),
                             resultSet.getInt("fingerprint_key_version"));
-            return new Appointment(
+            return new Row(
                     resultSet.getObject("id", UUID.class),
                     resultSet.getObject("business_id", UUID.class),
                     resultSet.getObject("customer_id", UUID.class),
@@ -397,7 +527,39 @@ public class AppointmentStore {
                     attempt,
                     resultSet.getLong("version"),
                     resultSet.getObject("created_at", OffsetDateTime.class).toInstant(),
-                    resultSet.getObject("updated_at", OffsetDateTime.class).toInstant());
+                    resultSet.getObject("updated_at", OffsetDateTime.class).toInstant(),
+                    resultSet.getInt("service_count"));
+        } catch (IllegalArgumentException | NullPointerException corrupt) {
+            // A stored row that violates a domain invariant is a persistence failure, not input.
+            throw new CorruptRow();
+        }
+    }
+
+    private Appointment toAppointment(Row row, List<AppointmentServiceLine> lines) {
+        try {
+            return new Appointment(
+                    row.id(),
+                    row.businessId(),
+                    row.customerId(),
+                    row.serviceId(),
+                    row.staffMemberId(),
+                    row.source(),
+                    row.status(),
+                    row.startAt(),
+                    row.endAt(),
+                    row.occupiedUntil(),
+                    row.timezone(),
+                    row.durationMinutes(),
+                    row.priceEur(),
+                    row.serviceName(),
+                    row.staffDisplayName(),
+                    row.customerNote(),
+                    row.publicReference(),
+                    row.attempt(),
+                    row.version(),
+                    row.createdAt(),
+                    row.updatedAt(),
+                    lines);
         } catch (IllegalArgumentException | NullPointerException corrupt) {
             // A stored row that violates a domain invariant is a persistence failure, not input.
             throw new CorruptRow();

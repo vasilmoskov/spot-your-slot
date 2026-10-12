@@ -94,7 +94,7 @@ ranges, and rescheduling. The database constraint must key on
 `staff_member_id`. The issue #18 verification (planned by phase, not yet executed) is in "Appointment and
 guest booking verification" below.
 
-### Multi-Service booking (ADR-0027; decided, not implemented)
+### Multi-Service booking (ADR-0027; the persistence phase M1 is implemented and verified, the rest is decided and not implemented)
 
 The plan is in [task 08b](tasks/08b-multi-service-guest-booking-plan.md); every item runs against real PostgreSQL where persistence, locks, or concurrency are claimed, with deterministic coordination and no sleeps.
 Required evidence: the **upgrade and backfill** of a database migrated to V12 (one line per existing Appointment, totals and headline equal to it, the migration failing on a corrupt fixture, V1 to V12 checksums
