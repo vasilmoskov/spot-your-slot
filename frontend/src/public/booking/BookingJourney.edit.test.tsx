@@ -139,8 +139,10 @@ describe('editing one step from the review', () => {
   it('asks for the StaffMember preference, the time and nothing else when the Service changes', async () => {
     await openPage()
     await reachReview()
-    await edit('Промени услугата', 'Избор на услуга')
-    await click(screen.getByRole('radio', { name: /Боядисване/ }))
+    await edit('Промени услугите', 'Избор на услуги')
+    // Another Service instead of the first: a different set, so nothing after it is still valid.
+    await click(screen.getByRole('checkbox', { name: /Подстригване/ }))
+    await click(screen.getByRole('checkbox', { name: /Боядисване/ }))
     expect(screen.queryByRole('button', { name: 'Към прегледа' })).toBeNull()
     await next()
     expect(heading()).toHaveTextContent('Избор на служител')
@@ -153,7 +155,7 @@ describe('editing one step from the review', () => {
     expect(summary()).toHaveTextContent('Иван Петров')
     await submit()
     expect(parsedBody(server.posts[0])).toMatchObject({
-      serviceId: SERVICE_COLOUR,
+      services: [{ serviceId: SERVICE_COLOUR, reviewedDurationMinutes: 120, reviewedPriceCents: 8050 }],
       customer: { displayName: 'Иван Петров', phone: '0888 123 456' },
     })
   })
@@ -253,7 +255,7 @@ describe('a frozen attempt cannot be edited', () => {
     await openPage()
     await reachReview()
     await submit()
-    for (const name of ['Промени услугата', 'Промени служителя', 'Промени датата и часа', 'Промени данните']) {
+    for (const name of ['Промени услугите', 'Промени служителя', 'Промени датата и часа', 'Промени данните']) {
       expect(screen.getByRole('button', { name })).toBeDisabled()
     }
     release(new Response(JSON.stringify({}), { status: 500 }))
@@ -285,7 +287,7 @@ describe('the selected Service above the heading', () => {
     expect(heading()).toHaveTextContent('Преглед и потвърждение')
     expect(document.querySelector('.booking-context')).toBeNull()
 
-    await edit('Промени услугата', 'Избор на услуга')
+    await edit('Промени услугите', 'Избор на услуги')
     expect(document.querySelector('.booking-context')).toBeNull()
   })
 })

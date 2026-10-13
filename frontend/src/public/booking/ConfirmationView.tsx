@@ -3,6 +3,8 @@ import { Button } from '../../ui/Button'
 import { dialableNumber } from '../presentation'
 import type { ConfirmedBooking } from './api'
 import { formatInstantDate, formatTimeDistinct } from './dates'
+import { formatCents } from './money'
+import { priceToCents } from './money'
 
 function ContactBusiness({ phone, lead }: { phone: string | null; lead: string }) {
   const text = phone?.trim() ?? ''
@@ -28,8 +30,8 @@ function ContactBusiness({ phone, lead }: { phone: string | null; lead: string }
 }
 
 /**
- * The result of a successful response. Every fact comes from the server's answer (the Service and
- * StaffMember snapshots, the instants in the returned Business timezone, the EUR price); nothing is taken
+ * The result of a successful response. Every fact comes from the server's answer (the stored Service
+ * lines and the server's own totals, the StaffMember snapshot, the instants in the returned Business timezone, the EUR price); nothing is taken
  * from the form. The reference and the timezone stay in the answer but are not shown. A cancelled
  * reservation (a replay of an attempt whose Appointment was cancelled later) is shown as cancelled and
  * never as a confirmed booking. The page makes no claim that a message was sent.
@@ -54,8 +56,23 @@ export function ConfirmationView({
       )}
       <dl className="booking-facts">
         <div>
-          <dt>Услуга</dt>
-          <dd>{booking.service.name}</dd>
+          <dt>{booking.services.length > 1 ? 'Услуги' : 'Услуга'}</dt>
+          <dd>
+            {booking.services.length === 1 ? (
+              booking.services[0]!.name
+            ) : (
+              <ul className="booking-summary-services">
+                {booking.services.map((line, index) => (
+                  <li key={index}>
+                    <span className="booking-summary-strong">{line.name}</span>
+                    <span>
+                      {formatServiceDuration(line.durationMinutes)} · {formatServicePrice(line.price)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </dd>
         </div>
         <div>
           <dt>Служител</dt>
@@ -73,11 +90,11 @@ export function ConfirmationView({
         </div>
         <div>
           <dt>Продължителност</dt>
-          <dd>{formatServiceDuration(booking.service.durationMinutes)}</dd>
+          <dd>{formatServiceDuration(booking.totalDurationMinutes)}</dd>
         </div>
         <div>
           <dt>Цена</dt>
-          <dd>{formatServicePrice(booking.service.price)}</dd>
+          <dd>{formatCents(priceToCents(booking.totalPrice))}</dd>
         </div>
       </dl>
       {cancelled ? (

@@ -64,3 +64,26 @@ describe('shared status text contrast (WCAG AA, 4.5:1 for normal text)', () => {
     expect(contrast(token('color-success'), token('color-success-subtle'))).toBeLessThan(4.5)
   })
 })
+
+describe('the multi-Service selection text contrast (WCAG AA)', () => {
+  it('keeps the reason of a disabled Service readable on the unavailable option background', () => {
+    // `.booking-choice-reason` uses the secondary text color on `.booking-choice--unavailable`.
+    expect(declaration('.booking-choice-reason', 'color')).toBe(token('color-text-secondary'))
+    expect(declaration('.booking-choice--unavailable', 'background')).toBe(token('color-page-background'))
+    const ratio = contrast(token('color-text-secondary'), token('color-page-background'))
+    expect(ratio, `reason text measures ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('keeps the selection summary readable on its panel', () => {
+    expect(declaration('.booking-selection-summary,\n.booking-selection-empty', 'background')).toBe(
+      token('color-action-primary-subtle'),
+    )
+    const ratio = contrast(token('color-text-primary'), token('color-action-primary-subtle'))
+    expect(ratio, `summary text measures ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(4.5)
+  })
+
+  it('does not rely on colour alone for an unavailable option: the reason is text', () => {
+    expect(css).toMatch(/\.booking-choice--unavailable \{[^}]*cursor: not-allowed;/)
+    expect(css).toMatch(/\.booking-choice-reason \{[^}]*font-weight: 600;/)
+  })
+})

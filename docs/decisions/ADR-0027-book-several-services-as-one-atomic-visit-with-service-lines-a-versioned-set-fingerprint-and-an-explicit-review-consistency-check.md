@@ -2,7 +2,7 @@
 
 ## Metadata
 
-- **Status:** Accepted (the product decisions were approved by the product owner on 2026-10-07; this record has not yet had an independent review; phases M1 (persistence), M2 (availability and eligibility), M3 (orchestration and fingerprinting), and M4 (the public HTTP contract, section 8) are implemented; the frontend, section 10, is not)
+- **Status:** Accepted (the product decisions were approved by the product owner on 2026-10-07; this record has not yet had an independent review; phases M1 (persistence), M2 (availability and eligibility), M3 (orchestration and fingerprinting), and M4 (the public HTTP contract, section 8) are implemented, and the frontend of section 10 is implemented (phase M5) and verified by automated tests but not yet visually approved)
 - **Decision date:** 2026-10-07
 - **Recorded date:** 2026-10-07
 - **Related issues:** #18 (production public booking still waits for #21; #19 is unchanged)
@@ -272,7 +272,18 @@ Phase M4 implemented section 8; the record, the evidence, and the decisions are 
 - **Response.** The shape follows the request shape: the legacy keys for the legacy request (the headline is line 1 and the totals of a one-line visit) and `reference, status, services, totalDurationMinutes, totalPrice, staff, start, end, timezone` for the new shape, with the stored lines in execution order. A v1 row replays through the legacy shape only; the same row as a one-line visit is valid for the new response model, but a new-shape request against a v1 row is a mismatch.
 - **Codes.** `BOOKING_REVIEW_CHANGED` (POST) and `BOOKING_SELECTION_TOO_LONG` (reads) use the messages of section 8 with the fixed instance and no figure. The wording remains Proposed for the human review.
 - **Messages of ADR-0026.** "Unchanged" in section 8 means the structure, codes, and statuses; the two sentences that the Phase 7 wording amendment of [task 08a](../tasks/08a-appointment-core-and-guest-booking.md) changed («Проверете въведеното име.» for the `displayName` field error, «Телефонът и имейлът не съответстват. Проверете ги или въведете само единия контакт.» for `BOOKING_NOT_COMPLETED_ONLINE`) are the current wording; the other messages are unchanged.
-- **Not yet implemented:** the frontend (section 10).
+- **Not yet implemented (at M4):** the frontend (section 10); implemented in M5 below.
+
+## Implementation notes (phase M5, 2026-10-13)
+
+Phase M5 implemented section 10 in `frontend/src/public/booking/`; the record, the evidence, and the decisions are in [task 08b](../tasks/08b-multi-service-guest-booking-plan.md). Refinements of this record:
+
+- **Set, not a list.** The selection is held in the public-profile order; only the request and the read URLs use the canonical identifier order (lowercase UUID text, equal to the unsigned order), so one set is one URL and one body.
+- **Exact money.** Prices are converted to integer cents once and summed as integers; `Math.round` removes only binary noise. The reviewed `reviewedPriceCents` is that integer.
+- **Limits.** The client mirrors the server limits (five Services, 480 minutes) only to guide the guest; the server remains the authority and answers `400`/`BOOKING_REVIEW_CHANGED`/`BOOKING_SELECTION_TOO_LONG` as in section 8.
+- **Review change.** A first-send `BOOKING_REVIEW_CHANGED` re-reads the public profile and the selection data, clears the time (it depends on the durations), keeps the details, and asks for an explicit new confirmation under a new attempt identifier; after an earlier uncertain send the attempt stays frozen (same ID, same bytes) and the Proposed sentence of section 6 is shown.
+- **Strict decoding.** The visit response must carry one to five lines whose sums equal the totals; a contradiction is an unreadable success and therefore uncertain.
+- **Not yet done:** the rendered human review (M6) and the browser journeys (M7).
 
 ## Conditions for revisiting
 

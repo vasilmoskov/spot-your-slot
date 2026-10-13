@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useReducer, useRef, useState, type ReactNode } from 'react'
 import { Button } from '../../ui/Button'
 import { useGuardedFormState, type GuardNotice } from '../../ui/UnsavedChangesGuard'
-import type { PublicService } from '../api'
+import { fetchPublicBusinessProfile, type PublicService } from '../api'
 import {
   fetchAvailability,
   fetchBookingOptions,
@@ -26,8 +26,14 @@ import { DetailsStep } from './DetailsStep'
 import { EMPTY_DETAILS, detailsAreValid, hasEnteredDetails } from './details'
 import { useRead } from './hooks'
 import { businessLocalDate } from './dates'
-import { NO_PREFERENCE_LABEL } from './messages'
-import { ReviewStep } from './ReviewStep'
+import { NO_PREFERENCE_LABEL, REVIEW_CHANGED_MESSAGE, SERVICES_REMOVED_MESSAGE } from './messages'
+import { ReviewStep, type ReviewRefresh } from './ReviewStep'
+import {
+  disabledReason,
+  reviewedTerms,
+  selectedServices,
+  selectionKey,
+} from './selection'
 import {
   DateTimeStep,
   Loading,
@@ -49,16 +55,22 @@ const STEP_RESULT = 6
 const FORM_STEPS = 5
 
 const HEADINGS: Record<number, string> = {
-  [STEP_SERVICE]: 'Избор на услуга',
+  [STEP_SERVICE]: 'Избор на услуги',
   [STEP_STAFF]: 'Избор на служител',
   [STEP_DATE_TIME]: 'Дата и час',
   [STEP_DETAILS]: 'Вашите данни',
   [STEP_REVIEW]: 'Преглед и потвърждение',
 }
 
+// The notice that follows a definite BOOKING_REVIEW_CHANGED: shown on the step the guest was sent to,
+// until they leave that step.
+type ReviewNotice = { step: number; removed: boolean }
+
 type State = {
   step: number
-  serviceId: string | null
+  // The selected Services, ALWAYS in the public-profile order: a set, so the order of the clicks never
+  // reaches the state, the reads or the request.
+  serviceIds: string[]
   // null is "no preference".
   staffId: string | null
   date: string | null
@@ -68,11 +80,13 @@ type State = {
   detailsErrors: BookingFieldErrors | null
   // True while the guest edits a step they reached from the review: the steps offer «Към прегледа».
   editing: boolean
+  notice: ReviewNotice | null
 }
 
 type Action =
   | { type: 'step'; step: number }
-  | { type: 'service'; id: string | null }
+  | { type: 'services'; ids: string[] }
+  | { type: 'refreshed'; ids: string[]; removed: boolean; step: number }
   | { type: 'staff'; id: string | null }
   | { type: 'date'; date: string | null }
   | { type: 'slot'; slot: Slot | null }
@@ -84,7 +98,7 @@ type Action =
 function initialState(): State {
   return {
     step: STEP_SERVICE,
-    serviceId: null,
+    serviceIds: [],
     staffId: null,
     date: null,
     slot: null,
@@ -92,6 +106,7 @@ function initialState(): State {
     submission: INITIAL_SUBMISSION,
     detailsErrors: null,
     editing: false,
+    notice: null,
   }
 }
 
@@ -107,6 +122,20 @@ function reducer(state: State, action: Action): State {
       // Reaching the review ends an edit that began there.
       editing: action.step === STEP_REVIEW ? false : state.editing,
       detailsErrors: action.step === STEP_DETAILS ? state.detailsErrors : null,
+      notice: state.notice?.step === action.step ? state.notice : null,
+    }
+  }
+  if (action.type === 'refreshed') {
+    // After a definite review change the facts were re-read: the time depends on the durations, so it
+    // is chosen again; the details stay, and the attempt is gone (the next confirmation draws a new one).
+    return {
+      ...state,
+      serviceIds: action.ids,
+      date: null,
+      slot: null,
+      submission: INITIAL_SUBMISSION,
+      editing: false,
+      notice: { step: action.step, removed: action.removed },
     }
   }
   if (action.type === 'submission') {
@@ -121,9 +150,15 @@ function reducer(state: State, action: Action): State {
   if (isFrozen(state.submission)) return state
   const submission = afterEdit(state.submission)
   switch (action.type) {
-    case 'service':
-      if (action.id === state.serviceId) return state
-      return { ...state, serviceId: action.id, staffId: null, date: null, slot: null, submission }
+    case 'services':
+      if (
+        action.ids.length === state.serviceIds.length &&
+        action.ids.every((id, index) => id === state.serviceIds[index])
+      ) {
+        return state
+      }
+      // A different SET invalidates every dependent choice; the details are kept.
+      return { ...state, serviceIds: action.ids, staffId: null, date: null, slot: null, submission, notice: null }
     case 'staff':
       if (action.id === state.staffId) return state
       return { ...state, staffId: action.id, date: null, slot: null, submission }
@@ -145,7 +180,7 @@ function reducer(state: State, action: Action): State {
 
 // The furthest step the current choices allow; a browser traversal beyond it is refused.
 function reachableStep(state: State): number {
-  if (state.serviceId === null) return STEP_SERVICE
+  if (state.serviceIds.length === 0) return STEP_SERVICE
   if (state.slot === null) return STEP_DATE_TIME
   return detailsAreValid(state.details) ? STEP_REVIEW : STEP_DETAILS
 }
@@ -194,33 +229,52 @@ export function BookingJourney({
     }
   }, [])
 
-  const { step, serviceId, staffId, date, slot, details, submission } = state
-  const service = services.find((candidate) => candidate.id === serviceId)
+  // The offered Services: the profile's list, re-read after a definite review change so the terms the
+  // guest sees are the current ones.
+  const [catalog, setCatalog] = useState<PublicService[]>(services)
+  const catalogRef = useRef(catalog)
+  catalogRef.current = catalog
+  const [refresh, setRefresh] = useState<ReviewRefresh>('idle')
+  const refreshController = useRef<AbortController | null>(null)
+  useEffect(() => () => refreshController.current?.abort(), [])
+
+  const { step, serviceIds, staffId, date, slot, details, submission } = state
+  const selected = selectedServices(catalog, serviceIds)
+  const selectionId = selectionKey(serviceIds)
 
   // ---- reads ----
 
   // Booking options belong to the Service alone, so changing only the date never reloads them.
   const optionsRead = useRead(
-    serviceId !== null && step >= STEP_STAFF && step < STEP_RESULT
-      ? `options|${slug}|${serviceId}`
+    serviceIds.length > 0 && step >= STEP_STAFF && step < STEP_RESULT
+      ? `options|${slug}|${selectionId}`
       : null,
-    (signal) => fetchBookingOptions(slug, serviceId as string, signal),
+    (signal) => fetchBookingOptions(slug, serviceIds, signal),
   )
   const options: BookingOptions | null =
     optionsRead.view.status === 'ready' && optionsRead.view.data.kind === 'options'
       ? optionsRead.view.data.options
       : null
 
+  // A preference that the current answer no longer offers (the answer was re-read after the terms
+  // changed) is dropped, never kept merely because it once existed.
+  useEffect(() => {
+    if (options === null || latest.current.staffId === null) return
+    if (!options.staff.some((member) => member.id === latest.current.staffId)) {
+      dispatch({ type: 'staff', id: null })
+    }
+  }, [options])
+
   const requestDate = date ?? options?.firstDate ?? null
   const availabilityRead = useRead(
-    serviceId !== null && step === STEP_DATE_TIME && options !== null && requestDate !== null
-      ? `availability|${slug}|${serviceId}|${staffId ?? 'any'}|${requestDate}`
+    serviceIds.length > 0 && step === STEP_DATE_TIME && options !== null && requestDate !== null
+      ? `availability|${slug}|${selectionId}|${staffId ?? 'any'}|${requestDate}`
       : null,
-    (signal) => fetchAvailability(slug, serviceId as string, requestDate as string, staffId, signal),
+    (signal) => fetchAvailability(slug, serviceIds, requestDate as string, staffId, signal),
   )
 
   // The dates of the last answer for this Service and preference stay visible while one date's slots load.
-  const group = `${serviceId}|${staffId ?? 'any'}`
+  const group = `${selectionId}|${staffId ?? 'any'}`
   const [knownDates, setKnownDates] = useState<{ group: string; dates: string[] } | null>(null)
   const availableDates = knownDates?.group === group ? knownDates.dates : null
 
@@ -335,10 +389,11 @@ export function BookingJourney({
   const send = async () => {
     if (inFlight.current) return
     const current = latest.current
-    if (current.serviceId === null || current.slot === null) return
+    if (current.serviceIds.length === 0 || current.slot === null) return
+    const chosen = selectedServices(catalogRef.current, current.serviceIds)
     const attempt = attemptForSubmit(
       current.submission,
-      { serviceId: current.serviceId, staffId: current.staffId, slot: current.slot },
+      { services: reviewedTerms(chosen), staffId: current.staffId, slot: current.slot },
       current.details,
       makeAttemptId,
     )
@@ -358,6 +413,86 @@ export function BookingJourney({
     }
     dispatch({ type: 'submission', submission: next })
     if (next.phase === 'confirmed') nav.advance(STEP_RESULT)
+    // A first send that was definitely refused because the terms changed: nothing was written, the
+    // attempt is gone, and the facts are re-read. Nothing is sent again by itself.
+    if (outcome.kind === 'rejected' && outcome.reason === 'review-changed' && next.phase === 'idle') {
+      void recoverFromReviewChange()
+    }
+  }
+
+  // ---- the offered Services ----
+
+  // Re-reads the public profile; null when it could not be read. A profile that turned out to be
+  // unavailable ends the journey like any other unavailable answer.
+  const loadCatalog = async (): Promise<PublicService[] | null> => {
+    refreshController.current?.abort()
+    const controller = new AbortController()
+    refreshController.current = controller
+    try {
+      const outcome = await fetchPublicBusinessProfile(slug, controller.signal)
+      if (controller.signal.aborted || !alive.current) return null
+      if (outcome.kind === 'unavailable') {
+        if (!mayHaveBooking(latest.current.submission)) onBusinessUnavailable()
+        return null
+      }
+      return outcome.profile.services
+    } catch {
+      return null
+    }
+  }
+
+  const stillAsking = () => {
+    const current = latest.current.submission
+    return current.phase === 'idle' && current.notice?.reason === 'review-changed'
+  }
+
+  const recoverFromReviewChange = async () => {
+    setRefresh('loading')
+    const fresh = await loadCatalog()
+    if (!alive.current) return
+    if (fresh === null) {
+      setRefresh('failed')
+      return
+    }
+    setCatalog(fresh)
+    setRefresh('idle')
+    // The guest moved on (edited, or left) while the profile was read: the notice no longer applies.
+    if (!stillAsking()) return
+    const before = latest.current.serviceIds
+    const ids = selectedServices(fresh, before).map((candidate) => candidate.id)
+    const target = ids.length === 0 ? STEP_SERVICE : STEP_DATE_TIME
+    dispatch({ type: 'refreshed', ids, removed: ids.length !== before.length, step: target })
+    optionsRead.reload()
+    jumpTo(target)
+  }
+
+  // The guest returns to the Service step. When a Service vanished or the selection became too long the
+  // offered Services are re-read first and a Service that is no longer offered leaves the selection.
+  const changeSelection = async (reload: boolean) => {
+    jumpTo(STEP_SERVICE)
+    if (!reload) return
+    const fresh = await loadCatalog()
+    if (fresh === null || !alive.current) return
+    setCatalog(fresh)
+    const ids = selectedServices(fresh, latest.current.serviceIds).map((candidate) => candidate.id)
+    dispatch({ type: 'services', ids })
+    optionsRead.reload()
+  }
+
+  const toggleService = (id: string) => {
+    const wanted = new Set(latest.current.serviceIds)
+    if (wanted.has(id)) {
+      wanted.delete(id)
+    } else {
+      const candidate = catalogRef.current.find((service) => service.id === id)
+      const current = selectedServices(catalogRef.current, wanted)
+      if (!candidate || disabledReason(current, candidate) !== null) return
+      wanted.add(id)
+    }
+    dispatch({
+      type: 'services',
+      ids: selectedServices(catalogRef.current, wanted).map((service) => service.id),
+    })
   }
 
   // ---- rendering ----
@@ -393,10 +528,7 @@ export function BookingJourney({
       return (
         <UnavailableProblem
           kind={view.data.kind}
-          onChooseService={() => {
-            dispatch({ type: 'service', id: null })
-            jumpTo(STEP_SERVICE)
-          }}
+          onChooseService={() => void changeSelection(true)}
           onChooseStaff={optionsRead.reload}
         />
       )
@@ -405,10 +537,8 @@ export function BookingJourney({
     return content()
   }
 
-  const chooseAnotherService = () => {
-    dispatch({ type: 'service', id: null })
-    jumpTo(STEP_SERVICE)
-  }
+  // Only the selection changes; nothing is cleared here, a different set clears the dependent choices.
+  const chooseAnotherService = () => void changeSelection(false)
 
   let body: ReactNode = null
   if (confirmed) {
@@ -422,11 +552,11 @@ export function BookingJourney({
   } else if (step === STEP_SERVICE) {
     body = (
       <ServiceStep
-        services={services}
-        serviceId={serviceId}
+        services={catalog}
+        selected={selected}
         frozen={frozen}
         nextLabel={nextLabel}
-        onSelect={(id) => dispatch({ type: 'service', id })}
+        onToggle={toggleService}
         onNext={() => forward(STEP_SERVICE)}
       />
     )
@@ -437,9 +567,11 @@ export function BookingJourney({
         staffId={staffId}
         frozen={frozen}
         nextLabel={nextLabel}
+        serviceCount={selected.length}
         onSelect={(id) => dispatch({ type: 'staff', id })}
         onReload={optionsRead.reload}
         onChooseService={chooseAnotherService}
+        onRefreshSelection={() => void changeSelection(true)}
         onNext={() => forward(STEP_STAFF)}
         onBack={nav.back}
       />
@@ -460,7 +592,7 @@ export function BookingJourney({
         onSelectDate={(value) => dispatch({ type: 'date', date: value })}
         onSelectSlot={(value) => dispatch({ type: 'slot', slot: value })}
         onReload={availabilityRead.reload}
-        onChooseService={chooseAnotherService}
+        onChooseService={() => void changeSelection(true)}
         onChooseStaff={() => {
           dispatch({ type: 'staff', id: null })
           optionsRead.reload()
@@ -482,10 +614,10 @@ export function BookingJourney({
         onBack={nav.back}
       />
     )
-  } else if (step === STEP_REVIEW && service && slot && date) {
+  } else if (step === STEP_REVIEW && selected.length > 0 && slot && date) {
     body = gate(() => (
       <ReviewStep
-        service={service}
+        services={selected}
         staffLabel={staffLabel}
         date={date}
         slot={slot}
@@ -500,8 +632,8 @@ export function BookingJourney({
             editFromReview(STEP_DATE_TIME)
           },
           chooseService: () => {
-            dispatch({ type: 'service', id: null })
-            editFromReview(STEP_SERVICE)
+            dispatch({ type: 'editing', value: true })
+            void changeSelection(true)
           },
           chooseStaff: () => {
             dispatch({ type: 'staff', id: null })
@@ -511,6 +643,8 @@ export function BookingJourney({
           editDetails: () => editFromReview(STEP_DETAILS),
           restart,
         }}
+        refresh={refresh}
+        onRefresh={() => void recoverFromReviewChange()}
         onSubmit={() => void send()}
         onBack={nav.back}
         onEdit={editFromReview}
@@ -535,11 +669,17 @@ export function BookingJourney({
           </p>
         )}
         {!confirmed && step > STEP_SERVICE && step < STEP_REVIEW && (
-          <ServiceContext service={service} />
+          <ServiceContext services={selected} />
         )}
         <h1 id="booking-step-heading" ref={headingRef} tabIndex={-1}>
           {heading}
         </h1>
+        {!confirmed && state.notice && state.notice.step === step && (
+          <div className="status-message status-error" role="alert">
+            <p>{REVIEW_CHANGED_MESSAGE}</p>
+            {state.notice.removed && <p>{SERVICES_REMOVED_MESSAGE}</p>}
+          </div>
+        )}
         {body}
       </section>
     </div>

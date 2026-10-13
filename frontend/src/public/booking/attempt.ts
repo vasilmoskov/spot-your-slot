@@ -1,4 +1,5 @@
 import { trimApproved } from '../../business/text'
+import { sortByCanonicalId, type ReviewedTerm } from './selection'
 import type {
   ConfirmedBooking,
   Slot,
@@ -29,6 +30,11 @@ import type {
 //   - `BOOKING_TEMPORARILY_UNAVAILABLE` is a proven rollback: the attempt may be sent again, or the
 //     guest may change the choices, which drops it;
 //   - a `429` was refused before any booking work: the attempt is kept and sent again later;
+//   - `BOOKING_REVIEW_CHANGED` (ADR-0027) is such a proof as well: the terms differed from the guest's
+//     review before anything was written, so the attempt is dropped and the journey refreshes the facts
+//     and asks for a new explicit confirmation under a new ID. After an earlier uncertain send it proves
+//     nothing about THAT send: the attempt stays frozen with the same ID and bytes, and the message says
+//     that a reservation which already exists was made with the terms the guest reviewed;
 //   - `BOOKING_ATTEMPT_MISMATCH` is NOT such a proof: it means an Appointment already exists for this
 //     attempt ID with other data, so it is treated as unresolved: frozen and marked possibly committed.
 // A new ID is therefore never created while the result of any send of the previous attempt may be a booking.
@@ -41,7 +47,8 @@ export type BookingDetails = {
 }
 
 export type BookingChoice = {
-  serviceId: string
+  // The Services of the visit with the terms the guest reviewed (any order; the body sorts them).
+  services: ReviewedTerm[]
   // null is "no preference"; it is sent as null, never as an assigned member.
   staffId: string | null
   slot: Slot
@@ -63,6 +70,7 @@ export type UncertainCause =
   | 'rate-limited' // the latest send was refused by the limiter
   | 'mismatch' // the server reports a different request under this attempt ID
   | 'business-unavailable' // the Business page became unavailable after the earlier uncertain send
+  | 'review-changed' // the terms differ from the review, but an earlier send may already hold a booking
 
 export type Submission =
   | { phase: 'idle'; notice: RejectionNotice | null }
@@ -82,8 +90,11 @@ function blankToNull(value: string): string | null {
 }
 
 /**
- * The exact request body for a new attempt. Only the documented fields exist: no Business, price,
- * duration, end, status or timezone. Text values are edge-trimmed, blank optional values are null.
+ * The exact request body for a new attempt (the ADR-0027 shape, also for one Service). Only the
+ * documented fields exist: no Business, total, end, status or timezone. The Services are sorted by their
+ * canonical identifier, so the same SET of Services is the same bytes whatever order it was ticked in;
+ * the visible lists keep the public-profile order. Text values are edge-trimmed, blank optional values
+ * are null.
  */
 export function buildRequestBody(
   attemptId: string,
@@ -92,7 +103,11 @@ export function buildRequestBody(
 ): string {
   return JSON.stringify({
     attemptId,
-    serviceId: choice.serviceId,
+    services: sortByCanonicalId(choice.services).map((term) => ({
+      serviceId: term.serviceId,
+      reviewedDurationMinutes: term.durationMinutes,
+      reviewedPriceCents: term.priceCents,
+    })),
     staffMemberId: choice.staffId,
     start: choice.slot.start,
     customer: {
@@ -165,6 +180,7 @@ export function applyOutcome(attempt: Attempt, outcome: SubmissionOutcome, now: 
     if (outcome.kind === 'rejected') {
       if (outcome.reason === 'attempt-mismatch') return frozen('mismatch')
       if (outcome.reason === 'business-unavailable') return frozen('business-unavailable')
+      if (outcome.reason === 'review-changed') return frozen('review-changed')
     }
     return frozen('unknown', attempt, wait)
   }

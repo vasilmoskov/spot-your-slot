@@ -1308,6 +1308,10 @@ Two gaps found in the ADR-0027 specification were closed before any implementati
    The golden vectors, a PostgreSQL ordering test, a lock-statement test, a deadlock test across the high-bit boundary, and a guard against `UUID.compareTo` are in the plan. **Observation, not changed:** committed code uses Java's signed order for the published availability slot's StaffMember list invariant and for the final identifier tie-break of the deterministic
    StaffMember assignment; neither decides a lock, and aligning them would change which StaffMember a tie assigns, so it is a separate decision.
 
+### Multi-Service phase M5 (frontend journey) implemented (2026-10-13)
+
+The booking journey now offers real checkboxes (one to five Services, 480 minutes), the exact cents summary, the intersection staff step with «Промяна на избора», one whole-visit review, the M4 request shape with canonically ordered Services, the server-returned lines and totals, and the review-change recovery; the record is in [task 08b](08b-multi-service-guest-booking-plan.md). It is verified by automated tests only. **It is not visually approved** (M6 is the human review), the browser journeys (M7) have not started, multi-Service booking is not marked complete, and issue #18 is not complete.
+
 ### Multi-Service phase M4 (public HTTP contract) implemented (2026-10-13)
 
 The two Service-selection read routes, the second booking request shape with reviewed terms, the visit response, and the codes `BOOKING_REVIEW_CHANGED` and `BOOKING_SELECTION_TOO_LONG` are implemented and verified through the complete filter chain (the record is in [task 08b](08b-multi-service-guest-booking-plan.md)). **Multi-Service booking is not complete and the product UI still books one Service**: the frontend (M5), the rendered review (M6), and the browser E2E (M7) have not started, and issue #18 is not complete.

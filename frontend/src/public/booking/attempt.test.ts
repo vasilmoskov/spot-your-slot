@@ -16,8 +16,9 @@ import {
   type Submission,
 } from './attempt'
 
+const SERVICE = '11111111-1111-4111-8111-111111111111'
 const choice: BookingChoice = {
-  serviceId: '11111111-1111-4111-8111-111111111111',
+  services: [{ serviceId: SERVICE, durationMinutes: 45, priceCents: 2500 }],
   staffId: null,
   slot: { start: '2026-10-07T10:00:00+03:00', end: '2026-10-07T10:45:00+03:00' },
 }
@@ -30,7 +31,9 @@ const details: BookingDetails = {
 const booking: ConfirmedBooking = {
   reference: 'K7M2Q9XW4B',
   status: 'CONFIRMED',
-  service: { name: 'Подстригване', durationMinutes: 45, price: 25 },
+  services: [{ name: 'Подстригване', durationMinutes: 45, price: 25 }],
+  totalDurationMinutes: 45,
+  totalPrice: 25,
   staff: { displayName: 'Мария' },
   start: choice.slot.start,
   end: choice.slot.end,
@@ -45,10 +48,15 @@ function attempt(possiblyCommitted = false): Attempt {
 describe('the request body', () => {
   it('contains only the documented fields, trimmed, with blank optional values as null', () => {
     const body = JSON.parse(buildRequestBody('id-1', choice, details))
-    expect(Object.keys(body)).toEqual(['attemptId', 'serviceId', 'staffMemberId', 'start', 'customer', 'note'])
+    expect(Object.keys(body)).toEqual(['attemptId', 'services', 'staffMemberId', 'start', 'customer', 'note'])
+    expect(Object.keys(body.services[0])).toEqual([
+      'serviceId',
+      'reviewedDurationMinutes',
+      'reviewedPriceCents',
+    ])
     expect(body).toEqual({
       attemptId: 'id-1',
-      serviceId: choice.serviceId,
+      services: [{ serviceId: SERVICE, reviewedDurationMinutes: 45, reviewedPriceCents: 2500 }],
       staffMemberId: null,
       start: choice.slot.start,
       customer: { displayName: 'Иван Петров', phone: '0888 123 456', email: null },
@@ -58,6 +66,45 @@ describe('the request body', () => {
 
   it('is byte-identical for the same input', () => {
     expect(buildRequestBody('id-1', choice, details)).toBe(buildRequestBody('id-1', choice, details))
+  })
+
+  // The identifiers across the high-bit boundary: the unsigned (and text) order is A, B, C, D, and the
+  // order that Java's signed comparison (or a numeric sign mistake) would give is C, D, A, B.
+  const A = '00000000-0000-4000-8000-000000000001'
+  const B = '7fffffff-ffff-4fff-bfff-ffffffffffff'
+  const C = '80000000-0000-4000-8000-000000000000'
+  const D = 'ffffffff-ffff-4fff-bfff-ffffffffffff'
+  const terms = [
+    { serviceId: C, durationMinutes: 60, priceCents: 0 },
+    { serviceId: A, durationMinutes: 30, priceCents: 1500 },
+    { serviceId: D, durationMinutes: 90, priceCents: 999_999_999_999 },
+    { serviceId: B, durationMinutes: 45, priceCents: 2550 },
+  ]
+
+  it('sorts the Services by their canonical identifier, so the click order never reaches the bytes', () => {
+    const body = JSON.parse(buildRequestBody('id-1', { ...choice, services: terms }, details))
+    expect(body.services.map((line: { serviceId: string }) => line.serviceId)).toEqual([A, B, C, D])
+    const reversed = [...terms].reverse()
+    const shuffled = [terms[2]!, terms[0]!, terms[3]!, terms[1]!]
+    const expected = buildRequestBody('id-1', { ...choice, services: terms }, details)
+    expect(buildRequestBody('id-1', { ...choice, services: reversed }, details)).toBe(expected)
+    expect(buildRequestBody('id-1', { ...choice, services: shuffled }, details)).toBe(expected)
+  })
+
+  it('carries each Service with exactly its own reviewed facts', () => {
+    const body = JSON.parse(buildRequestBody('id-1', { ...choice, services: terms }, details))
+    expect(body.services).toEqual([
+      { serviceId: A, reviewedDurationMinutes: 30, reviewedPriceCents: 1500 },
+      { serviceId: B, reviewedDurationMinutes: 45, reviewedPriceCents: 2550 },
+      { serviceId: C, reviewedDurationMinutes: 60, reviewedPriceCents: 0 },
+      { serviceId: D, reviewedDurationMinutes: 90, reviewedPriceCents: 999_999_999_999 },
+    ])
+  })
+
+  it('differs when any reviewed fact differs', () => {
+    const base = buildRequestBody('id-1', { ...choice, services: terms }, details)
+    const changed = terms.map((term, index) => (index === 0 ? { ...term, priceCents: 1 } : term))
+    expect(buildRequestBody('id-1', { ...choice, services: changed }, details)).not.toBe(base)
   })
 })
 
@@ -141,6 +188,21 @@ describe('what each outcome proves', () => {
     expect(attemptForSubmit(next, choice, details, () => 'fresh')?.id).toBe('fresh')
   })
 
+  it('a first-send review change is a definite rejection: the attempt is dropped and the next submit draws a new one', () => {
+    const next = apply({ kind: 'rejected', reason: 'review-changed' })
+    expect(next).toEqual({ phase: 'idle', notice: { reason: 'review-changed' } })
+    expect(mayHaveBooking(next)).toBe(false)
+    expect(isFrozen(next)).toBe(false)
+    expect(attemptForSubmit(next, choice, details, () => 'fresh')?.id).toBe('fresh')
+  })
+
+  it('a review change after an uncertain send is frozen with its own cause and the same bytes', () => {
+    const unresolved = attempt(true)
+    const next = apply({ kind: 'rejected', reason: 'review-changed' }, unresolved)
+    expect(next).toMatchObject({ phase: 'uncertain', cause: 'review-changed', attempt: unresolved })
+    expect(attemptForSubmit(next, choice, details, () => 'never')).toBe(unresolved)
+  })
+
   it('keeps the field errors of a first-send validation rejection', () => {
     expect(apply({ kind: 'rejected', reason: 'validation', fieldErrors: { phone: 'x' } })).toEqual({
       phase: 'idle',
@@ -175,6 +237,7 @@ describe('what each outcome proves', () => {
     ['an unexpected rejection', { kind: 'rejected', reason: 'unexpected' }],
     ['an unavailable Business', { kind: 'rejected', reason: 'business-unavailable' }],
     ['a mismatch', { kind: 'rejected', reason: 'attempt-mismatch' }],
+    ['a review change', { kind: 'rejected', reason: 'review-changed' }],
   ]
 
   it.each(later)('%s after an uncertain send keeps the same frozen, possibly committed attempt', (_name, outcome) => {

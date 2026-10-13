@@ -66,10 +66,13 @@ export function availabilityBody(date: string, dates: string[] = AVAILABLE_DATES
   }
 }
 
+// The visit response of a new-shape request (ADR-0027 M4): the stored lines and the server's totals.
 export const bookingBody = {
   reference: 'K7M2Q9XW4B',
   status: 'CONFIRMED',
-  service: { name: 'Подстригване', durationMinutes: 45, price: 25 },
+  services: [{ name: 'Подстригване', durationMinutes: 45, price: 25 }],
+  totalDurationMinutes: 45,
+  totalPrice: 25,
   staff: { displayName: 'Мария Иванова' },
   start: '2026-10-07T10:00:00+03:00',
   end: '2026-10-07T10:45:00+03:00',
@@ -231,9 +234,24 @@ export async function startFromHero() {
 
 /** The hero action, then the named Service at the first step, then the StaffMember step. */
 export async function startFromService(name: string) {
+  await startFromServices(name)
+}
+
+/** The hero action, then the named Services ticked in the given order, then «Напред». */
+export async function startFromServices(...names: string[]) {
   await startFromHero()
-  await click(screen.getByRole('radio', { name: new RegExp(name) }))
+  for (const name of names) await tick(name)
   await next()
+}
+
+/** Ticks (or unticks) the checkbox of a Service by its name. */
+export async function tick(name: string | RegExp) {
+  await click(screen.getByRole('checkbox', { name: typeof name === 'string' ? new RegExp(name) : name }))
+}
+
+/** The selection read requests, newest last: the repeated `serviceId` values of each, in URL order. */
+export function selectionsOf(requests: Recorded[]): string[][] {
+  return requests.map((request) => request.url.searchParams.getAll('serviceId'))
 }
 
 export async function next() {

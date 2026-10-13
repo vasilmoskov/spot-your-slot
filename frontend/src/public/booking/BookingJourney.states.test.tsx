@@ -64,8 +64,8 @@ describe('reads: unavailable, empty and failing states', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Избраната услуга вече не е налична. Изберете друга услуга.',
     )
-    await click(button('Избор на услуга'))
-    await waitFor(() => expect(heading()).toHaveTextContent('Избор на услуга'))
+    await click(button('Промяна на избора'))
+    await waitFor(() => expect(heading()).toHaveTextContent('Избор на услуги'))
   })
 
   it('says so when no StaffMember is eligible, instead of offering an empty list', async () => {
@@ -79,8 +79,10 @@ describe('reads: unavailable, empty and failing states', () => {
     ).toBeInTheDocument()
     expect(screen.queryByRole('radio')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Напред' })).toBeNull()
-    await click(button('Избор на друга услуга'))
-    await waitFor(() => expect(heading()).toHaveTextContent('Избор на услуга'))
+    await click(button('Промяна на избора'))
+    await waitFor(() => expect(heading()).toHaveTextContent('Избор на услуги'))
+    // Only the selection is revisited: the Service stays chosen.
+    expect(screen.getByRole('checkbox', { name: /Подстригване/ })).toBeChecked()
   })
 
   it('reports an unavailable StaffMember of the availability read', async () => {
@@ -109,7 +111,7 @@ describe('reads: unavailable, empty and failing states', () => {
     await startFromService('Подстригване')
     await next()
     expect(
-      screen.getByText('Няма свободни дати за избраните услуга и служител. Опитайте с друг служител.'),
+      screen.getByText('Няма свободни дати за избраните услуги и служител. Опитайте с друг служител или променете избора.'),
     ).toBeInTheDocument()
     expect(screen.queryByRole('radio')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Напред' })).toBeNull()
@@ -497,7 +499,7 @@ describe('leaving the journey', () => {
 })
 
 async function reachReviewFromService() {
-  await click(screen.getByRole('radio', { name: /Подстригване/ }))
+  await click(screen.getByRole('checkbox', { name: /Подстригване/ }))
   await next()
   await next()
   await click(screen.getByRole('radio', { name: '10:00' }))

@@ -1,7 +1,9 @@
 import { API_BASE_URL } from '../../identity/api'
 import { isValidTimeZone, parseDateOnly, parseInstant } from './dates'
+import { MAX_SERVICE_PRICE_CENTS, MAX_VISIT_PRICE_CENTS, wirePriceToCents } from './money'
+import { canonicalIds } from './selection'
 
-// The public guest-booking HTTP contracts of ADR-0026 (Phase 5). Every request omits credentials
+// The public guest-booking HTTP contracts of ADR-0026 and, for a Service selection, ADR-0027 (M4). Every request omits credentials
 // and is session independent. Nothing here logs, stores or caches a request or a response.
 
 export type BookingStaff = { id: string; displayName: string }
@@ -22,17 +24,25 @@ export type Availability = {
   slots: Slot[]
 }
 
+// One stored Service line of a visit, as the server answers it.
+export type ConfirmedService = { name: string; durationMinutes: number; price: number }
+
+// The visit response of a new-shape request (ADR-0027): the stored lines in execution order and the
+// server's own totals. The confirmation shows these, never a client calculation.
 export type ConfirmedBooking = {
   reference: string
   status: 'CONFIRMED' | 'CANCELLED'
-  service: { name: string; durationMinutes: number; price: number }
+  services: ConfirmedService[]
+  totalDurationMinutes: number
+  totalPrice: number
   staff: { displayName: string }
   start: string
   end: string
   timezone: string
 }
 
-export type ReadUnavailable = { kind: 'business' | 'service' | 'staff' }
+// `too-long`: the current durations of a valid selection sum to more than 480 minutes.
+export type ReadUnavailable = { kind: 'business' | 'service' | 'staff' | 'too-long' }
 
 export type OptionsResult = { kind: 'options'; options: BookingOptions } | ReadUnavailable
 export type AvailabilityResult = { kind: 'availability'; availability: Availability } | ReadUnavailable
@@ -58,11 +68,12 @@ export type SubmissionRejection =
   | 'slot-unavailable'
   | 'identity-conflict'
   | 'attempt-mismatch'
+  | 'review-changed'
   | 'validation'
   | 'unexpected'
 
 export type BookingFieldErrors = Partial<
-  Record<'displayName' | 'phone' | 'email' | 'contact' | 'note', string>
+  Record<'displayName' | 'phone' | 'email' | 'contact' | 'note' | 'services', string>
 >
 
 // What one POST answered. `rolled-back`, `rejected` (a documented code on its documented status) and
@@ -75,7 +86,7 @@ export type SubmissionOutcome =
   | { kind: 'rate-limited'; retryAfterSeconds: number | null }
   | { kind: 'rejected'; reason: SubmissionRejection; fieldErrors?: BookingFieldErrors }
 
-const FIELD_ERROR_KEYS = ['displayName', 'phone', 'email', 'contact', 'note'] as const
+const FIELD_ERROR_KEYS = ['displayName', 'phone', 'email', 'contact', 'note', 'services'] as const
 const MAX_RETRY_AFTER_SECONDS = 3600
 // The IMF-fixdate of RFC 9110; looser spellings that Date.parse would guess at are not trusted.
 const HTTP_DATE = /^[A-Za-z]{3}, \d{2} [A-Za-z]{3} \d{4} \d{2}:\d{2}:\d{2} GMT$/
@@ -174,16 +185,56 @@ function decodeAvailability(body: unknown): Availability | undefined {
   return { date: body.date, timezone: body.timezone, availableDates, slots }
 }
 
+// A decoded line with its exact price in cents (validated, never rounded into validity).
+type DecodedLine = { service: ConfirmedService; cents: number }
+
+function decodeConfirmedService(value: unknown): DecodedLine | undefined {
+  if (
+    !isRecord(value) ||
+    !isText(value.name) ||
+    typeof value.durationMinutes !== 'number' ||
+    !Number.isInteger(value.durationMinutes) ||
+    value.durationMinutes < 1 ||
+    value.durationMinutes > 480
+  ) {
+    return undefined
+  }
+  const cents = wirePriceToCents(value.price, MAX_SERVICE_PRICE_CENTS)
+  if (cents === null) return undefined
+  return {
+    service: { name: value.name, durationMinutes: value.durationMinutes, price: value.price as number },
+    cents,
+  }
+}
+
+/**
+ * Strict decoding of the visit response. Every price must be an exact two-decimal EUR amount within
+ * its approved capacity (a line: 9 999 999 999.99, the visit: 49 999 999 999.95), and the totals must
+ * equal the sums of the returned lines (the price total against the exact sum of the line cents, never
+ * a decimal sum). A response that contradicts itself or the contract cannot be trusted to confirm
+ * anything and, like any unreadable success, is treated as an uncertain outcome by the caller.
+ */
 export function decodeConfirmedBooking(body: unknown): ConfirmedBooking | undefined {
-  if (!isRecord(body) || !isRecord(body.service) || !isRecord(body.staff)) return undefined
+  if (!isRecord(body) || !isRecord(body.staff) || !Array.isArray(body.services)) return undefined
+  if (body.services.length < 1 || body.services.length > 5) return undefined
+  const services: ConfirmedService[] = []
+  let cents = 0
+  for (const candidate of body.services) {
+    const decoded = decodeConfirmedService(candidate)
+    if (!decoded) return undefined
+    services.push(decoded.service)
+    cents += decoded.cents
+  }
+  const minutes = services.reduce((sum, service) => sum + service.durationMinutes, 0)
+  const totalCents = wirePriceToCents(body.totalPrice, MAX_VISIT_PRICE_CENTS)
   if (
     !isText(body.reference) ||
     (body.status !== 'CONFIRMED' && body.status !== 'CANCELLED') ||
-    !isText(body.service.name) ||
-    typeof body.service.durationMinutes !== 'number' ||
-    !Number.isFinite(body.service.durationMinutes) ||
-    typeof body.service.price !== 'number' ||
-    !Number.isFinite(body.service.price) ||
+    typeof body.totalDurationMinutes !== 'number' ||
+    body.totalDurationMinutes !== minutes ||
+    minutes > 480 ||
+    totalCents === null ||
+    totalCents !== cents ||
     !isText(body.staff.displayName) ||
     typeof body.start !== 'string' ||
     typeof body.end !== 'string' ||
@@ -197,11 +248,9 @@ export function decodeConfirmedBooking(body: unknown): ConfirmedBooking | undefi
   return {
     reference: body.reference,
     status: body.status,
-    service: {
-      name: body.service.name,
-      durationMinutes: body.service.durationMinutes,
-      price: body.service.price,
-    },
+    services,
+    totalDurationMinutes: minutes,
+    totalPrice: body.totalPrice as number,
     staff: { displayName: body.staff.displayName },
     start: body.start,
     end: body.end,
@@ -219,8 +268,14 @@ function decodeFieldErrors(body: unknown): BookingFieldErrors | undefined {
   return Object.keys(result).length > 0 ? result : undefined
 }
 
-function baseUrl(slug: string, serviceId: string): string {
-  return `${API_BASE_URL}/api/public/businesses/${encodeURIComponent(slug)}/services/${encodeURIComponent(serviceId)}`
+// The Service selection travels as repeated `serviceId` query parameters in the canonical identifier
+// order (ADR-0027 section 8), so one SET of Services is one URL whatever order it was ticked in. Nothing
+// else, no name, price or personal value, is ever part of a URL.
+function selectionUrl(slug: string, route: 'booking-options' | 'availability', serviceIds: readonly string[], extra?: [string, string][]): string {
+  const query = new URLSearchParams()
+  for (const id of canonicalIds(serviceIds)) query.append('serviceId', id)
+  for (const [name, value] of extra ?? []) query.append(name, value)
+  return `${API_BASE_URL}/api/public/businesses/${encodeURIComponent(slug)}/${route}?${query.toString()}`
 }
 
 // Maps a non-success read answer. Aborts are rethrown by the caller before this runs.
@@ -229,6 +284,7 @@ function readFailure(response: Response, body: unknown): ReadUnavailable | Booki
   if (response.status === 404 && code === 'BUSINESS_PAGE_UNAVAILABLE') return { kind: 'business' }
   if (response.status === 409 && code === 'BOOKING_SERVICE_UNAVAILABLE') return { kind: 'service' }
   if (response.status === 409 && code === 'BOOKING_STAFF_UNAVAILABLE') return { kind: 'staff' }
+  if (response.status === 409 && code === 'BOOKING_SELECTION_TOO_LONG') return { kind: 'too-long' }
   if (response.status === 429) {
     return new BookingReadError('rate-limited', parseRetryAfter(response.headers.get('Retry-After')))
   }
@@ -254,13 +310,13 @@ async function getJson(
   return { response, body: await readJson(response) }
 }
 
-/** The eligible StaffMembers, the timezone and the bookable range of one Service. */
+/** The StaffMembers who can perform the WHOLE selection, the timezone and the bookable range. */
 export async function fetchBookingOptions(
   slug: string,
-  serviceId: string,
+  serviceIds: readonly string[],
   signal: AbortSignal,
 ): Promise<OptionsResult> {
-  const { response, body } = await getJson(`${baseUrl(slug, serviceId)}/booking-options`, signal)
+  const { response, body } = await getJson(selectionUrl(slug, 'booking-options', serviceIds), signal)
   if (response.status === 200) {
     const options = decodeOptions(body)
     if (options) return { kind: 'options', options }
@@ -271,18 +327,18 @@ export async function fetchBookingOptions(
   return failure
 }
 
-/** The available dates and the slots of one date. `staffId` null is "no preference". */
+/** The available dates and the slots of one date for the whole selection. `staffId` null is "no preference". */
 export async function fetchAvailability(
   slug: string,
-  serviceId: string,
+  serviceIds: readonly string[],
   date: string,
   staffId: string | null,
   signal: AbortSignal,
 ): Promise<AvailabilityResult> {
-  const query = new URLSearchParams({ date })
-  if (staffId !== null) query.set('staffMemberId', staffId)
+  const extra: [string, string][] = [['date', date]]
+  if (staffId !== null) extra.push(['staffMemberId', staffId])
   const { response, body } = await getJson(
-    `${baseUrl(slug, serviceId)}/availability?${query.toString()}`,
+    selectionUrl(slug, 'availability', serviceIds, extra),
     signal,
   )
   if (response.status === 200) {
@@ -304,6 +360,7 @@ const REJECTIONS: Record<string, { status: number; reason: SubmissionRejection }
   BOOKING_SLOT_UNAVAILABLE: { status: 409, reason: 'slot-unavailable' },
   BOOKING_NOT_COMPLETED_ONLINE: { status: 409, reason: 'identity-conflict' },
   BOOKING_ATTEMPT_MISMATCH: { status: 409, reason: 'attempt-mismatch' },
+  BOOKING_REVIEW_CHANGED: { status: 409, reason: 'review-changed' },
   // Refused before any booking work: the body was never read as a booking.
   REQUEST_TOO_LARGE: { status: 413, reason: 'unexpected' },
   UNSUPPORTED_MEDIA_TYPE: { status: 415, reason: 'unexpected' },

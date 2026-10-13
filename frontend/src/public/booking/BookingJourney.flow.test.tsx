@@ -96,15 +96,16 @@ describe('the complete happy path', () => {
     // Exactly the documented fields and nothing else, in the documented order.
     expect(Object.keys(parsedBody(post))).toEqual([
       'attemptId',
-      'serviceId',
+      'services',
       'staffMemberId',
       'start',
       'customer',
       'note',
     ])
+    // One Service is also the ADR-0027 shape, with exactly the facts the guest reviewed.
     expect(parsedBody(post)).toEqual({
       attemptId: ATTEMPT_ONE,
-      serviceId: SERVICE_HAIR,
+      services: [{ serviceId: SERVICE_HAIR, reviewedDurationMinutes: 45, reviewedPriceCents: 2500 }],
       staffMemberId: null,
       start: '2026-10-07T10:00:00+03:00',
       customer: { displayName: 'Иван Петров', phone: '0888 123 456', email: null },
@@ -142,19 +143,26 @@ describe('the complete happy path', () => {
     await openPage()
     await startFromHero()
 
-    expect(heading()).toHaveTextContent('Избор на услуга')
+    expect(heading()).toHaveTextContent('Избор на услуги')
     expect(screen.getByText('Стъпка 1 от 5')).toBeInTheDocument()
-    expect(screen.getAllByRole('radio').map((radio) => (radio as HTMLInputElement).value)).toEqual([
+    expect(screen.getAllByRole('checkbox').map((box) => (box as HTMLInputElement).value)).toEqual([
       SERVICE_HAIR,
       SERVICE_COLOUR,
     ])
+    expect(screen.queryAllByRole('radio')).toHaveLength(0)
     // Nothing is chosen and the Service step cannot be left without a choice.
+    expect(screen.getAllByRole('checkbox').every((box) => !(box as HTMLInputElement).checked)).toBe(true)
     expect(button('Напред')).toBeDisabled()
-    await click(screen.getByRole('radio', { name: /Боядисване/ }))
+    await click(screen.getByRole('checkbox', { name: /Боядисване/ }))
     await next()
     expect(heading()).toHaveTextContent('Избор на служител')
     expect(screen.getByText('Боядисване')).toBeInTheDocument()
-    expect(server.of('GET', '/booking-options')[0]!.path).toContain(SERVICE_COLOUR)
+    expect(server.of('GET', '/booking-options')[0]!.path).toBe(
+      '/api/public/businesses/example-studio/booking-options',
+    )
+    expect(server.of('GET', '/booking-options')[0]!.url.searchParams.getAll('serviceId')).toEqual([
+      SERVICE_COLOUR,
+    ])
   })
 
   it('sends an explicit StaffMember and shows the member the server assigned, not the preference', async () => {
@@ -189,7 +197,9 @@ describe('the complete happy path', () => {
       request.method === 'POST'
         ? json(201, {
             ...bookingBody,
-            service: { name: 'Подстригване', durationMinutes: 50, price: 27.5 },
+            services: [{ name: 'Подстригване', durationMinutes: 50, price: 27.5 }],
+            totalDurationMinutes: 50,
+            totalPrice: 27.5,
           })
         : undefined,
     )
@@ -277,8 +287,10 @@ describe('selection changes and dependent state', () => {
     await click(button('Назад'))
     await waitFor(() => expect(heading()).toHaveTextContent('Избор на служител'))
     await click(button('Назад'))
-    await waitFor(() => expect(heading()).toHaveTextContent('Избор на услуга'))
-    await click(screen.getByRole('radio', { name: /Боядисване/ }))
+    await waitFor(() => expect(heading()).toHaveTextContent('Избор на услуги'))
+    // Another Service instead of the first: a different SET.
+    await click(screen.getByRole('checkbox', { name: /Подстригване/ }))
+    await click(screen.getByRole('checkbox', { name: /Боядисване/ }))
     await next()
 
     expect(heading()).toHaveTextContent('Избор на служител')
@@ -286,7 +298,9 @@ describe('selection changes and dependent state', () => {
     await next()
     expect(screen.queryByRole('radio', { name: '10:00' })).toBeInTheDocument()
     expect(screen.getByRole('radio', { name: '10:00' })).not.toBeChecked()
-    expect(server.of('GET', '/booking-options').at(-1)!.path).toContain(SERVICE_COLOUR)
+    expect(server.of('GET', '/booking-options').at(-1)!.url.searchParams.getAll('serviceId')).toEqual([
+      SERVICE_COLOUR,
+    ])
   })
 
   it('does not reload the booking options when only the selected date changes', async () => {
@@ -412,7 +426,8 @@ describe('reads: cancellation, stale answers and Business switching', () => {
   it('ignores a late booking-options answer for a Service the guest has left', async () => {
     const slow = deferred<Response>()
     server.on((request) =>
-      request.path.includes(SERVICE_HAIR) && request.path.endsWith('/booking-options')
+      request.url.searchParams.getAll('serviceId').includes(SERVICE_HAIR) &&
+      request.path.endsWith('/booking-options')
         ? slow.promise
         : undefined,
     )
@@ -422,8 +437,9 @@ describe('reads: cancellation, stale answers and Business switching', () => {
     const stale = server.of('GET', '/booking-options')[0]!
 
     await click(button('Назад'))
-    await waitFor(() => expect(heading()).toHaveTextContent('Избор на услуга'))
-    await click(screen.getByRole('radio', { name: /Боядисване/ }))
+    await waitFor(() => expect(heading()).toHaveTextContent('Избор на услуги'))
+    await click(screen.getByRole('checkbox', { name: /Подстригване/ }))
+    await click(screen.getByRole('checkbox', { name: /Боядисване/ }))
     await next()
     expect(stale.signal?.aborted).toBe(true)
 

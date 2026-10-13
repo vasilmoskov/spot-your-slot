@@ -501,8 +501,9 @@ developer review of Phase 7 and the human feedback on it:
 
 - **Profile:** exactly one primary action, «Запази час», in the Business hero, with no extra border or
   box around it. The Service cards stay informational: they hold no button, link, or other control.
-- **Selected Service context:** on the StaffMember, date and time, and details steps a compact line with the
-  chosen Service sits above the step heading; it is not repeated on the first step or on the review.
+- **Selected Services context:** on the StaffMember, date and time, and details steps a compact line with the
+  chosen Services (names in the public-profile order, the summed duration, and the total EUR price) sits above the step
+  heading; it is not repeated on the first step or on the review.
 - **Date and time:** one shared section. A monthly calendar (Bulgarian month and weekday names, Monday first,
   month navigation limited to the booking horizon of the API) and the slots of the selected date sit side by
   side from the tablet width and stacked below it. The calendar follows the WAI-ARIA date picker grid pattern: one
@@ -522,24 +523,34 @@ developer review of Phase 7 and the human feedback on it:
   «Телефонът и имейлът не съответстват. Проверете ги или въведете само единия контакт.» with the Business
   telephone, keeps the entered details, and offers «Промяна на данните». The wording names neither the contact
   that matched nor whether a Customer exists.
+- **Services step (multi-Service, phase M5):** «Избор на услуги» is a labelled group of native checkboxes in the
+  public-profile order, nothing preselected, one to five Services and at most 480 minutes. An unselected option that cannot
+  be added is disabled and states the reason in text beside it (never by colour alone); a selected option is never
+  disabled. A summary of the selected names, the summed duration and the exact total price (integer cents) is announced
+  politely before «Напред»; a limit that can be shown beside the options produces no validation panel. The click order has
+  no meaning: the visible lists keep the profile order.
+- **Staff step for a selection:** only members who can perform every selected Service; an empty intersection is a calm
+  informational state with «Промяна на избора» that keeps the selection and the details, distinct from eligible members who
+  have no time.
 - **Review:** «Промени» opens the step in review-edit mode. Each step then offers «Към прегледа»; after a
   Service or StaffMember change only the invalidated selections are asked again and the guest returns directly
   once they are valid; the review is never reachable (also not with the browser's Forward) with a time that is no
   longer valid; a frozen or sending attempt cannot be edited.
-- **Confirmation:** one heading, the server-returned Service, StaffMember, date and time, duration and price,
+- **Review of a visit:** one review lists every Service with its duration and price, the total duration and price, the
+  StaffMember, the date and time, and the details; «Промени услугите» opens the first step. After a definite
+  `BOOKING_REVIEW_CHANGED` the facts are re-read, the time is chosen again, the details stay, and nothing is sent by itself.
+- **Confirmation:** one heading, the server-returned Services (stored order) with their totals, the StaffMember, date and time,
   «Запазете данните за резервацията.» and the Business contact. No reference number, status row, or timezone is
   shown (they stay in the API contract), and a cancelled replay keeps its own distinct presentation.
 - The shared «Остани» / «Напусни» dialog (section 19), the shared status messages, and the action-order rule
   of section 6 apply; the public page never copies the administration shell.
 
-Booking several Services in one visit is **decided but not implemented**: today each booking is for exactly one Service
-and one StaffMember, and the journey offers one choice at the first step. The approved model
+Booking several Services in one visit is **implemented (frontend phase M5) and verified by automated tests only**
 ([ADR-0027](decisions/ADR-0027-book-several-services-as-one-atomic-visit-with-service-lines-a-versioned-set-fingerprint-and-an-explicit-review-consistency-check.md),
-[task 08b](tasks/08b-multi-service-guest-booking-plan.md)) replaces that choice with real checkboxes in a labelled group,
-at most five Services and 480 minutes (the limits explained next to the disabled boxes), a polite summary of the selected
-Services with the total duration and the total EUR price before «Напред», one whole-visit review, and a confirmation that
-lists the returned Services; the Services are shown in the public-profile order whatever the order they were ticked. These
-rules enter this guide as an enduring decision only after the frontend phase is built and approved by a human.
+[task 08b](tasks/08b-multi-service-guest-booking-plan.md)): the bullets above describe the composition. The rules for the
+Services step, the staff step, the review, and the confirmation of a visit become an enduring decision of this guide only
+after the rendered human review of phase M6, which also decides the Proposed wording of the new sentences, the selection
+hint, and the disabled-option reasons.
 
 **This composition is implemented but not yet visually approved by a human:** it becomes an enduring decision of
 this guide only after that approval. This guide does not authorize public booking work or expand the MVP.

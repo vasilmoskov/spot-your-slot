@@ -9,11 +9,15 @@ import { retryDelayMs } from './attempt'
 import type { Slot, SubmissionRejection } from './api'
 import { formatDateOnlyLong, formatTimeDistinct } from './dates'
 import { useWaiting } from './hooks'
+import { formatCents } from './money'
+import { selectionTotals } from './selection'
 import {
   ATTEMPT_MISMATCH_MESSAGE,
   KNOWN_ROLLBACK_MESSAGE,
   NO_PREFERENCE_LABEL,
   RATE_LIMITED_MESSAGE,
+  REVIEW_CHANGED_FROZEN_MESSAGE,
+  SERVICES_FIELD_MESSAGE,
   UNCERTAIN_MESSAGE,
   rejectionMessage,
 } from './messages'
@@ -25,6 +29,7 @@ const BLOCKING_REASONS: readonly SubmissionRejection[] = [
   'service-unavailable',
   'staff-unavailable',
   'identity-conflict',
+  'review-changed',
   'validation',
 ]
 
@@ -85,13 +90,16 @@ function Row({
   )
 }
 
+export type ReviewRefresh = 'idle' | 'loading' | 'failed'
+
 /**
- * The last step before anything is sent. It shows the advertised duration and price (the confirmation
- * shows the final ones), makes clear that the time is not reserved yet, and carries every submission
+ * The last step before anything is sent. It shows ONE review of the whole visit: every selected Service
+ * with its advertised duration and price in the public-profile order, the totals, the StaffMember, the
+ * date and time and the guest's details (the confirmation shows the final ones). It makes clear that the time is not reserved yet, and carries every submission
  * state: sending, the known rollback, the rate limit, the frozen uncertain outcome and each rejection.
  */
 export function ReviewStep({
-  service,
+  services,
   staffLabel,
   date,
   slot,
@@ -101,11 +109,13 @@ export function ReviewStep({
   businessPhone,
   now,
   recovery,
+  refresh,
+  onRefresh,
   onSubmit,
   onBack,
   onEdit,
 }: {
-  service: PublicService
+  services: PublicService[]
   staffLabel: string
   date: string
   slot: Slot
@@ -115,6 +125,9 @@ export function ReviewStep({
   businessPhone: string | null
   now: () => number
   recovery: ReviewRecovery
+  // The state of the re-read of the Services after a definite BOOKING_REVIEW_CHANGED.
+  refresh: ReviewRefresh
+  onRefresh: () => void
   onSubmit: () => void
   onBack: () => void
   onEdit: (step: number) => void
@@ -138,6 +151,7 @@ export function ReviewStep({
     if (noticeKey !== null) noticeRef.current?.focus()
   }, [noticeKey, submission])
 
+  const totals = selectionTotals(services)
   const note = trimApproved(details.note)
   const phone = trimApproved(details.phone)
   const email = trimApproved(details.email)
@@ -145,7 +159,12 @@ export function ReviewStep({
   const endText = formatTimeDistinct(slot.end, timezone)
 
   let message: string | null = null
-  if (notice) message = rejectionMessage(notice.reason)
+  if (notice) {
+    message =
+      notice.reason === 'validation' && notice.fieldErrors?.services
+        ? SERVICES_FIELD_MESSAGE
+        : rejectionMessage(notice.reason)
+  }
   else if (submission.phase === 'retryable') {
     message = submission.cause === 'rate-limited' ? RATE_LIMITED_MESSAGE : KNOWN_ROLLBACK_MESSAGE
   } else if (submission.phase === 'uncertain') {
@@ -154,7 +173,9 @@ export function ReviewStep({
         ? RATE_LIMITED_MESSAGE
         : submission.cause === 'mismatch'
           ? ATTEMPT_MISMATCH_MESSAGE
-          : UNCERTAIN_MESSAGE
+          : submission.cause === 'review-changed'
+            ? REVIEW_CHANGED_FROZEN_MESSAGE
+            : UNCERTAIN_MESSAGE
   }
 
   const canSend = submission.phase === 'idle' || submission.phase === 'retryable' || submission.phase === 'uncertain'
@@ -168,10 +189,20 @@ export function ReviewStep({
   return (
     <div className="booking-review">
       <dl className="booking-summary">
-        <Row term="Услуга" editLabel="Промени услугата" disabled={frozen} onEdit={() => onEdit(1)}>
-          <span className="booking-summary-strong">{service.name}</span>
-          <span>
-            {formatServiceDuration(service.durationMinutes)} · {formatServicePrice(service.price)}
+        <Row term="Услуги" editLabel="Промени услугите" disabled={frozen} onEdit={() => onEdit(1)}>
+          <ul className="booking-summary-services">
+            {services.map((service) => (
+              <li key={service.id}>
+                <span className="booking-summary-strong">{service.name}</span>
+                <span>
+                  {formatServiceDuration(service.durationMinutes)} ·{' '}
+                  {formatServicePrice(service.price)}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <span className="booking-summary-total">
+            Общо: {formatServiceDuration(totals.minutes)} · {formatCents(totals.cents)}
           </span>
         </Row>
         <Row term="Служител" editLabel="Промени служителя" disabled={frozen} onEdit={() => onEdit(2)}>
@@ -202,6 +233,12 @@ export function ReviewStep({
       {submission.phase === 'sending' && (
         <p role="status" className="public-status">
           Изпращане на резервацията…
+        </p>
+      )}
+
+      {notice?.reason === 'review-changed' && refresh === 'loading' && (
+        <p role="status" className="public-status">
+          Обновяване на условията…
         </p>
       )}
 
@@ -240,7 +277,7 @@ export function ReviewStep({
         )}
         {notice?.reason === 'service-unavailable' && (
           <Button type="button" onClick={recovery.chooseService}>
-            Избор на услуга
+            Промяна на избора
           </Button>
         )}
         {notice?.reason === 'staff-unavailable' && (
@@ -248,9 +285,20 @@ export function ReviewStep({
             Избор на служител
           </Button>
         )}
-        {(notice?.reason === 'validation' || notice?.reason === 'identity-conflict') && (
+        {notice?.reason === 'validation' && notice.fieldErrors?.services && (
+          <Button type="button" onClick={recovery.chooseService}>
+            Промяна на избора
+          </Button>
+        )}
+        {((notice?.reason === 'validation' && !notice.fieldErrors?.services) ||
+          notice?.reason === 'identity-conflict') && (
           <Button type="button" onClick={recovery.editDetails}>
             Промяна на данните
+          </Button>
+        )}
+        {notice?.reason === 'review-changed' && refresh === 'failed' && (
+          <Button type="button" onClick={onRefresh}>
+            Опитайте отново
           </Button>
         )}
         {submission.phase === 'uncertain' && (

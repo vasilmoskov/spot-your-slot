@@ -231,7 +231,7 @@ describe('an uncertain outcome', () => {
     expect(screen.getByRole('alertdialog')).toHaveTextContent('Резервацията може вече да е направена.')
     await click(button('Напусни'))
 
-    await waitFor(() => expect(heading()).toHaveTextContent('Избор на услуга'))
+    await waitFor(() => expect(heading()).toHaveTextContent('Избор на услуги'))
     expect(screen.getByText('Стъпка 1 от 5')).toBeInTheDocument()
     expect(document.body.textContent).not.toContain('Иван Петров')
     expect(button('Напред')).toBeDisabled()
@@ -481,9 +481,11 @@ describe('rejections', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Избраната услуга вече не е налична. Изберете друга услуга.',
     )
-    await click(button('Избор на услуга'))
-    await waitFor(() => expect(heading()).toHaveTextContent('Избор на услуга'))
-    expect(screen.getByRole('radio', { name: /Подстригване/ })).not.toBeChecked()
+    await click(button('Промяна на избора'))
+    await waitFor(() => expect(heading()).toHaveTextContent('Избор на услуги'))
+    // The offered Services were read again; the unchanged profile still lists the Service.
+    expect(server.of('GET', '/example-studio')).toHaveLength(2)
+    expect(screen.getByRole('checkbox', { name: /Подстригване/ })).toBeChecked()
   })
 
   it('a StaffMember that is no longer available offers another or no preference', async () => {
@@ -538,7 +540,7 @@ describe('rejections', () => {
     await click(button('Започни отначало'))
     expect(screen.getByRole('alertdialog')).toHaveTextContent('Резервацията може вече да е направена.')
     await click(button('Напусни'))
-    await waitFor(() => expect(heading()).toHaveTextContent('Избор на услуга'))
+    await waitFor(() => expect(heading()).toHaveTextContent('Избор на услуги'))
     expect(document.body.textContent).not.toContain('Иван Петров')
     expect(server.posts).toHaveLength(1)
   })
@@ -762,7 +764,7 @@ describe('an uncertain attempt followed by another answer', () => {
     await click(button('Опитайте отново'))
     await click(button('Започни отначало'))
     await click(button('Напусни'))
-    await waitFor(() => expect(heading()).toHaveTextContent('Избор на услуга'))
+    await waitFor(() => expect(heading()).toHaveTextContent('Избор на услуги'))
     await reachReviewFromStart()
     await submit()
     expect(randomUuid).toHaveBeenCalledTimes(2)
@@ -782,7 +784,10 @@ describe('the Service reference of the request', () => {
     await next()
     await submit()
     const body = parsedBody(server.posts[0])
-    expect(body.serviceId).toBe(SERVICE_COLOUR)
+    expect(body.services).toEqual([
+      { serviceId: SERVICE_COLOUR, reviewedDurationMinutes: 120, reviewedPriceCents: 8050 },
+    ])
+    expect(body).not.toHaveProperty('serviceId')
     for (const forbidden of ['businessId', 'price', 'duration', 'end', 'status', 'timezone', 'source']) {
       expect(body).not.toHaveProperty(forbidden)
     }
@@ -790,7 +795,7 @@ describe('the Service reference of the request', () => {
 })
 
 async function reachReviewFromStart() {
-  await click(screen.getByRole('radio', { name: /Подстригване/ }))
+  await click(screen.getByRole('checkbox', { name: /Подстригване/ }))
   await next()
   await next()
   await pickSlot('10:00')

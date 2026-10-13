@@ -99,7 +99,8 @@ An ACTIVE Business page shows its generic profile, contact/working information,
 active Services with price/duration, and available qualified team members. The
 Bulgarian mobile-first flow is:
 
-1. «Избор на услуга»: select a Service;
+1. «Избор на услуги»: select one to five Services for one visit (at most 480 minutes in total; decided in
+   ADR-0027, implemented in phases M1 to M5 and not yet visually approved);
 2. «Избор на служител»: select a person or “Без предпочитание”;
 3. «Дата и час»: select an available date and time;
 4. «Вашите данни»: provide a name, a phone and/or an email, and an optional booking

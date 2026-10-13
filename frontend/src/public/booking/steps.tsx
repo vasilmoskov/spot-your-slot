@@ -2,6 +2,8 @@ import type { ReactNode } from 'react'
 import { formatServiceDuration, formatServicePrice } from '../../business/services/presentation'
 import { Button } from '../../ui/Button'
 import type { PublicService } from '../api'
+import { formatCents } from './money'
+import { disabledReason, selectionIsBookable, selectionTotals } from './selection'
 import {
   BookingReadError,
   type Availability,
@@ -13,9 +15,17 @@ import { BookingCalendar } from './BookingCalendar'
 import { formatDateOnlyLong, formatTimeDistinct, isRepeatedLocalTime } from './dates'
 import { useWaiting, type ReadView } from './hooks'
 import {
+  LIMIT_COUNT_REASON,
+  LIMIT_DURATION_REASON,
   NO_PREFERENCE_LABEL,
+  NO_SELECTION_HINT,
+  NO_STAFF_FOR_SELECTION_MESSAGE,
+  NO_STAFF_FOR_SERVICE_MESSAGE,
   RATE_LIMITED_MESSAGE,
   READ_NETWORK_MESSAGE,
+  SELECTION_HINT,
+  SELECTION_OVER_LIMIT_MESSAGE,
+  SELECTION_TOO_LONG_MESSAGE,
   SERVICE_UNAVAILABLE_MESSAGE,
   STAFF_UNAVAILABLE_MESSAGE,
   UNEXPECTED_MESSAGE,
@@ -25,7 +35,7 @@ export function StepActions({ children }: { children: ReactNode }) {
   return <div className="action-group booking-actions">{children}</div>
 }
 
-function Notice({ kind, children }: { kind: 'error' | 'info'; children: ReactNode }) {
+export function Notice({ kind, children }: { kind: 'error' | 'info'; children: ReactNode }) {
   return (
     <div
       className={`status-message status-${kind}`}
@@ -89,83 +99,142 @@ export function UnavailableProblem({
       </div>
     )
   }
+  // A missing, foreign or inactive Service and a selection that became too long are both problems of
+  // the SELECTION: the guest returns to the Service step, which refreshes the offered Services.
   return (
     <div className="booking-problem">
       <Notice kind="error">
-        <p>{SERVICE_UNAVAILABLE_MESSAGE}</p>
+        <p>{kind === 'too-long' ? SELECTION_TOO_LONG_MESSAGE : SERVICE_UNAVAILABLE_MESSAGE}</p>
       </Notice>
       <Button type="button" variant="secondary" onClick={onChooseService}>
-        Избор на услуга
+        Промяна на избора
       </Button>
     </div>
   )
 }
 
-/** The chosen Service on every later step, as advertised by the profile. */
-export function ServiceContext({ service }: { service: PublicService | undefined }) {
-  if (!service) return null
+/** The chosen Services on every later step: the names in the public-profile order and the totals. */
+export function ServiceContext({ services }: { services: readonly PublicService[] }) {
+  if (services.length === 0) return null
+  const totals = selectionTotals(services)
   return (
     <p className="booking-context">
-      <span className="booking-context-name">{service.name}</span>
+      <span className="booking-context-name">{services.map((service) => service.name).join(', ')}</span>
       <span>
-        {formatServiceDuration(service.durationMinutes)} · {formatServicePrice(service.price)}
+        {formatServiceDuration(totals.minutes)} · {formatCents(totals.cents)}
       </span>
     </p>
   )
 }
 
-// ---- step 1: the Service ----
+// ---- step 1: the Services ----
 
+const SELECTION_HINT_ID = 'booking-selection-hint'
+const SELECTION_SUMMARY_ID = 'booking-selection-summary'
+
+/**
+ * The first step: one to five Services as real checkboxes in a labelled group. The unselected options
+ * that cannot be added (five chosen, or more than 480 minutes in total) are disabled with a visible
+ * reason next to them; a selected option is never disabled, so it can always be removed. The summary
+ * (names, summed duration, exact total price) is announced politely whenever it changes.
+ */
 export function ServiceStep({
   services,
-  serviceId,
+  selected,
   frozen,
   nextLabel,
-  onSelect,
+  onToggle,
   onNext,
 }: {
   services: PublicService[]
-  serviceId: string | null
+  // The selected Services of the catalog, in the public-profile order.
+  selected: PublicService[]
   frozen: boolean
   nextLabel: string
-  onSelect: (id: string) => void
+  onToggle: (id: string) => void
   onNext: () => void
 }) {
+  const totals = selectionTotals(selected)
+  const bookable = selectionIsBookable(selected)
+  const overLimit = selected.length > 0 && !bookable
   return (
     <form
       className="booking-step-form"
       onSubmit={(event) => {
         event.preventDefault()
-        if (serviceId !== null) onNext()
+        if (bookable) onNext()
       }}
       noValidate
     >
-      <fieldset className="booking-choices" disabled={frozen}>
-        <legend className="visually-hidden">Услуга</legend>
-        {services.map((service) => (
-          <label key={service.id} className="booking-choice">
-            <input
-              type="radio"
-              name="booking-service"
-              value={service.id}
-              checked={service.id === serviceId}
-              onChange={() => onSelect(service.id)}
-            />
-            <span className="booking-choice-body">
-              <span className="booking-choice-title">{service.name}</span>
-              {service.description && (
-                <span className="booking-choice-description">{service.description}</span>
-              )}
-              <span className="booking-choice-facts">
-                {formatServiceDuration(service.durationMinutes)} ·{' '}
-                {formatServicePrice(service.price)}
+      <fieldset
+        className="booking-choices"
+        disabled={frozen}
+        aria-describedby={`${SELECTION_HINT_ID} ${SELECTION_SUMMARY_ID}`}
+      >
+        <legend className="visually-hidden">Избор на услуги</legend>
+        <p id={SELECTION_HINT_ID} className="field-note">
+          {SELECTION_HINT}
+        </p>
+        {services.map((service) => {
+          const reason = disabledReason(selected, service)
+          const reasonId = `booking-service-reason-${service.id}`
+          return (
+            <label
+              key={service.id}
+              className={reason === null ? 'booking-choice' : 'booking-choice booking-choice--unavailable'}
+            >
+              <input
+                type="checkbox"
+                name="booking-service"
+                value={service.id}
+                checked={selected.some((item) => item.id === service.id)}
+                disabled={reason !== null}
+                aria-describedby={reason === null ? undefined : reasonId}
+                onChange={() => onToggle(service.id)}
+              />
+              <span className="booking-choice-body">
+                <span className="booking-choice-title">{service.name}</span>
+                {service.description && (
+                  <span className="booking-choice-description">{service.description}</span>
+                )}
+                <span className="booking-choice-facts">
+                  {formatServiceDuration(service.durationMinutes)} ·{' '}
+                  {formatServicePrice(service.price)}
+                </span>
+                {reason !== null && (
+                  <span id={reasonId} className="booking-choice-reason">
+                    {reason === 'count' ? LIMIT_COUNT_REASON : LIMIT_DURATION_REASON}
+                  </span>
+                )}
               </span>
-            </span>
-          </label>
-        ))}
+            </label>
+          )
+        })}
       </fieldset>
+      {selected.length === 0 ? (
+        <p id={SELECTION_SUMMARY_ID} className="booking-selection-empty">
+          {NO_SELECTION_HINT}
+        </p>
+      ) : (
+        <div id={SELECTION_SUMMARY_ID} className="booking-selection-summary">
+          <p className="booking-selection-title">Избрано за посещението</p>
+          <ul className="booking-selection-list">
+            {selected.map((service) => (
+              <li key={service.id}>{service.name}</li>
+            ))}
+          </ul>
+          <p className="booking-selection-total" role="status">
+            Общо: {formatServiceDuration(totals.minutes)} · {formatCents(totals.cents)}
+          </p>
+        </div>
+      )}
+      {overLimit && (
+        <Notice kind="error">
+          <p>{SELECTION_OVER_LIMIT_MESSAGE}</p>
+        </Notice>
+      )}
       <StepActions>
-        <Button type="submit" disabled={serviceId === null || frozen}>
+        <Button type="submit" disabled={!bookable || frozen}>
           {nextLabel}
         </Button>
       </StepActions>
@@ -183,16 +252,23 @@ export function StaffStep({
   onSelect,
   onReload,
   onChooseService,
+  onRefreshSelection,
   onNext,
   onBack,
+  serviceCount,
 }: {
   view: ReadView<{ kind: 'options'; options: BookingOptions } | ReadUnavailable>
+  serviceCount: number
   staffId: string | null
   frozen: boolean
   nextLabel: string
   onSelect: (id: string | null) => void
   onReload: () => void
+  // The empty intersection: back to the selection, which stays as it is.
   onChooseService: () => void
+  // A Service that vanished or a selection that became too long: back to the selection after the
+  // offered Services were read again.
+  onRefreshSelection: () => void
   onNext: () => void
   onBack: () => void
 }) {
@@ -222,7 +298,7 @@ export function StaffStep({
       <>
         <UnavailableProblem
           kind={view.data.kind}
-          onChooseService={onChooseService}
+          onChooseService={onRefreshSelection}
           onChooseStaff={onReload}
         />
         <StepActions>{back}</StepActions>
@@ -234,11 +310,11 @@ export function StaffStep({
     return (
       <>
         <Notice kind="info">
-          <p>В момента няма служител, при когото можете да запазите тази услуга онлайн.</p>
+          <p>{serviceCount > 1 ? NO_STAFF_FOR_SELECTION_MESSAGE : NO_STAFF_FOR_SERVICE_MESSAGE}</p>
         </Notice>
         <StepActions>
           <Button type="button" variant="secondary" onClick={onChooseService}>
-            Избор на друга услуга
+            Промяна на избора
           </Button>
         </StepActions>
       </>
@@ -372,7 +448,7 @@ export function DateTimeStep({
     return (
       <>
         <Notice kind="info">
-          <p>Няма свободни дати за избраните услуга и служител. Опитайте с друг служител.</p>
+          <p>Няма свободни дати за избраните услуги и служител. Опитайте с друг служител или променете избора.</p>
         </Notice>
         <StepActions>{back}</StepActions>
       </>

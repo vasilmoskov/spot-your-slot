@@ -383,7 +383,7 @@ structured Bulgarian errors. When `COMPLETED` and `NO_SHOW` are introduced (defe
 statuses are currently `CONFIRMED` and `CANCELLED`), reject them before Appointment
 start so a future slot cannot be released early.
 
-### Guest booking (issue #18; decided in ADR-0022 to ADR-0026; the backend is implemented, the frontend is not)
+### Guest booking (issue #18; decided in ADR-0022 to ADR-0027; the backend and the frontend are implemented, the frontend is not yet visually approved)
 
 - **Multi-Service extension (the persistence phase M1 is implemented: `appointment_service` carries `business_id` with composite same-Business restrictive foreign keys, and its constraints are translated into sanitized fixed failures; everything else decided in [ADR-0027](decisions/ADR-0027-book-several-services-as-one-atomic-visit-with-service-lines-a-versioned-set-fingerprint-and-an-explicit-review-consistency-check.md), not implemented).** The new read routes and the second booking request shape (**implemented in phase M4**; the persistence of the claims is never done) follow the same rules as the routes above: exact matchers, session independence, `no-store`, `credentials: 'omit'`, Business-scoped resolution of every identifier (a foreign or missing Service is the same `BOOKING_SERVICE_UNAVAILABLE`; a malformed selection is a `400` whose only field error is `services`, read before any transaction; identifiers must be in the exact canonical 8-4-4-4-12 form because `UUID.fromString` also accepts short and signed forms), no personal data in URLs, logs, errors, or storage, and the unchanged limiter budgets and 16 KiB body bound. The reviewed duration and price in a request are **claims that are compared with the locked Services and never persisted**; a difference creates no Appointment and no Customer and answers `409 BOOKING_REVIEW_CHANGED` without any figure. The claims are part of the request fingerprint, so a replay with other claims is a mismatch. `appointment_service` lines carry `business_id` with composite same-Business foreign keys, and the Services of a visit are locked `FOR SHARE` in ascending identifier order.
 
@@ -427,11 +427,11 @@ start so a future slot cannot be released early.
   counted in bytes actually read before the JSON tree is built (chunked, absent, and false `Content-Length` included); more is a
   sanitized `413 REQUEST_TOO_LARGE` with the fixed instance and `no-store`, charged once to the address budgets and never to the
   contact budget, with no booking or database work. Private endpoints are unchanged.
-- **Frontend memory-only handling (implemented, Phase 6, not yet visually approved).** The public journey keeps the guest's choices, details, note, and
+- **Frontend memory-only handling (implemented, Phase 6 and, for a visit of several Services, phase M5; not yet visually approved).** The public journey keeps the guest's choices, details, note, and
   attempt identity only in component memory: never in the URL, `history.state` (only a step marker), `localStorage`, `sessionStorage`, cookies, the page title or
   metadata, logs, or analytics. Every public request uses `credentials: 'omit'`. The details are cleared from memory as soon as the server has answered a
   booking, a Business switch discards the whole journey and ignores its pending answers, and an uncertain outcome keeps the one frozen attempt (same ID, same bytes) until the
-  guest explicitly abandons it after a warning. `beforeunload` is best effort; a refresh discards the in-memory attempt (residual risk, ADR-0024). Evidence: the Vitest suites under
+  guest explicitly abandons it after a warning. The selected Services, their prices, and the reviewed terms are held in memory like the other choices; the Service identifiers appear only as repeated `serviceId` parameters of the public reads (public references, no name, price, or personal value), and the request carries the reviewed terms as claims the server compares and discards. `beforeunload` is best effort; a refresh discards the in-memory attempt (residual risk, ADR-0024). Evidence: the Vitest suites under
   `frontend/src/public/booking/` (they test client behavior against stubbed HTTP and do not prove backend guarantees).
 - **Abuse protection (implemented, Phase 5).** A Booking-owned, bounded, process-local, fixed-window limiter charged before
   any database work (a rejected request writes nothing and reaches no orchestration). Defaults per 15 minutes: bookings 10

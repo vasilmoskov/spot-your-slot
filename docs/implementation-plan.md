@@ -72,7 +72,7 @@ dependencies absent separate approval.
 - Enforce optional same-Business one-to-one StaffMember/Membership linkage with
   constraints/tests. Use “Екип” and “Член на екипа” in generic Bulgarian
   administration while preserving `StaffMember` internally; public booking uses
-  the neutral formal step headings of ADR-0026 («Избор на услуга», «Избор на служител», «Дата и час», «Вашите
+  the neutral formal step headings of ADR-0026 («Избор на услуги», «Избор на служител», «Дата и час», «Вашите
   данни», «Преглед и потвърждение») and “Без предпочитание”; the informal question “При кого искаш да запазиш
   час?” is withdrawn.
 - Exit: availability inputs can be configured for every BusinessType; role and
@@ -153,7 +153,7 @@ working periods were delivered by issue #16 (see Phase 5).
   abuse protection; (6) the frontend; (7) rendered browser review and human visual approval (a stop gate);
   (8) browser E2E and final acceptance. Production public booking waits for the Business calendar (issue #21).
 - Multi-Service booking (a visit of one to five Services) was decided on 2026-10-07 (ADR-0027, `docs/tasks/08b-multi-service-guest-booking-plan.md`) and is planned as seven separately approved phases M1 to M7
-  (persistence `V13`; availability and eligibility; orchestration and fingerprinting; HTTP; frontend; rendered review; browser E2E). **Phases M1 (persistence, `V13`), M2 (availability and eligibility), M3 (orchestration and fingerprinting), and M4 (the public HTTP contract) are implemented and verified; M4 awaits review; M5 to M7 have not started**; the original Phase 8 of issue #18 is replaced by M7 and does not start before it.
+  (persistence `V13`; availability and eligibility; orchestration and fingerprinting; HTTP; frontend; rendered review; browser E2E). **Phases M1 (persistence, `V13`), M2 (availability and eligibility), M3 (orchestration and fingerprinting), and M4 (the public HTTP contract) are implemented, verified, and committed; M5 (the frontend journey, automated tests only, not visually approved) is implemented and awaits review; M6 and M7 have not started**; the original Phase 8 of issue #18 is replaced by M7 and does not start before it.
 - Amended by ADR-0022 (the earlier text said: "Use only `CONFIRMED`, `CANCELLED_BY_CUSTOMER`,
   `CANCELLED_BY_BUSINESS`, `COMPLETED`, and `NO_SHOW`."): use only `CONFIRMED` and `CANCELLED`; cancellation
   attribution, the late flag, and `COMPLETED`/`NO_SHOW` arrive with the issues that implement them.
