@@ -8,6 +8,7 @@ import bg.spotyourslot.booking.GuestBookingRequest;
 import bg.spotyourslot.booking.domain.InvalidBookingRequest;
 import bg.spotyourslot.booking.domain.NormalizedBookingRequest;
 import bg.spotyourslot.booking.domain.RequestField;
+import bg.spotyourslot.booking.domain.RequestedService;
 import bg.spotyourslot.booking.infrastructure.AppointmentPersistenceException;
 import bg.spotyourslot.booking.infrastructure.AppointmentStore;
 import bg.spotyourslot.business.BusinessBookingAccess;
@@ -17,7 +18,9 @@ import bg.spotyourslot.customer.CustomerConcurrentConflict;
 import bg.spotyourslot.workforce.StaffBookingAccess;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import org.springframework.stereotype.Service;
@@ -98,7 +101,7 @@ public class GuestBookingService implements GuestBooking {
         try {
             normalized = NormalizedBookingRequest.normalize(
                     request.attemptId(),
-                    request.serviceId(),
+                    requestedServices(request),
                     request.staffMemberId(),
                     request.start(),
                     request.displayName(),
@@ -279,6 +282,20 @@ public class GuestBookingService implements GuestBooking {
             current = current.getCause();
         }
         return null;
+    }
+
+    /** The legacy shape is one Service without reviewed terms; the new shape carries the terms. */
+    private static List<RequestedService> requestedServices(GuestBookingRequest request) {
+        if (request.services() == null) {
+            return List.of(new RequestedService(request.serviceId(), null));
+        }
+        List<RequestedService> requested = new ArrayList<>(request.services().size());
+        for (GuestBookingRequest.ReviewedService service : request.services()) {
+            requested.add(new RequestedService(
+                    service.serviceId(),
+                    new RequestedService.ReviewedTerms(service.durationMinutes(), service.priceCents())));
+        }
+        return requested;
     }
 
     private static Set<BookingField> fields(Set<RequestField> requestFields) {

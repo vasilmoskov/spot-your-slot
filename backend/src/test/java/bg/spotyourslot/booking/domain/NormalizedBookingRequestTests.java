@@ -122,7 +122,7 @@ class NormalizedBookingRequestTests {
     @Test
     void requiredReferencesAreProgrammingErrorsNotValidationOutcomes() {
         assertThatThrownBy(() -> NormalizedBookingRequest.normalize(
-                ATTEMPT, null, null, START, "Ана", "0888123456", null, null))
+                ATTEMPT, (UUID) null, null, START, "Ана", "0888123456", null, null))
                 .isInstanceOf(NullPointerException.class);
         assertThatThrownBy(() -> NormalizedBookingRequest.normalize(
                 ATTEMPT, SERVICE, null, null, "Ана", "0888123456", null, null))
@@ -137,5 +137,91 @@ class NormalizedBookingRequestTests {
         assertThat(request.toString()).doesNotContain("Ана").doesNotContain("0888").doesNotContain("тайна");
         assertThat(failure.getMessage()).isEqualTo("Booking request is invalid");
         assertThat(failure.getCause()).isNull();
+    }
+
+    // ---- the set of Services (ADR-0027) ----
+
+    private static final UUID A = UUID.fromString("00000000-0000-4000-8000-000000000001");
+    private static final UUID B = UUID.fromString("7fffffff-ffff-4fff-bfff-ffffffffffff");
+    private static final UUID C = UUID.fromString("80000000-0000-4000-8000-000000000000");
+    private static final UUID D = UUID.fromString("ffffffff-ffff-4fff-bfff-ffffffffffff");
+
+    private static RequestedService reviewed(UUID id, int minutes, long cents) {
+        return new RequestedService(id, new RequestedService.ReviewedTerms(minutes, cents));
+    }
+
+    private static NormalizedBookingRequest services(java.util.List<RequestedService> requested) {
+        return NormalizedBookingRequest.normalize(
+                ATTEMPT, requested, null, START, "Ана", "0888123456", null, null);
+    }
+
+    private static Set<RequestField> rejectedServices(java.util.List<RequestedService> requested) {
+        try {
+            services(requested);
+        } catch (InvalidBookingRequest invalid) {
+            return invalid.fields();
+        }
+        throw new AssertionError("The selection was accepted");
+    }
+
+    @Test
+    void theServicesAreHeldInAscendingUnsignedUuidOrderWhateverTheRequestOrder() {
+        NormalizedBookingRequest request = services(java.util.List.of(
+                reviewed(C, 60, 0), reviewed(A, 30, 1500), reviewed(D, 90, 100), reviewed(B, 45, 2550)));
+
+        assertThat(request.services()).extracting(RequestedService::serviceId).containsExactly(A, B, C, D);
+        assertThat(request.reviewed()).isTrue();
+        assertThatThrownBy(request::serviceId).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void oneToFiveDistinctServicesAreAcceptedWithOrWithoutReviewedTerms() {
+        assertThat(services(java.util.List.of(new RequestedService(A, null))).reviewed()).isFalse();
+        assertThat(services(java.util.List.of(new RequestedService(A, null))).serviceId()).isEqualTo(A);
+        NormalizedBookingRequest five = services(java.util.List.of(
+                reviewed(A, 96, 1), reviewed(B, 96, 2), reviewed(C, 96, 3), reviewed(D, 96, 4),
+                reviewed(SERVICE, 96, 999_999_999_999L)));
+        assertThat(five.services()).hasSize(5);
+    }
+
+    @Test
+    void anInvalidSelectionIsReportedAsTheServicesFieldOnly() {
+        java.util.List<RequestedService> six = java.util.List.of(
+                reviewed(A, 10, 1), reviewed(B, 10, 1), reviewed(C, 10, 1), reviewed(D, 10, 1),
+                reviewed(SERVICE, 10, 1), reviewed(STAFF, 10, 1));
+
+        assertThat(rejectedServices(java.util.List.of())).containsExactly(RequestField.SERVICES);
+        assertThat(rejectedServices(six)).containsExactly(RequestField.SERVICES);
+        assertThat(rejectedServices(java.util.List.of(reviewed(A, 10, 1), reviewed(A, 20, 2))))
+                .containsExactly(RequestField.SERVICES);
+        assertThat(rejectedServices(java.util.List.of(reviewed(A, 0, 1)))).containsExactly(RequestField.SERVICES);
+        assertThat(rejectedServices(java.util.List.of(reviewed(A, 481, 1)))).containsExactly(RequestField.SERVICES);
+        assertThat(rejectedServices(java.util.List.of(reviewed(A, 10, -1)))).containsExactly(RequestField.SERVICES);
+        assertThat(rejectedServices(java.util.List.of(reviewed(A, 10, 1_000_000_000_000L))))
+                .containsExactly(RequestField.SERVICES);
+        // Mixed: some reviewed, some not.
+        assertThat(rejectedServices(java.util.List.of(reviewed(A, 10, 1), new RequestedService(B, null))))
+                .containsExactly(RequestField.SERVICES);
+    }
+
+    @Test
+    void reviewedDurationsAtTheCeilingAreAcceptedAndOneMinuteMoreIsNot() {
+        services(java.util.List.of(reviewed(A, 240, 1), reviewed(B, 240, 1)));
+
+        assertThat(rejectedServices(java.util.List.of(reviewed(A, 240, 1), reviewed(B, 241, 1))))
+                .containsExactly(RequestField.SERVICES);
+    }
+
+    @Test
+    void anInvalidSelectionIsReportedTogetherWithTheOtherInvalidFieldsAndNoValue() {
+        try {
+            NormalizedBookingRequest.normalize(
+                    "not-a-uuid", java.util.List.of(), null, START, "", "x", null, null);
+            throw new AssertionError("accepted");
+        } catch (InvalidBookingRequest invalid) {
+            assertThat(invalid.fields()).contains(RequestField.SERVICES, RequestField.ATTEMPT_ID,
+                    RequestField.DISPLAY_NAME, RequestField.PHONE);
+            assertThat(invalid.getMessage()).doesNotContain("not-a-uuid");
+        }
     }
 }

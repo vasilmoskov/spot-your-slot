@@ -47,6 +47,14 @@ public sealed interface BookingResult {
     record ServiceUnavailable() implements BookingResult {
     }
 
+    /**
+     * The locked server terms of the selected Services (duration or price) differ from the terms the
+     * guest reviewed (ADR-0027 section 6). A known, deterministic rejection: nothing was written and
+     * nothing is retried. It carries no value, no identifier, and no Service fact.
+     */
+    record ReviewChanged() implements BookingResult {
+    }
+
     /** The requested StaffMember is missing, foreign, inactive, or not assigned to the Service. */
     record StaffMemberUnavailable() implements BookingResult {
     }

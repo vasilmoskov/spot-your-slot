@@ -155,7 +155,7 @@ class GuestBookingIntegrationTests extends BookingIntegrationTest {
                 .isEqualTo(bg.spotyourslot.booking.domain.BookingAttemptId.parse(request.attemptId)
                         .orElseThrow().hash());
         assertThat(row.fingerprint()).hasSize(32);
-        assertThat(row.encodingVersion()).isEqualTo(1);
+        assertThat(row.encodingVersion()).isEqualTo(2);
         assertThat(row.keyVersion()).isEqualTo(1);
         // The raw attempt identifier and contact data are not stored anywhere in the row.
         String everything = jdbc.sql("SELECT a::text FROM appointment a").query(String.class).single();

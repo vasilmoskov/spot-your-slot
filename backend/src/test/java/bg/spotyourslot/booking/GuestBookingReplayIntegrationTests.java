@@ -345,12 +345,12 @@ class GuestBookingReplayIntegrationTests extends BookingIntegrationTest {
     void anUnsupportedStoredEncodingVersionIsAnUncertainTechnicalFailureNeverAMismatch() {
         Req request = firstRequest();
         bookFirst(request);
-        jdbc.sql("UPDATE appointment SET fingerprint_encoding_version = 2").update();
+        jdbc.sql("UPDATE appointment SET fingerprint_encoding_version = 3").update();
 
         assertThat(replay(request.copy())).isEqualTo(new BookingResult.OutcomeUncertain());
         assertThat(replay(request.copy().note("Друга"))).isEqualTo(new BookingResult.OutcomeUncertain());
 
-        jdbc.sql("UPDATE appointment SET fingerprint_encoding_version = 1").update();
+        jdbc.sql("UPDATE appointment SET fingerprint_encoding_version = 2").update();
         assertThat(replay(request.copy())).isInstanceOf(Replayed.class);
         assertThat(appointmentCount(tenant.business())).isEqualTo(1);
     }

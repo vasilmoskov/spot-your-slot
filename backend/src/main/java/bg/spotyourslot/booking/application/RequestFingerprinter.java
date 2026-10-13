@@ -56,6 +56,11 @@ public class RequestFingerprinter {
         if (key.isEmpty()) {
             throw new UnverifiableFingerprint(UnverifiableFingerprint.Cause.MISSING_KEY);
         }
+        if (!encoding.get().supports(request)) {
+            // The stored layout cannot describe this request (a request with reviewed terms or
+            // several Services against an encoding-1 row): a different request, not a failure.
+            return false;
+        }
         byte[] recomputed = hmac(key.get(), encoding.get().encode(businessId, request));
         return MessageDigest.isEqual(recomputed, stored.requestFingerprint());
     }

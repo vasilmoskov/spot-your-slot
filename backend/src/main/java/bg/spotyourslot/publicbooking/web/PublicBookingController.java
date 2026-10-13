@@ -114,6 +114,10 @@ public class PublicBookingController {
                     failure(PublicProblems.slotUnavailable());
             case BookingResult.IdentityConflict conflict ->
                     failure(PublicProblems.notCompletedOnline());
+            case BookingResult.ReviewChanged changed ->
+                    // Only a request with reviewed terms can produce this outcome, and the parser
+                    // builds no such request before the HTTP phase (ADR-0027 M4).
+                    throw new IllegalStateException("Unexpected review outcome for a legacy request");
             case BookingResult.AttemptMismatch mismatch ->
                     failure(PublicProblems.attemptMismatch());
             case BookingResult.TemporarilyUnavailable rollback ->

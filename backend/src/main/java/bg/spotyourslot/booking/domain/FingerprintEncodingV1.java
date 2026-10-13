@@ -52,14 +52,23 @@ final class FingerprintEncodingV1 implements FingerprintEncoding {
         return VERSION;
     }
 
+    /** Encoding 1 describes exactly one Service and no reviewed terms (ADR-0027 section 5). */
+    @Override
+    public boolean supports(NormalizedBookingRequest request) {
+        return request.services().size() == 1 && !request.reviewed();
+    }
+
     @Override
     public byte[] encode(UUID businessId, NormalizedBookingRequest request) {
+        if (!supports(request)) {
+            throw new IllegalArgumentException("Encoding 1 cannot describe this request");
+        }
         ByteArrayOutputStream out = new ByteArrayOutputStream(256);
         out.writeBytes(MAGIC);
         out.write((VERSION >>> 8) & 0xFF);
         out.write(VERSION & 0xFF);
         field(out, TAG_BUSINESS, uuid(businessId));
-        field(out, TAG_SERVICE, uuid(request.serviceId()));
+        field(out, TAG_SERVICE, uuid(request.services().getFirst().serviceId()));
         field(out, TAG_STAFF_PREFERENCE, preference(request.requestedStaffMemberId()));
         field(out, TAG_START, ByteBuffer.allocate(Long.BYTES).putLong(request.start().getEpochSecond()).array());
         field(out, TAG_NAME, utf8(request.customerName()));

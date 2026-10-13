@@ -129,6 +129,19 @@ public class StaffMemberStore {
      */
     public List<StaffMemberRow> lockEligibleForBooking(
             UUID businessId, UUID serviceId, UUID requestedStaffMemberId) {
+        return lockEligibleForBooking(businessId, List.of(serviceId), requestedStaffMemberId);
+    }
+
+    /**
+     * The set-based form: assigned to every requested Service means the StaffMember's assignments
+     * inside the set number the set size (the assignment key is StaffMember plus Service).
+     */
+    public List<StaffMemberRow> lockEligibleForBooking(
+            UUID businessId, Collection<UUID> serviceIds, UUID requestedStaffMemberId) {
+        Set<UUID> distinct = new HashSet<>(serviceIds);
+        if (distinct.isEmpty() || distinct.size() != serviceIds.size()) {
+            throw new IllegalArgumentException("Service identifiers must be non-empty and distinct");
+        }
         return execute(() -> jdbc.sql("""
                         SELECT id, business_id, display_name, contact_email, contact_phone,
                                active, version, created_at, updated_at
@@ -137,16 +150,17 @@ public class StaffMemberStore {
                           AND active
                           AND (CAST(:requestedStaffMemberId AS uuid) IS NULL
                                OR id = CAST(:requestedStaffMemberId AS uuid))
-                          AND id IN (
-                              SELECT staff_member_id
-                              FROM staff_member_service
-                              WHERE business_id = :businessId
-                                AND service_id = :serviceId)
+                          AND (SELECT count(*)
+                               FROM staff_member_service
+                               WHERE business_id = :businessId
+                                 AND staff_member_id = staff_member.id
+                                 AND service_id IN (:serviceIds)) = :serviceCount
                         ORDER BY id ASC
                         FOR SHARE
                         """)
                 .param("businessId", businessId)
-                .param("serviceId", serviceId)
+                .param("serviceIds", distinct)
+                .param("serviceCount", distinct.size())
                 .param("requestedStaffMemberId", requestedStaffMemberId, Types.OTHER)
                 .query(this::staffMemberRow)
                 .list());

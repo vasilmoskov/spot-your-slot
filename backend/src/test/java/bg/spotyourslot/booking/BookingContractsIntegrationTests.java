@@ -130,6 +130,106 @@ class BookingContractsIntegrationTests extends BookingIntegrationTest {
         });
     }
 
+    // ---- the set-based locks of ADR-0027 ----
+
+    private UUID namedService(String name, boolean active) {
+        UUID id = fixtures.service(tenant.business(), 30);
+        jdbc.sql("UPDATE service SET name = :name, active = :active WHERE id = :id")
+                .param("name", name).param("active", active).param("id", id).update();
+        return id;
+    }
+
+    @Test
+    void theServicesAreLockedTogetherAndReturnedInProfileOrderIncludingInactiveOnes() {
+        UUID zulu = namedService("Zulu", true);
+        UUID alpha = namedService("Alpha", true);
+        UUID stopped = namedService("Mike", false);
+        var other = openTenant();
+
+        var found = inSnapshot(() -> serviceAccess.lockAllForBooking(
+                tenant.business(), List.of(zulu, alpha, stopped, other.service(), UUID.randomUUID())));
+
+        // Foreign and missing Services are absent; the inactive one is returned so the caller decides.
+        assertThat(found).extracting(ServiceBookingAccess.BookingService::name)
+                .containsExactly("Alpha", "Mike", "Zulu");
+        assertThat(found).extracting(ServiceBookingAccess.BookingService::active)
+                .containsExactly(true, false, true);
+        snapshotTransaction().executeWithoutResult(status -> {
+            serviceAccess.lockAllForBooking(tenant.business(), List.of(zulu, alpha));
+            assertThat(rowIsLocked("SELECT id FROM service WHERE id = :id", Map.of("id", zulu))).isTrue();
+            assertThat(rowIsLocked("SELECT id FROM service WHERE id = :id", Map.of("id", alpha))).isTrue();
+            assertThat(rowIsLocked("SELECT id FROM service WHERE id = :id", Map.of("id", stopped))).isFalse();
+        });
+    }
+
+    @Test
+    void theServiceSetLockRejectsBadSelectionsAndRequiresTheCallersTransaction() {
+        UUID service = namedService("Alpha", true);
+        List<UUID> six = new java.util.ArrayList<>();
+        for (int index = 0; index < 6; index++) {
+            six.add(UUID.randomUUID());
+        }
+
+        assertThatThrownBy(() -> serviceAccess.lockAllForBooking(tenant.business(), List.of(service)))
+                .isInstanceOf(IllegalTransactionStateException.class);
+        assertThatThrownBy(() -> inSnapshot(() -> serviceAccess.lockAllForBooking(tenant.business(), List.of())))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> inSnapshot(
+                () -> serviceAccess.lockAllForBooking(tenant.business(), List.of(service, service))))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> inSnapshot(() -> serviceAccess.lockAllForBooking(tenant.business(), six)))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void theStaffSetLockReturnsOnlyMembersAssignedToEveryServiceInIdentifierOrder() {
+        UUID second = namedService("Alpha", true);
+        availabilityFixtures.assign(tenant.business(), tenant.staff(), second);
+        UUID both = fixtures.staffMember(tenant.business(), tenant.service());
+        availabilityFixtures.assign(tenant.business(), both, second);
+        UUID firstOnly = fixtures.staffMember(tenant.business(), tenant.service());
+        UUID inactive = fixtures.staffMember(tenant.business(), tenant.service());
+        availabilityFixtures.assign(tenant.business(), inactive, second);
+        availabilityFixtures.setStaffMemberActive(inactive, false);
+
+        List<BookingStaffMember> all = inSnapshot(() -> staffAccess.lockEligibleForBooking(
+                tenant.business(), List.of(tenant.service(), second), null));
+        List<BookingStaffMember> single = inSnapshot(() -> staffAccess.lockEligibleForBooking(
+                tenant.business(), List.of(tenant.service()), null));
+
+        assertThat(all).extracting(member -> member.id().toString())
+                .containsExactlyInAnyOrder(tenant.staff().toString(), both.toString())
+                .isSorted();
+        assertThat(single).extracting(BookingStaffMember::id)
+                .containsExactlyInAnyOrder(tenant.staff(), both, firstOnly);
+        assertThat(inSnapshot(() -> staffAccess.lockEligibleForBooking(
+                tenant.business(), List.of(tenant.service(), second), firstOnly))).isEmpty();
+        assertThat(inSnapshot(() -> staffAccess.lockEligibleForBooking(
+                tenant.business(), List.of(tenant.service(), second), both)))
+                .extracting(BookingStaffMember::id).containsExactly(both);
+        assertThat(inSnapshot(() -> staffAccess.lockEligibleForBooking(
+                tenant.business(), tenant.service(), null)))
+                .extracting(BookingStaffMember::id)
+                .containsExactlyElementsOf(single.stream().map(BookingStaffMember::id).toList());
+        snapshotTransaction().executeWithoutResult(status -> {
+            staffAccess.lockEligibleForBooking(tenant.business(), List.of(tenant.service(), second), null);
+            assertThat(rowIsLocked("SELECT id FROM staff_member WHERE id = :id", Map.of("id", both))).isTrue();
+            assertThat(rowIsLocked("SELECT id FROM staff_member WHERE id = :id", Map.of("id", firstOnly))).isFalse();
+        });
+    }
+
+    @Test
+    void theStaffSetLockRejectsBadSelectionsAndRequiresTheCallersTransaction() {
+        assertThatThrownBy(() -> staffAccess.lockEligibleForBooking(
+                tenant.business(), List.of(tenant.service()), null))
+                .isInstanceOf(IllegalTransactionStateException.class);
+        assertThatThrownBy(() -> inSnapshot(() -> staffAccess.lockEligibleForBooking(
+                tenant.business(), List.<UUID>of(), null))).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> inSnapshot(() -> staffAccess.lockEligibleForBooking(
+                tenant.business(), List.of(tenant.service(), tenant.service()), null)))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
     @Test
     void theAppointmentCountCoversOnlyConfirmedRowsStartingInTheHalfOpenRange() {
         UUID other = fixtures.staffMember(tenant.business(), tenant.service());

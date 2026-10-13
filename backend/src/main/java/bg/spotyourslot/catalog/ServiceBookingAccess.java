@@ -1,6 +1,8 @@
 package bg.spotyourslot.catalog;
 
 import java.math.BigDecimal;
+import java.util.Collection;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -22,6 +24,19 @@ public interface ServiceBookingAccess {
      *         indistinguishable from a missing one
      */
     Optional<BookingService> lockForBooking(UUID businessId, UUID serviceId);
+
+    /**
+     * Locks every requested Service of the Business {@code FOR SHARE} with one statement
+     * (ADR-0027). The rows are locked in ascending identifier order, which is PostgreSQL's
+     * {@code uuid} order (the unsigned bytewise order), because the statement sorts before it locks;
+     * the caller never decides a lock order. The result is returned in the public-profile order
+     * (canonical name, then identifier), which is the execution order of a visit.
+     *
+     * @param serviceIds one to five distinct identifiers; anything else is rejected
+     * @return the requested Services that exist in the Business, including inactive ones so the
+     *         caller decides; a missing or foreign Service is simply absent
+     */
+    List<BookingService> lockAllForBooking(UUID businessId, Collection<UUID> serviceIds);
 
     /**
      * @param name the canonical Service name, copied unchanged into the Appointment snapshot

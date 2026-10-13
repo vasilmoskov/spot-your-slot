@@ -4,7 +4,11 @@ import bg.spotyourslot.shared.contact.ContactEmailPolicy;
 import bg.spotyourslot.shared.contact.ContactPhoneNumbers;
 import bg.spotyourslot.shared.contact.ContactTextCanonicalizer;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.EnumSet;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -36,6 +40,11 @@ import java.util.regex.Pattern;
 public final class NormalizedBookingRequest {
     public static final int MAX_DISPLAY_NAME_CODE_POINTS = 200;
     public static final int MAX_NOTE_CODE_POINTS = 500;
+    public static final int MAX_SERVICES = 5;
+    public static final int MAX_VISIT_MINUTES = 480;
+    private static final int MIN_SERVICE_MINUTES = 1;
+    /** The largest value of {@code numeric(12,2)} in cents. */
+    private static final long MAX_SERVICE_PRICE_CENTS = 999_999_999_999L;
 
     /** NUL and the control characters PostgreSQL or the Appointment note rule rejects; tab and LF stay. */
     private static final Pattern FORBIDDEN_NOTE_CONTROL = Pattern.compile("[\\x00-\\x08\\x0B-\\x1F\\x7F]");
@@ -43,7 +52,7 @@ public final class NormalizedBookingRequest {
     private static final long MAX_EPOCH_SECOND = 253_402_300_799L;
 
     private final BookingAttemptId attemptId;
-    private final UUID serviceId;
+    private final List<RequestedService> services;
     private final UUID requestedStaffMemberId;
     private final Instant start;
     private final String customerName;
@@ -53,7 +62,7 @@ public final class NormalizedBookingRequest {
 
     private NormalizedBookingRequest(
             BookingAttemptId attemptId,
-            UUID serviceId,
+            List<RequestedService> services,
             UUID requestedStaffMemberId,
             Instant start,
             String customerName,
@@ -61,7 +70,7 @@ public final class NormalizedBookingRequest {
             String customerEmail,
             String note) {
         this.attemptId = attemptId;
-        this.serviceId = serviceId;
+        this.services = services;
         this.requestedStaffMemberId = requestedStaffMemberId;
         this.start = start;
         this.customerName = customerName;
@@ -71,6 +80,8 @@ public final class NormalizedBookingRequest {
     }
 
     /**
+     * The legacy single-Service shape: one Service without reviewed terms.
+     *
      * @param requestedStaffMemberId the guest's preference; {@code null} is "no preference" and is
      *        never replaced by the StaffMember the server later assigns
      * @throws InvalidBookingRequest naming every invalid field and no value
@@ -85,8 +96,40 @@ public final class NormalizedBookingRequest {
             String email,
             String note) {
         Objects.requireNonNull(serviceId, "serviceId");
+        return normalize(
+                attemptId,
+                List.of(new RequestedService(serviceId, null)),
+                requestedStaffMemberId,
+                start,
+                displayName,
+                phone,
+                email,
+                note);
+    }
+
+    /**
+     * One to five distinct Services (ADR-0027), either all with reviewed terms (the new shape) or
+     * all without (the legacy shape). The result holds them in the request identity order: ascending
+     * unsigned UUID, whatever order the caller listed them in.
+     *
+     * @throws InvalidBookingRequest naming every invalid field and no value
+     */
+    public static NormalizedBookingRequest normalize(
+            String attemptId,
+            List<RequestedService> requested,
+            UUID requestedStaffMemberId,
+            Instant start,
+            String displayName,
+            String phone,
+            String email,
+            String note) {
+        Objects.requireNonNull(requested, "requested");
         Objects.requireNonNull(start, "start");
         Set<RequestField> invalid = EnumSet.noneOf(RequestField.class);
+        List<RequestedService> ordered = orderedServices(requested);
+        if (ordered == null) {
+            invalid.add(RequestField.SERVICES);
+        }
 
         Optional<BookingAttemptId> parsedAttempt = BookingAttemptId.parse(attemptId);
         if (parsedAttempt.isEmpty()) {
@@ -133,13 +176,56 @@ public final class NormalizedBookingRequest {
         }
         return new NormalizedBookingRequest(
                 parsedAttempt.orElseThrow(),
-                serviceId,
+                ordered,
                 requestedStaffMemberId,
                 start,
                 canonicalName,
                 canonicalPhone.orElse(null),
                 canonicalEmail.orElse(null),
                 normalizedNote);
+    }
+
+    /**
+     * The services in ascending unsigned UUID order, or {@code null} when the selection is not
+     * valid: not one to five Services, a repeated Service, reviewed terms on only some of them,
+     * a reviewed duration outside 1..480, a reviewed price outside 0..999 999 999 999 cents, or
+     * reviewed durations that sum to more than the 480-minute visit ceiling (a visit nobody could
+     * have reviewed).
+     */
+    private static List<RequestedService> orderedServices(List<RequestedService> requested) {
+        if (requested.isEmpty() || requested.size() > MAX_SERVICES) {
+            return null;
+        }
+        Set<UUID> seen = new HashSet<>();
+        int reviewedCount = 0;
+        long reviewedMinutes = 0;
+        for (RequestedService service : requested) {
+            Objects.requireNonNull(service, "service");
+            if (!seen.add(service.serviceId())) {
+                return null;
+            }
+            RequestedService.ReviewedTerms terms = service.reviewed();
+            if (terms == null) {
+                continue;
+            }
+            reviewedCount++;
+            if (terms.durationMinutes() < MIN_SERVICE_MINUTES
+                    || terms.durationMinutes() > MAX_VISIT_MINUTES
+                    || terms.priceCents() < 0
+                    || terms.priceCents() > MAX_SERVICE_PRICE_CENTS) {
+                return null;
+            }
+            reviewedMinutes += terms.durationMinutes();
+        }
+        if (reviewedCount != 0 && reviewedCount != requested.size()) {
+            return null;
+        }
+        if (reviewedMinutes > MAX_VISIT_MINUTES) {
+            return null;
+        }
+        List<RequestedService> ordered = new ArrayList<>(requested);
+        ordered.sort(Comparator.comparing(RequestedService::serviceId, UnsignedUuidOrder.INSTANCE));
+        return List.copyOf(ordered);
     }
 
     /** Line breaks to LF, surrounding Unicode white space removed, blank to absent. */
@@ -176,8 +262,26 @@ public final class NormalizedBookingRequest {
         return attemptId;
     }
 
+    /** The requested Services in ascending unsigned UUID order (the request identity order). */
+    public List<RequestedService> services() {
+        return services;
+    }
+
+    /** Whether the request carries the guest's reviewed terms (the new shape). */
+    public boolean reviewed() {
+        return services.getFirst().reviewed() != null;
+    }
+
+    /**
+     * The only Service of a single-Service request.
+     *
+     * @throws IllegalStateException when the request selects several Services
+     */
     public UUID serviceId() {
-        return serviceId;
+        if (services.size() != 1) {
+            throw new IllegalStateException("The request selects several Services");
+        }
+        return services.getFirst().serviceId();
     }
 
     /** The guest's preference, or {@code null} for "no preference". */

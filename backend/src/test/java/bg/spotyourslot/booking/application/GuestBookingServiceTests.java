@@ -38,6 +38,9 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.EnumSet;
 import java.util.List;
+import org.mockito.ArgumentCaptor;
+import bg.spotyourslot.booking.domain.NormalizedBookingRequest;
+import bg.spotyourslot.booking.domain.RequestedService;
 import java.util.UUID;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
@@ -217,9 +220,56 @@ class GuestBookingServiceTests {
                 new BookingResult.StaffMemberUnavailable(),
                 new BookingResult.SlotUnavailable(),
                 new BookingResult.IdentityConflict(),
+                new BookingResult.ReviewChanged(),
                 new BookingResult.AttemptMismatch(),
                 new BookingResult.TemporarilyUnavailable(),
                 new BookingResult.OutcomeUncertain());
+    }
+
+    @Test
+    void theNewShapeIsNormalizedToTheSortedReviewedSetBeforeTheAttemptBody() {
+        UUID low = UUID.fromString("7fffffff-ffff-4fff-bfff-ffffffffffff");
+        UUID high = UUID.fromString("80000000-0000-4000-8000-000000000000");
+        script(new BookingResult.ReviewChanged());
+
+        BookingResult result = service.book(new GuestBookingRequest(
+                "salon", ATTEMPT, null, null, Instant.parse("2026-10-08T07:00:00Z"),
+                "Ана", "0888123456", null, null,
+                List.of(
+                        new GuestBookingRequest.ReviewedService(high, 60, 0),
+                        new GuestBookingRequest.ReviewedService(low, 45, 2550))));
+
+        assertThat(result).isEqualTo(new BookingResult.ReviewChanged());
+        ArgumentCaptor<NormalizedBookingRequest> normalized = ArgumentCaptor.forClass(NormalizedBookingRequest.class);
+        verify(procedure, times(1)).execute(eq("salon"), normalized.capture(), any());
+        assertThat(normalized.getValue().services()).extracting(RequestedService::serviceId)
+                .containsExactly(low, high);
+        assertThat(normalized.getValue().reviewed()).isTrue();
+        // A deterministic rejection is never retried and ends by rollback.
+        assertThat(transactions.events).containsExactly("begin", "rollback");
+    }
+
+    @Test
+    void aLegacyRequestIsNormalizedToOneUnreviewedService() {
+        script(new BookingResult.SlotUnavailable());
+
+        service.book(request());
+
+        ArgumentCaptor<NormalizedBookingRequest> normalized = ArgumentCaptor.forClass(NormalizedBookingRequest.class);
+        verify(procedure).execute(eq("salon"), normalized.capture(), any());
+        assertThat(normalized.getValue().services()).hasSize(1);
+        assertThat(normalized.getValue().reviewed()).isFalse();
+    }
+
+    @Test
+    void anInvalidSelectionIsRejectedWithoutBeginningATransaction() {
+        BookingResult result = service.book(new GuestBookingRequest(
+                "salon", ATTEMPT, null, null, Instant.parse("2026-10-08T07:00:00Z"),
+                "Ана", "0888123456", null, null, List.of()));
+
+        assertThat(result).isEqualTo(new BookingResult.InvalidRequest(EnumSet.of(BookingField.SERVICES)));
+        verifyNoInteractions(procedure);
+        assertThat(transactions.events).isEmpty();
     }
 
     @ParameterizedTest

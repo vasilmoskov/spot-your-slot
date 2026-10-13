@@ -39,7 +39,7 @@ class GuestBookingKeyRotationIntegrationTests extends BookingIntegrationTest {
         BookedAppointment booked = ((Created) result(submit("a", req().build()))).appointment();
 
         assertThat(appointmentRow(booked.reference()).keyVersion()).isEqualTo(2);
-        assertThat(appointmentRow(booked.reference()).encodingVersion()).isEqualTo(1);
+        assertThat(appointmentRow(booked.reference()).encodingVersion()).isEqualTo(2);
     }
 
     @Test
@@ -48,7 +48,9 @@ class GuestBookingKeyRotationIntegrationTests extends BookingIntegrationTest {
         NormalizedBookingRequest normalized = NormalizedBookingRequest.normalize(
                 request.attemptId, request.service, request.staff, request.start,
                 request.name, request.phone, request.email, request.note);
-        byte[] fingerprint = hmac(OLD_KEY, FingerprintEncodings.CURRENT.encode(tenant.business(), normalized));
+        // A genuinely historical row: encoding 1 under the historical key 1.
+        byte[] fingerprint = hmac(OLD_KEY,
+                FingerprintEncodings.forVersion(1).orElseThrow().encode(tenant.business(), normalized));
         var appointment = AppointmentFixtures.appointment(
                 new AppointmentFixtures.Tenant(tenant.business(), tenant.service(), tenant.staff(),
                         fixtures.customer(tenant.business())),

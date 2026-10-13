@@ -94,7 +94,7 @@ ranges, and rescheduling. The database constraint must key on
 `staff_member_id`. The issue #18 verification (planned by phase, not yet executed) is in "Appointment and
 guest booking verification" below.
 
-### Multi-Service booking (ADR-0027; the persistence phase M1 and the availability phase M2 are implemented and verified, the rest is decided and not implemented)
+### Multi-Service booking (ADR-0027; the persistence phase M1, the availability phase M2, and the orchestration phase M3 are implemented and verified, the HTTP and frontend phases are decided and not implemented)
 
 The plan is in [task 08b](tasks/08b-multi-service-guest-booking-plan.md); every item runs against real PostgreSQL where persistence, locks, or concurrency are claimed, with deterministic coordination and no sleeps.
 Required evidence: the **upgrade and backfill** of a database migrated to V12 (one line per existing Appointment, totals and headline equal to it, the migration failing on a corrupt fixture, V1 to V12 checksums
@@ -107,6 +107,8 @@ persisted); and the **frontend uncertainty** rules (a first-send review change d
 same identifier and exact bytes; no automatic retry; privacy sentinels).
 
 **Evidence delivered by M2 (availability and eligibility):** the real engine over mocked published contracts with explicit instants and the controlled clock (summed duration, an interval that fits each Service but not the sum, busy time over any part of the whole visit, half-open adjacency, a visit across the repeated and across the skipped clock hour measured in elapsed time, no-preference aggregation, explicit StaffMember rules, the validation and ordering of failures, one bulk read per kind); real PostgreSQL for the assignment intersection (a union of partial assignments is not eligible), the committed busy time, the boundaries of one, five, 480, and 481 minutes, and a constant statement count; and mutation controls for the intersection and the sum. Concurrency is not claimed by M2: the read-only calculation takes no lock and relies on the enforced repeatable-read snapshot, which the set-based method shares with the one-Service method and a test pins.
+
+**Evidence delivered by M3 (orchestration and fingerprinting):** encoding v2 against vectors from an independent implementation (which also reproduces the committed v1 HMACs), the boundary identifiers across the unsigned/signed split, all permutations, and every changed fact; historical v1 rows replaying only for the legacy shape; real-PostgreSQL visits (profile-order lines, exact maximum totals, replay after any change of the Services, review drift with zero writes and no retry, eligibility, overlap and adjacency); lock order proven with `pg_stat_activity` lock-wait evidence and `FOR UPDATE NOWAIT` probes in both directions across the high-bit boundary; races (identical visits, competing slots, Service and assignment and schedule changes after the snapshot, changes waiting for an open visit) coordinated by latches with distinct retry transactions; injected-fault tests (a test-only trigger) kept separate from PostgreSQL-produced behavior; and mutation controls for the review check, the lock order, the unsigned order, and the profile order.
 
 ### Tenant isolation and workforce linkage
 

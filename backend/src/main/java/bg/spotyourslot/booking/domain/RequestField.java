@@ -12,5 +12,6 @@ public enum RequestField {
     PHONE,
     EMAIL,
     CONTACT,
-    NOTE
+    NOTE,
+    SERVICES
 }

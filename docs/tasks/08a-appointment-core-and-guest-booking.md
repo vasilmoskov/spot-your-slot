@@ -1308,6 +1308,10 @@ Two gaps found in the ADR-0027 specification were closed before any implementati
    The golden vectors, a PostgreSQL ordering test, a lock-statement test, a deadlock test across the high-bit boundary, and a guard against `UUID.compareTo` are in the plan. **Observation, not changed:** committed code uses Java's signed order for the published availability slot's StaffMember list invariant and for the final identifier tie-break of the deterministic
    StaffMember assignment; neither decides a lock, and aligning them would change which StaffMember a tie assigns, so it is a separate decision.
 
+### Multi-Service phase M3 (orchestration and fingerprinting) implemented (2026-10-13)
+
+The normalized set request, fingerprint encoding v2 (v1 kept for historical replays), the ordered set-based locks, the review-consistency check, and the atomic whole-visit insert are implemented and verified internally (complete backend `verify`: 3368 tests, 0 failures); the record is in [task 08b](08b-multi-service-guest-booking-plan.md). **Multi-Service booking is still not publicly exposed or complete**: the HTTP parser and routes, rate limiting, and the frontend are untouched, the controller still builds only the legacy single-Service request, issue #18 is not complete, and M4 has not started.
+
 ### Multi-Service phase M2 (availability and eligibility) implemented (2026-10-12)
 
 The set-based `AvailabilityQuery`, the intersection eligibility contracts, the summed duration with the 480-minute ceiling, and the internal booking-options read model are implemented and verified; the record is in [task 08b](08b-multi-service-guest-booking-plan.md). **Multi-Service booking is still not implemented**: orchestration, fingerprinting, HTTP, and the frontend are untouched, the booking still calls the one-Service method, the product still books one Service, issue #18 is not complete, and M3 has not started.

@@ -1,6 +1,7 @@
 package bg.spotyourslot.workforce;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -27,6 +28,17 @@ public interface StaffBookingAccess {
      */
     List<BookingStaffMember> lockEligibleForBooking(
             UUID businessId, UUID serviceId, UUID requestedStaffMemberId);
+
+    /**
+     * The set-based form (ADR-0027): locks, in ascending identifier order, every active StaffMember
+     * of the Business assigned to <em>every</em> requested Service (the intersection), or only the
+     * requested StaffMember when that one qualifies. One statement whatever the number of Services.
+     * A single Service gives exactly {@link #lockEligibleForBooking(UUID, UUID, UUID)}.
+     *
+     * @param serviceIds one to five distinct identifiers; anything else is rejected
+     */
+    List<BookingStaffMember> lockEligibleForBooking(
+            UUID businessId, Collection<UUID> serviceIds, UUID requestedStaffMemberId);
 
     /**
      * @param displayName the canonical StaffMember display name, copied unchanged into the

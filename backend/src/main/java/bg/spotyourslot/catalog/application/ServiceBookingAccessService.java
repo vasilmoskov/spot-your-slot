@@ -3,6 +3,8 @@ package bg.spotyourslot.catalog.application;
 import bg.spotyourslot.catalog.ServiceBookingAccess;
 import bg.spotyourslot.catalog.infrastructure.ServiceStore;
 import java.sql.SQLException;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -19,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class ServiceBookingAccessService implements ServiceBookingAccess {
     private static final String SERIALIZATION_FAILURE = "40001";
     private static final String DEADLOCK_DETECTED = "40P01";
+    private static final int MAX_SERVICES = 5;
 
     private final ServiceStore store;
 
@@ -36,6 +39,25 @@ public class ServiceBookingAccessService implements ServiceBookingAccess {
                     .findFirst()
                     .map(row -> new BookingService(
                             row.id(), row.name(), row.durationMinutes(), row.price(), row.active()));
+        } catch (RuntimeException exception) {
+            throw translate(exception);
+        }
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public List<BookingService> lockAllForBooking(UUID businessId, Collection<UUID> serviceIds) {
+        Objects.requireNonNull(businessId, "businessId");
+        Objects.requireNonNull(serviceIds, "serviceIds");
+        if (serviceIds.isEmpty() || serviceIds.size() > MAX_SERVICES
+                || new HashSet<>(serviceIds).size() != serviceIds.size()) {
+            throw new IllegalArgumentException("A selection holds one to five distinct Services");
+        }
+        try {
+            return store.lockReferencesInProfileOrder(businessId, serviceIds).stream()
+                    .map(row -> new BookingService(
+                            row.id(), row.name(), row.durationMinutes(), row.price(), row.active()))
+                    .toList();
         } catch (RuntimeException exception) {
             throw translate(exception);
         }

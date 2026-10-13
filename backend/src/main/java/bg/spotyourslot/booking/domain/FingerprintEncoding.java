@@ -12,6 +12,13 @@ public interface FingerprintEncoding {
     /** The stored {@code fingerprint_encoding_version}; always in {@code 1..32767}. */
     int version();
 
+    /**
+     * Whether this layout can describe the request at all. A stored attempt written with an encoding
+     * that cannot describe the incoming request cannot equal it: that is a payload mismatch, not a
+     * technical failure.
+     */
+    boolean supports(NormalizedBookingRequest request);
+
     /** The canonical bytes of the request within the Business; the HMAC input. */
     byte[] encode(UUID businessId, NormalizedBookingRequest request);
 }

@@ -11,5 +11,6 @@ public enum BookingField {
     PHONE,
     EMAIL,
     CONTACT,
-    NOTE
+    NOTE,
+    SERVICES
 }

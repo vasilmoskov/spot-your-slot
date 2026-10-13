@@ -3,6 +3,7 @@ package bg.spotyourslot.workforce.application;
 import bg.spotyourslot.workforce.StaffBookingAccess;
 import bg.spotyourslot.workforce.infrastructure.StaffMemberStore;
 import java.sql.SQLException;
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -18,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class StaffBookingAccessService implements StaffBookingAccess {
     private static final String SERIALIZATION_FAILURE = "40001";
     private static final String DEADLOCK_DETECTED = "40P01";
+    private static final int MAX_SERVICES = 5;
 
     private final StaffMemberStore store;
 
@@ -29,10 +31,21 @@ public class StaffBookingAccessService implements StaffBookingAccess {
     @Transactional(propagation = Propagation.MANDATORY)
     public List<BookingStaffMember> lockEligibleForBooking(
             UUID businessId, UUID serviceId, UUID requestedStaffMemberId) {
-        Objects.requireNonNull(businessId, "businessId");
         Objects.requireNonNull(serviceId, "serviceId");
+        return lockEligibleForBooking(businessId, List.of(serviceId), requestedStaffMemberId);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public List<BookingStaffMember> lockEligibleForBooking(
+            UUID businessId, Collection<UUID> serviceIds, UUID requestedStaffMemberId) {
+        Objects.requireNonNull(businessId, "businessId");
+        ServiceSelection.require(serviceIds);
+        if (serviceIds.size() > MAX_SERVICES) {
+            throw new IllegalArgumentException("A selection holds one to five distinct Services");
+        }
         try {
-            return store.lockEligibleForBooking(businessId, serviceId, requestedStaffMemberId).stream()
+            return store.lockEligibleForBooking(businessId, serviceIds, requestedStaffMemberId).stream()
                     .map(row -> new BookingStaffMember(row.id(), row.displayName(), row.createdAt()))
                     .toList();
         } catch (RuntimeException exception) {

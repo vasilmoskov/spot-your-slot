@@ -165,6 +165,38 @@ public class ServiceStore {
                 .list());
     }
 
+    /**
+     * Locks the requested Services {@code FOR SHARE} in ascending identifier order and returns them
+     * in the public-profile order. The locking select sorts by {@code id} before the lock, and the
+     * materialized CTE keeps that sort as the lock order; only the outer select reorders the result
+     * for presentation. One statement whatever the number of Services.
+     */
+    public List<ServiceRow> lockReferencesInProfileOrder(
+            UUID businessId, Collection<UUID> serviceIds) {
+        if (serviceIds.isEmpty()) {
+            return List.of();
+        }
+        return execute(() -> jdbc.sql("""
+                        WITH locked AS MATERIALIZED (
+                            SELECT id, business_id, name, normalized_name, description,
+                                   duration_minutes, price, active, version, created_at, updated_at
+                            FROM service
+                            WHERE business_id = :businessId
+                              AND id IN (:serviceIds)
+                            ORDER BY id ASC
+                            FOR SHARE
+                        )
+                        SELECT id, business_id, name, description, duration_minutes, price,
+                               active, version, created_at, updated_at
+                        FROM locked
+                        ORDER BY normalized_name ASC, id ASC
+                        """)
+                .param("businessId", businessId)
+                .param("serviceIds", serviceIds)
+                .query(this::serviceRow)
+                .list());
+    }
+
     public ServiceRow create(NewServiceRow service) {
         return execute(() -> jdbc.sql("""
                         INSERT INTO service(

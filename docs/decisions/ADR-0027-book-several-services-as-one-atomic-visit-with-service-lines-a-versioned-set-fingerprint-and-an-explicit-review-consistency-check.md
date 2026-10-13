@@ -2,7 +2,7 @@
 
 ## Metadata
 
-- **Status:** Accepted (the product decisions were approved by the product owner on 2026-10-07; this record has not yet had an independent review; phases M1 (persistence) and M2 (availability and eligibility) are implemented, everything from section 5 on is not)
+- **Status:** Accepted (the product decisions were approved by the product owner on 2026-10-07; this record has not yet had an independent review; phases M1 (persistence), M2 (availability and eligibility), and M3 (orchestration and fingerprinting) are implemented; HTTP and the frontend, sections 8 and 10, are not)
 - **Decision date:** 2026-10-07
 - **Recorded date:** 2026-10-07
 - **Related issues:** #18 (production public booking still waits for #21; #19 is unchanged)
@@ -249,7 +249,18 @@ Phase M2 implemented section 4 (availability and eligibility) and the internal p
 - **Bulk reads.** The Services come from one bulk statement (`ServiceAvailabilityAccess.findBookableServices`, the existing `findReferences`), the intersection from one statement (`StaffAvailabilityAccess.findEligibleForServices`, `PublicStaffAccess.findBookableStaffForServices`: the count of a StaffMember's assignments inside the requested set equals the set size). The statement count does not depend on the number of Services.
 - **Failures.** A selection that is empty, duplicated, or larger than five is a caller error (`IllegalArgumentException`, before any clock or data read); a missing, foreign, or inactive Service is `ServiceNotBookable` and takes precedence over the new typed `SelectionTooLong` (durations summing above 480 minutes); the public read model maps these to `PublicBookingUnavailable.Service` and `.SelectionTooLong`. The HTTP codes (`BOOKING_SERVICE_UNAVAILABLE`, `BOOKING_SELECTION_TOO_LONG`) remain M4.
 - **Unsigned order not needed here.** No M2 code orders identifiers for locks or request identity. The slot StaffMember list keeps its existing Java-order invariant; the unsigned comparator remains an M3 deliverable.
-- **Not yet implemented:** everything from section 5 on (normalization and the fingerprint, locks and the review check, HTTP, frontend).
+- **Not yet implemented (at M2):** everything from section 5 on; sections 5, 6, 7, and 9 are implemented in M3 below.
+
+## Implementation notes (phase M3, 2026-10-13)
+
+Phase M3 implemented sections 5, 6, 7, and 9 behind the internal `GuestBooking` contract; the record, the evidence, and the decisions are in [task 08b](../tasks/08b-multi-service-guest-booking-plan.md). Refinements of this record:
+
+- **Encoding.** v2 is exactly the layout of section 5 and is frozen with independently produced vectors; the registry keeps v1. A v1 row compared with a request that has reviewed terms or several Services is a payload mismatch (`supports` is false) after the key and encoding availability checks, so unknown keys and encodings stay uncertain.
+- **Locks.** Services are locked by one `MATERIALIZED` CTE whose inner statement is `ORDER BY id ASC FOR SHARE` and whose outer statement returns the profile order; StaffMembers by the set form of the existing statement. Lock-wait evidence from PostgreSQL across the `0x7f`/`0x80` boundary proves the unsigned order in both directions; the application sorts nothing for locks. The unsigned comparator is used only for the request identity.
+- **Review check.** After the presence and activity check of the locked Services and before the empty-eligibility result and availability: exact equality of minutes and cents; the claims are discarded; `ReviewChanged` is a rollback-only result, never retried, carrying no value.
+- **Clarification of section 6.** A new-shape request whose reviewed durations sum to more than 480 minutes is an invalid request (field `SERVICES`), because the 480-minute rule in section 8 names only the read routes; the locked-sum case cannot match any valid claims and is `ReviewChanged`. M4 should confirm the wording.
+- **Result.** `BookedAppointment` carries the stored lines; the legacy fields keep their meaning (headline name, total duration, total price).
+- **Not yet implemented:** HTTP parsing and responses for the new shape and codes (section 8), the frontend (section 10).
 
 ## Conditions for revisiting
 
