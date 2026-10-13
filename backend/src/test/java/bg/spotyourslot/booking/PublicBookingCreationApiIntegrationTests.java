@@ -336,7 +336,7 @@ class PublicBookingCreationApiIntegrationTests extends PublicBookingApiIntegrati
 
         for (MvcResult result : List.of(split, partial)) {
             assertProblem(result, 409, "BOOKING_NOT_COMPLETED_ONLINE",
-                    "Не можем да завършим резервацията онлайн. Моля, свържете се с бизнеса.");
+                    "Телефонът и имейлът не съответстват. Проверете ги или въведете само единия контакт.");
             assertThat(text(result.getResponse())).doesNotContain("555001").doesNotContain("held@");
         }
         assertThat(text(split.getResponse()))
@@ -376,7 +376,7 @@ class PublicBookingCreationApiIntegrationTests extends PublicBookingApiIntegrati
         cases.put("contact", req().phone(null).email(null));
         cases.put("note", req().note("я".repeat(501)));
         Map<String, String> messages = Map.of(
-                "displayName", "Въведете име до 200 знака.",
+                "displayName", "Проверете въведеното име.",
                 "phone", "Въведеният телефонен номер не е валиден.",
                 "email", "Въведеният имейл адрес не е валиден.",
                 "contact", "Въведете телефон или имейл.",

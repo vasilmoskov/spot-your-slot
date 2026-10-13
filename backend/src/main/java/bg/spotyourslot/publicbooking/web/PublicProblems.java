@@ -36,6 +36,10 @@ final class PublicProblems {
         return problem;
     }
 
+    /** The one field error text of a malformed Service selection (ADR-0027). */
+    static final String SERVICES_FIELD_ERROR =
+            "Изберете от 1 до 5 различни услуги с обща продължителност до 8 часа.";
+
     static ProblemDetail businessUnavailable() {
         return problem(
                 HttpStatus.NOT_FOUND, "BUSINESS_PAGE_UNAVAILABLE", "Страницата не е налична.");
@@ -46,6 +50,22 @@ final class PublicProblems {
                 HttpStatus.CONFLICT,
                 "BOOKING_SERVICE_UNAVAILABLE",
                 "Избраната услуга вече не е налична. Изберете друга услуга.");
+    }
+
+    /** A reviewed duration or price differs from the locked Service (ADR-0027). */
+    static ProblemDetail reviewChanged() {
+        return problem(
+                HttpStatus.CONFLICT,
+                "BOOKING_REVIEW_CHANGED",
+                "Условията на избраните услуги са променени. Прегледайте ги и потвърдете отново.");
+    }
+
+    /** The current durations of a valid selection sum to more than 480 minutes (reads only). */
+    static ProblemDetail selectionTooLong() {
+        return problem(
+                HttpStatus.CONFLICT,
+                "BOOKING_SELECTION_TOO_LONG",
+                "Избраните услуги са с обща продължителност над 8 часа. Изберете по-малко услуги.");
     }
 
     static ProblemDetail staffUnavailable() {
@@ -66,7 +86,7 @@ final class PublicProblems {
         return problem(
                 HttpStatus.CONFLICT,
                 "BOOKING_NOT_COMPLETED_ONLINE",
-                "Не можем да завършим резервацията онлайн. Моля, свържете се с бизнеса.");
+                "Телефонът и имейлът не съответстват. Проверете ги или въведете само единия контакт.");
     }
 
     static ProblemDetail attemptMismatch() {

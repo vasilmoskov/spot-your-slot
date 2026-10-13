@@ -252,6 +252,95 @@ class PublicBookingRateLimitApiIntegrationTests extends PublicBookingApiIntegrat
     }
 
     @Test
+    void theSelectionReadsShareTheSameReadBudgetAsTheSingleServiceReads() throws Exception {
+        String remote = freshAddress();
+        String slug = slugOf(tenant.business());
+        // Budget 4 per address and Business: two selection reads and two single-Service reads.
+        assertThat(getJsonFrom(selectionOptionsUrl(slug, tenant.service()), remote).getResponse().getStatus())
+                .isEqualTo(200);
+        assertThat(getJsonFrom(selectionAvailabilityUrl(slug, tenant.service()), remote).getResponse().getStatus())
+                .isEqualTo(200);
+        assertThat(getJsonFrom(optionsUrl(slug, tenant.service()), remote).getResponse().getStatus())
+                .isEqualTo(200);
+        assertThat(getJsonFrom(availabilityUrl(slug, tenant.service()) + "?date=2026-10-01", remote)
+                .getResponse().getStatus()).isEqualTo(200);
+
+        for (String url : List.of(
+                selectionOptionsUrl(slug, tenant.service()), selectionAvailabilityUrl(slug, tenant.service()),
+                optionsUrl(slug, tenant.service()))) {
+            MvcResult limited = getJsonFrom(url, remote);
+            assertThat(limited.getResponse().getStatus()).as(url).isEqualTo(429);
+            assertThat(tree(limited).get("code").asString()).isEqualTo("RATE_LIMITED");
+        }
+    }
+
+    @Test
+    void aRejectedSelectionReadIsChargedBeforeItsParametersAreReadAndReachesNoDatabase() throws Exception {
+        String remote = freshAddress();
+        String slug = slugOf(tenant.business());
+        TransactionLog.clear();
+        for (int read = 1; read <= 4; read++) {
+            // A malformed selection is a 400 and still consumes one unit of the read budget.
+            assertThat(getJsonFrom(selectionOptionsUrl(slug), remote).getResponse().getStatus()).isEqualTo(400);
+        }
+        clock.resetReads();
+
+        MvcResult limited = getJsonFrom(selectionOptionsUrl(slug, tenant.service()), remote);
+
+        assertThat(limited.getResponse().getStatus()).isEqualTo(429);
+        assertThat(limited.getResponse().getHeader("Retry-After")).isEqualTo("900");
+        assertThat(clock.reads()).isLessThanOrEqualTo(2);
+    }
+
+    @Test
+    void aMultiServiceBookingIsOneAttemptAndTheReviewRejectionIsChargedLikeAnyOther() throws Exception {
+        String remote = freshAddress();
+        UUID second = fixtures.service(tenant.business(), 15);
+        availabilityFixtures.assign(tenant.business(), tenant.staff(), second);
+        var claims = List.of(
+                new GuestBookingRequest.ReviewedService(tenant.service(), 30, 1000),
+                new GuestBookingRequest.ReviewedService(second, 15, 1000));
+        var stale = List.of(
+                new GuestBookingRequest.ReviewedService(tenant.service(), 31, 1000),
+                new GuestBookingRequest.ReviewedService(second, 15, 1000));
+        Req request = req().start("09:00");
+
+        // Budget 3 per address and Business: a created visit, a replay, and a review rejection.
+        assertThat(postJsonFrom(bookingsUrl(request.slug), visitBody(request, claims).toString(), remote)
+                .getResponse().getStatus()).isEqualTo(201);
+        assertThat(postJsonFrom(bookingsUrl(request.slug), visitBody(request.copy(), claims).toString(), remote)
+                .getResponse().getStatus()).isEqualTo(200);
+        assertThat(postJsonFrom(bookingsUrl(request.slug), visitBody(req().start("10:00"), stale).toString(),
+                remote).getResponse().getStatus()).isEqualTo(409);
+
+        MvcResult limited = postJsonFrom(
+                bookingsUrl(request.slug), visitBody(req().start("10:30"), claims).toString(), remote);
+
+        assertThat(limited.getResponse().getStatus()).isEqualTo(429);
+        assertThat(appointmentCount(tenant.business())).isEqualTo(1);
+    }
+
+    @Test
+    void aMalformedSelectionBodyIsChargedToTheAddressBudgetButNeverToTheContactBudget() throws Exception {
+        String remote = freshAddress();
+        Req request = req().phone("+359888612345");
+        String malformed = visitBody(request, List.of()).toString();
+
+        // Rejected before the contact is read: three address units, no contact unit.
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            assertThat(postJsonFrom(bookingsUrl(request.slug), malformed, remote).getResponse().getStatus())
+                    .isEqualTo(400);
+        }
+        assertThat(postJsonFrom(bookingsUrl(request.slug), malformed, remote).getResponse().getStatus())
+                .isEqualTo(429);
+        // The contact budget (2) is untouched: two bookings of that contact still pass from another address.
+        for (String start : List.of("09:00", "09:30")) {
+            assertThat(bookFrom(freshAddress(), req().phone("+359888612345").start(start)).getResponse().getStatus())
+                    .isEqualTo(201);
+        }
+    }
+
+    @Test
     void readsOfDifferentBusinessesAreBoundedByTheAddressAggregate() throws Exception {
         String remote = freshAddress();
         String slug = slugOf(tenant.business());

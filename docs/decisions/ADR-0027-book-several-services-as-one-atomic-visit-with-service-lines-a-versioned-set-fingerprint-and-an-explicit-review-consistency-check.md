@@ -2,7 +2,7 @@
 
 ## Metadata
 
-- **Status:** Accepted (the product decisions were approved by the product owner on 2026-10-07; this record has not yet had an independent review; phases M1 (persistence), M2 (availability and eligibility), and M3 (orchestration and fingerprinting) are implemented; HTTP and the frontend, sections 8 and 10, are not)
+- **Status:** Accepted (the product decisions were approved by the product owner on 2026-10-07; this record has not yet had an independent review; phases M1 (persistence), M2 (availability and eligibility), M3 (orchestration and fingerprinting), and M4 (the public HTTP contract, section 8) are implemented; the frontend, section 10, is not)
 - **Decision date:** 2026-10-07
 - **Recorded date:** 2026-10-07
 - **Related issues:** #18 (production public booking still waits for #21; #19 is unchanged)
@@ -261,6 +261,18 @@ Phase M3 implemented sections 5, 6, 7, and 9 behind the internal `GuestBooking` 
 - **Clarification of section 6.** A new-shape request whose reviewed durations sum to more than 480 minutes is an invalid request (field `SERVICES`), because the 480-minute rule in section 8 names only the read routes; the locked-sum case cannot match any valid claims and is `ReviewChanged`. M4 should confirm the wording.
 - **Result.** `BookedAppointment` carries the stored lines; the legacy fields keep their meaning (headline name, total duration, total price).
 - **Not yet implemented:** HTTP parsing and responses for the new shape and codes (section 8), the frontend (section 10).
+
+## Implementation notes (phase M4, 2026-10-13)
+
+Phase M4 implemented section 8; the record, the evidence, and the decisions are in [task 08b](../tasks/08b-multi-service-guest-booking-plan.md). Refinements of this record:
+
+- **Selection query.** The canonical form is the repeated parameter `serviceId`; a missing, empty, duplicated, comma-joined, padded, short, signed, or more-than-five selection is `400 VALIDATION_ERROR` with the single field error `services`. A selection is never combined with a name, price, or contact.
+- **Strict identifiers.** `UUID.fromString` accepts short forms and a leading plus sign, so the selection reads and the new request elements require the exact 8-4-4-4-12 hexadecimal form (`CanonicalUuid`). The legacy `serviceId` of the old shape is read as before.
+- **Request.** `serviceId` and `services` are alternatives: both present is `400` with the `services` field error, neither is a plain `400` (as the legacy shape without `serviceId` always was); an explicit JSON null counts as absent. Elements are exactly three keys; numbers must be JSON integers (a string, fraction, or exponent form is not one) in 1..480 minutes and 0..999 999 999 999 cents; null elements and null members are the `services` error; the claimed durations may not sum to more than 480. Unknown keys at every level remain `400`.
+- **Response.** The shape follows the request shape: the legacy keys for the legacy request (the headline is line 1 and the totals of a one-line visit) and `reference, status, services, totalDurationMinutes, totalPrice, staff, start, end, timezone` for the new shape, with the stored lines in execution order. A v1 row replays through the legacy shape only; the same row as a one-line visit is valid for the new response model, but a new-shape request against a v1 row is a mismatch.
+- **Codes.** `BOOKING_REVIEW_CHANGED` (POST) and `BOOKING_SELECTION_TOO_LONG` (reads) use the messages of section 8 with the fixed instance and no figure. The wording remains Proposed for the human review.
+- **Messages of ADR-0026.** "Unchanged" in section 8 means the structure, codes, and statuses; the two sentences that the Phase 7 wording amendment of [task 08a](../tasks/08a-appointment-core-and-guest-booking.md) changed («Проверете въведеното име.» for the `displayName` field error, «Телефонът и имейлът не съответстват. Проверете ги или въведете само единия контакт.» for `BOOKING_NOT_COMPLETED_ONLINE`) are the current wording; the other messages are unchanged.
+- **Not yet implemented:** the frontend (section 10).
 
 ## Conditions for revisiting
 

@@ -80,6 +80,73 @@ class PublicBookingBodyLimitApiIntegrationTests extends PublicBookingApiIntegrat
         assertThat(appointmentCount(tenant.business())).isEqualTo(1);
     }
 
+    /** Five Services of 15 minutes each, all assigned to the tenant's StaffMember; returns the reviewed terms. */
+    private java.util.List<GuestBookingRequest.ReviewedService> fiveServices() {
+        java.util.List<GuestBookingRequest.ReviewedService> claims = new java.util.ArrayList<>();
+        for (int index = 0; index < 5; index++) {
+            java.util.UUID service = fixtures.service(tenant.business(), 15);
+            availabilityFixtures.assign(tenant.business(), tenant.staff(), service);
+            claims.add(new GuestBookingRequest.ReviewedService(service, 15, 999_999_999_999L));
+        }
+        jdbc.sql("UPDATE service SET price = 9999999999.99 WHERE business_id = :id AND duration_minutes = 15")
+                .param("id", tenant.business()).update();
+        return claims;
+    }
+
+    private byte[] paddedVisit(Req request, java.util.List<GuestBookingRequest.ReviewedService> claims, int bytes) {
+        byte[] json = visitBody(request, claims).toString().getBytes(StandardCharsets.UTF_8);
+        assertThat(json.length).isLessThan(LIMIT);
+        byte[] padded = new byte[bytes];
+        System.arraycopy(json, 0, padded, 0, json.length);
+        java.util.Arrays.fill(padded, json.length, bytes, (byte) ' ');
+        return padded;
+    }
+
+    @Test
+    void aFiveServiceBodyOfExactlyTheLimitIsAcceptedAndOneByteMoreIsRefused() throws Exception {
+        java.util.List<GuestBookingRequest.ReviewedService> claims = fiveServices();
+        Req fits = req().start("09:00");
+        Req over = req().start("10:30");
+
+        MvcResult accepted = send(fits.slug, paddedVisit(fits, claims, LIMIT), freshAddress());
+        MvcResult refused = send(over.slug, paddedVisit(over, claims, LIMIT + 1), freshAddress());
+
+        assertThat(accepted.getResponse().getStatus()).isEqualTo(201);
+        assertThat(tree(accepted).get("services")).hasSize(5);
+        assertTooLarge(refused);
+        assertThat(appointmentCount(tenant.business())).isEqualTo(1);
+    }
+
+    @Test
+    void aFiveServiceBodyIsFarBelowTheProductionBound() throws Exception {
+        // The test limit is 2 KiB; the production bound is 16 KiB. Five reviewed Services add well under 1 KiB.
+        byte[] json = visitBody(req(), fiveServices()).toString().getBytes(StandardCharsets.UTF_8);
+
+        assertThat(json.length).isLessThan(1500);
+    }
+
+    @Test
+    void anOversizedServicesArrayIsRefusedWithoutParsingOrAnyWork() throws Exception {
+        Req over = req();
+        StringBuilder many = new StringBuilder();
+        for (int index = 0; index < 100; index++) {
+            many.append(index == 0 ? "" : ",").append("{\"serviceId\":\"").append(java.util.UUID.randomUUID())
+                    .append("\",\"reviewedDurationMinutes\":1,\"reviewedPriceCents\":1}");
+        }
+        byte[] content = ("{\"attemptId\":\"" + over.attemptId + "\",\"services\":[" + many + "]}")
+                .getBytes(StandardCharsets.UTF_8);
+        assertThat(content.length).isGreaterThan(LIMIT);
+        TransactionLog.clear();
+
+        MvcResult result = onBookingThread("oversized-services", () -> send(over.slug, content, freshAddress()));
+
+        assertTooLarge(result);
+        assertThat(TransactionLog.begins(threadOf("oversized-services"))).isEmpty();
+        assertThat(hooks.observations()).isEmpty();
+        assertThat(totalAppointments()).isZero();
+        assertThat(totalCustomers()).isZero();
+    }
+
     @Test
     void theLimitCountsBytesNotCharacters() throws Exception {
         // 1100 Cyrillic letters are 1100 characters but 2200 bytes: above the 2048-byte limit.

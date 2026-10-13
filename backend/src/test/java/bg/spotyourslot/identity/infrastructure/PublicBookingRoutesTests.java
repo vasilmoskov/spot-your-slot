@@ -31,12 +31,14 @@ class PublicBookingRoutesTests {
     }
 
     @Test
-    void exactlyFourRoutesWithTheirOneVerbAreSessionIndependent() {
+    void exactlySixRoutesWithTheirOneVerbAreSessionIndependent() {
         assertThat(sessionIndependent("GET", "/api/public/businesses/" + SLUG)).isTrue();
         assertThat(sessionIndependent("GET",
                 "/api/public/businesses/" + SLUG + "/services/" + SERVICE + "/booking-options")).isTrue();
         assertThat(sessionIndependent("GET",
                 "/api/public/businesses/" + SLUG + "/services/" + SERVICE + "/availability")).isTrue();
+        assertThat(sessionIndependent("GET", "/api/public/businesses/" + SLUG + "/booking-options")).isTrue();
+        assertThat(sessionIndependent("GET", "/api/public/businesses/" + SLUG + "/availability")).isTrue();
         assertThat(sessionIndependent("POST", "/api/public/businesses/" + SLUG + "/bookings")).isTrue();
     }
 
@@ -51,7 +53,9 @@ class PublicBookingRoutesTests {
         for (String path : List.of(
                 "/api/public/businesses/" + SLUG,
                 "/api/public/businesses/" + SLUG + "/services/" + SERVICE + "/availability",
-                "/api/public/businesses/" + SLUG + "/services/" + SERVICE + "/booking-options")) {
+                "/api/public/businesses/" + SLUG + "/services/" + SERVICE + "/booking-options",
+                "/api/public/businesses/" + SLUG + "/booking-options",
+                "/api/public/businesses/" + SLUG + "/availability")) {
             assertThat(mutation("POST", path)).as(path).isFalse();
         }
     }
@@ -70,6 +74,15 @@ class PublicBookingRoutesTests {
                 "/api/public/businesses/" + SLUG + "/services/" + SERVICE + "/availability/extra",
                 "/api/public/businesses/" + SLUG + "/services/" + SERVICE + "/booking-options/",
                 "/api/public/businesses/" + SLUG + "/services/" + SERVICE + "/slots",
+                "/api/public/businesses/" + SLUG + "/booking-options/",
+                "/api/public/businesses/" + SLUG + "/booking-options/extra",
+                "/api/public/businesses/" + SLUG + "/availability/",
+                "/api/public/businesses/" + SLUG + "/availability/extra",
+                "/api/public/businesses/" + SLUG + "/availability/" + SERVICE,
+                "/api/public/businesses/" + SLUG + "/booking-options.json",
+                "/api/public/businesses/" + SLUG + "/slots",
+                "/api/public/businesses/a/b/availability",
+                "/api/public/businesses/a/b/booking-options",
                 "/api/public/businesses/" + SLUG + "/staff",
                 "/api/public/businesses/" + SLUG + "/appointments",
                 "/api/public/businesses/a/b/bookings",
@@ -95,6 +108,8 @@ class PublicBookingRoutesTests {
                 "/api/public/businesses/" + SLUG,
                 "/api/public/businesses/" + SLUG + "/services/" + SERVICE + "/booking-options",
                 "/api/public/businesses/" + SLUG + "/services/" + SERVICE + "/availability",
+                "/api/public/businesses/" + SLUG + "/booking-options",
+                "/api/public/businesses/" + SLUG + "/availability",
                 "/api/public/businesses/" + SLUG + "/bookings");
         for (String path : documented) {
             int matching = 0;
@@ -113,6 +128,8 @@ class PublicBookingRoutesTests {
                 PublicBookingRoutes.PROFILE,
                 PublicBookingRoutes.BOOKING_OPTIONS,
                 PublicBookingRoutes.AVAILABILITY,
+                PublicBookingRoutes.SELECTION_BOOKING_OPTIONS,
+                PublicBookingRoutes.SELECTION_AVAILABILITY,
                 PublicBookingRoutes.BOOKINGS)) {
             assertThat(pattern).doesNotContain("*").startsWith("/api/public/businesses/{slug}");
         }

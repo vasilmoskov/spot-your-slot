@@ -83,6 +83,38 @@ public final class PublicBookingHttpRecords {
         }
     }
 
+    /**
+     * The response of a new-shape request (ADR-0027): the stored Service lines in execution order
+     * and the visit totals. The totals are the sums of the stored lines.
+     */
+    public record VisitResponse(
+            String reference,
+            String status,
+            List<BookedServiceResponse> services,
+            int totalDurationMinutes,
+            BigDecimal totalPrice,
+            BookedStaffResponse staff,
+            String start,
+            String end,
+            String timezone) {
+        static VisitResponse from(BookedAppointment appointment) {
+            ZoneId zone = ZoneId.of(appointment.timezone());
+            return new VisitResponse(
+                    appointment.reference(),
+                    appointment.status().name(),
+                    appointment.services().stream()
+                            .map(line -> new BookedServiceResponse(
+                                    line.name(), line.durationMinutes(), line.price()))
+                            .toList(),
+                    appointment.durationMinutes(),
+                    appointment.price(),
+                    new BookedStaffResponse(appointment.staffDisplayName()),
+                    format(appointment.start(), zone),
+                    format(appointment.end(), zone),
+                    appointment.timezone());
+        }
+    }
+
     public record BookedServiceResponse(String name, int durationMinutes, BigDecimal price) {
     }
 

@@ -35,13 +35,24 @@ public class PublicBookingExceptionHandler {
         return PublicProblems.serviceUnavailable();
     }
 
+    @ExceptionHandler(PublicBookingUnavailable.SelectionTooLong.class)
+    ProblemDetail selectionTooLong() {
+        return PublicProblems.selectionTooLong();
+    }
+
+    @ExceptionHandler(InvalidPublicRequest.class)
+    ProblemDetail invalidRequest(InvalidPublicRequest exception) {
+        return exception.isServices()
+                ? PublicProblems.validation(Map.of("services", PublicProblems.SERVICES_FIELD_ERROR))
+                : PublicProblems.validation(Map.of());
+    }
+
     @ExceptionHandler(PublicBookingUnavailable.Staff.class)
     ProblemDetail staffUnavailable() {
         return PublicProblems.staffUnavailable();
     }
 
     @ExceptionHandler({
-        InvalidPublicRequest.class,
         MethodArgumentTypeMismatchException.class,
         MissingServletRequestParameterException.class,
         ConstraintViolationException.class,

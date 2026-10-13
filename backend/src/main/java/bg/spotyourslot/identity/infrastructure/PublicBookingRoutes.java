@@ -19,6 +19,9 @@ public final class PublicBookingRoutes {
             "/api/public/businesses/{slug}/services/{serviceId}/booking-options";
     public static final String AVAILABILITY =
             "/api/public/businesses/{slug}/services/{serviceId}/availability";
+    /** ADR-0027: the Service selection travels as repeated {@code serviceId} query parameters. */
+    public static final String SELECTION_BOOKING_OPTIONS = "/api/public/businesses/{slug}/booking-options";
+    public static final String SELECTION_AVAILABILITY = "/api/public/businesses/{slug}/availability";
     public static final String BOOKINGS = "/api/public/businesses/{slug}/bookings";
 
     /** The only public mutation, and therefore the only CSRF exemption. */
@@ -29,6 +32,8 @@ public final class PublicBookingRoutes {
             route(HttpMethod.GET, PROFILE),
             route(HttpMethod.GET, BOOKING_OPTIONS),
             route(HttpMethod.GET, AVAILABILITY),
+            route(HttpMethod.GET, SELECTION_BOOKING_OPTIONS),
+            route(HttpMethod.GET, SELECTION_AVAILABILITY),
             BOOKING_MUTATION);
 
     private PublicBookingRoutes() {

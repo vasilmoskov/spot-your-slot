@@ -93,6 +93,68 @@ class PublicBookingResultMappingApiIntegrationTests extends PublicBookingApiInte
                 .containsExactly("reference", "status", "service", "staff", "start", "end", "timezone");
     }
 
+    private static BookedAppointment visit(BookedAppointment.Status status) {
+        return new BookedAppointment(
+                "ABCDEFGHJK", status, "Боядисване", 75, new BigDecimal("30.50"), "Мария Тестова",
+                START, START.plusSeconds(4500), "Europe/Sofia",
+                List.of(
+                        new BookedAppointment.BookedService("Боядисване", 45, new BigDecimal("20.50")),
+                        new BookedAppointment.BookedService("Подстригване", 30, new BigDecimal("10.00"))));
+    }
+
+    private MvcResult postVisit(BookingResult result) throws Exception {
+        when(orchestration.book(any())).thenReturn(result);
+        var claims = List.of(
+                new bg.spotyourslot.booking.GuestBookingRequest.ReviewedService(UUID.randomUUID(), 45, 2050),
+                new bg.spotyourslot.booking.GuestBookingRequest.ReviewedService(UUID.randomUUID(), 30, 1000));
+        return postJson(bookingsUrl(req().slug), visitBody(req(), claims).toString());
+    }
+
+    @Test
+    void aNewShapeRequestGetsTheVisitShapeWithTheStoredLinesInExecutionOrderAndTheTotals() throws Exception {
+        MvcResult created = postVisit(new BookingResult.Created(visit(BookedAppointment.Status.CONFIRMED)));
+        MvcResult replayed = postVisit(new BookingResult.Replayed(visit(BookedAppointment.Status.CANCELLED)));
+
+        assertThat(created.getResponse().getStatus()).isEqualTo(201);
+        assertThat(text(created.getResponse())).isEqualTo(
+                "{\"reference\":\"ABCDEFGHJK\",\"status\":\"CONFIRMED\","
+                        + "\"services\":[{\"name\":\"Боядисване\",\"durationMinutes\":45,\"price\":20.50},"
+                        + "{\"name\":\"Подстригване\",\"durationMinutes\":30,\"price\":10.00}],"
+                        + "\"totalDurationMinutes\":75,\"totalPrice\":30.50,"
+                        + "\"staff\":{\"displayName\":\"Мария Тестова\"},"
+                        + "\"start\":\"2026-10-01T10:00:00+03:00\",\"end\":\"2026-10-01T11:15:00+03:00\","
+                        + "\"timezone\":\"Europe/Sofia\"}");
+        assertThat(replayed.getResponse().getStatus()).isEqualTo(200);
+        assertThat(keys(tree(replayed))).containsExactly(
+                "reference", "status", "services", "totalDurationMinutes", "totalPrice", "staff", "start",
+                "end", "timezone");
+        assertThat(tree(replayed).get("status").asString()).isEqualTo("CANCELLED");
+        assertThat(created.getResponse().getHeader("Cache-Control")).contains("no-store");
+        assertThat(created.getResponse().getHeaderValues("Set-Cookie")).isEmpty();
+    }
+
+    @Test
+    void aLegacyRequestStillGetsTheLegacyShapeEvenForAOneLineVisit() throws Exception {
+        MvcResult result = post(new BookingResult.Created(appointment(BookedAppointment.Status.CONFIRMED)));
+
+        assertThat(keys(tree(result)))
+                .containsExactly("reference", "status", "service", "staff", "start", "end", "timezone");
+    }
+
+    @Test
+    void theLegacyHeadlineEqualsLineOneAndTheTotalsOfAOneLineVisit() throws Exception {
+        BookedAppointment oneLine = appointment(BookedAppointment.Status.CONFIRMED);
+
+        assertThat(oneLine.services()).hasSize(1);
+        assertThat(oneLine.services().get(0).name()).isEqualTo(oneLine.serviceName());
+        assertThat(oneLine.services().get(0).durationMinutes()).isEqualTo(oneLine.durationMinutes());
+        assertThat(oneLine.services().get(0).price()).isEqualTo(oneLine.price());
+        MvcResult asVisit = postVisit(new BookingResult.Created(oneLine));
+        assertThat(tree(asVisit).get("totalDurationMinutes").asInt()).isEqualTo(30);
+        assertThat(tree(asVisit).get("services").get(0).get("price").decimalValue())
+                .isEqualByComparingTo("25.00");
+    }
+
     @Test
     void aRepeatedWallClockHourKeepsItsOwnOffset() throws Exception {
         BookedAppointment second = new BookedAppointment(
@@ -121,7 +183,10 @@ class PublicBookingResultMappingApiIntegrationTests extends PublicBookingApiInte
             "409", "BOOKING_SLOT_UNAVAILABLE", "Избраният час вече не е свободен. Изберете друг час."});
         expected.put(new BookingResult.IdentityConflict(), new String[] {
             "409", "BOOKING_NOT_COMPLETED_ONLINE",
-            "Не можем да завършим резервацията онлайн. Моля, свържете се с бизнеса."});
+            "Телефонът и имейлът не съответстват. Проверете ги или въведете само единия контакт."});
+        expected.put(new BookingResult.ReviewChanged(), new String[] {
+            "409", "BOOKING_REVIEW_CHANGED",
+            "Условията на избраните услуги са променени. Прегледайте ги и потвърдете отново."});
         expected.put(new BookingResult.AttemptMismatch(), new String[] {
             "409", "BOOKING_ATTEMPT_MISMATCH",
             "Тази заявка вече е използвана с други данни. Започнете резервацията отново."});
@@ -162,6 +227,7 @@ class PublicBookingResultMappingApiIntegrationTests extends PublicBookingApiInte
                 new BookingResult.SlotUnavailable(),
                 new BookingResult.IdentityConflict(),
                 new BookingResult.AttemptMismatch(),
+                new BookingResult.ReviewChanged(),
                 new BookingResult.InvalidRequest(EnumSet.of(BookingField.DISPLAY_NAME)),
                 new BookingResult.Created(appointment(BookedAppointment.Status.CONFIRMED)),
                 new BookingResult.Replayed(appointment(BookedAppointment.Status.CONFIRMED)));
@@ -174,12 +240,14 @@ class PublicBookingResultMappingApiIntegrationTests extends PublicBookingApiInte
     @Test
     void everyInvalidFieldHasItsOwnApprovedFieldErrorAndTheTechnicalFieldsHaveNone() throws Exception {
         Map<BookingField, String[]> expected = new LinkedHashMap<>();
-        expected.put(BookingField.DISPLAY_NAME, new String[] {"displayName", "Въведете име до 200 знака."});
+        expected.put(BookingField.DISPLAY_NAME, new String[] {"displayName", "Проверете въведеното име."});
         expected.put(BookingField.PHONE, new String[] {"phone", "Въведеният телефонен номер не е валиден."});
         expected.put(BookingField.EMAIL, new String[] {"email", "Въведеният имейл адрес не е валиден."});
         expected.put(BookingField.CONTACT, new String[] {"contact", "Въведете телефон или имейл."});
         expected.put(BookingField.NOTE, new String[] {
             "note", "Бележката може да съдържа най-много 500 знака."});
+        expected.put(BookingField.SERVICES, new String[] {
+            "services", "Изберете от 1 до 5 различни услуги с обща продължителност до 8 часа."});
 
         for (var entry : expected.entrySet()) {
             MvcResult result = post(new BookingResult.InvalidRequest(EnumSet.of(entry.getKey())));
@@ -195,7 +263,7 @@ class PublicBookingResultMappingApiIntegrationTests extends PublicBookingApiInte
         }
         MvcResult all = post(new BookingResult.InvalidRequest(EnumSet.allOf(BookingField.class)));
         assertThat(keys(tree(all).get("fieldErrors")))
-                .containsExactly("displayName", "phone", "email", "contact", "note");
+                .containsExactly("displayName", "phone", "email", "contact", "note", "services");
     }
 
     @Test

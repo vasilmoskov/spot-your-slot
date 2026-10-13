@@ -5,7 +5,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
-/** Registers the limiter on exactly the three public booking routes and nothing else. */
+/** Registers the limiter on exactly the five public booking routes and nothing else. */
 @Configuration(proxyBeanMethods = false)
 class PublicBookingWebConfiguration implements WebMvcConfigurer {
     private static final String PREFIX = "/api/public/businesses/{slug}";
@@ -21,7 +21,9 @@ class PublicBookingWebConfiguration implements WebMvcConfigurer {
         registry.addInterceptor(PublicBookingRateLimitInterceptor.forReads(limiter))
                 .addPathPatterns(
                         PREFIX + "/services/{serviceId}/booking-options",
-                        PREFIX + "/services/{serviceId}/availability");
+                        PREFIX + "/services/{serviceId}/availability",
+                        PREFIX + "/booking-options",
+                        PREFIX + "/availability");
         registry.addInterceptor(PublicBookingRateLimitInterceptor.forBooking(limiter))
                 .addPathPatterns(PREFIX + "/bookings");
     }

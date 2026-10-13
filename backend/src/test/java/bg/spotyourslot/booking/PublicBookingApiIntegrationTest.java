@@ -58,6 +58,25 @@ abstract class PublicBookingApiIntegrationTest extends BookingIntegrationTest {
         return PREFIX + "/" + slug + "/services/" + service + "/availability";
     }
 
+    /** The Service selection form of the read routes (ADR-0027): repeated {@code serviceId}. */
+    protected String selectionOptionsUrl(String slug, UUID... services) {
+        return selectionUrl(PREFIX + "/" + slug + "/booking-options", services);
+    }
+
+    protected String selectionAvailabilityUrl(String slug, UUID... services) {
+        return selectionUrl(PREFIX + "/" + slug + "/availability", services) + "&date=2026-10-01";
+    }
+
+    private static String selectionUrl(String base, UUID... services) {
+        StringBuilder url = new StringBuilder(base);
+        char separator = '?';
+        for (UUID service : services) {
+            url.append(separator).append("serviceId=").append(service);
+            separator = '&';
+        }
+        return separator == '?' ? url.append("?_=1").toString() : url.toString();
+    }
+
     protected String bookingsUrl(String slug) {
         return PREFIX + "/" + slug + "/bookings";
     }
@@ -123,6 +142,23 @@ abstract class PublicBookingApiIntegrationTest extends BookingIntegrationTest {
             body.putNull("note");
         } else {
             body.put("note", request.note);
+        }
+        return body;
+    }
+
+    /**
+     * The new-shape body (ADR-0027): the same request with {@code services} instead of
+     * {@code serviceId}; the array order is the order given.
+     */
+    protected ObjectNode visitBody(Req request, List<GuestBookingRequest.ReviewedService> services) {
+        ObjectNode body = body(request);
+        body.remove("serviceId");
+        var array = body.putArray("services");
+        for (GuestBookingRequest.ReviewedService service : services) {
+            ObjectNode element = array.addObject();
+            element.put("serviceId", service.serviceId().toString());
+            element.put("reviewedDurationMinutes", service.durationMinutes());
+            element.put("reviewedPriceCents", service.priceCents());
         }
         return body;
     }

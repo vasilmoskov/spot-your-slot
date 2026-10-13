@@ -224,6 +224,97 @@ class PublicBookingSessionSecurityApiIntegrationTests extends PublicBookingApiIn
         assertThat(appointmentCount(other.business())).isZero();
     }
 
+    @Test
+    void theSelectionReadRoutesAreByteIdenticalForEveryIdentityKindAndSetNoCookie() throws Exception {
+        String slug = slugOf(tenant.business());
+        UUID second = fixtures.service(tenant.business(), 45);
+        availabilityFixtures.assign(tenant.business(), tenant.staff(), second);
+        UUID tooLongA = fixtures.service(tenant.business(), 300);
+        UUID tooLongB = fixtures.service(tenant.business(), 300);
+        List<String> urls = List.of(
+                selectionOptionsUrl(slug, tenant.service(), second),
+                selectionAvailabilityUrl(slug, tenant.service(), second),
+                selectionAvailabilityUrl(slug, tenant.service(), second) + "&staffMemberId=" + tenant.staff(),
+                selectionOptionsUrl(slug, tenant.service(), UUID.randomUUID()),
+                selectionOptionsUrl(slug, tooLongA, tooLongB),
+                selectionOptionsUrl(slug),
+                selectionOptionsUrl(slug, tenant.service(), tenant.service()),
+                selectionOptionsUrl("unknown-studio", tenant.service()),
+                PREFIX + "/" + slug + "/availability");
+
+        for (String url : urls) {
+            Map<String, MockHttpServletResponse> responses = new LinkedHashMap<>();
+            for (var caller : callers().entrySet()) {
+                responses.put(caller.getKey(), read(url, caller.getValue()).getResponse());
+            }
+            MockHttpServletResponse anonymous = responses.get("anonymous");
+            for (var entry : responses.entrySet()) {
+                MockHttpServletResponse response = entry.getValue();
+                assertThat(response.getStatus()).as("%s %s", entry.getKey(), url).isEqualTo(anonymous.getStatus());
+                assertThat(text(response)).as("%s %s", entry.getKey(), url).isEqualTo(text(anonymous));
+                assertThat(response.getContentType()).isEqualTo(anonymous.getContentType());
+                assertThat(response.getHeaderValues("Set-Cookie")).as(entry.getKey()).isEmpty();
+                assertThat(response.getHeader("Cache-Control")).contains("no-store");
+            }
+        }
+    }
+
+    @Test
+    void aNewShapeBookingIsIdenticalForEveryIdentityKindAndUsesNoSessionData() throws Exception {
+        UUID second = fixtures.service(tenant.business(), 45);
+        availabilityFixtures.assign(tenant.business(), tenant.staff(), second);
+        var claims = List.of(
+                new GuestBookingRequest.ReviewedService(tenant.service(), 30, 1000),
+                new GuestBookingRequest.ReviewedService(second, 45, 1000));
+        int slot = 0;
+        for (var caller : callers().entrySet()) {
+            Req original = req().staff(tenant.staff()).start(
+                    java.time.Instant.parse("2026-10-03T06:00:00Z").plus(java.time.Duration.ofDays(slot++)));
+            MvcResult created = send(bookingsUrl(original.slug), visitBody(original, claims).toString(), null);
+            assertThat(created.getResponse().getStatus()).isEqualTo(201);
+
+            MvcResult replay = send(bookingsUrl(original.slug), visitBody(original.copy(), claims).toString(),
+                    caller.getValue());
+            assertThat(replay.getResponse().getStatus()).as(caller.getKey()).isEqualTo(200);
+            assertThat(text(replay.getResponse())).as(caller.getKey()).isEqualTo(text(created.getResponse()));
+            assertThat(replay.getResponse().getHeaderValues("Set-Cookie")).as(caller.getKey()).isEmpty();
+        }
+        // The review rejection is identical for every identity as well.
+        Req stale = req().start("11:00");
+        var wrong = List.of(new GuestBookingRequest.ReviewedService(tenant.service(), 31, 1000));
+        String expected = null;
+        for (var caller : callers().entrySet()) {
+            MvcResult rejected = send(bookingsUrl(stale.slug), visitBody(stale.copy(), wrong).toString(),
+                    caller.getValue());
+            assertThat(rejected.getResponse().getStatus()).as(caller.getKey()).isEqualTo(409);
+            expected = expected == null ? text(rejected.getResponse()) : expected;
+            assertThat(text(rejected.getResponse())).as(caller.getKey()).isEqualTo(expected);
+        }
+        assertThat(sessionRows()).isNotEmpty();
+    }
+
+    @Test
+    void siblingDeeperAndMalformedVariantsOfTheSelectionRoutesGetTheEstablishedRoutingResponse() throws Exception {
+        String slug = slugOf(tenant.business());
+        String base = PREFIX + "/" + slug;
+        // Baseline: a non-public path gets one response per identity kind (401 anonymous, 403 signed in).
+        Map<String, Integer> expected = new LinkedHashMap<>();
+        for (var caller : callers().entrySet()) {
+            expected.put(caller.getKey(), read(base + "/nothing", caller.getValue()).getResponse().getStatus());
+        }
+        for (String path : List.of(
+                base + "/booking-options/", base + "/booking-options/extra", base + "/availability/",
+                base + "/availability/extra", base + "/availability/" + tenant.service(),
+                base + "/booking-options.json", base + "/services/" + tenant.service() + "/booking-options/x")) {
+            for (var caller : callers().entrySet()) {
+                MockHttpServletResponse response = read(path, caller.getValue()).getResponse();
+                assertThat(response.getStatus()).as("%s %s", caller.getKey(), path)
+                        .isEqualTo(expected.get(caller.getKey()));
+                assertThat(response.getHeaderValues("Set-Cookie")).isEmpty();
+            }
+        }
+    }
+
     // ---- the narrow CSRF exemption ----
 
     @Test
@@ -253,6 +344,11 @@ class PublicBookingSessionSecurityApiIntegrationTests extends PublicBookingApiIn
                 post(PREFIX + "/" + slug),
                 post(optionsUrl(slug, service)),
                 post(availabilityUrl(slug, service)),
+                post(PREFIX + "/" + slug + "/booking-options"),
+                post(PREFIX + "/" + slug + "/availability"),
+                put(PREFIX + "/" + slug + "/booking-options"),
+                delete(PREFIX + "/" + slug + "/availability"),
+                post(PREFIX + "/" + slug + "/booking-options/extra"),
                 put(bookingsUrl(slug)),
                 delete(bookingsUrl(slug)),
                 post(PREFIX + "/" + slug + "/appointments"),
@@ -368,6 +464,25 @@ class PublicBookingSessionSecurityApiIntegrationTests extends PublicBookingApiIn
         }
         assertThat(totalAppointments()).isZero();
         assertThat(totalCustomers()).isZero();
+    }
+
+    @Test
+    void theSelectionReadRoutesFollowTheSameExactOriginPolicy() throws Exception {
+        String slug = slugOf(tenant.business());
+        for (String url : List.of(
+                selectionOptionsUrl(slug, tenant.service()), selectionAvailabilityUrl(slug, tenant.service()))) {
+            MockHttpServletResponse approved = mvc.perform(from(
+                            get(url).header("Origin", APPROVED_ORIGIN), freshAddress())).andReturn().getResponse();
+            assertThat(approved.getStatus()).isEqualTo(200);
+            assertThat(approved.getHeader("Access-Control-Allow-Origin")).isEqualTo(APPROVED_ORIGIN);
+            assertThat(approved.getHeader("Access-Control-Allow-Credentials")).isEqualTo("true");
+            for (String origin : List.of("https://unapproved.invalid", "http://localhost:5174", "null")) {
+                MockHttpServletResponse refused = mvc.perform(from(
+                                get(url).header("Origin", origin), freshAddress())).andReturn().getResponse();
+                assertThat(refused.getStatus()).as(origin).isEqualTo(403);
+                assertThat(refused.getHeader("Access-Control-Allow-Origin")).as(origin).isNull();
+            }
+        }
     }
 
     @Test

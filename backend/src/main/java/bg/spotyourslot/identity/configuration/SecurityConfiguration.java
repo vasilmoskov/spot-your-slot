@@ -102,7 +102,7 @@ public class SecurityConfiguration {
                                 "/api/auth/invitations/accept")
                         .permitAll()
                         // The only unauthenticated Business surface (ADR-0017, ADR-0026): the
-                        // profile and exactly the three booking routes, each with its one verb.
+                        // profile and exactly the five booking routes, each with its one verb.
                         // Every other verb and route stays authenticated.
                         .requestMatchers(PublicBookingRoutes.SESSION_INDEPENDENT)
                         .permitAll()
