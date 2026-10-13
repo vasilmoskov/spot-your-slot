@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import '@testing-library/jest-dom/vitest'
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -197,14 +198,14 @@ describe('the Service selection step', () => {
 
     await tick('Алфа')
     expect(summary()).toHaveTextContent('Алфа')
-    expect(document.querySelector('.booking-selection-total')).toHaveTextContent('Общо: 45 мин. · 25.00 €')
+    expect(document.querySelector('.booking-selection-total')).toHaveTextContent('Общо: 25.00 € — 45 мин.')
     await tick('Бета')
     // The names stay in the public-profile order, whatever order they were ticked in.
     expect(Array.from(summary()!.querySelectorAll('li')).map((item) => item.textContent)).toEqual([
       'Алфа',
       'Бета',
     ])
-    expect(document.querySelector('.booking-selection-total')).toHaveTextContent('Общо: 165 мин. · 105.50 €')
+    expect(document.querySelector('.booking-selection-total')).toHaveTextContent('Общо: 105.50 € — 165 мин.')
     const total = document.querySelector('.booking-selection-total')!
     expect(total).toHaveAttribute('role', 'status')
   })
@@ -224,7 +225,7 @@ describe('the Service selection step', () => {
     await startFromHero()
     for (const name of ['Алфа', 'Бета', 'Гама', 'Делта', 'Епсилон']) await tick(name)
 
-    expect(document.querySelector('.booking-selection-total')).toHaveTextContent('Общо: 50 мин. · 1.70 €')
+    expect(document.querySelector('.booking-selection-total')).toHaveTextContent('Общо: 1.70 € — 50 мин.')
   })
 
   it('supports five maximum Service prices exactly and formats them like a single price', async () => {
@@ -237,11 +238,11 @@ describe('the Service selection step', () => {
     serveCatalog([...maximum, { id: ZETA, name: 'Зета', durationMinutes: 1, price: 0 }])
     await openPage()
     await startFromHero()
-    expect(screen.getAllByText('96 мин. · 9999999999.99 €')).toHaveLength(5)
+    expect(screen.getAllByText('9999999999.99 € — 96 мин.')).toHaveLength(5)
     for (const name of ['Алфа', 'Бета', 'Гама', 'Делта', 'Епсилон']) await tick(name)
 
     expect(document.querySelector('.booking-selection-total')).toHaveTextContent(
-      'Общо: 480 мин. · 49999999999.95 €',
+      'Общо: 49999999999.95 € — 480 мин.',
     )
     expect(button('Напред')).toBeEnabled()
   })
@@ -284,7 +285,7 @@ describe('the Service selection step', () => {
       'Не може да се добави: общо най-много 8 часа.',
     )
     await tick('Бета')
-    expect(document.querySelector('.booking-selection-total')).toHaveTextContent('Общо: 480 мин.')
+    expect(document.querySelector('.booking-selection-total')).toHaveTextContent('Общо: 20.00 € — 480 мин.')
     expect(button('Напред')).toBeEnabled()
     // Both selected Services remain removable even though nothing more fits.
     expect(checkbox('Алфа')).toBeEnabled()
@@ -397,7 +398,7 @@ describe('the selection is a set', () => {
     serveCatalog(maximum)
     stubAttemptIds(ATTEMPT_ONE)
     await toReview(['Алфа', 'Бета', 'Гама', 'Делта', 'Епсилон'])
-    expect(reviewSummary()).toHaveTextContent('Общо: 480 мин. · 49999999999.95 €')
+    expect(reviewSummary()).toHaveTextContent('Общо: 49999999999.95 € — 480 мин.')
     await submit()
 
     expect(server.posts).toHaveLength(1)
@@ -641,15 +642,44 @@ describe('the whole-visit review', () => {
     expect(heading()).toHaveTextContent('Преглед и потвърждение')
     const text = reviewSummary().textContent ?? ''
     expect(text.indexOf('Алфа')).toBeLessThan(text.indexOf('Гама'))
-    expect(reviewSummary()).toHaveTextContent('45 мин. · 25.00 €')
-    expect(reviewSummary()).toHaveTextContent('30 мин. · 10.10 €')
-    expect(reviewSummary()).toHaveTextContent('Общо: 75 мин. · 35.10 €')
+    expect(reviewSummary()).toHaveTextContent('25.00 € — 45 мин.')
+    expect(reviewSummary()).toHaveTextContent('10.10 € — 30 мин.')
+    expect(reviewSummary()).toHaveTextContent('Общо: 35.10 € — 75 мин.')
     expect(reviewSummary()).toHaveTextContent('Георги Петров')
     expect(reviewSummary()).toHaveTextContent('сряда, 7 октомври 2026 г.')
     expect(reviewSummary()).toHaveTextContent('10:00 – 10:45')
     expect(reviewSummary()).toHaveTextContent('Иван Петров')
     expect(document.querySelectorAll('.booking-summary-row')).toHaveLength(4)
     expect(server.posts).toHaveLength(0)
+  })
+
+  it('writes price before duration with an em dash and no other separator', async () => {
+    await toReview(['Гама', 'Алфа'])
+
+    const text = reviewSummary().textContent ?? ''
+    expect(text).toContain('25.00 € — 45 мин.')
+    expect(text).toContain('Общо: 35.10 € — 75 мин.')
+    expect(text).not.toMatch(/мин\.\s*[·•|/-]\s*\d/)
+    expect(text).not.toContain('·')
+  })
+
+  it('shows no «Общо» line for one Service, which would only repeat its own line', async () => {
+    await toReview(['Алфа'])
+
+    expect(reviewSummary()).toHaveTextContent('25.00 € — 45 мин.')
+    expect(document.querySelector('.booking-summary-total')).toBeNull()
+    expect(reviewSummary()).not.toHaveTextContent('Общо')
+  })
+
+  it('shows the «Общо» line for two Services and separates it from the list with a rule', async () => {
+    await toReview(['Гама', 'Алфа'])
+
+    expect(document.querySelector('.booking-summary-total')).toHaveTextContent('Общо: 35.10 € — 75 мин.')
+    const css = readFileSync('src/styles.css', 'utf8')
+    const block = /\.booking-summary-total\s*\{([^}]*)\}/.exec(css)?.[1] ?? ''
+    expect(block).toMatch(/border-top:\s*1px solid/)
+    expect(block).toMatch(/margin-top:/)
+    expect(block).toMatch(/padding-top:/)
   })
 
   it('opens the Service step from «Промени услугите» and the confirm action stays on the right', async () => {
@@ -675,15 +705,15 @@ describe('the visit confirmation', () => {
       ),
     )
     await toReview(['Алфа', 'Гама'])
-    expect(reviewSummary()).toHaveTextContent('Общо: 75 мин. · 35.10 €')
+    expect(reviewSummary()).toHaveTextContent('Общо: 35.10 € — 75 мин.')
     await submit()
 
     expect(heading()).toHaveTextContent('Резервацията е потвърдена')
     const facts = document.querySelector('.booking-facts') as HTMLElement
     expect(facts).toHaveTextContent('Алфа')
-    expect(facts).toHaveTextContent('50 мин. · 27.50 €')
+    expect(facts).toHaveTextContent('27.50 € — 50 мин.')
     expect(facts).toHaveTextContent('Гама')
-    expect(facts).toHaveTextContent('35 мин. · 11.00 €')
+    expect(facts).toHaveTextContent('11.00 € — 35 мин.')
     expect(facts).toHaveTextContent('85 мин.')
     expect(facts).toHaveTextContent('38.50 €')
     expect(facts).not.toHaveTextContent('35.10')
@@ -822,7 +852,7 @@ describe('BOOKING_REVIEW_CHANGED on the first send', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(REVIEW_CHANGED)
     expect(server.posts).toHaveLength(1)
     expect(document.querySelector('.booking-context')).toHaveTextContent('Алфа, Гама')
-    expect(document.querySelector('.booking-context')).toHaveTextContent('75 мин. · 37.50 €')
+    expect(document.querySelector('.booking-context')).toHaveTextContent('37.50 € — 75 мин.')
     // The time must be chosen again.
     expect(screen.queryByRole('radio', { checked: true })).toBeNull()
     expect(button('Напред')).toBeDisabled()
@@ -841,8 +871,8 @@ describe('BOOKING_REVIEW_CHANGED on the first send', () => {
     expect(heading()).toHaveTextContent('Вашите данни')
     expect(screen.getByLabelText('Име')).toHaveValue('Иван Петров')
     await next()
-    expect(reviewSummary()).toHaveTextContent('50 мин. · 27.50 €')
-    expect(reviewSummary()).toHaveTextContent('Общо: 80 мин. · 37.60 €')
+    expect(reviewSummary()).toHaveTextContent('27.50 € — 50 мин.')
+    expect(reviewSummary()).toHaveTextContent('Общо: 37.60 € — 80 мин.')
     expect(screen.queryByRole('alert')).toBeNull()
     expect(server.posts).toHaveLength(1)
 
@@ -868,7 +898,7 @@ describe('BOOKING_REVIEW_CHANGED on the first send', () => {
     )
     expect(document.querySelector('.booking-context')).toHaveTextContent('Алфа')
     expect(document.querySelector('.booking-context')).not.toHaveTextContent('Гама')
-    expect(document.querySelector('.booking-context')).toHaveTextContent('45 мин. · 25.00 €')
+    expect(document.querySelector('.booking-context')).toHaveTextContent('25.00 € — 45 мин.')
   })
 
   it('returns to the Service step when no selected Service is offered any more', async () => {

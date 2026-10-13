@@ -1,13 +1,11 @@
 # SpotYourSlot — Appointment Core and Guest Booking
 
-Status: Phase 1 (decisions and documentation), Phase 2 (the `appointment` schema with its overlap exclusion, the
-internal domain and persistence, and the real busy-interval source), Phase 3 (the Business schedule revision guard and the
-schedule mutations' participation), and Phase 4 (booking orchestration, idempotency, HMAC fingerprints, bounded retry)
-are committed (`a0243f7`, `18052b8`, `70e31c9`, `63f6019`). Phase 5 (the public availability and booking API,
-session-independent security, and the bounded limiter; backend only) was reviewed and approved and is committed as
-`3576843`. Phase 6 (the public guest-booking frontend) is implemented and verified by automated tests and awaits review and commit; it
-has had **no rendered browser review and no human visual approval**. A safety correction of its attempt state machine (see "Phase 6 correction") is part of it. Phases 7 and 8 are planned and not started. Issue #18 is closed
-only on explicit approval; issue #19 is not changed.
+Status (current): the original backend and frontend phases (1 to 7, including the public guest-booking frontend and its rendered
+review and UX refinement) and the multi-Service phases M1 to M5 are committed (latest `2b71845`). Phase M6 (the rendered browser review of the
+multi-Service journey) has been executed and its corrections are in the working tree; it **awaits explicit human visual approval**. Phase M7
+(browser E2E, which replaces the original Phase 8) has **not started**. Multi-Service booking and issue #18 are **not complete** until the remaining
+review and verification gates pass; issue #18 is closed only on explicit approval, and issue #19 is not changed. The dated phase records below are
+historical evidence of the state at their own dates (for example, the earlier statements that Phase 6 awaited review and had no rendered browser review).
 GitHub issue: #18 — Build appointment core and guest booking flow
 Depends on: #16, #17, #20; relates to #19 (partly satisfied here) and #21 (release dependency)
 Decision records: [ADR-0022](../decisions/ADR-0022-model-appointments-with-snapshots-two-statuses-and-a-database-overlap-exclusion.md),
@@ -683,7 +681,7 @@ Local only; base `HEAD` `70e31c9` plus the uncommitted Phase 4 working tree (not
 - Nothing is visible in the UI, so no visual review applies. Issue #18 and #19 are not complete; production public
   booking still depends on Issue #21.
 
-## Phase 5 record (implemented and verified; awaiting review and commit)
+## Phase 5 record (implemented and verified; status then: awaiting review and commit; since committed as `3576843`)
 
 Scope: the public HTTP contracts of guest booking, session-independent security with the one narrow CSRF exemption, the
 bounded Booking-owned limiter, and the bound on the booking request body, backend only (plus the compatibility check of the
@@ -1143,7 +1141,7 @@ none is a human approval, and the composition stays «awaiting human visual appr
    `docs/ui-design-guidelines.md` section 6, with pointers in `AGENTS.md` and `CLAUDE.md`, and `src/ui/actionOrder.test.ts` enforces it. One existing test asserted the old destructive-first order and was updated.
    Groups that are neither cancelling nor confirming (an «Редактирай» beside an «Изтрий», a retry beside a link back to a list) were left as they are and are covered by no rule: that is the one deliberate exception.
 
-### Earlier proposed follow-up: booking several Services in one visit (SUPERSEDED by the approved decisions of the multi-Service extension below; still NOT implemented)
+### Earlier proposed follow-up: booking several Services in one visit (SUPERSEDED by the approved decisions of the multi-Service extension below; historical text: it was not implemented when written, and it has since been implemented through M5)
 
 The request to choose several Services needs product and contract decisions before any code. Radios were not replaced by checkboxes, and no multi-Service booking is simulated with several POSTs. Decisions required:
 
@@ -1185,7 +1183,7 @@ It would be proposed as a separate ADR and issue with its own review; until then
 ## Phase 7 human-review corrections, second round (2026-10-07; human visual approval still PENDING)
 
 Base `HEAD` `41e13fb` plus the uncommitted working tree. Frontend only: no backend semantics, migration, API contract, or dependency changed, and Phase 8 was not started. Booking several Services is a
-**requested capability, since decided in ADR-0027** ([task 08b](08b-multi-service-guest-booking-plan.md), see the multi-Service extension at the end of this record); **it is not implemented, and the product books exactly one Service per booking.**
+**requested capability, since decided in ADR-0027** ([task 08b](08b-multi-service-guest-booking-plan.md), see the multi-Service extension at the end of this record); **historical: when written it was not implemented and the product booked exactly one Service; since M1 to M5 (committed) the public UI books one to five Services as one atomic visit, and M6 and M7 are open.**
 
 ### Wording amendment (approved by the human review)
 
@@ -1265,7 +1263,9 @@ hour (`03:30` at both offsets); the conflict message, the Business telephone, th
 
 ## Multi-Service extension: decisions and documentation phase (2026-10-07)
 
-**Documentation phase only. Nothing is implemented, no backend, schema, API, or checkbox change was made, the product still books exactly one Service per booking, and issue #18 is not complete.** The product owner approved the model; it is
+**Current status (after M6):** the public UI can select and book one to five Services as one atomic visit; phases M1 to M5 are committed, M6 (the rendered review) is executed and awaits explicit human visual approval, and M7 (browser E2E) is not started. Multi-Service booking and issue #18 are not complete until the remaining review and verification gates pass. The dated phase notes below are historical and describe the state at their own dates.
+
+**Historical (2026-10-07): documentation phase only. Nothing was implemented, no backend, schema, API, or checkbox change was made, the product still books exactly one Service per booking, and issue #18 is not complete.** The product owner approved the model; it is
 recorded in [ADR-0027](../decisions/ADR-0027-book-several-services-as-one-atomic-visit-with-service-lines-a-versioned-set-fingerprint-and-an-explicit-review-consistency-check.md) (which amends ADR-0013, 0016, 0022, 0023, 0024, and 0026 through amendment notes that preserve their text) and planned in [task 08b](08b-multi-service-guest-booking-plan.md).
 
 ### Approved decisions and where they are specified
@@ -1310,11 +1310,11 @@ Two gaps found in the ADR-0027 specification were closed before any implementati
 
 ### Multi-Service phase M5 (frontend journey) implemented (2026-10-13)
 
-The booking journey now offers real checkboxes (one to five Services, 480 minutes), the exact cents summary, the intersection staff step with «Промяна на избора», one whole-visit review, the M4 request shape with canonically ordered Services, the server-returned lines and totals, and the review-change recovery; the record is in [task 08b](08b-multi-service-guest-booking-plan.md). It is verified by automated tests only. **It is not visually approved** (M6 is the human review), the browser journeys (M7) have not started, multi-Service booking is not marked complete, and issue #18 is not complete.
+The booking journey now offers real checkboxes (one to five Services, 480 minutes), the exact cents summary, the intersection staff step with «Промяна на избора», one whole-visit review, the M4 request shape with canonically ordered Services, the server-returned lines and totals, and the review-change recovery; the record is in [task 08b](08b-multi-service-guest-booking-plan.md). It is verified by automated tests only. The rendered review (M6) has been executed (see [task 08b](08b-multi-service-guest-booking-plan.md)) but **is not visually approved**; the browser journeys (M7) have not started, multi-Service booking is not marked complete, and issue #18 is not complete.
 
 ### Multi-Service phase M4 (public HTTP contract) implemented (2026-10-13)
 
-The two Service-selection read routes, the second booking request shape with reviewed terms, the visit response, and the codes `BOOKING_REVIEW_CHANGED` and `BOOKING_SELECTION_TOO_LONG` are implemented and verified through the complete filter chain (the record is in [task 08b](08b-multi-service-guest-booking-plan.md)). **Multi-Service booking is not complete and the product UI still books one Service**: the frontend (M5), the rendered review (M6), and the browser E2E (M7) have not started, and issue #18 is not complete.
+The two Service-selection read routes, the second booking request shape with reviewed terms, the visit response, and the codes `BOOKING_REVIEW_CHANGED` and `BOOKING_SELECTION_TOO_LONG` are implemented and verified through the complete filter chain (the record is in [task 08b](08b-multi-service-guest-booking-plan.md)). **Historical (immediately after M4):** the HTTP contract supported both request shapes, but the UI of that moment still selected one Service. M5 later implemented the one-to-five-Service UI and is committed; the remaining gates are the M6 human visual approval and the M7 browser E2E, and multi-Service booking and issue #18 are not complete.
 
 ### Multi-Service phase M3 (orchestration and fingerprinting) implemented (2026-10-13)
 

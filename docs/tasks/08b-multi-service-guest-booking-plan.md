@@ -2,11 +2,10 @@
 
 ## Status
 
-**Decided and documented. Phases M1 (persistence), M2 (availability and eligibility), M3 (orchestration and fingerprinting), and M4 (the public HTTP contract) are implemented, verified, and committed; M5 (the frontend journey) is implemented and verified by automated tests and awaits review; M6 (rendered human review) and M7 (browser E2E) are not started.** The product owner approved the multi-Service model on 2026-10-07 and the decisions are recorded in
+**Decided and documented. Phases M1 (persistence), M2 (availability and eligibility), M3 (orchestration and fingerprinting), and M4 (the public HTTP contract) are implemented, verified, and committed; M5 (the frontend journey) is committed; M6 (the rendered browser review) is executed and its two corrections are in the working tree, and it **awaits the human visual approval**; M7 (browser E2E) is not started.** The product owner approved the multi-Service model on 2026-10-07 and the decisions are recorded in
 [ADR-0027](../decisions/ADR-0027-book-several-services-as-one-atomic-visit-with-service-lines-a-versioned-set-fingerprint-and-an-explicit-review-consistency-check.md)
 (read it for the normative contract, schema, fingerprint encoding, and review-consistency check; this task lists the work and the verification). The documentation
-phase, M1 to M5 are done (M5 awaiting review). **Until the remaining phases below are completed and approved, the product books exactly one Service per booking**: one StaffMember, one POST, one
-Appointment. The single-Service limitation is real and is not hidden in the interface. Issue #18 is not complete, issue #19 is unchanged, and production public booking still
+phase, M1 to M5 are done; M6 is executed and awaits the human visual approval. **Current state: the public UI can select and book one to five Services as one atomic visit** (one StaffMember, one POST, one Appointment); M1 to M5 are committed, M6 is executed and awaits explicit human visual approval, and M7 (browser E2E) is not started. **Multi-Service booking is not complete until the remaining review and verification gates pass.** Issue #18 is not complete, issue #19 is unchanged, and production public booking still
 waits for issue #21. The original Phase 8 of issue #18 (browser journeys) is **not started**; the multi-Service browser journeys are phase M7 below and replace it.
 
 ## Approved decisions (summary; ADR-0027 is normative)
@@ -55,12 +54,12 @@ Each phase is its own change with its own approval, is verified before the next 
 
 | Phase | Scope | Main verification |
 |---|---|---|
-| **M1 Persistence** (implemented, verified, awaiting review; see the M1 record) | `V13__add_appointment_services.sql` (the `price_eur` widening to `numeric(13,2)`, the table, `service_count`, backfill, end-of-migration verification, deferred visit-consistency trigger, immutability trigger); the visit-total price rule of the Appointment domain (11 integer digits, exact `BigDecimal`); `AppointmentStore` writes and reads the lines; the Appointment domain records carry the lines; typed translation of the new constraint | real-PostgreSQL migration and constraint tests (below); V1 to V12 byte-identical |
-| **M2 Availability and eligibility** (implemented, verified, awaiting review; see the M2 record) | set-based `AvailabilityQuery`; the staff-eligibility contract reports the intersection; summed duration; the booking-options read model; no HTTP | engine and integration tests including a visit across 2026-10-25 |
-| **M3 Orchestration and fingerprinting** (implemented, verified, awaiting review; see the M3 record) | normalized multi-Service request; encoding v2 with golden vectors and v1 kept; the shared unsigned UUID comparator; Service locks through the `ORDER BY id` statement; the review-consistency check; the single insert of the visit and lines; replay of both shapes | transaction, replay-compatibility, concurrency, rollback, and drift tests |
-| **M4 HTTP contract** (implemented, verified, awaiting review; see the M4 record) | strict parser for both shapes; the two read routes; the new response; the two codes; exact security matchers; limiter and body bound unchanged | contract, privacy, security-routing, and compatibility tests |
-| **M5 Frontend** (implemented, verified by automated tests, awaiting review; see the M5 record; **not** visually approved) | checkboxes, selected-Service summary with the total duration and EUR price before «Напред», set state, staff-step empty state, one whole-visit review, confirmation, the reviewed facts in the frozen body, the review-change handling | unit and component tests, lint, build; no attempt or privacy test weakened |
-| **M6 Rendered review** | the isolated review stack and fixtures through supported APIs; simulated faults only for what supported APIs cannot produce; the human visual checkpoint | screenshots at 1280, 800, 375, and 320 px; keyboard, focus, contrast |
+| **M1 Persistence** (implemented, verified, committed; see the M1 record) | `V13__add_appointment_services.sql` (the `price_eur` widening to `numeric(13,2)`, the table, `service_count`, backfill, end-of-migration verification, deferred visit-consistency trigger, immutability trigger); the visit-total price rule of the Appointment domain (11 integer digits, exact `BigDecimal`); `AppointmentStore` writes and reads the lines; the Appointment domain records carry the lines; typed translation of the new constraint | real-PostgreSQL migration and constraint tests (below); V1 to V12 byte-identical |
+| **M2 Availability and eligibility** (implemented, verified, committed; see the M2 record) | set-based `AvailabilityQuery`; the staff-eligibility contract reports the intersection; summed duration; the booking-options read model; no HTTP | engine and integration tests including a visit across 2026-10-25 |
+| **M3 Orchestration and fingerprinting** (implemented, verified, committed; see the M3 record) | normalized multi-Service request; encoding v2 with golden vectors and v1 kept; the shared unsigned UUID comparator; Service locks through the `ORDER BY id` statement; the review-consistency check; the single insert of the visit and lines; replay of both shapes | transaction, replay-compatibility, concurrency, rollback, and drift tests |
+| **M4 HTTP contract** (implemented, verified, committed; see the M4 record) | strict parser for both shapes; the two read routes; the new response; the two codes; exact security matchers; limiter and body bound unchanged | contract, privacy, security-routing, and compatibility tests |
+| **M5 Frontend** (implemented, verified by automated tests, committed; see the M5 record; **not** visually approved) | checkboxes, selected-Service summary with the total duration and EUR price before «Напред», set state, staff-step empty state, one whole-visit review, confirmation, the reviewed facts in the frozen body, the review-change handling | unit and component tests, lint, build; no attempt or privacy test weakened |
+| **M6 Rendered review** (executed; awaiting the human visual approval; see the M6 record) | the isolated review stack and fixtures through supported APIs; simulated faults only for what supported APIs cannot produce; the human visual checkpoint | screenshots at 1280, 800, 375, and 320 px; keyboard, focus, contrast |
 | **M7 Browser E2E** | Playwright journeys of the multi-Service booking against the real backend (this is the original Phase 8 of issue #18, extended), then the complete suite | the unmodified runner |
 
 The stable acceptance for the final UI (M5 and M6): real checkboxes in a labelled group; a polite summary of the selected Services with the total duration and the total EUR price before «Напред»; the limits explained and enforced at the checkboxes; one whole-visit review; the confirmation lists the server-returned Services; the single-Service path (one checked box) behaves as today.
@@ -106,7 +105,7 @@ The stable acceptance for the final UI (M5 and M6): real checkboxes in a labelle
 
 None blocks starting M1. For the human review: the wording of `BOOKING_REVIEW_CHANGED`, `BOOKING_SELECTION_TOO_LONG`, the frozen-state sentence, the staff-step sentence, and the limit explanation is **Proposed**; the legacy request shape is kept for compatibility without the review check and its retirement is a later decision.
 
-## Phase M1 record: persistence (implemented and verified 2026-10-07; awaiting review and commit)
+## Phase M1 record: persistence (implemented and verified 2026-10-07; status then: awaiting review and commit; since committed)
 
 Scope: the `V13` migration, the Appointment domain's Service lines and visit rules, and the store's writing and reading of the lines. **No availability, orchestration, fingerprint, HTTP, or frontend code changed**, no booking behavior changed (every booking still creates exactly one line), and M2 was not started. Base `HEAD` `010bce1` plus the uncommitted working tree.
 
@@ -151,7 +150,7 @@ Scope: the `V13` migration, the Appointment domain's Service lines and visit rul
 - `appointment_visit_is_consistent()` fixes its `search_path` at creation (`SET search_path FROM CURRENT`); the immutability function needs none.
 - The domain's single-Service constructors keep the whole existing API; nothing outside the store reads `serviceLines` yet.
 
-## Phase M2 record: availability and eligibility (implemented and verified 2026-10-12; awaiting review and commit)
+## Phase M2 record: availability and eligibility (implemented and verified 2026-10-12; status then: awaiting review and commit; since committed)
 
 Scope: the set-based availability calculation, the intersection eligibility contract, the summed duration with the 480-minute ceiling, and the internal booking-options read model. **No migration, Appointment persistence, booking orchestration, fingerprint, HTTP route, rate limiting, or frontend code changed**, `BookingAttemptProcedure` still calls the one-Service method, and M3 was not started. Base `HEAD` `95017f9` (M1 committed) plus the uncommitted working tree.
 
@@ -184,7 +183,7 @@ Scope: the set-based availability calculation, the intersection eligibility cont
 - `AvailabilitySlot` keeps its existing StaffMember-list invariant (ascending by Java `UUID.compareTo`, which is a signed comparison). It is not the unsigned PostgreSQL order that ADR-0027 mandates for request identity and locks; this phase does not use slot lists for either, and the difference is recorded for M3.
 - An explicit StaffMember that is not in the intersection is `StaffMemberNotEligible`; the contract does not say which Service is unsupported (no information beyond the existing code).
 
-## Phase M3 record: orchestration and fingerprinting (implemented and verified 2026-10-13; awaiting review and commit)
+## Phase M3 record: orchestration and fingerprinting (implemented and verified 2026-10-13; status then: awaiting review and commit; since committed)
 
 Scope: request normalization for one to five Services, encoding v2, the ordered set-based locks, the review-consistency check, and the single atomic insert of a visit, all behind the internal `GuestBooking` contract. **No migration, HTTP route or parser, rate-limit behavior, or frontend code changed**; the product still books one Service because the public controller only builds the legacy request. Base `HEAD` `7f85f49` (M2 committed) plus the uncommitted working tree. M4 was not started.
 
@@ -213,7 +212,7 @@ Scope: request normalization for one to five Services, encoding v2, the ordered 
 - `UnsignedUuidOrder` lives in `booking.domain` (its only user) rather than in `shared`; it can move when another module needs it.
 - A `GuestBookingRequest` that names both shapes is rejected by the constructor (programming error), one with neither fails the existing null check.
 
-## Phase M4 record: the public HTTP contract (implemented and verified 2026-10-13; awaiting review and commit)
+## Phase M4 record: the public HTTP contract (implemented and verified 2026-10-13; status then: awaiting review and commit; since committed)
 
 Scope: the public HTTP exposure of the M1 to M3 capability, exactly as ADR-0027 section 8 specifies it. **No migration, persistence, M3 orchestration, limiter budget, body bound, or frontend change**; the product UI still books one Service. Base `HEAD` `725b463` (M3 committed) plus the uncommitted working tree. M5 was not started.
 
@@ -250,7 +249,7 @@ The two backend sentences above were brought in line with the approved amendment
 
 M5 (frontend) is the next phase and needs its own approval.
 
-## Phase M5 record: the frontend booking journey (implemented and verified by automated tests 2026-10-13; awaiting review; not visually approved)
+## Phase M5 record: the frontend booking journey (implemented and verified by automated tests 2026-10-13; status then: awaiting review, since committed; not visually approved)
 
 Scope: the public booking journey inside the Business page now books a **visit** of one to five Services through the M4 contract. **No backend, migration, API, dependency, or Playwright file changed**; the human visual review is M6 and the browser journeys are M7, neither started. Base `HEAD` `190a74a` (M4 committed) plus the uncommitted working tree.
 
@@ -288,4 +287,58 @@ Scope: the public booking journey inside the Business page now books a **visit**
 - A selection that was valid when ticked but exceeds 480 minutes after a profile refresh keeps its selected options removable and shows «Общата продължителност надвишава 8 часа. Премахнете услуга.» instead of enabling «Напред».
 - Playwright specs do not drive the booking journey yet (they only count the hero action), so none had to change; M7 adds them.
 
-M6 (the rendered human review) is the next phase and needs its own approval.
+M6 (the rendered human review) was the next phase; its record follows.
+
+## Phase M6 record: the rendered browser review (executed 2026-10-13; awaiting the human visual approval; **not approved**)
+
+Scope: a rendered and interactive review of the M5 journey in the built-in browser against a real backend, with two narrowly justified corrections. **No backend, migration, contract, dependency, security-policy, or Playwright file changed.** Base `HEAD` `2b71845` (M5 committed). The visual design, multi-Service booking, and Issue #18 are **not** marked complete; M7 is not started.
+
+### Review environment (isolated; left running)
+
+A dedicated Compose project (`spotyourslot-m6`, own PostgreSQL port and database), the backend on its own port, a throwaway Node proxy in front of it (transparent by default; labelled simulations answer with `X-M6-Simulated`; a control port arms and clears rules), and a Vite dev server. Every Business, Service, StaffMember, assignment, schedule, Customer, and Appointment was created through supported HTTP APIs (CSRF flow, invitation tokens from the development mailbox, owner and public endpoints); the database was never written directly and no hash was edited. The scripts, credentials, URLs, and the exact cleanup commands are in the local review file beside the repository; **none of them is in the archive**. The proxy simulates only: an uncertain answer after a real commit, a rollback 503, an uncertain 503 with Retry-After, a 429 with Retry-After, a malformed 201, a CANCELLED replay, a slow or failing read, and a 429 read. Ordinary success, availability, eligibility, validation, conflicts, slot races, and review changes were **real backend answers**; owner edits (price, duration, deactivate) were made through the supported Service API and then restored.
+
+### Fixture catalogue (all synthetic)
+
+`m6-salon`: nine Services (a 180-character name, long descriptions, cent prices such as 80.50, 9.99, 60.25, 18.90; five Services that sum to exactly 480 minutes; 135- and 150-minute Services that make the duration limit reachable; the count limit at six), three StaffMembers (all Services, a partial set, one with a very long name, and a pair with no common Service), schedules over many dates, pre-existing Customers and Appointments (a phone/e-mail identity pair for the conflict case, a booked slot for the race). `m6-dst`: a Sunday 2026-10-25 schedule across the end of daylight saving time. `m6-no-services`; `m6-draft` and `m6-suspended` (not public); `m6-no-time` (eligible StaffMember, no availability); `m6-max-prices` (five Services at 9999999999.99 and 96 minutes).
+
+### Viewport and zoom matrix
+
+Widths 1280, 1024, 800, 375, and 320 px were audited numerically on the longest review (five maximum prices): no horizontal overflow and no element outside the viewport at the five widths, every button, checkbox, and radio at least 44 px high (the calendar day cells are the one exception, below), Back left of and before the confirming action in DOM and layout order. Screenshots were inspected at 800 (cropped to the pane), 375, and 320 and are not archived. 200 % zoom was emulated with same-origin frames: **640 px** (200 % at 1280) passes: no overflow, 44 px targets. **320 CSS px** passes and is the WCAG reflow baseline the project uses. **About 188 CSS px** (375 px at 200 %) is **below that baseline and does not pass the no-horizontal-scroll matrix**: the booking content fits inside a 320 px layout but the page scrolls horizontally because of the existing global `body { min-width: 320px }` from the repository bootstrap. It is an explicit limitation, not a pass, and the global rule was **not changed** (a shell change needs a separate product-wide review).
+
+**Accepted calendar target-size exception (rendered measurement):** the selectable day cells of the seven-column calendar are **30×44 px at 320 px** and **38×44 px at 375 px**; every other booking control meets the product's 44 px target. The cells exceed the WCAG 2.2 minimum of 24×24 px (2.5.8) but are **not** 44×44 px, and no claim of 44×44 for every target is made. The rule: day cells stay at least 24×24 px and 44 px high at narrow widths, and controls outside the calendar keep 44 px. The cells were not enlarged, because that would need horizontal scrolling or a broken seven-column grid. The widths are developer-rendered measurements. `src/ui/calendarCss.test.ts` is a static guard of the CSS prerequisites only (the 44 px height, the full-width fixed seven-column layout, at most 2 px spacing); it does not prove a rendered width, and real-browser computed-size assertions at the narrow widths may be added in M7.
+
+### States rendered and interacted with (real unless marked simulated)
+
+Loading (a delayed read, simulated delay), read failure with retry (simulated network failure), read 429 with the disabled retry (simulated), no selection, count-limited (sixth Service disabled with its reason), duration-limited reasons tied to the right options, the empty intersection (with «Промяна на избора»), an eligible StaffMember with no time, a real `SERVICE_UNAVAILABLE` after deactivation, a real `BOOKING_SELECTION_TOO_LONG` after the owner lengthened a duration (the refreshed selection shows 545 minutes), local validation, a real identity conflict (approved sentence unchanged), a real slot taken by another booking, a real first-send `BOOKING_REVIEW_CHANGED` (price) landing on the date step with the refreshed context, the failed refresh (two simulated read failures) and its retry, a successful refresh, an uncertain answer frozen (simulated, no commit) and its real replay, an uncertain answer after a real commit (simulated) followed by a real 200 replay with the same attempt identifier, a real review change after an uncertain send (the frozen message, the reviewed terms kept), a mismatch (simulated, only the warned restart), a rollback (simulated, editable), a POST 429 (simulated), an uncertain 503 with Retry-After (simulated), a malformed 201 (simulated; never a confirmation), a CANCELLED replay (simulated), one-Service and two-Service confirmations from server lines, the DST Sunday (two `03:30` entries distinguished by `(UTC+03:00)` and `(UTC+02:00)`; the second one was sent as `2026-10-25T03:30:00+02:00` and confirmed), the no-Services profile, the draft and suspended profiles (identical «Страницата не е налична», no existence leak), long names at 320, exactly 480 minutes, and five maximum prices.
+
+### Network, storage, keyboard, and history evidence
+
+- Every public request used `credentials: 'omit'`; no credential header; the options and availability reads carried repeated canonical `serviceId` parameters; the single POST used the new `services[]` shape (also for one Service) in canonical UUID order with the reviewed duration and cents; a double click produced one request; a retry resent the same attempt identifier and bytes.
+- After the journeys `localStorage`, `sessionStorage`, and `document.cookie` were empty; the URL, the title, and `history.state` carried no Service, price, name, or attempt (only the step marker).
+- Real keyboard Tab/Space/Enter/Escape: the checkboxes toggle with Space; the leave dialogs open on «Остани» and close with Escape; focus rings are visible on buttons, radios, inputs, the dialogs' actions, and the focused heading. Browser Back and Forward walk the steps without a trap; from a frozen (possibly booked) review Back is refused by design and focus goes to the alert. **No real screen reader was used**; the accessibility tree and the live-region texts were read through the browser's accessibility reading only.
+
+### Defects found and corrections
+
+- **D3 (corrected):** with one Service the review showed «Общо: …» directly under the single line, repeating it. The line is now rendered only for two or more Services (`ReviewStep.tsx`).
+- **D2 (corrected):** the total sat tight against the last Service line and was not distinguishable from a Service. `.booking-summary-total` now has a top rule and spacing (`styles.css`).
+- Regression tests (`BookingJourney.visit.test.tsx`): no «Общо» for one Service; the line for two Services and the rule/spacing in the stylesheet. Every earlier test stayed green and none was changed.
+
+### Verification (executed; local only, no CI run)
+
+`npm test`: 76 files, 1840 tests passed (two for the review total, two static calendar-CSS guards). `npm run lint` and `npm run build` pass. `git diff --check` is clean. Backend tests were not run because no backend file changed. The Playwright specs were not run or modified.
+
+### Price-first summary format (product-owner change after the review)
+
+Every guest-booking summary that shows a price and a duration together now uses price first, an em dash with one space on each side, then the duration: a Service «42.00 € — 75 мин.», a total «Общо: 198.90 € — 285 мин.». It applies to the Service options, the selected-services summary, the context card on later steps, the review lines and total, and the confirmation lines. Places that show only a price or only a duration are unchanged. The earlier M5 record text «Общо: N мин. · X.XX €» describes the format at that time (historical).
+
+### Observations, limitations, and wording recommendations (for the human review)
+
+- Two profile reads were observed after a first-send review change in the development server (React StrictMode is on in development); the earlier read is aborted by the later one. This was **not** confirmed on a production build and is left for M7.
+- The failed-refresh state keeps the old review on screen with «Опитайте отново», which here retries the re-read, not the send; the label is shared and the stale price remains visible until the re-read. Recommendation: keep, or name the action.
+- The disabled retry during a Retry-After wait has no countdown or reason. Recommendation: accept for now.
+- The eligible-no-time state offers only «Назад» although the sentence says to change the selection. Recommendation: acceptable; consider adding «Промяна на избора».
+- The frozen review-changed message and the possibly-booked warning together form a long red block at 375 px; it is readable. Recommendation: keep.
+- The real `SERVICE_UNAVAILABLE` (not `REVIEW_CHANGED`) is what the backend returns for a Service deactivated after review; the vanished-Service notice via `REVIEW_CHANGED` is covered by automated tests only.
+- Page-level horizontal scroll below 320 CSS px (`body { min-width: 320px }`) is pre-existing and global; the approximately 188 CSS px state fails the no-scroll check and is recorded as a limitation; changing it needs a separate product-wide decision.
+- Proposed sentences, assessed in rendered context, **none declared approved:** the selection hint, the two disabled-option reasons, the empty-intersection sentence, the first-send review-changed message, the frozen review-changed message, the too-long message, the removed-Service notice, the privacy sentence, and the leave warnings all fit their places and wrap without clipping at 320; recommendation for each is **keep as proposed**, pending the product owner's approval. The approved sentences «Въведете име.», «Проверете въведеното име.», and the identity-conflict sentence are unchanged, and the timezone explanation stays removed.
+- Human visual approval status: **not given**. M7 has not started.

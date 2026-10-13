@@ -121,7 +121,7 @@ export function ServiceContext({ services }: { services: readonly PublicService[
     <p className="booking-context">
       <span className="booking-context-name">{services.map((service) => service.name).join(', ')}</span>
       <span>
-        {formatServiceDuration(totals.minutes)} · {formatCents(totals.cents)}
+        {formatCents(totals.cents)} — {formatServiceDuration(totals.minutes)}
       </span>
     </p>
   )
@@ -198,8 +198,8 @@ export function ServiceStep({
                   <span className="booking-choice-description">{service.description}</span>
                 )}
                 <span className="booking-choice-facts">
-                  {formatServiceDuration(service.durationMinutes)} ·{' '}
-                  {formatServicePrice(service.price)}
+                  {formatServicePrice(service.price)} —{' '}
+                  {formatServiceDuration(service.durationMinutes)}
                 </span>
                 {reason !== null && (
                   <span id={reasonId} className="booking-choice-reason">
@@ -224,7 +224,7 @@ export function ServiceStep({
             ))}
           </ul>
           <p className="booking-selection-total" role="status">
-            Общо: {formatServiceDuration(totals.minutes)} · {formatCents(totals.cents)}
+            Общо: {formatCents(totals.cents)} — {formatServiceDuration(totals.minutes)}
           </p>
         </div>
       )}

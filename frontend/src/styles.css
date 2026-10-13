@@ -2543,6 +2543,10 @@ label {
 }
 
 .booking-summary-total {
+  display: block;
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
   font-weight: 700;
 }
 

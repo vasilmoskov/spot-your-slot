@@ -74,7 +74,7 @@ describe('the complete happy path', () => {
     expect(heading()).toHaveTextContent('Преглед и потвърждение')
     const summary = document.querySelector('.booking-summary') as HTMLElement
     expect(summary).toHaveTextContent('Подстригване')
-    expect(summary).toHaveTextContent('45 мин. · 25.00 €')
+    expect(summary).toHaveTextContent('25.00 € — 45 мин.')
     expect(summary).toHaveTextContent('Без предпочитание')
     expect(summary).toHaveTextContent('сряда, 7 октомври 2026 г.')
     expect(summary).toHaveTextContent('10:00 – 10:45')
@@ -205,7 +205,7 @@ describe('the complete happy path', () => {
     )
     await openPage()
     await reachReview()
-    expect(document.querySelector('.booking-summary')).toHaveTextContent('45 мин. · 25.00 €')
+    expect(document.querySelector('.booking-summary')).toHaveTextContent('25.00 € — 45 мин.')
     await submit()
     expect(document.querySelector('.booking-facts')).toHaveTextContent('50 мин.')
     expect(document.querySelector('.booking-facts')).toHaveTextContent('27.50 €')

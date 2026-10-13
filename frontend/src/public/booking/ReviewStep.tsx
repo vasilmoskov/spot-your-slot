@@ -195,15 +195,17 @@ export function ReviewStep({
               <li key={service.id}>
                 <span className="booking-summary-strong">{service.name}</span>
                 <span>
-                  {formatServiceDuration(service.durationMinutes)} ·{' '}
-                  {formatServicePrice(service.price)}
+                  {formatServicePrice(service.price)} —{' '}
+                  {formatServiceDuration(service.durationMinutes)}
                 </span>
               </li>
             ))}
           </ul>
-          <span className="booking-summary-total">
-            Общо: {formatServiceDuration(totals.minutes)} · {formatCents(totals.cents)}
-          </span>
+          {services.length > 1 && (
+            <span className="booking-summary-total">
+              Общо: {formatCents(totals.cents)} — {formatServiceDuration(totals.minutes)}
+            </span>
+          )}
         </Row>
         <Row term="Служител" editLabel="Промени служителя" disabled={frozen} onEdit={() => onEdit(2)}>
           <span className="booking-summary-strong">{staffLabel}</span>

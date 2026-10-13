@@ -66,7 +66,7 @@ export function ConfirmationView({
                   <li key={index}>
                     <span className="booking-summary-strong">{line.name}</span>
                     <span>
-                      {formatServiceDuration(line.durationMinutes)} · {formatServicePrice(line.price)}
+                      {formatServicePrice(line.price)} — {formatServiceDuration(line.durationMinutes)}
                     </span>
                   </li>
                 ))}
