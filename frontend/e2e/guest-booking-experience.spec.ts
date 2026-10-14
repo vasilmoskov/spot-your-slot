@@ -234,7 +234,9 @@ test.describe('H. Responsive smoke at the supported widths', () => {
   for (const width of [375, 320]) {
     test(`${width} px: no overflow, calendar cells and every other control meet their target, long names wrap`, async ({ browser, request }) => {
       const { context, page, guest } = await newGuest(browser, layout.slug, { width, height: 800 })
-      const ids = [layout.serviceIds[LONG_SERVICE]!]
+      // The date comes from the same selection the journey ends with (five 96-minute Services, 480 minutes):
+      // a shorter Service has more dates, so the first of them can have no time for the final selection.
+      const ids = MAX_NAMES.map((name) => layout.serviceIds[name]!)
       const dates = await availableDates(request, layout.slug, ids)
       await guest.start()
       await expectNoHorizontalOverflow(page)
