@@ -94,7 +94,7 @@ ranges, and rescheduling. The database constraint must key on
 `staff_member_id`. The issue #18 verification (planned by phase, not yet executed) is in "Appointment and
 guest booking verification" below.
 
-### Multi-Service booking (ADR-0027; the persistence phase M1, the availability phase M2, and the orchestration phase M3, the HTTP phase M4, and the frontend phase M5 are implemented and verified, the rendered review M6 was explicitly approved and committed, and the browser phase M7 is implemented and verified locally and awaits review)
+### Multi-Service booking (ADR-0027; the persistence phase M1, the availability phase M2, and the orchestration phase M3, the HTTP phase M4, and the frontend phase M5 are implemented and verified, the rendered review M6 was explicitly approved and committed, and the browser phase M7 is committed and verified; issue #18 is closed)
 
 The plan is in [task 08b](tasks/08b-multi-service-guest-booking-plan.md); every item runs against real PostgreSQL where persistence, locks, or concurrency are claimed, with deterministic coordination and no sleeps.
 Required evidence: the **upgrade and backfill** of a database migrated to V12 (one line per existing Appointment, totals and headline equal to it, the migration failing on a corrupt fixture, V1 to V12 checksums
@@ -824,8 +824,8 @@ Evidence boundaries: the browser proves the interface and the private HTTP
 boundary only. Precedence, half-open and adjacency behavior, the 15-minute grid,
 notice, horizon, DST, deterministic aggregation, optimistic versioning and lock
 order are proven by the backend unit and PostgreSQL integration tests listed
-above, and no browser test claims them. No public availability endpoint exists, so
-no browser test proves slot availability, and nothing reserves time. The automated
+above, and no browser test claims them. At the time of this journey no public availability endpoint existed (it was delivered later by issue #18), so
+no browser test of this journey proves slot availability, and nothing reserves time. The automated
 mobile smoke does not replace the completed human visual approval.
 
 ## Public Business page frontend verification

@@ -37,7 +37,7 @@ version-guarded edit; creation is blocked for a suspended Business, which can st
 Customers edited). Phase 5 has human visual approval, and Phase 6 added the Customer browser E2E journeys; all are committed and Issue #20 is closed as completed.
 Customer appointment history and manual-appointment Customer selection are not part of #20 and remain with the Business calendar (#21), which is not implemented;
 there are no Customer accounts, merge, deletion, anonymization, or retention automation. Booking (#18, below), production email, and hosting are not complete.
-Issue #18 (appointment core and guest booking) has its original phases through the public guest-booking frontend inside `/{slug}` (in memory only) and the multi-Service phases M1 to M6 committed (M6, the rendered review, was explicitly approved by the product owner); phase M7 (real-browser E2E and the acceptance reconciliation) is implemented and verified locally and awaits review, and the issue is not closed. Phase 5 (the public availability and booking API, backend only): its decisions are recorded in
+Issue #18 (appointment core and guest booking) has its original phases through the public guest-booking frontend inside `/{slug}` (in memory only) and the multi-Service phases M1 to M7 committed (M6, the rendered review, was explicitly approved by the product owner). Issue #18 is closed as completed and its Project item is Done; exact-HEAD CI passed for `1d6b450` (backend 3476 tests, frontend 76 files / 1841 tests, and two consecutive full browser E2E runs of 110/110 each, recorded locally). Guest booking supports one to five Services as one atomic visit; production release of public booking still depends on the Business calendar (#21), issue #19 remains incomplete, and cancellation, notifications, and manual appointment management remain deferred. Phase 5 (the public availability and booking API, backend only): its decisions are recorded in
 `docs/tasks/08a-appointment-core-and-guest-booking.md` and ADR-0022 to ADR-0026; Phase 2 added the `appointment`
 table with its database overlap exclusion (`V11`), the internal Appointment domain and store, and the real
 Scheduling busy-interval source in a new `booking` module, replacing the placeholder; Phase 3 added the
@@ -59,8 +59,8 @@ authenticated backend API and the Business-owner interface under "Работно
 време". An internal Scheduling
 contract combines them with the recurring schedules into a current availability
 view under fixed MVP values (15-minute grid, two-hour notice, 30 local dates,
-zero buffers, no breaks; Business configuration is a follow-up); there is no
-public availability HTTP endpoint and no booking operation; Appointments exist only as persisted rows
+zero buffers, no breaks; Business configuration is a follow-up); at the time of this milestone there was no
+public availability HTTP endpoint and no booking operation; the public endpoints and the booking operation were delivered later by issue #18 (described above), and Appointments are persisted rows
 that the availability view treats as busy time.
 
 ## Product identity

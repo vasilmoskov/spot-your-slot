@@ -1,11 +1,10 @@
 # SpotYourSlot — Appointment Core and Guest Booking
 
-Status (current): the original backend and frontend phases (1 to 7, including the public guest-booking frontend and its rendered
-review and UX refinement) and the multi-Service phases M1 to M6 are committed (latest `abd6b3f`); M6, the rendered browser review of the
-multi-Service journey, received explicit human visual approval. Phase M7 (real-browser E2E, final verification, and the acceptance reconciliation,
-which replaces the original Phase 8) is **implemented and verified locally and awaits review**; its record and the final acceptance matrix are in
-[task 08b](08b-multi-service-guest-booking-plan.md). Issue #18 is **not closed** and is not marked Done: closure needs the product owner's explicit
-approval. Issue #19 remains incomplete where its manual-creation scope is not delivered, and production public booking depends on issue #21. The dated
+Status (current, 2026-10-14): **Issue #18 is closed as completed and its Project item is Done.** The original backend and frontend phases (1 to 7, including the public guest-booking frontend and its rendered
+review and UX refinement) and the multi-Service phases M1 to M7 are all committed (final #18 commit `1d6b450`); M6, the rendered browser review of the
+multi-Service journey, received explicit human visual approval. CI passed for exactly `1d6b45099c1aebfb9bd6fc444dc171d228dca9e1` (https://github.com/vasilmoskov/spot-your-slot/actions/runs/38519989453). Recorded final local evidence: backend 3476 tests, frontend 76 files / 1841 tests,
+and two consecutive full browser E2E runs of 110/110 each. Phase M7 replaced the original Phase 8; its record and the final acceptance matrix are in
+[task 08b](08b-multi-service-guest-booking-plan.md). Guest booking supports one to five Services as one atomic visit. Issue #19 remains incomplete where its manual-creation scope is not delivered, and production public booking depends on issue #21 (a release dependency, not an implementation blocker); cancellation, notifications, manual appointment management, and Customer appointment history remain deferred. The dated
 phase records below are historical evidence of the state at their own dates (for example, the earlier statements that Phase 6 awaited review and had no rendered browser review).
 GitHub issue: #18 — Build appointment core and guest booking flow
 Depends on: #16, #17, #20; relates to #19 (partly satisfied here) and #21 (release dependency)
@@ -1264,7 +1263,7 @@ hour (`03:30` at both offsets); the conflict message, the Business telephone, th
 
 ## Multi-Service extension: decisions and documentation phase (2026-10-07)
 
-**Current status (after M7):** the public UI can select and book one to five Services as one atomic visit; phases M1 to M6 are committed (M6 was explicitly approved by the product owner), and M7 (real-browser E2E and the acceptance reconciliation) is implemented and verified locally and awaits review. Issue #18 is not closed until the product owner explicitly approves the final acceptance. The dated phase notes below are historical and describe the state at their own dates.
+**Current status (2026-10-14):** the public UI can select and book one to five Services as one atomic visit; phases M1 to M7 are committed (M6 was explicitly approved by the product owner) and issue #18 is closed as completed. (Earlier wording that M7 awaited review and that the issue was not closed described 2026-10-13.) The dated phase notes below are historical and describe the state at their own dates.
 
 **Historical (2026-10-07): documentation phase only. Nothing was implemented, no backend, schema, API, or checkbox change was made, the product still books exactly one Service per booking, and issue #18 is not complete.** The product owner approved the model; it is
 recorded in [ADR-0027](../decisions/ADR-0027-book-several-services-as-one-atomic-visit-with-service-lines-a-versioned-set-fingerprint-and-an-explicit-review-consistency-check.md) (which amends ADR-0013, 0016, 0022, 0023, 0024, and 0026 through amendment notes that preserve their text) and planned in [task 08b](08b-multi-service-guest-booking-plan.md).
@@ -1328,4 +1327,4 @@ The set-based `AvailabilityQuery`, the intersection eligibility contracts, the s
 ### Multi-Service phase M1 (persistence) implemented (2026-10-07)
 
 `V13` (the `appointment_service` lines, `service_count`, the widened visit total, the backfill, and the deferred and immutability triggers), the Appointment domain's Service lines, and the store's writing and reading of them are implemented and verified (complete backend `verify`: 3240 tests, 0 failures); the record is in
-[task 08b](08b-multi-service-guest-booking-plan.md). **Multi-Service booking is not implemented**: availability, orchestration, fingerprinting, HTTP, and the frontend are untouched, every booking still creates exactly one Service line, the product still books one Service, issue #18 is not complete, and M2 has not started.
+[task 08b](08b-multi-service-guest-booking-plan.md). **Historical (2026-10-07, after M1 only): multi-Service booking was not yet implemented**: availability, orchestration, fingerprinting, HTTP, and the frontend are untouched, every booking still creates exactly one Service line, the product still books one Service, issue #18 is not complete, and M2 has not started.

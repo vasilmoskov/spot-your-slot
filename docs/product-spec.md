@@ -116,7 +116,7 @@ the Customer policies, a short privacy notice is shown, and there is no verifica
 marketing consent; a displayed slot is never a reservation; the assigned person for “Без предпочитание” is shown
 after confirmation. Production public booking waits for the Business calendar (issue #21).
 
-Multi-Service visit (decided in [ADR-0027](decisions/ADR-0027-book-several-services-as-one-atomic-visit-with-service-lines-a-versioned-set-fingerprint-and-an-explicit-review-consistency-check.md) and [task 08b](tasks/08b-multi-service-guest-booking-plan.md); **implemented through the frontend (phases M1 to M5 committed): the public UI can select and book one to five Services as one atomic visit; the rendered review (M6) was explicitly approved by the product owner, and the browser E2E (M7) is implemented and verified locally and awaits review, so the capability is not closed**): the guest may choose one to five distinct Services with
+Multi-Service visit (decided in [ADR-0027](decisions/ADR-0027-book-several-services-as-one-atomic-visit-with-service-lines-a-versioned-set-fingerprint-and-an-explicit-review-consistency-check.md) and [task 08b](tasks/08b-multi-service-guest-booking-plan.md); **implemented through the frontend (phases M1 to M5 committed): the public UI can select and book one to five Services as one atomic visit; the rendered review (M6) was explicitly approved by the product owner, and the browser E2E (M7) is committed and verified, and issue #18 is closed as completed; production release still depends on issue #21**): the guest may choose one to five distinct Services with
 checkboxes (at most 480 minutes in total), sees the selected Services with the total duration and the total EUR price before continuing, and books them as one visit with one StaffMember who supports every selected Service, in one
 continuous interval, reserved by one atomic submission. The Services are performed in the public-profile order, whatever order they were ticked. If a reviewed Service's duration or price changes before the guest confirms, nothing is
 booked and the guest is asked to review and confirm again. Confirmation and replay describe the whole visit.
@@ -192,7 +192,7 @@ off or local `HH:mm` periods on one date, and is created, atomically replaced,
 or hard-deleted with the expected version. Exceptions of an inactive StaffMember
 stay readable but cannot be changed, and a suspended Business is read-only. They
 are applied by the internal Scheduling availability calculation described below;
-no public availability endpoint, booking, or Appointment exists yet.
+at the time of that milestone no public availability endpoint, booking, or Appointment existed; they were delivered later by issue #18.
 
 ## Availability and assignment
 
