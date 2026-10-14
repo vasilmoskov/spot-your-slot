@@ -1,16 +1,20 @@
 # SpotYourSlot — Business-scoped Customer Records
 
-Status: all six phases are implemented and verified. Phases 1 to 5 are committed (Phase 5, the Business-owner
-Customer administration frontend, received human visual approval on 2026-10-06). Phase 6 (browser E2E
-verification and this documentation reconciliation) awaits final user review and commit. Issue #20 remains open
-until the user closes it; this record does not close it. Not delivered by #20 and not claimed: Booking and
-Appointments (#18, #21), Customer accounts, deletion, merge, notes, history, and lifecycle.
+Status (current, 2026-10-14): **complete and closed.** All six phases are committed; Phase 5 (the Business-owner Customer
+administration frontend) received human visual approval on 2026-10-06, and Phase 6 (browser E2E verification and documentation
+reconciliation) is committed in `d8d9e86`. Issue #20 was closed as completed on 2026-10-14, with its description amended narrowly
+(a SUSPENDED Business may view and update existing Customers but not create new ones; Customer appointment history is a dependency on
+#21), and its Project item is Done. Guest booking in #18 (closed) now consumes `CustomerIdentification` and `CustomerReferenceAccess`.
+Not delivered by #20 and not claimed: Customer appointment history and manual-appointment Customer selection (both remain with #21),
+Customer accounts, deletion, merge, notes, general history, anonymization, retention automation, and Customer lifecycle. The dated
+phase records below are historical evidence of the state at their own dates (for example, statements that a phase awaited review, or
+that Booking consumption was unimplemented, describe that date and have since been resolved).
 GitHub issue: #20 — Build Business-scoped customer records
 Depends on: the approved identity, authorization, and Business-isolation foundation,
 and the Business-owner configuration and navigation where Customer administration is
 rendered.
-Future consumers (not prerequisites): #18 (appointment core and guest booking flow) and
-#21 (Business calendar and appointment management).
+Consumers (not prerequisites): #18 (appointment core and guest booking flow; closed, uses the Customer matching contract) and
+#21 (Business calendar and appointment management; open, owns Customer appointment history and manual-appointment integration).
 Decision records: [ADR-0019](../decisions/ADR-0019-model-business-scoped-customers-with-canonical-contact-identifiers-and-no-lifecycle.md),
 [ADR-0020](../decisions/ADR-0020-match-customers-conservatively-and-publish-narrow-customer-contracts.md),
 [ADR-0021](../decisions/ADR-0021-administer-customers-through-a-private-owner-only-versioned-api-with-body-search.md)
@@ -29,7 +33,7 @@ persistent changes.
 
 - A Customer record belongs to exactly one Business. It is **not** a SpotYourSlot login or account, has no
   password, session, or Membership, and is never created by, or linked to, a User.
-- **Automatic creation (future, issue #18):** in the public booking flow the Booking capability will use the
+- **Automatic creation (issue #18; since implemented, historical wording):** in the public booking flow the Booking capability uses the
   already published `CustomerIdentification.findOrCreate` to find or create the Business-scoped Customer record
   from the phone and/or email the guest supplies (matching rules above). Booking never creates an authenticated
   Customer account.
@@ -44,7 +48,8 @@ persistent changes.
 ## Corrected dependency wording
 
 Issue #20 precedes #18 and #21. The issue text lists them under "Depends on"; that is
-corrected here. The GitHub issue is not edited by this phase. Proposed replacement for
+corrected here. (Historical: the GitHub issue was not edited by Phase 1. On 2026-10-14, when the issue was closed, its description
+was amended narrowly with a dated note and strike-throughs instead of this full replacement.) Proposed replacement for
 the issue's "Depends on" section:
 
 > ## Depends on
@@ -286,7 +291,7 @@ previous record.
 New module `bg.spotyourslot.customer` (`domain`, `application`, `infrastructure`,
 `web`, and published interfaces). Dependencies: `identity` (owner access and
 authenticated context), `business` (`BusinessLifecycleAccess`), and
-`shared.contact`. No existing module depends on it; `booking` will depend on `customer`
+`shared.contact`. At Phase 1 no existing module depended on it; `booking` was to depend on `customer` (it now does, through the identification contract only)
 and `scheduling`; `customer` never depends on `booking`; `publicprofile`, `workforce`,
 `catalog`, `scheduling`, `business`, `identity`, and `platform` must not depend on
 `customer`. `identity` is not modified when a Customer is created. A leaf module
@@ -351,9 +356,9 @@ zoom review are required, with explicit human visual approval.
 | 1 | Decisions, this task record, ADR-0019 to ADR-0021, and narrow documentation reconciliation. Documentation only. | Strict | Review of this change |
 | 2 (committed) | **First** extract the shared contact policy (backend and frontend module), add golden vectors, make StaffMember delegate, and verify existing StaffMember behavior. **Then** the `customer` domain, `V10__add_customers.sql`, repository/store, uniqueness and concurrency tests, and the boundary test. No controller or frontend Customer UI. Internal checkpoints are allowed within this one phase. | Strict | Own approval and commit; Phase 1 accepted |
 | 3 (committed) | `CustomerIdentification` and `CustomerReferenceAccess`, normalization, typed outcomes, transaction and race tests, test-only consumer. No Appointment. | Strict (cross-module contract) | Own approval and commit |
-| 4 (implemented, awaiting review) | Private administration backend: authorization, list, search, detail, create, update, lifecycle behavior, tenant-isolation and privacy tests, `EXPLAIN` evidence. | Strict | Own approval and commit |
+| 4 (committed) | Private administration backend: authorization, list, search, detail, create, update, lifecycle behavior, tenant-isolation and privacy tests, `EXPLAIN` evidence. | Strict | Own approval and commit |
 | 5 (committed; human visual approval received 2026-10-06) | Business-owner interface: navigation, list and search **first**, then create, detail, and edit; validation, guards, SUSPENDED mode, rendered desktop, tablet, mobile, and zoom review. Two human visual checkpoints are allowed within this one phase. | Standard (human visual approval) | Human visual approval |
-| 6 (implemented and verified; awaiting commit) | Playwright administration journey, tenant isolation, lifecycle, privacy evidence, Booking-seam evidence, full gates, documentation completion, roadmap update, review archive. | Standard | Green verification; closure only with explicit approval |
+| 6 (committed in `d8d9e86`; Issue #20 closed 2026-10-14) | Playwright administration journey, tenant isolation, lifecycle, privacy evidence, Booking-seam evidence, full gates, documentation completion, roadmap update, review archive. | Standard | Green verification; closure only with explicit approval |
 
 ## Tests required per phase
 
@@ -734,7 +739,7 @@ suppressed, `toString()`) carry no submitted value.
 - **Not done (Phase 4 onward):** private administration API and authorization, list, search,
   `EXPLAIN` evidence, frontend screens, E2E, Booking, Appointments.
 
-## Phase 4 record (implemented and verified; awaiting review and commit)
+## Phase 4 record (implemented, verified, and committed; status at its date: awaiting review and commit)
 
 Phase 4 delivered the private, owner-only Customer administration backend of ADR-0021. It did **not**
 start Phase 5: there is no frontend screen, route, navigation entry, or Vitest/Playwright test, no
@@ -921,7 +926,7 @@ ADR-0021 criterion, and an index remains a follow-up only if later measurement f
   desktop, tablet, mobile, and 200% zoom with human approval, the shared frontend table behavior, and the
   Playwright journey.
 
-## Phase 5 record (implemented and verified; awaiting human visual approval, review, and commit)
+## Phase 5 record (implemented, verified, and committed; human visual approval received 2026-10-06; status at its date: awaiting approval, review, and commit)
 
 Phase 5 delivered the authenticated Business-owner Customer administration frontend. It did **not**
 start Phase 6: there is no Playwright journey, no Customer deletion, archive, lifecycle, note, history,
@@ -1262,7 +1267,7 @@ searching a surname (`Пробен`), a span across two words (`ис Про`), a
 - Not done (Phase 6): the Playwright administration journey, Business A/B isolation through the UI, SUSPENDED
   and privacy checks in the browser, Booking-seam evidence, full gates, roadmap completion, and closing the issue.
 
-## Phase 6 record (implemented and verified; awaiting final review and commit)
+## Phase 6 record (implemented, verified, and committed in `d8d9e86`; status at its date: awaiting final review and commit)
 
 Phase 6 added the browser E2E verification and reconciled the documentation. It changed **no** production code, backend
 code, migration, dependency, `package.json`, lockfile, or workflow (V1 to V10 are byte-identical to `HEAD`; hashes below).
@@ -1346,7 +1351,7 @@ debounce is covered by Vitest with fake timers, not by the browser tests).
 - Conservative matching and the Booking seam are proven by backend tests only: `CustomerIdentificationServiceTests`,
   `CustomerIdentificationIntegrationTests`, and `CustomerIdentificationConcurrencyIntegrationTests` (with its test-only consumer and probe table that
   references `customer(business_id, id)`). The browser journey proves **manual** Customer administration; **future Booking consumption of the
-  contract (#18) remains unimplemented**.
+  contract (#18) remains unimplemented** *(historical, 2026-10-06; since implemented: `BookingAttemptProcedure` calls `CustomerIdentification.findOrCreate` and #18 is closed)*.
 - No request-interception simulation was added in Phase 6. The only intercepted evidence for the lost-Business-context recovery is the Phase 5
   second-correction developer review (a simulation, because a Membership cannot be revoked through any supported API) and the Vitest suite
   `App.contextRecovery.test.tsx`; it is not real backend evidence.
@@ -1386,7 +1391,7 @@ Legend: **BE** backend unit/integration, **FE** frontend unit (Vitest), **E2E** 
 | Unique phone and email per Business, safe conflict (D5, D7) | BE `CustomerStoreIntegrationTests`, `CustomerSchemaIntegrationTests`, mutation API suite; FE `CustomerCreate.test.tsx`, `CustomerDetail.test.tsx`; E2E `duplicate phone and email…` |
 | Names are not identity keys | BE `CustomerStoreIntegrationTests`; E2E same-name creation |
 | Conservative matching, truth table, concurrency (D6, D9) | BE `CustomerIdentificationServiceTests`, `…IntegrationTests`, `…ConcurrencyIntegrationTests` (**backend only**) |
-| Booking consumption of `findOrCreate` and `find` | Contract and test-only consumer proven in BE; **real consumption is #18 and unimplemented** |
+| Booking consumption of `findOrCreate` and `find` | Contract and test-only consumer proven in BE; **real consumption is #18** *(unimplemented on 2026-10-06; since implemented by the closed #18)* |
 | Owner-only private API, tenant isolation, identical 404 (D11) | BE `BusinessCustomerAuthorizationApiIntegrationTests`, `BusinessCustomerReadApiIntegrationTests`, mutation API suite; E2E `owner B cannot read…`, `a Platform Administrator…` |
 | Search semantics (D12) | BE `BusinessCustomerReadApiIntegrationTests`, `CustomerSearchCriteriaTests`; FE `CustomerList.test.tsx`; E2E `search is live…` |
 | Pagination, sorting, table standard (D13) | BE `CustomerStoreListIntegrationTests`; FE `CustomerList.test.tsx`, `navigation.test.ts`; E2E sorting and pagination tests; HUM |
@@ -1403,5 +1408,6 @@ Legend: **BE** backend unit/integration, **FE** frontend unit (Vitest), **E2E** 
 Unsupported or deferred, deliberately not claimed: Appointments, history, notes, merge, deletion, archive, lifecycle, anonymization, export, MANAGER and STAFF access,
 Customer accounts, trigram or full-text search, internationalized email, phone extensions, and the Appointment composite foreign key.
 
-All acceptance criteria that issue #20 can satisfy are met. Implementation and verification are complete, pending final user review and commit; the GitHub
-issue and Project board are untouched.
+All acceptance criteria that issue #20 can satisfy are met. Implementation and verification are complete and committed. *(Historical, 2026-10-06: the
+GitHub issue and Project board were untouched.)* On 2026-10-14 Issue #20 was closed as completed, its Project item is Done, and the closing comment records the
+exact-HEAD CI result. Customer appointment history and manual-appointment Customer selection remain with #21.

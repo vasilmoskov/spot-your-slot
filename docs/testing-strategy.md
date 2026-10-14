@@ -176,7 +176,7 @@ plus `pg_stat_activity` lock-wait evidence), a real `40001` from a `REPEATABLE_R
 new transaction. A test-only consumer (`CustomerConsumerProbe`) uses only the published contracts and
 writes into a test-created probe table that is never part of Flyway. `CustomerModuleBoundaryTests` also
 pin the published root-package types, their dependencies, the consumer's use of the root package only,
-the absence of any Booking module, and the absence of logging.
+the absence of any Booking module (as pinned at Phase 3; the boundary test has since been updated so that only `booking` may depend on `customer`, through the identification contract), and the absence of logging.
 
 ### Customer administration frontend verification (issue #20 Phase 5)
 

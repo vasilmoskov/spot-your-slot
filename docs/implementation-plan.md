@@ -137,7 +137,8 @@ working periods were delivered by issue #16 (see Phase 5).
   `CustomerReferenceAccess` contracts) and Phase 4 (the private owner-only administration backend)
   and Phase 5 (the Business-owner interface: list, body-based search, create, detail, and
   edit; human visual approval received) are committed; Phase 6, the browser E2E and documentation
-  reconciliation, is implemented and verified and awaits final review and commit). Issues #18 and #21 are future consumers, not
+  reconciliation, is committed, and Issue #20 is closed as completed; Customer appointment history and manual-appointment Customer selection
+  remain with #21). Issues #18 (closed, now consuming the matching contract) and #21 are consumers, not
   prerequisites; they add Appointment, event, and cancellation-token migrations with
   `business_id` and `staff_member_id`; issue #18 decided that an Appointment keeps no Customer contact snapshot (ADR-0022).
 - Add GiST exclusion on `staff_member_id`, transactional revalidation, online

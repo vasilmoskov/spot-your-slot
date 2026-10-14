@@ -26,18 +26,17 @@ configuration and the Business-owner schedule changes. Every ACTIVE Business
 also has a read-only, unauthenticated public profile page at `/{businessSlug}`
 (issue #17: name, type, optional description, telephone and address, and active
 Services, backed by `GET /api/public/businesses/{slug}`); it offers no booking
-action. Business-scoped Customer records (issue #20) are in progress: the
+action. Business-scoped Customer records (issue #20, complete and closed) are delivered: the
 decisions are documented (`docs/tasks/07a-business-customer-records.md`,
 ADR-0019 to ADR-0021) and Phase 2 has delivered the shared contact policy, the
 `customer` table (V10) and internal persistence, and Phase 3 the conservative matching
-contracts (`CustomerIdentification`, `CustomerReferenceAccess`) used internally by future
-booking. Phase 4 adds the private owner-only backend API under `/api/business/customers` (list,
+contracts (`CustomerIdentification`, `CustomerReferenceAccess`), which guest booking (issue #18) now uses. Phase 4 adds the private owner-only backend API under `/api/business/customers` (list,
 body-based search, detail, explicit create, and version-guarded update), and Phase 5 the
 Business-owner "Клиенти" interface (sortable, paginated list, body-based search, create, detail, and
 version-guarded edit; creation is blocked for a suspended Business, which can still be viewed and its existing
-Customers edited). Phase 5 has human visual approval, and Phase 6 added the Customer browser E2E journeys. Issue #20 is
-implemented and verified, pending final review and commit; Booking (#18, in progress below) and the Business calendar (#21) are not implemented.
-Booking, production email, and hosting are not implemented.
+Customers edited). Phase 5 has human visual approval, and Phase 6 added the Customer browser E2E journeys; all are committed and Issue #20 is closed as completed.
+Customer appointment history and manual-appointment Customer selection are not part of #20 and remain with the Business calendar (#21), which is not implemented;
+there are no Customer accounts, merge, deletion, anonymization, or retention automation. Booking (#18, below), production email, and hosting are not complete.
 Issue #18 (appointment core and guest booking) has its original phases through the public guest-booking frontend inside `/{slug}` (in memory only) and the multi-Service phases M1 to M6 committed (M6, the rendered review, was explicitly approved by the product owner); phase M7 (real-browser E2E and the acceptance reconciliation) is implemented and verified locally and awaits review, and the issue is not closed. Phase 5 (the public availability and booking API, backend only): its decisions are recorded in
 `docs/tasks/08a-appointment-core-and-guest-booking.md` and ADR-0022 to ADR-0026; Phase 2 added the `appointment`
 table with its database overlap exclusion (`V11`), the internal Appointment domain and store, and the real
