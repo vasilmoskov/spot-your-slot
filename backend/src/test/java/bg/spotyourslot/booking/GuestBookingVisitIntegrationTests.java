@@ -365,8 +365,7 @@ class GuestBookingVisitIntegrationTests extends BookingIntegrationTest {
         UUID first = svc("Alpha", 45, "20.50");
         Visit original = visit(first, tenant.service());
         BookedAppointment booked = ((Created) book(original.build())).appointment();
-        jdbc.sql("UPDATE appointment SET status = 'CANCELLED' WHERE public_reference = :r")
-                .param("r", booked.reference()).update();
+        fixtures.cancelByReference(booked.reference());
 
         BookingResult replay = book(original.copy().build());
 

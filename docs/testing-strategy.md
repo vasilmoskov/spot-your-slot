@@ -1002,14 +1002,14 @@ flaky) and uses real PostgreSQL through Testcontainers for persistence, concurre
 - **Phase 8 (browser E2E):** Playwright journeys with fixtures created only through supported APIs, conflict
   recovery, lifecycle states, mobile, tenant isolation, and unchanged administration.
 
-## Business Appointment administration verification (issues #19 and #21; decided in ADR-0028 and ADR-0029; planned, not executed)
+## Business Appointment administration verification (issues #19 and #21; decided in ADR-0028 and ADR-0029; Phase 2 executed, Phases 3 to 12 planned)
 
 Decisions: ADR-0028, ADR-0029; phases and the per-phase evidence: `docs/tasks/09a-business-calendar-and-appointment-management.md`. Every
 test follows the reliability rules above (wait for the asserted state, control time, deferred promises, no sleeps, diagnose before calling anything
 flaky) and uses real PostgreSQL through Testcontainers for persistence, concurrency, and tenant isolation. Injected failures and statuses are kept
 apart from behavior PostgreSQL produces.
 
-- **Persistence and availability (Phase 2).** The `V14` upgrade from V13 (old cancelled rows become `UNKNOWN` with a null time, every other column
+- **Persistence and availability (Phase 2; executed, evidence in the Phase 2 record of task 09a).** The `V14` upgrade from V13 (old cancelled rows become `UNKNOWN` with a null time, every other column
   identical, a corrupt fixture fails the migration and leaves nothing, V1 to V13 hashes unchanged, a fresh install equals an upgraded one); every allowed and
   forbidden combination of the cancellation invariant; a time-changing and a StaffMember-changing `UPDATE` rejected by the exclusion constraint with the
   original row and every other row unchanged; a shift inside the row's own interval accepted; a conditional `UPDATE` after a concurrent commit failing with

@@ -100,7 +100,7 @@ class AppointmentServiceMigrationIntegrationTests extends PostgresIntegrationTes
         long fileBefore = relfilenode(upgrade, schema, "appointment");
         String priceTypeBefore = priceColumnType(upgrade, schema);
 
-        migrate(dataSource, schema, null);
+        migrate(dataSource, schema, "13");
 
         assertThat(priceTypeBefore).isEqualTo("numeric(12,2)");
         assertThat(priceColumnType(upgrade, schema)).isEqualTo("numeric(13,2)");
@@ -153,7 +153,7 @@ class AppointmentServiceMigrationIntegrationTests extends PostgresIntegrationTes
         migrate(dataSource, schema, "12");
         JdbcClient upgrade = JdbcClient.create(dataSource);
         seedLegacyAppointments(upgrade, schema);
-        migrate(dataSource, schema, null);
+        migrate(dataSource, schema, "13");
 
         UUID business = upgrade.sql("SELECT id FROM " + schema + ".business LIMIT 1")
                 .query(UUID.class).single();
@@ -231,7 +231,7 @@ class AppointmentServiceMigrationIntegrationTests extends PostgresIntegrationTes
         upgrade.sql("UPDATE " + schema + ".appointment SET service_name = 'Двойни  интервали' "
                 + "WHERE id = (SELECT id FROM " + schema + ".appointment LIMIT 1)").update();
 
-        Throwable failure = catchThrowable(() -> migrate(dataSource, schema, null));
+        Throwable failure = catchThrowable(() -> migrate(dataSource, schema, "13"));
 
         assertThat(failure).isInstanceOf(FlywayException.class);
         assertThat(upgrade.sql("""
@@ -257,7 +257,7 @@ class AppointmentServiceMigrationIntegrationTests extends PostgresIntegrationTes
         migrate(dataSource, schema, "12");
         JdbcClient upgrade = JdbcClient.create(dataSource);
         seedLegacyAppointments(upgrade, schema);
-        migrate(dataSource, schema, null);
+        migrate(dataSource, schema, "13");
         // Removing the lines (a truncate fires no row trigger) reproduces a failed backfill.
         upgrade.sql("TRUNCATE " + schema + ".appointment_service").update();
 

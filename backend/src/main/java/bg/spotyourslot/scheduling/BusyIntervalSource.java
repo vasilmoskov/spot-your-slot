@@ -34,6 +34,23 @@ public interface BusyIntervalSource {
     Map<UUID, List<BusyWindow>> findBusyWindows(
             UUID businessId, Collection<UUID> staffMemberIds, Instant from, Instant to);
 
+    /**
+     * The same contract, except that the one Appointment {@code ignoredAppointmentId} of the
+     * Business is not busy time (ADR-0029 section 6): the Appointment being rescheduled must not
+     * block its own new time. Exactly that Appointment is omitted; every other Appointment of the
+     * requested StaffMembers, adjacent or overlapping, still blocks. This method is abstract, not
+     * defaulted, so an implementation that forgot it could not silently hide booked time.
+     *
+     * @param ignoredAppointmentId the Appointment to leave out; never null (use the four-argument
+     *        method to ignore none)
+     */
+    Map<UUID, List<BusyWindow>> findBusyWindows(
+            UUID businessId,
+            Collection<UUID> staffMemberIds,
+            Instant from,
+            Instant to,
+            UUID ignoredAppointmentId);
+
     /** An occupied half-open instant range {@code [start, end)}. */
     record BusyWindow(Instant start, Instant end) {
         public BusyWindow {

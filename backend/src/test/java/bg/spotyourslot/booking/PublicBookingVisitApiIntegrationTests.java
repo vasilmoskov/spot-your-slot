@@ -291,7 +291,7 @@ class PublicBookingVisitApiIntegrationTests extends PublicBookingApiIntegrationT
         Req request = req().staff(tenant.staff());
         List<ReviewedService> claims = seen(tenant.service(), second);
         MvcResult created = visit(request, claims);
-        jdbc.sql("UPDATE appointment SET status = 'CANCELLED'").update();
+        fixtures.cancelAllConfirmed();
 
         MvcResult replay = visit(request.copy(), claims);
 

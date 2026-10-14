@@ -13,6 +13,7 @@ import java.time.LocalTime;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -266,5 +267,76 @@ class StaffAvailabilityAccessIntegrationTests extends PostgresIntegrationTest {
             DayOfWeek day, int startHour, int startMinute, int endHour, int endMinute) {
         return new WorkingPeriod(
                 day, LocalTime.of(startHour, startMinute), LocalTime.of(endHour, endMinute));
+    }
+
+    // ---- one StaffMember by identifier, independent of assignments (ADR-0029 section 1) ---------
+
+    private Optional<EligibleStaffMember> findByIdentifier(UUID businessId, UUID staffMemberId) {
+        return transaction.execute(status -> access.findActiveWithWeeklyPeriods(businessId, staffMemberId));
+    }
+
+    @Test
+    void anActiveStaffMemberIsFoundByIdentifierWithItsOrderedPeriodsAndNoAssignment() {
+        UUID business = fixtures.business("ACTIVE", "Europe/Sofia");
+        UUID staff = fixtures.staffMember(business, true);
+        fixtures.period(business, staff, DayOfWeek.WEDNESDAY, "13:00", "17:00");
+        fixtures.period(business, staff, DayOfWeek.MONDAY, "09:00", "12:00");
+        fixtures.period(business, staff, DayOfWeek.WEDNESDAY, "08:00", "12:00");
+
+        EligibleStaffMember found = findByIdentifier(business, staff).orElseThrow();
+
+        assertThat(found.id()).isEqualTo(staff);
+        assertThat(found.weeklyPeriods()).containsExactly(
+                new WorkingPeriod(DayOfWeek.MONDAY, LocalTime.of(9, 0), LocalTime.of(12, 0)),
+                new WorkingPeriod(DayOfWeek.WEDNESDAY, LocalTime.of(8, 0), LocalTime.of(12, 0)),
+                new WorkingPeriod(DayOfWeek.WEDNESDAY, LocalTime.of(13, 0), LocalTime.of(17, 0)));
+    }
+
+    @Test
+    void theByIdentifierReadSurvivesARemovedAssignmentAndAnInactiveServiceButNotADeactivation() {
+        UUID business = fixtures.business("ACTIVE", "Europe/Sofia");
+        UUID service = fixtures.service(business, 30, true);
+        UUID staff = fixtures.staffMember(business, true);
+        fixtures.assign(business, staff, service);
+        fixtures.everyDay(business, staff, "09:00", "18:00");
+        assertThat(find(business, service)).hasSize(1);
+
+        fixtures.unassign(business, staff, service);
+        fixtures.setServiceActive(service, false);
+        assertThat(find(business, service)).isEmpty();
+        assertThat(findByIdentifier(business, staff)).isPresent();
+        assertThat(findByIdentifier(business, staff).orElseThrow().weeklyPeriods()).hasSize(7);
+
+        fixtures.setStaffMemberActive(staff, false);
+        assertThat(findByIdentifier(business, staff)).isEmpty();
+    }
+
+    @Test
+    void aStaffMemberFoundByIdentifierWithoutPeriodsIsPresentWithAnEmptyList() {
+        UUID business = fixtures.business("ACTIVE", "Europe/Sofia");
+        UUID staff = fixtures.staffMember(business, true);
+
+        assertThat(findByIdentifier(business, staff).orElseThrow().weeklyPeriods()).isEmpty();
+    }
+
+    @Test
+    void aMissingOrForeignStaffMemberIsIndistinguishablyEmpty() {
+        UUID businessA = fixtures.business("ACTIVE", "Europe/Sofia");
+        UUID businessB = fixtures.business("ACTIVE", "Europe/Sofia");
+        UUID staffA = fixtures.staffMember(businessA, true);
+        fixtures.everyDay(businessA, staffA, "09:00", "18:00");
+
+        assertThat(findByIdentifier(businessB, staffA)).isEmpty();
+        assertThat(findByIdentifier(businessA, UUID.randomUUID())).isEmpty();
+        assertThat(findByIdentifier(UUID.randomUUID(), staffA)).isEmpty();
+    }
+
+    @Test
+    void theByIdentifierReadRequiresATransaction() {
+        UUID business = fixtures.business("ACTIVE", "Europe/Sofia");
+        UUID staff = fixtures.staffMember(business, true);
+
+        assertThatThrownBy(() -> access.findActiveWithWeeklyPeriods(business, staff))
+                .isInstanceOf(IllegalTransactionStateException.class);
     }
 }

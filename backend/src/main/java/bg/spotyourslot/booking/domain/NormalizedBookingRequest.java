@@ -13,7 +13,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.regex.Pattern;
 
 /**
  * The complete, validated, normalized guest booking request (ADR-0024): exactly the values the
@@ -39,15 +38,13 @@ import java.util.regex.Pattern;
  */
 public final class NormalizedBookingRequest {
     public static final int MAX_DISPLAY_NAME_CODE_POINTS = 200;
-    public static final int MAX_NOTE_CODE_POINTS = 500;
+    public static final int MAX_NOTE_CODE_POINTS = NoteText.MAX_CODE_POINTS;
     public static final int MAX_SERVICES = 5;
     public static final int MAX_VISIT_MINUTES = 480;
     private static final int MIN_SERVICE_MINUTES = 1;
     /** The largest value of {@code numeric(12,2)} in cents. */
     private static final long MAX_SERVICE_PRICE_CENTS = 999_999_999_999L;
 
-    /** NUL and the control characters PostgreSQL or the Appointment note rule rejects; tab and LF stay. */
-    private static final Pattern FORBIDDEN_NOTE_CONTROL = Pattern.compile("[\\x00-\\x08\\x0B-\\x1F\\x7F]");
     private static final long MIN_EPOCH_SECOND = -62_135_596_800L;
     private static final long MAX_EPOCH_SECOND = 253_402_300_799L;
 
@@ -230,32 +227,11 @@ public final class NormalizedBookingRequest {
 
     /** Line breaks to LF, surrounding Unicode white space removed, blank to absent. */
     static String normalizeNote(String note) {
-        if (note == null) {
-            return null;
-        }
-        String unified = note.replace("\r\n", "\n").replace('\r', '\n').strip();
-        return unified.isEmpty() ? null : unified;
+        return NoteText.normalize(note);
     }
 
     private static boolean isValidNote(String note) {
-        return note.codePointCount(0, note.length()) <= MAX_NOTE_CODE_POINTS
-                && !FORBIDDEN_NOTE_CONTROL.matcher(note).find()
-                && !hasUnpairedSurrogate(note);
-    }
-
-    private static boolean hasUnpairedSurrogate(String value) {
-        for (int index = 0; index < value.length(); index++) {
-            char current = value.charAt(index);
-            if (Character.isHighSurrogate(current)) {
-                if (index + 1 >= value.length() || !Character.isLowSurrogate(value.charAt(index + 1))) {
-                    return true;
-                }
-                index++;
-            } else if (Character.isLowSurrogate(current)) {
-                return true;
-            }
-        }
-        return false;
+        return NoteText.isValid(note);
     }
 
     public BookingAttemptId attemptId() {

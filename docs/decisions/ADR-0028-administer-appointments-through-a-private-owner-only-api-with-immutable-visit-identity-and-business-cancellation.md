@@ -127,7 +127,7 @@ An Appointment with `start_at <= now` (one clock instant per attempt) cannot be 
 
 Business cancellation is `CONFIRMED → CANCELLED` only, allowed only before `start_at`, versioned (`expectedVersion`), never a hard delete, and without a free-text reason. It records `cancelled_at` (the transaction's clock instant) and `cancelled_by = 'BUSINESS'`, and releases the time through the existing `WHERE status = 'CONFIRMED'` predicate of the exclusion constraint.
 
-The forward migration `V14` (planned, not created; V1 to V13 stay byte-identical):
+The forward migration `V14` (designed in Phase 1 and implemented in Phase 2; V1 to V13 stay byte-identical):
 
 ```sql
 ALTER TABLE appointment
@@ -141,8 +141,8 @@ UPDATE appointment SET cancelled_by = 'UNKNOWN' WHERE status = 'CANCELLED';
 ALTER TABLE appointment
     ADD CONSTRAINT appointment_cancellation_consistent CHECK (
            (status = 'CONFIRMED' AND cancelled_at IS NULL AND cancelled_by IS NULL)
-        OR (status = 'CANCELLED' AND cancelled_by = 'BUSINESS' AND cancelled_at IS NOT NULL)
-        OR (status = 'CANCELLED' AND cancelled_by = 'UNKNOWN'  AND cancelled_at IS NULL)),
+        OR (status = 'CANCELLED' AND cancelled_by IS NOT DISTINCT FROM 'BUSINESS' AND cancelled_at IS NOT NULL)
+        OR (status = 'CANCELLED' AND cancelled_by IS NOT DISTINCT FROM 'UNKNOWN'  AND cancelled_at IS NULL)),
     ADD CONSTRAINT appointment_cancelled_at_valid CHECK (
         cancelled_at IS NULL
         OR (pg_catalog.isfinite(cancelled_at) AND cancelled_at >= created_at)),
@@ -228,3 +228,7 @@ Direct evidence: issues #18 to #21; `docs/product-spec.md`, `docs/security.md`, 
 ## Conditions for revisiting
 
 Revisit for Manager or Staff access, Customer cancellation (#35), `COMPLETED`/`NO_SHOW`, an event or audit history, a "changed" indicator, a cancellation reason, buffers, restoring a cancelled Appointment, editing the Services or Customer of a visit, an operation-id idempotency design, or drag-and-drop rescheduling.
+
+## Amendment note (issue #19 Phase 2, 2026-10-14)
+
+The decision above is preserved, with one correction found while implementing `V14`. The section 8 constraint was first written with plain comparisons (`cancelled_by = 'BUSINESS'`). A `CHECK` accepts a row whose expression is `NULL`, and for `status = 'CANCELLED'` with a null actor and a null time the third branch evaluates to `NULL` and the others to false, so that row would have passed. The constraint above now uses `IS NOT DISTINCT FROM`, which is two-valued, and the implemented `V14` does too; the implemented schema test evaluates the original expression and shows it yields `NULL`, and a matrix test shows every forbidden combination (including the missing actor) is refused. The internal note is independent of the status: no constraint ties it to `CONFIRMED` or `CANCELLED`, and the verification block does not judge it. Two consequences are recorded: PostgreSQL evaluates check constraints in name order, so a status outside the domain is now reported by `appointment_cancellation_consistent` before `appointment_status_valid`; and the backfill `UPDATE` queues the deferred whole-visit trigger of `V13`, which `V14` judges with `SET CONSTRAINTS ALL IMMEDIATE` before its `ALTER TABLE`. Adding the nullable columns is a metadata-only change; the backfill physically writes new tuple versions of the pre-existing `CANCELLED` rows (and of nothing else), so a stable table file (`relfilenode`) proves there was no full table replacement but not that no tuple was rewritten. See the Phase 2 record in [task 09a](../tasks/09a-business-calendar-and-appointment-management.md).

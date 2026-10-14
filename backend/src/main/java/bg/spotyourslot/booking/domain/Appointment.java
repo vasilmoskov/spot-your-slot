@@ -34,6 +34,9 @@ public record Appointment(
         long version,
         Instant createdAt,
         Instant updatedAt,
+        Instant cancelledAt,
+        AppointmentCancelledBy cancelledBy,
+        String internalNote,
         List<AppointmentServiceLine> serviceLines) {
     public Appointment {
         Objects.requireNonNull(id, "id");
@@ -80,6 +83,90 @@ public record Appointment(
         if (source == AppointmentSource.ONLINE && attempt == null) {
             throw new IllegalArgumentException("An online Appointment requires a booking attempt");
         }
+        AppointmentRules.requireNote(internalNote);
+        requireCancellation(status, createdAt, cancelledAt, cancelledBy);
+    }
+
+    /**
+     * The V14 cancellation rule: a {@code CONFIRMED} Appointment has neither a time nor an actor; a
+     * Business cancellation has both; a legacy cancellation has the unknown actor and no time.
+     */
+    private static void requireCancellation(
+            AppointmentStatus status,
+            Instant createdAt,
+            Instant cancelledAt,
+            AppointmentCancelledBy cancelledBy) {
+        boolean valid;
+        if (status == AppointmentStatus.CONFIRMED) {
+            valid = cancelledAt == null && cancelledBy == null;
+        } else {
+            valid = (cancelledBy == AppointmentCancelledBy.BUSINESS && cancelledAt != null)
+                    || (cancelledBy == AppointmentCancelledBy.UNKNOWN && cancelledAt == null);
+        }
+        if (!valid) {
+            throw new IllegalArgumentException("Appointment cancellation attribution is inconsistent");
+        }
+        if (cancelledAt != null) {
+            AppointmentRules.requireInstant(cancelledAt);
+            if (cancelledAt.isBefore(createdAt)) {
+                throw new IllegalArgumentException("Appointment cancellation must not precede creation");
+            }
+        }
+    }
+
+    /**
+     * An Appointment with its lines but without administration facts: never cancelled and without
+     * an internal note. Code written before Appointment administration keeps working unchanged.
+     */
+    public Appointment(
+            UUID id,
+            UUID businessId,
+            UUID customerId,
+            UUID serviceId,
+            UUID staffMemberId,
+            AppointmentSource source,
+            AppointmentStatus status,
+            Instant startAt,
+            Instant endAt,
+            Instant occupiedUntil,
+            String timezone,
+            int durationMinutes,
+            BigDecimal priceEur,
+            String serviceName,
+            String staffDisplayName,
+            String customerNote,
+            String publicReference,
+            BookingAttempt attempt,
+            long version,
+            Instant createdAt,
+            Instant updatedAt,
+            List<AppointmentServiceLine> serviceLines) {
+        this(
+                id,
+                businessId,
+                customerId,
+                serviceId,
+                staffMemberId,
+                source,
+                status,
+                startAt,
+                endAt,
+                occupiedUntil,
+                timezone,
+                durationMinutes,
+                priceEur,
+                serviceName,
+                staffDisplayName,
+                customerNote,
+                publicReference,
+                attempt,
+                version,
+                createdAt,
+                updatedAt,
+                null,
+                null,
+                null,
+                serviceLines);
     }
 
     /**
@@ -130,6 +217,9 @@ public record Appointment(
                 version,
                 createdAt,
                 updatedAt,
+                null,
+                null,
+                null,
                 List.of(new AppointmentServiceLine(1, serviceId, serviceName, durationMinutes, priceEur)));
     }
 

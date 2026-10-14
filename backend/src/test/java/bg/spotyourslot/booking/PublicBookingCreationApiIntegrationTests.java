@@ -222,8 +222,7 @@ class PublicBookingCreationApiIntegrationTests extends PublicBookingApiIntegrati
         Req request = req();
         MvcResult created = book(request);
         // Integration fixture only: the public API and this phase have no cancellation capability.
-        jdbc.sql("UPDATE appointment SET status = 'CANCELLED' WHERE public_reference = :reference")
-                .param("reference", tree(created).get("reference").asString()).update();
+        fixtures.cancelByReference(tree(created).get("reference").asString());
 
         MvcResult replayed = book(request.copy());
 
@@ -233,6 +232,32 @@ class PublicBookingCreationApiIntegrationTests extends PublicBookingApiIntegrati
         assertThat(body.get("reference").asString()).isEqualTo(tree(created).get("reference").asString());
         assertThat(keys(body)).containsExactlyElementsOf(RESPONSE_KEYS);
         assertThat(appointmentCount(tenant.business())).isEqualTo(1);
+    }
+
+    @Test
+    void aReplayOfACancelledAppointmentNeverCarriesTheInternalNoteTheActorOrTheCancellationTime(
+            CapturedOutput output) throws Exception {
+        String internalNote = "СЕНТИНЕЛ-ВЪТРЕШНА-БЕЛЕЖКА-8812";
+        Req request = req();
+        MvcResult created = book(request);
+        String reference = tree(created).get("reference").asString();
+        fixtures.cancelByReference(reference);
+        jdbc.sql("UPDATE appointment SET internal_note = :note WHERE public_reference = :reference")
+                .param("note", internalNote).param("reference", reference).update();
+        String cancelledAt = jdbc.sql("SELECT cancelled_at::text FROM appointment WHERE public_reference = :r")
+                .param("r", reference).query(String.class).single();
+
+        MvcResult replayed = book(request.copy());
+
+        assertThat(replayed.getResponse().getStatus()).isEqualTo(200);
+        assertThat(tree(replayed).get("status").asString()).isEqualTo("CANCELLED");
+        assertThat(keys(tree(replayed))).containsExactlyElementsOf(RESPONSE_KEYS);
+        String everything = text(replayed.getResponse()) + replayed.getResponse().getHeaderNames()
+                .stream().map(name -> name + "=" + replayed.getResponse().getHeaders(name))
+                .toList() + output.getAll();
+        assertThat(everything).doesNotContain(internalNote, "BUSINESS", "UNKNOWN", "cancelled_by",
+                "cancelledBy", "cancelled_at", "cancelledAt", "internal_note", "internalNote",
+                cancelledAt);
     }
 
     // ---- rejections that are not validation ----

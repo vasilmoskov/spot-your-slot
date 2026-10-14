@@ -13,7 +13,9 @@ import bg.spotyourslot.integration.ConcurrencyTestSupport.WaitingBackend;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import java.lang.reflect.RecordComponent;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
@@ -234,8 +236,7 @@ class GuestBookingReplayIntegrationTests extends BookingIntegrationTest {
         Req request = firstRequest();
         BookedAppointment booked = bookFirst(request);
         // Integration fixture only: production has no cancellation capability in Phase 4.
-        jdbc.sql("UPDATE appointment SET status = 'CANCELLED' WHERE public_reference = :reference")
-                .param("reference", booked.reference()).update();
+        fixtures.cancelByReference(booked.reference());
 
         BookingResult result = replay(request.copy());
 
@@ -353,6 +354,40 @@ class GuestBookingReplayIntegrationTests extends BookingIntegrationTest {
         jdbc.sql("UPDATE appointment SET fingerprint_encoding_version = 2").update();
         assertThat(replay(request.copy())).isInstanceOf(Replayed.class);
         assertThat(appointmentCount(tenant.business())).isEqualTo(1);
+    }
+
+    @Test
+    void aReplayOfACancelledAppointmentNeverCarriesTheInternalNoteOrTheCancellationActor() {
+        String internalNote = "СЕНТИНЕЛ-ВЪТРЕШНА-БЕЛЕЖКА-6403";
+        Req request = firstRequest();
+        BookedAppointment booked = bookFirst(request);
+        fixtures.cancelByReference(booked.reference());
+        jdbc.sql("UPDATE appointment SET internal_note = :note WHERE public_reference = :reference")
+                .param("note", internalNote).param("reference", booked.reference()).update();
+        ListAppender<ILoggingEvent> logs = new ListAppender<>();
+        logs.start();
+        Logger root = (Logger) LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME);
+        root.addAppender(logs);
+
+        BookingResult result;
+        try {
+            result = replay(request.copy());
+        } finally {
+            root.detachAppender(logs);
+        }
+
+        assertThat(result).isInstanceOf(Replayed.class);
+        BookedAppointment replayed = ((Replayed) result).appointment();
+        assertThat(replayed.status()).isEqualTo(BookedAppointment.Status.CANCELLED);
+        // The guest result is an explicit whitelist: no component can hold the note or the actor.
+        assertThat(Arrays.stream(BookedAppointment.class.getRecordComponents())
+                .map(RecordComponent::getName))
+                .containsExactly("reference", "status", "serviceName", "durationMinutes", "price",
+                        "staffDisplayName", "start", "end", "timezone", "services");
+        assertThat(result.toString() + replayed + replayed.services())
+                .doesNotContain(internalNote, "BUSINESS", "UNKNOWN", "cancelled", "internal");
+        assertThat(logs.list).extracting(ILoggingEvent::getFormattedMessage)
+                .noneMatch(message -> message.contains(internalNote) || message.contains("BUSINESS"));
     }
 
     private ListAppender<ILoggingEvent> captureDiagnostics() {

@@ -100,6 +100,32 @@ class BookingModuleBoundaryTests {
         }
     }
 
+    /**
+     * Appointment administration must not depend conceptually on the guest booking request model:
+     * the note policy lives in a neutral JDK-only helper that both use, and the transitions know
+     * nothing of the request, its fingerprint, or the booking attempt.
+     */
+    @Test
+    void theAdministrationTransitionsAndTheGuestRequestShareOnlyTheNeutralNotePolicy() {
+        Set<String> transitionTargets = dependencyNamesOf("bg.spotyourslot.booking.domain.AppointmentTransitions");
+        Set<String> requestTargets = dependencyNamesOf("bg.spotyourslot.booking.domain.NormalizedBookingRequest");
+        String noteText = "bg.spotyourslot.booking.domain.NoteText";
+
+        assertThat(transitionTargets).contains(noteText);
+        assertThat(requestTargets).contains(noteText);
+        assertThat(transitionTargets).noneMatch(name -> name.endsWith("NormalizedBookingRequest")
+                || name.endsWith("BookingAttempt") || name.endsWith("RequestField")
+                || name.contains("Fingerprint"));
+        assertThat(dependencyNamesOf(noteText)).allMatch(name -> name.startsWith("java.")
+                || name.equals(noteText));
+    }
+
+    private Set<String> dependencyNamesOf(String className) {
+        return main.get(className).getDirectDependenciesFromSelf().stream()
+                .map(dependency -> dependency.getTargetClass().getName())
+                .collect(Collectors.toSet());
+    }
+
     @Test
     void exactlyOneClassImplementsTheBusyIntervalSourceAndItIsTheBookingOwnedOne() {
         List<String> implementations = main.stream()

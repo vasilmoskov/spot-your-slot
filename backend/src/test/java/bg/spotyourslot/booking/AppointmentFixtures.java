@@ -157,6 +157,60 @@ public final class AppointmentFixtures {
         return row;
     }
 
+    /**
+     * Marks a direct-SQL row as cancelled by the Business, the way V14 requires: the actor is
+     * {@code BUSINESS} and {@code cancelled_at} equals {@code updated_at}. Returns the same map.
+     */
+    public static Map<String, Object> cancelled(Map<String, Object> row) {
+        row.put("status", "CANCELLED");
+        row.put("cancelled_by", "BUSINESS");
+        row.put("cancelled_at", row.get("updated_at"));
+        return row;
+    }
+
+    /**
+     * Marks a direct-SQL row as cancelled before V14 existed: the explicit unknown actor and no
+     * cancellation time. Only for tests that need such a legacy row.
+     */
+    public static Map<String, Object> cancelledLegacy(Map<String, Object> row) {
+        row.put("status", "CANCELLED");
+        row.put("cancelled_by", "UNKNOWN");
+        row.put("cancelled_at", null);
+        return row;
+    }
+
+    /** Cancels one Appointment by SQL as the Business (fixture only; production has the store). */
+    public int cancel(UUID id) {
+        return jdbc.sql(CANCEL_SQL + " WHERE id = :id").param("id", id).update();
+    }
+
+    public int cancelByReference(String publicReference) {
+        return jdbc.sql(CANCEL_SQL + " WHERE public_reference = :reference")
+                .param("reference", publicReference)
+                .update();
+    }
+
+    /** Cancels every {@code CONFIRMED} Appointment by SQL as the Business. */
+    public int cancelAllConfirmed() {
+        return jdbc.sql(CANCEL_SQL + " WHERE status = 'CONFIRMED'").update();
+    }
+
+    /** Cancels one Appointment by SQL the way a pre-V14 row looked: unknown actor, no time. */
+    public int cancelLegacy(UUID id) {
+        return jdbc.sql("""
+                        UPDATE appointment
+                        SET status = 'CANCELLED', cancelled_by = 'UNKNOWN', cancelled_at = NULL
+                        WHERE id = :id
+                        """)
+                .param("id", id)
+                .update();
+    }
+
+    private static final String CANCEL_SQL = """
+            UPDATE appointment
+            SET status = 'CANCELLED', cancelled_by = 'BUSINESS', cancelled_at = updated_at
+            """;
+
     public static OffsetDateTime utc(Instant instant) {
         return OffsetDateTime.ofInstant(instant, ZoneOffset.UTC);
     }

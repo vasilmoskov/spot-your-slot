@@ -89,8 +89,8 @@ class BookingBusyIntervalSourceIntegrationTests extends PostgresIntegrationTest 
     @Test
     void onlyConfirmedRowsAreBusyAndTheWindowIsTheOccupiedRange() {
         insert(tenant, NOON, 60);
-        var cancelled = AppointmentFixtures.row(tenant, NOON.plusSeconds(7200), 30);
-        cancelled.put("status", "CANCELLED");
+        var cancelled = AppointmentFixtures.cancelled(
+                AppointmentFixtures.row(tenant, NOON.plusSeconds(7200), 30));
         fixtures.insertRow(cancelled);
 
         Map<UUID, List<BusyWindow>> windows = busy(tenant.business(), List.of(tenant.staff()), FROM, TO);
@@ -244,6 +244,91 @@ class BookingBusyIntervalSourceIntegrationTests extends PostgresIntegrationTest 
         assertThat(record(() -> busy(
                 tenant.business(), List.of(tenant.staff(), tenant.staff()), FROM, TO))).hasSize(1);
         assertThat(record(() -> busy(tenant.business(), List.of(), FROM, TO))).isEmpty();
+    }
+
+    // ---- the ignore-self seam (ADR-0029 section 6) -----------------------------------------
+
+    private Map<UUID, List<BusyWindow>> busyIgnoring(
+            UUID business, List<UUID> staff, Instant from, Instant to, UUID ignored) {
+        return new TransactionTemplate(transactionManager)
+                .execute(status -> source.findBusyWindows(business, staff, from, to, ignored));
+    }
+
+    private UUID insertAndGetId(Tenant owner, Instant start, int minutes) {
+        return new TransactionTemplate(transactionManager)
+                .execute(status -> store.insert(AppointmentFixtures.online(owner, start, minutes)))
+                .id();
+    }
+
+    @Test
+    void theIgnoredAppointmentIsOmittedAndEveryOtherOneStillBlocks() {
+        UUID own = insertAndGetId(tenant, NOON, 60);
+        insertAndGetId(tenant, NOON.plusSeconds(3600), 30);          // adjacent after
+        insertAndGetId(tenant, NOON.minusSeconds(1800), 30);         // adjacent before
+        insertAndGetId(tenant, NOON.plusSeconds(4 * 3600L), 60);     // elsewhere
+
+        Map<UUID, List<BusyWindow>> windows = busyIgnoring(
+                tenant.business(), List.of(tenant.staff()), FROM, TO, own);
+
+        assertThat(windows.get(tenant.staff())).extracting(BusyWindow::start).containsExactly(
+                NOON.minusSeconds(1800), NOON.plusSeconds(3600), NOON.plusSeconds(4 * 3600L));
+        assertThat(busy(tenant.business(), List.of(tenant.staff()), FROM, TO).get(tenant.staff()))
+                .hasSize(4);
+    }
+
+    @Test
+    void ignoringTheOnlyAppointmentLeavesNoBusyKeyAndAnUnknownOrForeignIdentifierChangesNothing() {
+        UUID own = insertAndGetId(tenant, NOON, 60);
+        Tenant otherBusiness = fixtures.tenant();
+        UUID foreign = insertAndGetId(otherBusiness, NOON, 60);
+
+        assertThat(busyIgnoring(tenant.business(), List.of(tenant.staff()), FROM, TO, own)).isEmpty();
+        assertThat(busyIgnoring(tenant.business(), List.of(tenant.staff()), FROM, TO, UUID.randomUUID()))
+                .containsOnlyKeys(tenant.staff());
+        // An identifier of another Business is scoped out by the Business predicate.
+        assertThat(busyIgnoring(tenant.business(), List.of(tenant.staff()), FROM, TO, foreign))
+                .containsOnlyKeys(tenant.staff());
+        assertThat(busyIgnoring(otherBusiness.business(), List.of(otherBusiness.staff()), FROM, TO, own))
+                .containsOnlyKeys(otherBusiness.staff());
+    }
+
+    @Test
+    void theIgnoreFormKeepsEveryOtherRuleOfTheSeam() {
+        UUID own = insertAndGetId(tenant, NOON, 30);
+        Tenant second = another();
+        insertAndGetId(second, NOON, 30);
+
+        Map<UUID, List<BusyWindow>> windows = busyIgnoring(
+                tenant.business(), List.of(tenant.staff(), second.staff()), FROM, TO, own);
+
+        // Only the requested StaffMembers, only CONFIRMED rows, half-open: the other StaffMember stays busy.
+        assertThat(windows).containsOnlyKeys(second.staff());
+        assertThat(windows.get(second.staff())).containsExactly(new BusyWindow(NOON, NOON.plusSeconds(1800)));
+        assertThatThrownBy(() -> source.findBusyWindows(
+                tenant.business(), List.of(tenant.staff()), FROM, TO, own))
+                .isInstanceOf(IllegalTransactionStateException.class);
+        TransactionTemplate transaction = new TransactionTemplate(transactionManager);
+        assertThatThrownBy(() -> transaction.execute(status -> source.findBusyWindows(
+                tenant.business(), List.of(tenant.staff()), FROM, TO, null)))
+                .isInstanceOf(NullPointerException.class);
+        assertThatThrownBy(() -> transaction.execute(status -> source.findBusyWindows(
+                tenant.business(), List.of(tenant.staff()), TO, FROM, own)))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void theIgnoreFormIsOneStatementThatAddsOnlyItsPredicateAndTheFourArgumentTextIsUnchanged() {
+        UUID own = insertAndGetId(tenant, NOON, 30);
+
+        List<String> withIgnore = record(() -> busyIgnoring(
+                tenant.business(), List.of(tenant.staff()), FROM, TO, own));
+        List<String> without = record(() -> busy(tenant.business(), List.of(tenant.staff()), FROM, TO));
+
+        assertThat(withIgnore).hasSize(1);
+        assertThat(without).hasSize(1);
+        assertThat(without.get(0)).doesNotContain("id <>");
+        assertThat(withIgnore.get(0)).contains("id <>");
+        assertThat(withIgnore.get(0).replace("and id <> ? ", "")).isEqualTo(without.get(0));
     }
 
     private static List<String> record(Runnable action) {

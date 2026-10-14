@@ -19,7 +19,7 @@ final class AppointmentRules {
     static final int MIN_DURATION_MINUTES = 1;
     static final int MAX_DURATION_MINUTES = 480;
     static final int MAX_NAME_CODE_POINTS = 200;
-    static final int MAX_NOTE_CODE_POINTS = 500;
+    static final int MAX_NOTE_CODE_POINTS = NoteText.MAX_CODE_POINTS;
     static final int MAX_TIMEZONE_LENGTH = 100;
     static final int PRICE_SCALE = 2;
     /** A Service price (and so a line price): at most ten integer digits, `9 999 999 999.99` (ADR-0027). */

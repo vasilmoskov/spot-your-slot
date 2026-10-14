@@ -8,6 +8,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.Arrays;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -308,11 +309,13 @@ class AppointmentDomainTests {
     @Test
     void onlyAConfirmedAppointmentBlocksTime() {
         Instant end = START.plus(Duration.ofMinutes(30));
+        UUID service = UUID.randomUUID();
         Appointment cancelled = new Appointment(
-                UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+                UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), service,
                 UUID.randomUUID(), AppointmentSource.MANUAL, AppointmentStatus.CANCELLED, START,
                 end, end, "Europe/Sofia", 30, BigDecimal.TEN, "Услуга", "Служител", null,
-                "ABCDEFGHJK", null, 1, CREATED, CREATED);
+                "ABCDEFGHJK", null, 1, CREATED, CREATED, null, AppointmentCancelledBy.UNKNOWN, null,
+                List.of(new AppointmentServiceLine(1, service, "Услуга", 30, BigDecimal.TEN)));
 
         assertThat(cancelled.blocksTime()).isFalse();
         assertThat(AppointmentStatus.values())

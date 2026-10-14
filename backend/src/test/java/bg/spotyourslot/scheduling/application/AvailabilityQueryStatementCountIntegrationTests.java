@@ -7,8 +7,11 @@ import bg.spotyourslot.integration.AvailabilityFixtures;
 import bg.spotyourslot.integration.MutableTestClock;
 import bg.spotyourslot.integration.PostgresIntegrationTest;
 import bg.spotyourslot.scheduling.AvailabilityApplicationException.AvailabilityFailure;
+import bg.spotyourslot.scheduling.AvailabilityApplicationException.BusinessNotBookable;
+import bg.spotyourslot.scheduling.AvailabilityApplicationException.StaffMemberNotEligible;
 import bg.spotyourslot.scheduling.AvailabilityQuery;
 import bg.spotyourslot.scheduling.AvailabilityRecords.AvailabilitySnapshot;
+import bg.spotyourslot.scheduling.AvailabilityRecords.BusinessAvailability;
 import bg.spotyourslot.scheduling.AvailabilityRecords.SelectionAvailability;
 import bg.spotyourslot.scheduling.domain.NewScheduleException;
 import bg.spotyourslot.scheduling.domain.ScheduleExceptionContent;
@@ -159,6 +162,126 @@ class AvailabilityQueryStatementCountIntegrationTests extends PostgresIntegratio
 
         assertThat(statements).hasSize(3);
         assertThat(result[0].hasEligibleStaffMembers()).isFalse();
+    }
+
+    // ---- the Business-side entry (ADR-0029 section 1) -----------------------------------------
+
+    @Test
+    void theBusinessEntryUsesFourStatementsAndNeverReadsAServiceOrTheClock() {
+        BusinessScenario scenario = businessScenario(1);
+        clock.resetReads();
+
+        List<String> statements = record(() -> scenario.calculate(availability, null));
+
+        assertThat(statements).hasSize(4);
+        assertThat(normalized(statements.get(0))).contains("from business");
+        assertThat(normalized(statements.get(1)))
+                .contains("from staff_member m")
+                .contains("staff_working_period")
+                .doesNotContain("staff_member_service");
+        assertThat(normalized(statements.get(2))).contains("from schedule_exception e");
+        assertThat(normalized(statements.get(3)))
+                .contains("from appointment")
+                .contains("status = 'confirmed'")
+                .doesNotContain("id <>");
+        assertThat(statements).noneMatch(sql -> normalized(sql).contains("from service"));
+        assertThat(clock.reads()).as("the caller supplies the one instant").isZero();
+        assertThat(scenario.result()[0].slots()).isNotEmpty();
+    }
+
+    @Test
+    void anIgnoredAppointmentAddsOnlyItsPredicateToTheSameSingleBusyStatement() {
+        BusinessScenario scenario = businessScenario(1);
+
+        List<String> statements = record(() -> scenario.calculate(availability, UUID.randomUUID()));
+
+        assertThat(statements).hasSize(4);
+        assertThat(normalized(statements.get(3))).contains("from appointment").contains("id <>");
+    }
+
+    @Test
+    void thePublicBusyStatementIsUnchangedByTheIgnoreSeam() {
+        List<String> statements = statementsFor(2);
+
+        assertThat(normalized(statements.get(4))).contains("from appointment").doesNotContain("id <>");
+    }
+
+    @Test
+    void aBusinessCallStopsAfterTheFirstStatementForAnInactiveBusinessAndTwoForAnInactiveStaffMember() {
+        UUID draft = fixtures.business("DRAFT", "Europe/Sofia");
+        UUID staff = fixtures.staffMember(draft, true);
+        UUID activeBusiness = fixtures.business("ACTIVE", "Europe/Sofia");
+        UUID inactiveStaff = fixtures.staffMember(activeBusiness, false);
+
+        Throwable[] notBookable = new Throwable[1];
+        Throwable[] notEligible = new Throwable[1];
+        List<String> first = record(() -> notBookable[0] = catchThrowable(() -> businessCall(
+                draft, staff, null)));
+        List<String> second = record(() -> notEligible[0] = catchThrowable(() -> businessCall(
+                activeBusiness, inactiveStaff, null)));
+
+        assertThat(first).hasSize(1);
+        assertThat(notBookable[0]).isInstanceOf(
+                BusinessNotBookable.class);
+        assertThat(second).hasSize(2);
+        assertThat(notEligible[0]).isInstanceOf(
+                StaffMemberNotEligible.class);
+    }
+
+    @Test
+    void theBusinessEntryRequiresARepeatableReadOrSerializableTransactionBeforeAnySql() {
+        BusinessScenario scenario = businessScenario(1);
+        Throwable[] failure = new Throwable[1];
+
+        List<String> readCommitted = record(() -> failure[0] = catchThrowable(() -> {
+            TransactionTemplate template = new TransactionTemplate(transactions);
+            template.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
+            template.executeWithoutResult(status -> scenario.calculate(availability, null));
+        }));
+        assertThat(readCommitted).isEmpty();
+        assertThat(failure[0]).isInstanceOf(AvailabilityFailure.class)
+                .hasMessage("Availability calculation failed");
+
+        List<String> repeatableRead = record(() -> {
+            TransactionTemplate template = new TransactionTemplate(transactions);
+            template.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);
+            template.executeWithoutResult(status -> scenario.calculate(availability, null));
+        });
+        assertThat(repeatableRead).hasSize(4);
+
+        List<String> serializable = record(() -> {
+            TransactionTemplate template = new TransactionTemplate(transactions);
+            template.setIsolationLevel(TransactionDefinition.ISOLATION_SERIALIZABLE);
+            template.executeWithoutResult(status -> scenario.calculate(availability, null));
+        });
+        assertThat(serializable).hasSize(4);
+
+        List<String> standalone = record(() -> scenario.calculate(availability, null));
+        assertThat(standalone).hasSize(4);
+        assertThat(ISOLATIONS).contains(Connection.TRANSACTION_REPEATABLE_READ);
+    }
+
+    private void businessCall(UUID business, UUID staff, UUID ignored) {
+        availability.calculateForBusiness(
+                business, Duration.ofMinutes(30), staff, THURSDAY, THURSDAY, NOW, ignored);
+    }
+
+    /** Active StaffMembers with a schedule and, deliberately, no Service assignment at all. */
+    private BusinessScenario businessScenario(int staffMembers) {
+        UUID business = fixtures.business("ACTIVE", "Europe/Sofia");
+        UUID staff = null;
+        for (int index = 0; index < staffMembers; index++) {
+            staff = fixtures.staffMember(business, true);
+            fixtures.everyDay(business, staff, "09:00", "18:00");
+        }
+        return new BusinessScenario(business, staff, new BusinessAvailability[1]);
+    }
+
+    private record BusinessScenario(UUID business, UUID staff, BusinessAvailability[] result) {
+        void calculate(AvailabilityQuery availability, UUID ignored) {
+            result[0] = availability.calculateForBusiness(
+                    business, Duration.ofMinutes(30), staff, THURSDAY, THURSDAY, NOW, ignored);
+        }
     }
 
     // ---- transaction isolation precondition, each case with an explicit outer transaction ----

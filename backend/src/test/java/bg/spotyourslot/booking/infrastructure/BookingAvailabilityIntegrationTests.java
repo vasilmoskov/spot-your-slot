@@ -97,8 +97,7 @@ class BookingAvailabilityIntegrationTests extends PostgresIntegrationTest {
         Appointment booked = book("10:00", 30);
         assertThat(thursdayStarts(tenant.staff())).doesNotContain(LocalTime.of(10, 0));
 
-        jdbc.sql("UPDATE appointment SET status = 'CANCELLED' WHERE id = :id")
-                .param("id", booked.id()).update();
+        fixtures.cancel(booked.id());
 
         assertThat(thursdayStarts(tenant.staff())).contains(
                 LocalTime.of(9, 45), LocalTime.of(10, 0), LocalTime.of(10, 15));

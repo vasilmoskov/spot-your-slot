@@ -1,10 +1,14 @@
 package bg.spotyourslot.booking.infrastructure;
 
 import bg.spotyourslot.booking.domain.Appointment;
+import bg.spotyourslot.booking.domain.AppointmentCancelledBy;
 import bg.spotyourslot.booking.domain.AppointmentServiceLine;
 import bg.spotyourslot.booking.domain.AppointmentSource;
 import bg.spotyourslot.booking.domain.AppointmentStatus;
 import bg.spotyourslot.booking.domain.BlockingWindow;
+import bg.spotyourslot.booking.domain.AppointmentTransitions.CancelUpdate;
+import bg.spotyourslot.booking.domain.AppointmentTransitions.NoteUpdate;
+import bg.spotyourslot.booking.domain.AppointmentTransitions.RescheduleUpdate;
 import bg.spotyourslot.booking.domain.BookingAttempt;
 import bg.spotyourslot.booking.domain.NewAppointment;
 import bg.spotyourslot.booking.infrastructure.AppointmentPersistenceException.ConcurrentFailure;
@@ -42,10 +46,12 @@ import org.springframework.stereotype.Repository;
  * values, never persistence entities. It is not a published contract.
  *
  * <p>Transaction semantics: the store opens no transaction of its own and joins the caller's, so a
- * rollback of the caller restores the previous state. Every write is a single statement, and no
- * read takes a lock. An Appointment is written as its row plus its Service lines (ADR-0027), in two
- * statements of the caller's transaction; the deferred {@code V13} trigger judges the whole visit at
- * commit. Every statement is scoped by {@code business_id}, so a lookup in another
+ * rollback of the caller restores the previous state. No read takes a lock. An Appointment is
+ * inserted as its row plus its Service lines (ADR-0027), in two statements of the caller's
+ * transaction; the deferred {@code V13} trigger judges the whole visit at commit. A change of an
+ * existing Appointment (ADR-0028, ADR-0029) is one conditional {@code UPDATE ... RETURNING} that
+ * carries the expected version, so a concurrent change is never overwritten; its immutable Service
+ * lines are read back, never written. Every statement is scoped by {@code business_id}, so a lookup in another
  * Business behaves exactly like a missing Appointment. Overlap protection is the database
  * exclusion constraint of {@code V11}, never an application pre-check.
  *
@@ -90,7 +96,10 @@ public class AppointmentStore {
             "appointment_service_duration_range",
             "appointment_service_price_nonnegative",
             "appointment_service_line_name_canonical",
-            "appointment_visit_consistent");
+            "appointment_visit_consistent",
+            "appointment_cancellation_consistent",
+            "appointment_cancelled_at_valid",
+            "appointment_internal_note_plain_text");
     /** Duplicate Services or positions in one visit: invalid data, never an ordinary conflict. */
     static final Set<String> LINE_UNIQUE_CONSTRAINTS = Set.of(
             "appointment_service_pkey", "appointment_service_distinct");
@@ -107,7 +116,7 @@ public class AppointmentStore {
             "price_eur", "service_name", "staff_display_name", "customer_note",
             "public_reference", "booking_attempt_hash", "request_fingerprint",
             "fingerprint_encoding_version", "fingerprint_key_version", "version", "created_at",
-            "updated_at", "service_count");
+            "updated_at", "service_count", "cancelled_at", "cancelled_by", "internal_note");
 
     private static final String UNIQUE_VIOLATION = "23505";
     private static final String FOREIGN_KEY_VIOLATION = "23503";
@@ -125,7 +134,8 @@ public class AppointmentStore {
             start_at, end_at, occupied_until, timezone, duration_minutes, price_eur,
             service_name, staff_display_name, customer_note, public_reference,
             booking_attempt_hash, request_fingerprint, fingerprint_encoding_version,
-            fingerprint_key_version, version, created_at, updated_at, service_count
+            fingerprint_key_version, version, created_at, updated_at, service_count,
+            cancelled_at, cancelled_by, internal_note
             """;
 
     private final JdbcClient jdbc;
@@ -304,6 +314,126 @@ public class AppointmentStore {
     }
 
     /**
+     * Applies a reschedule and/or reassignment with one conditional {@code UPDATE} (ADR-0029
+     * section 4). The statement matches only the row the caller read: same Business, same version,
+     * still {@code CONFIRMED}, same StaffMember and start. It advances the version and the update
+     * time, and the exclusion constraint judges the new StaffMember and range against every other
+     * {@code CONFIRMED} Appointment, but not against the row's own previous interval.
+     *
+     * <p>Returns the updated Appointment, or empty when no row matched. Inside a repeatable-read
+     * transaction a row changed by a concurrent commit never matches silently: PostgreSQL reports
+     * {@link ConcurrentFailure}. A time that overlaps another Appointment is {@link OverlapConflict}
+     * and aborts the caller's transaction. The Service lines, totals, Customer, and every other
+     * snapshot are not written.
+     */
+    public Optional<Appointment> reschedule(RescheduleUpdate update) {
+        Objects.requireNonNull(update, "update");
+        return execute(() -> updated(jdbc.sql("""
+                        UPDATE appointment
+                        SET start_at = :startAt,
+                            end_at = :endAt,
+                            occupied_until = :occupiedUntil,
+                            staff_member_id = :staffMemberId,
+                            staff_display_name = :staffDisplayName,
+                            version = version + 1,
+                            updated_at = :now
+                        WHERE business_id = :businessId
+                          AND id = :id
+                          AND version = :expectedVersion
+                          AND status = 'CONFIRMED'
+                          AND staff_member_id = :expectedStaffMemberId
+                          AND start_at = :expectedStartAt
+                        RETURNING
+                        """ + RETURNING_COLUMNS)
+                .param("startAt", databaseTime(update.startAt()))
+                .param("endAt", databaseTime(update.endAt()))
+                .param("occupiedUntil", databaseTime(update.occupiedUntil()))
+                .param("staffMemberId", update.staffMemberId())
+                .param("staffDisplayName", update.staffDisplayName())
+                .param("now", databaseTime(update.updatedAt()))
+                .param("businessId", update.businessId())
+                .param("id", update.appointmentId())
+                .param("expectedVersion", update.expectedVersion())
+                .param("expectedStaffMemberId", update.expectedStaffMemberId())
+                .param("expectedStartAt", databaseTime(update.expectedStartAt()))
+                .query(this::row)
+                .optional(), update.expectedVersion()));
+    }
+
+    /**
+     * Cancels as the Business with one conditional {@code UPDATE}: only a {@code CONFIRMED}
+     * Appointment of the Business at the expected version that starts after the cancellation
+     * instant matches. It records {@code cancelled_at} and {@code cancelled_by = 'BUSINESS'},
+     * advances the version, and releases the time through the partial exclusion constraint.
+     * Returns empty when no row matched (the caller classifies the reason with a follow-up
+     * {@link #find}); the transaction stays usable.
+     */
+    public Optional<Appointment> cancel(CancelUpdate update) {
+        Objects.requireNonNull(update, "update");
+        return execute(() -> updated(jdbc.sql("""
+                        UPDATE appointment
+                        SET status = 'CANCELLED',
+                            cancelled_at = :now,
+                            cancelled_by = 'BUSINESS',
+                            version = version + 1,
+                            updated_at = :now
+                        WHERE business_id = :businessId
+                          AND id = :id
+                          AND version = :expectedVersion
+                          AND status = 'CONFIRMED'
+                          AND start_at > :now
+                        RETURNING
+                        """ + RETURNING_COLUMNS)
+                .param("now", databaseTime(update.cancelledAt()))
+                .param("businessId", update.businessId())
+                .param("id", update.appointmentId())
+                .param("expectedVersion", update.expectedVersion())
+                .query(this::row)
+                .optional(), update.expectedVersion()));
+    }
+
+    /**
+     * Replaces the internal note with one conditional {@code UPDATE} carrying only the expected
+     * version: the note is editable on any Appointment of the Business, whatever its status or
+     * start. Returns empty when no row matched.
+     */
+    public Optional<Appointment> updateInternalNote(NoteUpdate update) {
+        Objects.requireNonNull(update, "update");
+        return execute(() -> updated(jdbc.sql("""
+                        UPDATE appointment
+                        SET internal_note = :internalNote,
+                            version = version + 1,
+                            updated_at = :now
+                        WHERE business_id = :businessId
+                          AND id = :id
+                          AND version = :expectedVersion
+                        RETURNING
+                        """ + RETURNING_COLUMNS)
+                .param("internalNote", update.internalNote(), Types.VARCHAR)
+                .param("now", databaseTime(update.updatedAt()))
+                .param("businessId", update.businessId())
+                .param("id", update.appointmentId())
+                .param("expectedVersion", update.expectedVersion())
+                .query(this::row)
+                .optional(), update.expectedVersion()));
+    }
+
+    /**
+     * Completes a conditional update: the matched row must be exactly one version newer than the
+     * expected one (anything else is an internal inconsistency), and its immutable Service lines are
+     * read in the same transaction.
+     */
+    private Optional<Appointment> updated(Optional<Row> row, long expectedVersion) {
+        return row.map(found -> {
+            if (found.version() != expectedVersion + 1) {
+                throw new CorruptRow();
+            }
+            return toAppointment(
+                    found, readLines(found.businessId(), found.id(), found.serviceCount()));
+        });
+    }
+
+    /**
      * One bulk statement, no lock: the occupied half-open windows of the requested StaffMembers of
      * the Business that overlap {@code [from, to)}, {@code CONFIRMED} rows only, ordered by
      * StaffMember, start, and end. A window that merely touches a boundary is not returned. An
@@ -311,6 +441,21 @@ public class AppointmentStore {
      */
     public List<BlockingWindow> findBlockingWindows(
             UUID businessId, Collection<UUID> staffMemberIds, Instant from, Instant to) {
+        return findBlockingWindows(businessId, staffMemberIds, from, to, null);
+    }
+
+    /**
+     * The same statement that additionally omits the one Appointment {@code ignoredAppointmentId}
+     * of the Business (ADR-0029 section 6), so an Appointment being rescheduled does not block its
+     * own new time. Only that identifier is omitted; every other Appointment, adjacent or
+     * overlapping, still blocks. A {@code null} identifier is exactly the four-argument form.
+     */
+    public List<BlockingWindow> findBlockingWindows(
+            UUID businessId,
+            Collection<UUID> staffMemberIds,
+            Instant from,
+            Instant to,
+            UUID ignoredAppointmentId) {
         Objects.requireNonNull(businessId, "businessId");
         Objects.requireNonNull(staffMemberIds, "staffMemberIds");
         Objects.requireNonNull(from, "from");
@@ -320,7 +465,8 @@ public class AppointmentStore {
             // An empty request or an empty window overlaps nothing, so no statement is needed.
             return List.of();
         }
-        return execute(() -> jdbc.sql("""
+        String ignoredPredicate = ignoredAppointmentId == null ? "" : "AND id <> :ignoredAppointmentId\n";
+        JdbcClient.StatementSpec statement = jdbc.sql("""
                         SELECT staff_member_id, start_at, occupied_until
                         FROM appointment
                         WHERE business_id = :businessId
@@ -328,12 +474,18 @@ public class AppointmentStore {
                           AND status = 'CONFIRMED'
                           AND tstzrange(start_at, occupied_until, '[)')
                               && tstzrange(:from, :to, '[)')
+                        """ + ignoredPredicate + """
                         ORDER BY staff_member_id, start_at, occupied_until
                         """)
                 .param("businessId", businessId)
                 .param("staffMemberIds", List.copyOf(requested))
                 .param("from", databaseTime(from))
-                .param("to", databaseTime(to))
+                .param("to", databaseTime(to));
+        if (ignoredAppointmentId != null) {
+            statement = statement.param("ignoredAppointmentId", ignoredAppointmentId);
+        }
+        JdbcClient.StatementSpec prepared = statement;
+        return execute(() -> prepared
                 .query((resultSet, rowNumber) -> new BlockingWindow(
                         resultSet.getObject("staff_member_id", UUID.class),
                         resultSet.getObject("start_at", OffsetDateTime.class).toInstant(),
@@ -493,11 +645,16 @@ public class AppointmentStore {
             long version,
             Instant createdAt,
             Instant updatedAt,
-            int serviceCount) {
+            int serviceCount,
+            Instant cancelledAt,
+            AppointmentCancelledBy cancelledBy,
+            String internalNote) {
     }
 
     private Row row(ResultSet resultSet, int rowNumber) throws SQLException {
         try {
+            OffsetDateTime cancelledAt = resultSet.getObject("cancelled_at", OffsetDateTime.class);
+            String cancelledBy = resultSet.getString("cancelled_by");
             byte[] attemptHash = resultSet.getBytes("booking_attempt_hash");
             BookingAttempt attempt = attemptHash == null
                     ? null
@@ -528,7 +685,10 @@ public class AppointmentStore {
                     resultSet.getLong("version"),
                     resultSet.getObject("created_at", OffsetDateTime.class).toInstant(),
                     resultSet.getObject("updated_at", OffsetDateTime.class).toInstant(),
-                    resultSet.getInt("service_count"));
+                    resultSet.getInt("service_count"),
+                    cancelledAt == null ? null : cancelledAt.toInstant(),
+                    cancelledBy == null ? null : AppointmentCancelledBy.valueOf(cancelledBy),
+                    resultSet.getString("internal_note"));
         } catch (IllegalArgumentException | NullPointerException corrupt) {
             // A stored row that violates a domain invariant is a persistence failure, not input.
             throw new CorruptRow();
@@ -559,6 +719,9 @@ public class AppointmentStore {
                     row.version(),
                     row.createdAt(),
                     row.updatedAt(),
+                    row.cancelledAt(),
+                    row.cancelledBy(),
+                    row.internalNote(),
                     lines);
         } catch (IllegalArgumentException | NullPointerException corrupt) {
             // A stored row that violates a domain invariant is a persistence failure, not input.

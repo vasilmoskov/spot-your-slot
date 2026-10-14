@@ -241,7 +241,7 @@ class AppointmentServiceSchemaIntegrationTests extends PostgresIntegrationTest {
                         .param("id", visit).update()));
         assertThat(price.constraint()).isEqualTo(VISIT_RULE);
 
-        jdbc.sql("UPDATE appointment SET status = 'CANCELLED' WHERE id = :id").param("id", visit).update();
+        fixtures.cancel(visit);
         assertThat(jdbc.sql("SELECT status FROM appointment WHERE id = :id")
                 .param("id", visit).query(String.class).single()).isEqualTo("CANCELLED");
         assertThat(jdbc.sql("SELECT price_eur::text FROM appointment WHERE id = :id")
@@ -428,7 +428,7 @@ class AppointmentServiceSchemaIntegrationTests extends PostgresIntegrationTest {
         assertThat(count("appointment_service")).isEqualTo(linesBefore);
 
         // A cancelled visit stops blocking the time.
-        jdbc.sql("UPDATE appointment SET status = 'CANCELLED' WHERE id = :id").param("id", visit).update();
+        fixtures.cancel(visit);
         List<Line> reuse = lines(2, "10.00", 30);
         commit(visitRow(START.plusSeconds(15 * 60L), reuse, 60, "20.00", 2), reuse);
         assertThat(count("appointment")).isEqualTo(4L);

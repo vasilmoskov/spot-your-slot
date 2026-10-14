@@ -41,17 +41,42 @@ public class BookingBusyIntervalSource implements BusyIntervalSource {
         Objects.requireNonNull(staffMemberIds, "staffMemberIds");
         Objects.requireNonNull(from, "from");
         Objects.requireNonNull(to, "to");
+        requireOrderedWindow(from, to);
+        return grouped(appointments.findBlockingWindows(businessId, staffMemberIds, from, to));
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Map<UUID, List<BusyWindow>> findBusyWindows(
+            UUID businessId,
+            Collection<UUID> staffMemberIds,
+            Instant from,
+            Instant to,
+            UUID ignoredAppointmentId) {
+        Objects.requireNonNull(businessId, "businessId");
+        Objects.requireNonNull(staffMemberIds, "staffMemberIds");
+        Objects.requireNonNull(from, "from");
+        Objects.requireNonNull(to, "to");
+        Objects.requireNonNull(ignoredAppointmentId, "ignoredAppointmentId");
+        requireOrderedWindow(from, to);
+        return grouped(appointments.findBlockingWindows(
+                businessId, staffMemberIds, from, to, ignoredAppointmentId));
+    }
+
+    private static void requireOrderedWindow(Instant from, Instant to) {
         if (from.isAfter(to)) {
             throw new IllegalArgumentException("The query window start must not be after its end");
         }
+    }
+
+    private static Map<UUID, List<BusyWindow>> grouped(List<BlockingWindow> windows) {
         Map<UUID, List<BusyWindow>> grouped = new LinkedHashMap<>();
-        for (BlockingWindow window : appointments.findBlockingWindows(
-                businessId, staffMemberIds, from, to)) {
+        for (BlockingWindow window : windows) {
             grouped.computeIfAbsent(window.staffMemberId(), key -> new ArrayList<>())
                     .add(new BusyWindow(window.start(), window.end()));
         }
         Map<UUID, List<BusyWindow>> result = new LinkedHashMap<>();
-        grouped.forEach((staffMemberId, windows) -> result.put(staffMemberId, List.copyOf(windows)));
+        grouped.forEach((staffMemberId, list) -> result.put(staffMemberId, List.copyOf(list)));
         return Map.copyOf(result);
     }
 }

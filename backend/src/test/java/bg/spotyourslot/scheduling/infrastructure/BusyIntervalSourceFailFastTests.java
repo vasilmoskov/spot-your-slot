@@ -10,7 +10,11 @@ import bg.spotyourslot.scheduling.BusyIntervalSource;
 import bg.spotyourslot.scheduling.application.AvailabilityQueryService;
 import bg.spotyourslot.workforce.StaffAvailabilityAccess;
 import java.time.Clock;
+import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.NoUniqueBeanDefinitionException;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
@@ -61,7 +65,23 @@ class BusyIntervalSourceFailFastTests {
     }
 
     private static BusyIntervalSource noBusyTime() {
-        return (businessId, staffMemberIds, from, to) -> Map.of();
+        return new BusyIntervalSource() {
+            @Override
+            public Map<UUID, List<BusyWindow>> findBusyWindows(
+                    UUID businessId, Collection<UUID> staffMemberIds, Instant from, Instant to) {
+                return Map.of();
+            }
+
+            @Override
+            public Map<UUID, List<BusyWindow>> findBusyWindows(
+                    UUID businessId,
+                    Collection<UUID> staffMemberIds,
+                    Instant from,
+                    Instant to,
+                    UUID ignoredAppointmentId) {
+                return Map.of();
+            }
+        };
     }
 
     private static AnnotationConfigApplicationContext context() {

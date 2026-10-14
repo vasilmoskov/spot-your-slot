@@ -51,12 +51,11 @@ public final class AvailabilityEngine {
     public static NavigableSet<Instant> calculateStarts(
             AvailabilityRequest request, StaffAvailabilityInput staff) {
         DayTimeline timeline = new DayTimeline(request.zone());
-        Instant earliestStart = request.now().plus(AvailabilityPolicy.MINIMUM_NOTICE);
-        LocalDate today = LocalDate.ofInstant(request.now(), request.zone());
+        Instant earliestStart = request.now().plus(request.minimumNotice());
         NavigableSet<Instant> starts = new TreeSet<>();
 
-        for (int offset = 0; offset < AvailabilityPolicy.HORIZON_DAYS; offset++) {
-            LocalDate date = today.plusDays(offset);
+        for (int offset = 0; offset < request.dateCount(); offset++) {
+            LocalDate date = request.firstDate().plusDays(offset);
             if (blocksWholeDay(request.businessClosures(), date) || blocksWholeDay(staff.timeOff(), date)) {
                 continue;
             }

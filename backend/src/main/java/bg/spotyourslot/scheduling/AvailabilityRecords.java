@@ -48,6 +48,38 @@ public final class AvailabilityRecords {
     }
 
     /**
+     * The result of a Business-side calculation (ADR-0029 section 1): the starts one StaffMember
+     * can take on an explicit window of Business-local dates, with no minimum notice. It is
+     * deliberately not an {@link AvailabilitySnapshot}, whose window is the fixed public horizon.
+     *
+     * @param timezone the authoritative Business timezone
+     * @param calculatedAt the instant the caller supplied; the calculation read no clock
+     * @param occupiedDuration the duration a slot occupies (zero buffers)
+     * @param firstDate the first Business-local date calculated
+     * @param lastDate the last Business-local date calculated, inclusive
+     * @param slots ordered by start instant
+     */
+    public record BusinessAvailability(
+            ZoneId timezone,
+            Instant calculatedAt,
+            Duration occupiedDuration,
+            LocalDate firstDate,
+            LocalDate lastDate,
+            List<AvailabilitySlot> slots) {
+        public BusinessAvailability {
+            Objects.requireNonNull(timezone, "timezone");
+            Objects.requireNonNull(calculatedAt, "calculatedAt");
+            Objects.requireNonNull(occupiedDuration, "occupiedDuration");
+            Objects.requireNonNull(firstDate, "firstDate");
+            Objects.requireNonNull(lastDate, "lastDate");
+            slots = List.copyOf(slots);
+            if (lastDate.isBefore(firstDate)) {
+                throw new IllegalArgumentException("The last date must not precede the first date");
+            }
+        }
+    }
+
+    /**
      * The result of a calculation for a selection of one to five Services (ADR-0027).
      *
      * @param snapshot the slots of the whole visit; {@link AvailabilitySnapshot#occupiedDuration()}

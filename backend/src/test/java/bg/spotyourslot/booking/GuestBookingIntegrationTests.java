@@ -273,7 +273,11 @@ class GuestBookingIntegrationTests extends BookingIntegrationTest {
 
     private void confirmedAppointment(UUID staff, Instant start, int minutes, String status) {
         Map<String, Object> row = AppointmentFixtures.row(staffTenant(staff), start, minutes);
-        row.put("status", status);
+        if ("CANCELLED".equals(status)) {
+            AppointmentFixtures.cancelled(row);
+        } else {
+            row.put("status", status);
+        }
         fixtures.insertRow(row);
     }
 

@@ -65,15 +65,19 @@ class AppointmentStoreFailureTranslationTests {
         // The V13 constraints of the visit and its Service lines.
         "appointment_service_count_range", "appointment_service_position_range",
         "appointment_service_duration_range", "appointment_service_price_nonnegative",
-        "appointment_service_line_name_canonical", "appointment_visit_consistent"})
+        "appointment_service_line_name_canonical", "appointment_visit_consistent",
+        // The V14 cancellation attribution and internal note.
+        "appointment_cancellation_consistent", "appointment_cancelled_at_valid",
+        "appointment_internal_note_plain_text"})
     void everyApprovedCheckConstraintIsInvalidData(String constraint) {
         assertThat(translate(error("23514", constraint, null, null))).isInstanceOf(InvalidData.class);
     }
 
     @Test
-    void theStoreKnowsExactlyTheChecksAndForeignKeysOfV11AndV13() {
-        // Nineteen checks and four foreign keys of V11, plus six checks and two foreign keys of V13.
-        assertThat(AppointmentStore.CHECK_CONSTRAINTS).hasSize(25);
+    void theStoreKnowsExactlyTheChecksAndForeignKeysOfV11V13AndV14() {
+        // Nineteen checks and four foreign keys of V11, plus six checks and two foreign keys of V13,
+        // plus three checks of V14.
+        assertThat(AppointmentStore.CHECK_CONSTRAINTS).hasSize(28);
         assertThat(AppointmentStore.FOREIGN_KEYS).hasSize(6);
         assertThat(AppointmentStore.LINE_UNIQUE_CONSTRAINTS)
                 .containsExactlyInAnyOrder("appointment_service_pkey", "appointment_service_distinct");

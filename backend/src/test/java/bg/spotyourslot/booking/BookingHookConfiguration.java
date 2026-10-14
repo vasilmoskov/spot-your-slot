@@ -12,13 +12,16 @@ import bg.spotyourslot.customer.application.CustomerIdentificationService;
 import bg.spotyourslot.integration.MutableTestClock;
 import bg.spotyourslot.scheduling.AvailabilityQuery;
 import bg.spotyourslot.scheduling.AvailabilityRecords.AvailabilitySnapshot;
+import bg.spotyourslot.scheduling.AvailabilityRecords.BusinessAvailability;
 import bg.spotyourslot.scheduling.AvailabilityRecords.SelectionAvailability;
 import bg.spotyourslot.scheduling.application.AvailabilityQueryService;
 import bg.spotyourslot.workforce.StaffBookingAccess;
 import bg.spotyourslot.workforce.StaffBookingAccess.BookingStaffMember;
 import bg.spotyourslot.workforce.application.StaffBookingAccessService;
 import jakarta.persistence.EntityManagerFactory;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -120,6 +123,21 @@ public class BookingHookConfiguration {
                     UUID businessId, Collection<UUID> serviceIds, UUID staffMemberIdOrNull) {
                 hooks.fire(Point.BEFORE_AVAILABILITY);
                 return delegate.calculate(businessId, serviceIds, staffMemberIdOrNull);
+            }
+
+            @Override
+            public BusinessAvailability calculateForBusiness(
+                    UUID businessId,
+                    Duration occupiedDuration,
+                    UUID staffMemberId,
+                    LocalDate firstDate,
+                    LocalDate lastDate,
+                    Instant now,
+                    UUID ignoredAppointmentIdOrNull) {
+                hooks.fire(Point.BEFORE_AVAILABILITY);
+                return delegate.calculateForBusiness(
+                        businessId, occupiedDuration, staffMemberId, firstDate, lastDate, now,
+                        ignoredAppointmentIdOrNull);
             }
         };
     }

@@ -12,6 +12,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.dao.DataAccessException;
@@ -84,6 +85,44 @@ public class StaffAvailabilityReadStore {
         List<EligibleStaffRow> result = new ArrayList<>(byStaffMember.size());
         byStaffMember.forEach((id, periods) -> result.add(new EligibleStaffRow(id, periods)));
         return List.copyOf(result);
+    }
+
+    /**
+     * One joined statement: the active StaffMember of the Business with its recurring periods,
+     * with no assignment predicate. A missing, foreign, or inactive StaffMember gives empty.
+     */
+    public Optional<EligibleStaffRow> findActiveWithPeriods(UUID businessId, UUID staffMemberId) {
+        List<PeriodRow> rows;
+        try {
+            rows = jdbc.sql("""
+                            SELECT m.id AS staff_member_id,
+                                   p.weekday, p.start_time, p.end_time
+                            FROM staff_member m
+                            LEFT JOIN staff_working_period p
+                              ON p.business_id = m.business_id
+                             AND p.staff_member_id = m.id
+                            WHERE m.business_id = :businessId
+                              AND m.id = :staffMemberId
+                              AND m.active
+                            ORDER BY p.weekday ASC, p.start_time ASC, p.end_time ASC
+                            """)
+                    .param("businessId", businessId)
+                    .param("staffMemberId", staffMemberId)
+                    .query(this::periodRow)
+                    .list();
+        } catch (DataAccessException exception) {
+            throw new UnexpectedFailure(exception);
+        }
+        if (rows.isEmpty()) {
+            return Optional.empty();
+        }
+        List<WorkingPeriod> periods = new ArrayList<>();
+        for (PeriodRow row : rows) {
+            if (row.period() != null) {
+                periods.add(row.period());
+            }
+        }
+        return Optional.of(new EligibleStaffRow(rows.get(0).staffMemberId(), periods));
     }
 
     private PeriodRow periodRow(ResultSet resultSet, int rowNumber) throws SQLException {

@@ -4,6 +4,7 @@ import bg.spotyourslot.workforce.StaffWorkingScheduleRecords.WorkingPeriod;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -33,6 +34,19 @@ public interface StaffAvailabilityAccess {
      * @param serviceIds one or more distinct identifiers; anything else is rejected
      */
     List<EligibleStaffMember> findEligibleForServices(UUID businessId, Collection<UUID> serviceIds);
+
+    /**
+     * The recurring weekly periods of one active StaffMember, found by identifier and independent
+     * of every Service assignment (ADR-0029 section 1): a Business-side time-only move must not
+     * depend on an assignment that was removed after the Appointment was booked. One joined
+     * statement inside the caller's transaction; a caller without a transaction is rejected, and no
+     * lock is taken.
+     *
+     * @return the StaffMember with periods ordered by weekday, start, then end (an empty list when
+     *         none are configured), or empty when the StaffMember is missing, foreign to the
+     *         Business, or inactive (indistinguishable)
+     */
+    Optional<EligibleStaffMember> findActiveWithWeeklyPeriods(UUID businessId, UUID staffMemberId);
 
     /**
      * @param weeklyPeriods recurring local periods ordered by weekday, start, then end

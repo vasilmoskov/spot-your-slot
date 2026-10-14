@@ -8,19 +8,11 @@ import bg.spotyourslot.booking.domain.Appointment;
 import bg.spotyourslot.booking.domain.NewAppointment;
 import bg.spotyourslot.booking.infrastructure.AppointmentPersistenceException.OverlapConflict;
 import bg.spotyourslot.integration.PostgresIntegrationTest;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Supplier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -39,7 +31,6 @@ import org.springframework.transaction.support.TransactionTemplate;
         statements = "TRUNCATE business CASCADE",
         executionPhase = Sql.ExecutionPhase.BEFORE_TEST_METHOD)
 class AppointmentOverlapConcurrencyIntegrationTests extends PostgresIntegrationTest {
-    private static final Duration TIMEOUT = Duration.ofSeconds(10);
     private static final Instant START = Instant.parse("2026-11-10T09:00:00Z");
 
     @Autowired
@@ -66,10 +57,10 @@ class AppointmentOverlapConcurrencyIntegrationTests extends PostgresIntegrationT
         NewAppointment second = AppointmentFixtures.online(tenant, START, 60);
 
         try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
-            Race race = new Race(executor);
+            AppointmentRace race = new AppointmentRace(executor, transactionManager, jdbc);
             race.holdFirst(() -> store.insert(first));
             race.startSecond(() -> store.insert(second));
-            race.assertSecondWaitsOnALock();
+            race.assertSecondWaitsOnTheFirst();
 
             race.commitFirst();
 
@@ -90,10 +81,10 @@ class AppointmentOverlapConcurrencyIntegrationTests extends PostgresIntegrationT
                 tenant, START.plusSeconds(45 * 60L), 60);
 
         try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
-            Race race = new Race(executor);
+            AppointmentRace race = new AppointmentRace(executor, transactionManager, jdbc);
             race.holdFirst(() -> store.insert(first));
             race.startSecond(() -> store.insert(second));
-            race.assertSecondWaitsOnALock();
+            race.assertSecondWaitsOnTheFirst();
 
             race.commitFirst();
 
@@ -111,14 +102,14 @@ class AppointmentOverlapConcurrencyIntegrationTests extends PostgresIntegrationT
         NewAppointment second = AppointmentFixtures.online(tenant, START, 60);
 
         try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
-            Race race = new Race(executor);
+            AppointmentRace race = new AppointmentRace(executor, transactionManager, jdbc);
             race.holdFirst(() -> store.insert(first));
             race.startSecond(() -> store.insert(second));
-            race.assertSecondWaitsOnALock();
+            race.assertSecondWaitsOnTheFirst();
 
             race.rollBackFirst();
 
-            assertThat(race.firstOutcome()).isInstanceOf(RollbackRequested.class);
+            assertThat(race.firstOutcome()).isInstanceOf(AppointmentRace.RollbackRequested.class);
             assertThat(race.secondOutcome()).isInstanceOf(Appointment.class);
         }
 
@@ -133,7 +124,7 @@ class AppointmentOverlapConcurrencyIntegrationTests extends PostgresIntegrationT
         NewAppointment second = AppointmentFixtures.online(tenant, START.plusSeconds(3600), 30);
 
         try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
-            Race race = new Race(executor);
+            AppointmentRace race = new AppointmentRace(executor, transactionManager, jdbc);
             race.holdFirst(() -> store.insert(first));
             race.startSecond(() -> store.insert(second));
 
@@ -162,7 +153,7 @@ class AppointmentOverlapConcurrencyIntegrationTests extends PostgresIntegrationT
             NewAppointment concurrent = AppointmentFixtures.online(
                     others[index], held.startAt(), 60);
             try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
-                Race race = new Race(executor);
+                AppointmentRace race = new AppointmentRace(executor, transactionManager, jdbc);
                 race.holdFirst(() -> store.insert(held));
                 race.startSecond(() -> store.insert(concurrent));
 
@@ -180,11 +171,11 @@ class AppointmentOverlapConcurrencyIntegrationTests extends PostgresIntegrationT
     @Test
     void aCancelledRowNeverWaitsForAnUncommittedConfirmedRow() {
         NewAppointment first = AppointmentFixtures.online(tenant, START, 60);
-        Map<String, Object> cancelled = AppointmentFixtures.row(tenant, START, 60);
-        cancelled.put("status", "CANCELLED");
+        Map<String, Object> cancelled = AppointmentFixtures.cancelled(
+                AppointmentFixtures.row(tenant, START, 60));
 
         try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
-            Race race = new Race(executor);
+            AppointmentRace race = new AppointmentRace(executor, transactionManager, jdbc);
             race.holdFirst(() -> store.insert(first));
             race.startSecond(() -> {
                 fixtures.insertRow(cancelled);
@@ -239,129 +230,5 @@ class AppointmentOverlapConcurrencyIntegrationTests extends PostgresIntegrationT
 
     private TransactionTemplate transaction() {
         return new TransactionTemplate(transactionManager);
-    }
-
-    private int backendPid() {
-        return jdbc.sql("SELECT pg_backend_pid()").query(Integer.class).single();
-    }
-
-    private static final class RollbackRequested extends RuntimeException {
-        private static final long serialVersionUID = 1L;
-
-        private RollbackRequested() {
-            super("rollback requested", null, false, false);
-        }
-    }
-
-    private final class Race {
-        private final ExecutorService executor;
-        private final CountDownLatch firstWrote = new CountDownLatch(1);
-        private final CountDownLatch releaseFirst = new CountDownLatch(1);
-        private final CountDownLatch secondStarted = new CountDownLatch(1);
-        private final AtomicInteger secondBackendPid = new AtomicInteger();
-        private volatile boolean commit = true;
-        private CompletableFuture<Object> first;
-        private CompletableFuture<Object> second;
-
-        private Race(ExecutorService executor) {
-            this.executor = executor;
-        }
-
-        private void holdFirst(Supplier<Object> operation) {
-            first = CompletableFuture.supplyAsync(() -> attempt(() -> transaction().execute(
-                    status -> {
-                        Object result = operation.get();
-                        firstWrote.countDown();
-                        await(releaseFirst, "the first transaction was not released");
-                        if (!commit) {
-                            throw new RollbackRequested();
-                        }
-                        return result;
-                    })), executor);
-            await(firstWrote, "the first transaction did not perform its write");
-        }
-
-        private void startSecond(Supplier<Object> operation) {
-            second = CompletableFuture.supplyAsync(() -> attempt(() -> transaction().execute(
-                    status -> {
-                        secondBackendPid.set(backendPid());
-                        secondStarted.countDown();
-                        return operation.get();
-                    })), executor);
-            await(secondStarted, "the second transaction did not start");
-        }
-
-        private void assertSecondWaitsOnALock() {
-            long deadline = System.nanoTime() + TIMEOUT.toNanos();
-            while (System.nanoTime() < deadline) {
-                boolean waiting = jdbc.sql("""
-                                SELECT count(*) FROM pg_stat_activity
-                                WHERE pid = :pid AND wait_event_type = 'Lock'
-                                """)
-                        .param("pid", secondBackendPid.get())
-                        .query(Long.class)
-                        .single() > 0;
-                if (waiting) {
-                    assertThat(second).isNotDone();
-                    return;
-                }
-                Thread.onSpinWait();
-            }
-            throw new AssertionError("PostgreSQL lock wait was not observed");
-        }
-
-        private Object secondOutcomeWhileFirstIsOpen() {
-            assertThat(first).isNotDone();
-            Object outcome = completed(second);
-            assertThat(first).isNotDone();
-            return outcome;
-        }
-
-        private void commitFirst() {
-            releaseFirst.countDown();
-        }
-
-        private void rollBackFirst() {
-            commit = false;
-            releaseFirst.countDown();
-        }
-
-        private Object firstOutcome() {
-            return completed(first);
-        }
-
-        private Object secondOutcome() {
-            return completed(second);
-        }
-    }
-
-    private static Object attempt(Supplier<Object> operation) {
-        try {
-            return operation.get();
-        } catch (RuntimeException failure) {
-            return failure;
-        }
-    }
-
-    private static Object completed(CompletableFuture<Object> future) {
-        try {
-            return future.get(TIMEOUT.toSeconds(), TimeUnit.SECONDS);
-        } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
-            throw new AssertionError("interrupted", interrupted);
-        } catch (ExecutionException | TimeoutException failure) {
-            throw new AssertionError("the operation did not complete", failure);
-        }
-    }
-
-    private static void await(CountDownLatch latch, String failure) {
-        try {
-            if (!latch.await(TIMEOUT.toSeconds(), TimeUnit.SECONDS)) {
-                throw new AssertionError(failure);
-            }
-        } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
-            throw new AssertionError(failure, interrupted);
-        }
     }
 }

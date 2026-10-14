@@ -92,7 +92,7 @@ class AppointmentSchemaIntegrationTests extends PostgresIntegrationTest {
     // ---- migration integrity -------------------------------------------------
 
     @Test
-    void migrationsFromEmptyAreExactlyV1ThroughV13WithV13Newest() {
+    void migrationsFromEmptyAreExactlyV1ThroughV14WithV14Newest() {
         List<String> versions = jdbc.sql("""
                         SELECT version
                         FROM flyway_schema_history
@@ -103,7 +103,7 @@ class AppointmentSchemaIntegrationTests extends PostgresIntegrationTest {
                 .list();
 
         assertThat(versions)
-                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13");
+                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14");
     }
 
     @Test
@@ -206,7 +206,10 @@ class AppointmentSchemaIntegrationTests extends PostgresIntegrationTest {
                 "version|bigint|NO||64,0",
                 "created_at|timestamp with time zone|NO||,",
                 "updated_at|timestamp with time zone|NO||,",
-                "service_count|smallint|NO||16,0");
+                "service_count|smallint|NO||16,0",
+                "cancelled_at|timestamp with time zone|YES||,",
+                "cancelled_by|character varying|YES|16|,",
+                "internal_note|character varying|YES|500|,");
     }
 
     @Test
@@ -230,6 +233,8 @@ class AppointmentSchemaIntegrationTests extends PostgresIntegrationTest {
                 "appointment_end_matches_duration", "appointment_occupied_until_equals_end",
                 "appointment_price_nonnegative", "appointment_timezone_not_blank",
                 "appointment_service_count_range",
+                "appointment_cancellation_consistent", "appointment_cancelled_at_valid",
+                "appointment_internal_note_plain_text",
                 "appointment_service_name_canonical", "appointment_staff_display_name_canonical",
                 "appointment_customer_note_plain_text", "appointment_public_reference_format",
                 "appointment_attempt_hash_length", "appointment_fingerprint_length",
@@ -357,15 +362,22 @@ class AppointmentSchemaIntegrationTests extends PostgresIntegrationTest {
 
     // ---- CHECK constraints ---------------------------------------------------
 
+    /**
+     * A status outside the domain breaks both appointment_status_valid and the V14 cancellation
+     * rule. PostgreSQL evaluates CHECK constraints in name order, so the cancellation rule reports
+     * first; the status rule itself is asserted to exist by the constraint-list test.
+     */
+    private static final String STATUS_OUTSIDE_DOMAIN = "appointment_cancellation_consistent";
+
     static List<Arguments> checkCases() {
         Instant end = START.plusSeconds(30 * 60L);
         return List.of(
                 check("source", "WALKIN", "appointment_source_valid"),
-                check("status", "PENDING", "appointment_status_valid"),
-                check("status", "COMPLETED", "appointment_status_valid"),
-                check("status", "NO_SHOW", "appointment_status_valid"),
-                check("status", "CANCELED", "appointment_status_valid"),
-                check("status", "confirmed", "appointment_status_valid"),
+                check("status", "PENDING", STATUS_OUTSIDE_DOMAIN),
+                check("status", "COMPLETED", STATUS_OUTSIDE_DOMAIN),
+                check("status", "NO_SHOW", STATUS_OUTSIDE_DOMAIN),
+                check("status", "CANCELED", STATUS_OUTSIDE_DOMAIN),
+                check("status", "confirmed", STATUS_OUTSIDE_DOMAIN),
                 check("price_eur", new BigDecimal("-0.01"), "appointment_price_nonnegative"),
                 check("timezone", "", "appointment_timezone_not_blank"),
                 check("timezone", " Europe/Sofia", "appointment_timezone_not_blank"),
@@ -380,6 +392,15 @@ class AppointmentSchemaIntegrationTests extends PostgresIntegrationTest {
                 check("customer_note", "ред\u0001ред", "appointment_customer_note_plain_text"),
                 check("customer_note", "ред\rред", "appointment_customer_note_plain_text"),
                 check("customer_note", "ред\u007Fред", "appointment_customer_note_plain_text"),
+                check("internal_note", "", "appointment_internal_note_plain_text"),
+                check("internal_note", " бележка", "appointment_internal_note_plain_text"),
+                check("internal_note", "бележка\n", "appointment_internal_note_plain_text"),
+                check("internal_note", "ред\u0001ред", "appointment_internal_note_plain_text"),
+                check("internal_note", "ред\rред", "appointment_internal_note_plain_text"),
+                check("internal_note", "ред\u007Fред", "appointment_internal_note_plain_text"),
+                check("cancelled_at", START, "appointment_cancellation_consistent"),
+                check("cancelled_by", "BUSINESS", "appointment_cancellation_consistent"),
+                check("cancelled_by", "UNKNOWN", "appointment_cancellation_consistent"),
                 check("public_reference", "abcdefghjk", "appointment_public_reference_format"),
                 check("public_reference", "IIIIIIIIII", "appointment_public_reference_format"),
                 check("public_reference", "OOOOOOOOOO", "appointment_public_reference_format"),
@@ -759,13 +780,13 @@ class AppointmentSchemaIntegrationTests extends PostgresIntegrationTest {
 
     @Test
     void cancelledRowsNeverBlockInEitherDirection() {
-        Map<String, Object> cancelled = AppointmentFixtures.row(tenant, START, 60);
-        cancelled.put("status", "CANCELLED");
+        Map<String, Object> cancelled = AppointmentFixtures.cancelled(
+                AppointmentFixtures.row(tenant, START, 60));
         fixtures.insertRow(cancelled);
 
         fixtures.insertRow(AppointmentFixtures.row(tenant, START, 60));
-        Map<String, Object> secondCancelled = AppointmentFixtures.row(tenant, START, 60);
-        secondCancelled.put("status", "CANCELLED");
+        Map<String, Object> secondCancelled = AppointmentFixtures.cancelled(
+                AppointmentFixtures.row(tenant, START, 60));
         fixtures.insertRow(secondCancelled);
 
         assertThat(count()).isEqualTo(3L);
@@ -773,20 +794,36 @@ class AppointmentSchemaIntegrationTests extends PostgresIntegrationTest {
 
     @Test
     void theConstraintAlsoGuardsUpdatesThatMakeARowBlockingAgain() {
-        Map<String, Object> cancelled = AppointmentFixtures.row(tenant, START, 60);
-        cancelled.put("status", "CANCELLED");
+        Map<String, Object> cancelled = AppointmentFixtures.cancelled(
+                AppointmentFixtures.row(tenant, START, 60));
         fixtures.insertRow(cancelled);
         fixtures.insertRow(AppointmentFixtures.row(tenant, START, 60));
 
-        Violation violation = violationOf(() -> jdbc.sql(
+        // Restoring only the status is refused by the strict cancellation CHECK, which PostgreSQL
+        // evaluates before the exclusion index entry is inserted.
+        Violation attribution = violationOf(() -> jdbc.sql(
                         "UPDATE appointment SET status = 'CONFIRMED' WHERE id = :id")
+                .param("id", cancelled.get("id")).update());
+        assertThat(attribution.sqlState()).isEqualTo(CHECK_VIOLATION);
+        assertThat(attribution.constraint()).isEqualTo("appointment_cancellation_consistent");
+
+        // With the attribution cleared as well, the exclusion constraint is what refuses it.
+        Violation violation = violationOf(() -> jdbc.sql("""
+                        UPDATE appointment
+                        SET status = 'CONFIRMED', cancelled_by = NULL, cancelled_at = NULL
+                        WHERE id = :id
+                        """)
                 .param("id", cancelled.get("id")).update());
 
         assertThat(violation.sqlState()).isEqualTo(EXCLUSION_VIOLATION);
         assertThat(violation.constraint()).isEqualTo("appointment_staff_no_overlap");
 
-        jdbc.sql("UPDATE appointment SET status = 'CANCELLED' WHERE status = 'CONFIRMED'").update();
-        jdbc.sql("UPDATE appointment SET status = 'CONFIRMED' WHERE id = :id")
+        fixtures.cancelAllConfirmed();
+        jdbc.sql("""
+                        UPDATE appointment
+                        SET status = 'CONFIRMED', cancelled_by = NULL, cancelled_at = NULL
+                        WHERE id = :id
+                        """)
                 .param("id", cancelled.get("id")).update();
         assertThat(count()).isEqualTo(2L);
     }

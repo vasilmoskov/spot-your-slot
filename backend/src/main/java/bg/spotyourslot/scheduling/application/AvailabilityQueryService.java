@@ -14,6 +14,7 @@ import bg.spotyourslot.scheduling.AvailabilityApplicationException.StaffMemberNo
 import bg.spotyourslot.scheduling.AvailabilityQuery;
 import bg.spotyourslot.scheduling.AvailabilityRecords.AvailabilitySlot;
 import bg.spotyourslot.scheduling.AvailabilityRecords.AvailabilitySnapshot;
+import bg.spotyourslot.scheduling.AvailabilityRecords.BusinessAvailability;
 import bg.spotyourslot.scheduling.AvailabilityRecords.SelectionAvailability;
 import bg.spotyourslot.scheduling.BusyIntervalSource;
 import bg.spotyourslot.scheduling.BusyIntervalSource.BusyWindow;
@@ -38,6 +39,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumMap;
@@ -136,6 +138,105 @@ public class AvailabilityQueryService implements AvailabilityQuery {
         }
     }
 
+    @Override
+    @Transactional(
+            isolation = Isolation.REPEATABLE_READ,
+            readOnly = true,
+            noRollbackFor = {BusinessNotBookable.class, StaffMemberNotEligible.class})
+    public BusinessAvailability calculateForBusiness(
+            UUID businessId,
+            Duration occupiedDuration,
+            UUID staffMemberId,
+            LocalDate firstDate,
+            LocalDate lastDate,
+            Instant now,
+            UUID ignoredAppointmentIdOrNull) {
+        Objects.requireNonNull(businessId, "businessId");
+        Objects.requireNonNull(staffMemberId, "staffMemberId");
+        Objects.requireNonNull(now, "now");
+        requireBusinessSideInputs(occupiedDuration, firstDate, lastDate);
+        requireSnapshotIsolation();
+        try {
+            return calculateBusinessSide(
+                    businessId, occupiedDuration, staffMemberId, firstDate, lastDate, now,
+                    ignoredAppointmentIdOrNull);
+        } catch (AvailabilityApplicationException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            throw new AvailabilityFailure(exception);
+        }
+    }
+
+    /** Caller errors of the Business-side entry, rejected before any data read. */
+    private static void requireBusinessSideInputs(
+            Duration occupiedDuration, LocalDate firstDate, LocalDate lastDate) {
+        Objects.requireNonNull(occupiedDuration, "occupiedDuration");
+        Objects.requireNonNull(firstDate, "firstDate");
+        Objects.requireNonNull(lastDate, "lastDate");
+        long minutes = occupiedDuration.toMinutes();
+        if (!occupiedDuration.equals(Duration.ofMinutes(minutes))
+                || minutes < MIN_SERVICE_MINUTES
+                || minutes > MAX_VISIT_MINUTES) {
+            throw new IllegalArgumentException("The occupied duration must be 1 to 480 whole minutes");
+        }
+        if (firstDate.isBefore(AvailabilityPolicy.BUSINESS_FIRST_SUPPORTED_DATE)
+                || lastDate.isAfter(AvailabilityPolicy.BUSINESS_LAST_SUPPORTED_DATE)) {
+            throw new IllegalArgumentException("The date window is outside the supported dates");
+        }
+        if (lastDate.isBefore(firstDate)
+                || ChronoUnit.DAYS.between(firstDate, lastDate) + 1
+                        > AvailabilityPolicy.BUSINESS_MAX_DATES) {
+            throw new IllegalArgumentException("The date window must hold between one and 31 dates");
+        }
+    }
+
+    private BusinessAvailability calculateBusinessSide(
+            UUID businessId,
+            Duration occupiedDuration,
+            UUID staffMemberId,
+            LocalDate firstDate,
+            LocalDate lastDate,
+            Instant now,
+            UUID ignoredAppointmentId) {
+        BusinessScheduleContext context = businesses.findScheduleContext(businessId)
+                .filter(found -> found.status() == LifecycleStatus.ACTIVE)
+                .orElseThrow(BusinessNotBookable::new);
+        ZoneId zone = context.timezone();
+
+        EligibleStaffMember member = staffMembers.findActiveWithWeeklyPeriods(businessId, staffMemberId)
+                .orElseThrow(StaffMemberNotEligible::new);
+        if (!member.id().equals(staffMemberId)) {
+            throw new IllegalStateException("Workforce returned another StaffMember");
+        }
+
+        // Zone-rule midnights, so a daylight-saving day is 23 or 25 hours.
+        Instant windowStart = firstDate.atStartOfDay(zone).toInstant();
+        Instant windowEnd = lastDate.plusDays(1).atStartOfDay(zone).toInstant();
+        List<ScheduleException> storedExceptions = exceptions.findOverlappingForStaff(
+                businessId, firstDate, lastDate, List.of(staffMemberId));
+        requireSameBusiness(storedExceptions, businessId);
+        Map<UUID, List<BusyInterval>> busyByStaff = busyIntervalsFor(
+                businessId, List.of(staffMemberId), windowStart, windowEnd, ignoredAppointmentId);
+
+        List<AvailableSlot> slots = AvailabilityEngine.calculate(new AvailabilityRequest(
+                zone,
+                occupiedDuration,
+                now,
+                AvailabilityPolicy.BUSINESS_MINIMUM_NOTICE,
+                firstDate,
+                (int) (ChronoUnit.DAYS.between(firstDate, lastDate) + 1),
+                ScheduleExceptionInputs.businessClosures(storedExceptions),
+                List.of(new StaffAvailabilityInput(
+                        staffMemberId,
+                        recurringPeriods(member.weeklyPeriods()),
+                        ScheduleExceptionInputs.overrides(staffMemberId, storedExceptions),
+                        ScheduleExceptionInputs.additionalPeriods(staffMemberId, storedExceptions),
+                        ScheduleExceptionInputs.timeOff(staffMemberId, storedExceptions),
+                        busyByStaff.getOrDefault(staffMemberId, List.of())))));
+        return new BusinessAvailability(
+                zone, now, occupiedDuration, firstDate, lastDate, publishedSlots(slots));
+    }
+
     /** A caller error, rejected before any clock or data read: 1..5 distinct non-null identifiers. */
     private static Set<UUID> validatedSelection(Collection<UUID> serviceIds) {
         Objects.requireNonNull(serviceIds, "serviceIds");
@@ -205,7 +306,7 @@ public class AvailabilityQueryService implements AvailabilityQuery {
                 businessId, firstDate, lastDate, staffMemberIds);
         requireSameBusiness(storedExceptions, businessId);
         Map<UUID, List<BusyInterval>> busyByStaff = busyIntervalsFor(
-                businessId, staffMemberIds, windowStart, windowEnd);
+                businessId, staffMemberIds, windowStart, windowEnd, null);
 
         List<LocalBlock> closures = ScheduleExceptionInputs.businessClosures(storedExceptions);
         List<StaffAvailabilityInput> inputs = new ArrayList<>(eligible.size());
@@ -287,9 +388,15 @@ public class AvailabilityQueryService implements AvailabilityQuery {
     }
 
     private Map<UUID, List<BusyInterval>> busyIntervalsFor(
-            UUID businessId, List<UUID> staffMemberIds, Instant from, Instant to) {
-        Map<UUID, List<BusyWindow>> returned = busyIntervals.findBusyWindows(
-                businessId, List.copyOf(staffMemberIds), from, to);
+            UUID businessId,
+            List<UUID> staffMemberIds,
+            Instant from,
+            Instant to,
+            UUID ignoredAppointmentIdOrNull) {
+        Map<UUID, List<BusyWindow>> returned = ignoredAppointmentIdOrNull == null
+                ? busyIntervals.findBusyWindows(businessId, List.copyOf(staffMemberIds), from, to)
+                : busyIntervals.findBusyWindows(
+                        businessId, List.copyOf(staffMemberIds), from, to, ignoredAppointmentIdOrNull);
         Objects.requireNonNull(returned, "busy windows");
         Set<UUID> requested = new HashSet<>(staffMemberIds);
         Map<UUID, List<BusyInterval>> result = new HashMap<>();

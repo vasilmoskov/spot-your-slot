@@ -43,6 +43,14 @@ class AvailabilityMutationInventoryTests {
         ADDS_AVAILABILITY_ONLY,
         /** The booking's own write. */
         BOOKING_WRITE,
+        /**
+         * A Business-side change of one existing Appointment (ADR-0028, ADR-0029): a reschedule or
+         * reassignment, a cancellation, or an internal-note edit. A reschedule takes the shared
+         * revision guard and StaffMember locks like a booking, and the exclusion constraint judges
+         * the new time; a cancellation only frees time and a note changes nothing about time. None
+         * is a schedule mutation, so none bumps the revision.
+         */
+        APPOINTMENT_LIFECYCLE,
         /** The revision row itself. */
         REVISION_ROW,
         /** Does not read or change availability or booking eligibility. */
@@ -84,6 +92,8 @@ class AvailabilityMutationInventoryTests {
         put(inventory, Protection.BUMPED, "ScheduleExceptionStore", "INSERT", "schedule_exception_period");
         // Booking and the revision itself.
         put(inventory, Protection.BOOKING_WRITE, "AppointmentStore", "INSERT", "appointment");
+        // The three conditional UPDATE statements of one Appointment (checked individually below).
+        put(inventory, Protection.APPOINTMENT_LIFECYCLE, "AppointmentStore", "UPDATE", "appointment");
         // The Service lines of a visit (ADR-0027): the booking's own write, in the same transaction.
         put(inventory, Protection.BOOKING_WRITE, "AppointmentStore", "INSERT", "appointment_service");
         put(inventory, Protection.REVISION_ROW,
@@ -126,6 +136,49 @@ class AvailabilityMutationInventoryTests {
      */
     private static boolean isUnrelatedWrite(String storeClass) {
         return storeClass.equals("IdentityStore") || storeClass.equals("CustomerStore");
+    }
+
+    /**
+     * The inventory key cannot tell the three {@code UPDATE appointment} statements apart, so their
+     * shapes are pinned here: each is a conditional update scoped to the Business and carrying the
+     * expected version (optimistic concurrency), and the reschedule additionally carries the read
+     * StaffMember, start and status so it only ever changes the row the caller read.
+     */
+    @Test
+    void theThreeAppointmentUpdatesAreEachScopedToTheBusinessAndGuardedByTheExpectedVersion()
+            throws IOException {
+        String source = Files.readString(
+                MAIN_SOURCES.resolve("bg/spotyourslot/booking/infrastructure/AppointmentStore.java"));
+        Matcher updates = Pattern.compile(
+                "UPDATE appointment\\s+SET(.*?)RETURNING", Pattern.DOTALL).matcher(source);
+        Map<String, String> byKind = new TreeMap<>();
+        while (updates.find()) {
+            String statement = updates.group(0).replaceAll("\\s+", " ");
+            String kind = statement.contains("status = 'CANCELLED'")
+                    ? "cancel"
+                    : statement.contains("internal_note = ") ? "note" : "reschedule";
+            assertThat(byKind.put(kind, statement)).as("one %s statement", kind).isNull();
+        }
+
+        assertThat(byKind.keySet()).containsExactly("cancel", "note", "reschedule");
+        byKind.forEach((kind, statement) -> {
+            assertThat(statement).as(kind).contains("WHERE business_id = :businessId AND id = :id");
+            assertThat(statement).as(kind).contains("AND version = :expectedVersion");
+            assertThat(statement).as(kind).contains("version = version + 1");
+        });
+        assertThat(byKind.get("reschedule"))
+                .contains("AND status = 'CONFIRMED'")
+                .contains("AND staff_member_id = :expectedStaffMemberId")
+                .contains("AND start_at = :expectedStartAt");
+        assertThat(byKind.get("cancel"))
+                .contains("AND status = 'CONFIRMED'")
+                .contains("AND start_at > :now")
+                .contains("cancelled_by = 'BUSINESS'");
+        assertThat(byKind.get("note")).doesNotContain("status").doesNotContain("start_at");
+        // None of them writes a snapshot, a total, the Customer, or the Services of the visit.
+        byKind.values().forEach(statement -> assertThat(statement)
+                .doesNotContain("customer_id =", "service_id =", "price_eur =", "duration_minutes =",
+                        "service_name =", "public_reference =", "source ="));
     }
 
     @Test

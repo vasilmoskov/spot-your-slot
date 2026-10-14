@@ -255,7 +255,11 @@ class BookingContractsIntegrationTests extends BookingIntegrationTest {
     private void insert(UUID staff, Instant start, String status) {
         var row = AppointmentFixtures.row(new AppointmentFixtures.Tenant(
                 tenant.business(), tenant.service(), staff, fixtures.customer(tenant.business())), start, 15);
-        row.put("status", status);
+        if ("CANCELLED".equals(status)) {
+            AppointmentFixtures.cancelled(row);
+        } else {
+            row.put("status", status);
+        }
         fixtures.insertRow(row);
     }
 }

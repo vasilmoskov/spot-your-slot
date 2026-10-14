@@ -177,7 +177,7 @@ class AppointmentServiceStoreIntegrationTests extends PostgresIntegrationTest {
         insertCommitted(visit(first.endAt(), lines(2, 30, "5.00"), AppointmentSource.MANUAL, null));
         assertThat(count("appointment")).isEqualTo(2L);
 
-        jdbc.sql("UPDATE appointment SET status = 'CANCELLED' WHERE id = :id").param("id", first.id()).update();
+        fixtures.cancel(first.id());
         insertCommitted(visit(START.plusSeconds(15 * 60L), lines(1, 30, "5.00"), AppointmentSource.MANUAL, null));
 
         assertThat(count("appointment")).isEqualTo(3L);
