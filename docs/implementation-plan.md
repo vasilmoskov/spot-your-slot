@@ -144,8 +144,8 @@ working periods were delivered by issue #16 (see Phase 5).
   booking through the published Customer matching contract delivered by issue #20, automatic
   `CONFIRMED`, cancellation/late flag, audit, and Bulgarian 409 recovery.
 - Issue #18 delivers this in eight phases (`docs/tasks/08a-appointment-core-and-guest-booking.md`;
-  current state: the original phases through the public frontend and its UX refinement are committed, the multi-Service phases M1 to M5 are committed,
-  M6 (the rendered review of the multi-Service journey) is executed and awaits explicit human visual approval, and M7 (browser E2E, replacing the original Phase 8) is not started; issue #18 is not complete): (1) decisions, ADRs, and documentation; (2) the `appointment` table created
+  current state: the original phases through the public frontend and its UX refinement are committed, the multi-Service phases M1 to M6 are committed (M6, the rendered review, was explicitly approved by the product owner),
+  and M7 (browser E2E, replacing the original Phase 8, with the final acceptance matrix in task 08b) is implemented and verified locally and awaits review; issue #18 is not closed and needs the product owner's explicit approval): (1) decisions, ADRs, and documentation; (2) the `appointment` table created
   with its GiST exclusion in `V11`, domain and store, the real busy source, and removal of the placeholder;
   (3) the Business schedule revision guard (`V12`, the `business` contracts) and the schedule mutations'
   participation; (4) booking
@@ -153,7 +153,7 @@ working periods were delivered by issue #16 (see Phase 5).
   abuse protection; (6) the frontend; (7) rendered browser review and human visual approval (a stop gate);
   (8) browser E2E and final acceptance. Production public booking waits for the Business calendar (issue #21).
 - Multi-Service booking (a visit of one to five Services) was decided on 2026-10-07 (ADR-0027, `docs/tasks/08b-multi-service-guest-booking-plan.md`) and is planned as seven separately approved phases M1 to M7
-  (persistence `V13`; availability and eligibility; orchestration and fingerprinting; HTTP; frontend; rendered review; browser E2E). **Phases M1 (persistence, `V13`), M2 (availability and eligibility), M3 (orchestration and fingerprinting), M4 (the public HTTP contract), and M5 (the frontend journey) are implemented, verified, and committed; M6 (the rendered review) is executed, its corrections are in the working tree, and it awaits explicit human visual approval; M7 (browser E2E) has not started; multi-Service booking and issue #18 are not complete**; the original Phase 8 of issue #18 is replaced by M7 and does not start before it.
+  (persistence `V13`; availability and eligibility; orchestration and fingerprinting; HTTP; frontend; rendered review; browser E2E). **Phases M1 (persistence, `V13`), M2 (availability and eligibility), M3 (orchestration and fingerprinting), M4 (the public HTTP contract), and M5 (the frontend journey), and M6 (the rendered review, explicitly approved) are implemented, verified, and committed; M7 (browser E2E and the acceptance reconciliation) is implemented and verified locally and awaits review; issue #18 is not closed and production public booking still depends on issue #21**; the original Phase 8 of issue #18 is replaced by M7 and does not start before it.
 - Amended by ADR-0022 (the earlier text said: "Use only `CONFIRMED`, `CANCELLED_BY_CUSTOMER`,
   `CANCELLED_BY_BUSINESS`, `COMPLETED`, and `NO_SHOW`."): use only `CONFIRMED` and `CANCELLED`; cancellation
   attribution, the late flag, and `COMPLETED`/`NO_SHOW` arrive with the issues that implement them.

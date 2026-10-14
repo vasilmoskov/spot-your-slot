@@ -100,7 +100,7 @@ active Services with price/duration, and available qualified team members. The
 Bulgarian mobile-first flow is:
 
 1. «Избор на услуги»: select one to five Services for one visit (at most 480 minutes in total; decided in
-   ADR-0027, implemented in phases M1 to M5 and not yet visually approved);
+   ADR-0027, implemented in phases M1 to M6, visually approved by the product owner, and verified in real browsers in M7);
 2. «Избор на служител»: select a person or “Без предпочитание”;
 3. «Дата и час»: select an available date and time;
 4. «Вашите данни»: provide a name, a phone and/or an email, and an optional booking
@@ -116,7 +116,7 @@ the Customer policies, a short privacy notice is shown, and there is no verifica
 marketing consent; a displayed slot is never a reservation; the assigned person for “Без предпочитание” is shown
 after confirmation. Production public booking waits for the Business calendar (issue #21).
 
-Multi-Service visit (decided in [ADR-0027](decisions/ADR-0027-book-several-services-as-one-atomic-visit-with-service-lines-a-versioned-set-fingerprint-and-an-explicit-review-consistency-check.md) and [task 08b](tasks/08b-multi-service-guest-booking-plan.md); **implemented through the frontend (phases M1 to M5 committed): the public UI can select and book one to five Services as one atomic visit; the rendered review (M6) awaits the human visual approval and the browser E2E (M7) has not started, so the capability is not complete**): the guest may choose one to five distinct Services with
+Multi-Service visit (decided in [ADR-0027](decisions/ADR-0027-book-several-services-as-one-atomic-visit-with-service-lines-a-versioned-set-fingerprint-and-an-explicit-review-consistency-check.md) and [task 08b](tasks/08b-multi-service-guest-booking-plan.md); **implemented through the frontend (phases M1 to M5 committed): the public UI can select and book one to five Services as one atomic visit; the rendered review (M6) was explicitly approved by the product owner, and the browser E2E (M7) is implemented and verified locally and awaits review, so the capability is not closed**): the guest may choose one to five distinct Services with
 checkboxes (at most 480 minutes in total), sees the selected Services with the total duration and the total EUR price before continuing, and books them as one visit with one StaffMember who supports every selected Service, in one
 continuous interval, reserved by one atomic submission. The Services are performed in the public-profile order, whatever order they were ticked. If a reviewed Service's duration or price changes before the guest confirms, nothing is
 booked and the guest is asked to review and confirm again. Confirmation and replay describe the whole visit.

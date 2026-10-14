@@ -2,11 +2,10 @@
 
 ## Status
 
-**Decided and documented. Phases M1 (persistence), M2 (availability and eligibility), M3 (orchestration and fingerprinting), and M4 (the public HTTP contract) are implemented, verified, and committed; M5 (the frontend journey) is committed; M6 (the rendered browser review) is executed and its two corrections are in the working tree, and it **awaits the human visual approval**; M7 (browser E2E) is not started.** The product owner approved the multi-Service model on 2026-10-07 and the decisions are recorded in
+**Decided, documented, and implemented. Phases M1 (persistence), M2 (availability and eligibility), M3 (orchestration and fingerprinting), M4 (the public HTTP contract), M5 (the frontend journey), and M6 (the rendered browser review, which received explicit human visual approval and is committed in `abd6b3f` together with the approved price-first presentation) are committed. Phase M7 (browser E2E, final verification, and the acceptance reconciliation) is implemented and verified locally and awaits review and the product owner's explicit final approval.** The product owner approved the multi-Service model on 2026-10-07 and the decisions are recorded in
 [ADR-0027](../decisions/ADR-0027-book-several-services-as-one-atomic-visit-with-service-lines-a-versioned-set-fingerprint-and-an-explicit-review-consistency-check.md)
 (read it for the normative contract, schema, fingerprint encoding, and review-consistency check; this task lists the work and the verification). The documentation
-phase, M1 to M5 are done; M6 is executed and awaits the human visual approval. **Current state: the public UI can select and book one to five Services as one atomic visit** (one StaffMember, one POST, one Appointment); M1 to M5 are committed, M6 is executed and awaits explicit human visual approval, and M7 (browser E2E) is not started. **Multi-Service booking is not complete until the remaining review and verification gates pass.** Issue #18 is not complete, issue #19 is unchanged, and production public booking still
-waits for issue #21. The original Phase 8 of issue #18 (browser journeys) is **not started**; the multi-Service browser journeys are phase M7 below and replace it.
+phase and M1 to M6 are committed; M7 is implemented and awaits review. **Current state: the public UI can select and book one to five Services as one atomic visit** (one StaffMember, one POST, one Appointment), and the real-browser journeys of the single-Service and multi-Service paths pass on the unmodified isolated runner. **Issue #18 is not closed and is not marked Done: closure needs the product owner's explicit approval after this phase is reviewed.** Issue #19 remains incomplete where its manual-creation scope is not delivered, and production public booking still waits for issue #21 (the Business must be able to see and manage the appointments it receives). The original Phase 8 of issue #18 (browser journeys) is replaced by phase M7 below, which covers the single-Service and the multi-Service journeys; its record and the final acceptance matrix are at the end of this document.
 
 ## Approved decisions (summary; ADR-0027 is normative)
 
@@ -58,9 +57,9 @@ Each phase is its own change with its own approval, is verified before the next 
 | **M2 Availability and eligibility** (implemented, verified, committed; see the M2 record) | set-based `AvailabilityQuery`; the staff-eligibility contract reports the intersection; summed duration; the booking-options read model; no HTTP | engine and integration tests including a visit across 2026-10-25 |
 | **M3 Orchestration and fingerprinting** (implemented, verified, committed; see the M3 record) | normalized multi-Service request; encoding v2 with golden vectors and v1 kept; the shared unsigned UUID comparator; Service locks through the `ORDER BY id` statement; the review-consistency check; the single insert of the visit and lines; replay of both shapes | transaction, replay-compatibility, concurrency, rollback, and drift tests |
 | **M4 HTTP contract** (implemented, verified, committed; see the M4 record) | strict parser for both shapes; the two read routes; the new response; the two codes; exact security matchers; limiter and body bound unchanged | contract, privacy, security-routing, and compatibility tests |
-| **M5 Frontend** (implemented, verified by automated tests, committed; see the M5 record; **not** visually approved) | checkboxes, selected-Service summary with the total duration and EUR price before «Напред», set state, staff-step empty state, one whole-visit review, confirmation, the reviewed facts in the frozen body, the review-change handling | unit and component tests, lint, build; no attempt or privacy test weakened |
-| **M6 Rendered review** (executed; awaiting the human visual approval; see the M6 record) | the isolated review stack and fixtures through supported APIs; simulated faults only for what supported APIs cannot produce; the human visual checkpoint | screenshots at 1280, 800, 375, and 320 px; keyboard, focus, contrast |
-| **M7 Browser E2E** | Playwright journeys of the multi-Service booking against the real backend (this is the original Phase 8 of issue #18, extended), then the complete suite | the unmodified runner |
+| **M5 Frontend** (implemented, verified by automated tests, committed; see the M5 record) | checkboxes, selected-Service summary with the total duration and EUR price before «Напред», set state, staff-step empty state, one whole-visit review, confirmation, the reviewed facts in the frozen body, the review-change handling | unit and component tests, lint, build; no attempt or privacy test weakened |
+| **M6 Rendered review** (executed, explicitly approved by the product owner, committed in `abd6b3f`; see the M6 record) | the isolated review stack and fixtures through supported APIs; simulated faults only for what supported APIs cannot produce; the human visual checkpoint | screenshots at 1280, 800, 375, and 320 px; keyboard, focus, contrast |
+| **M7 Browser E2E** (implemented and verified locally; awaiting review; see the M7 record and the acceptance matrix) | Playwright journeys of the multi-Service booking against the real backend (this is the original Phase 8 of issue #18, extended), then the complete suite | the unmodified runner |
 
 The stable acceptance for the final UI (M5 and M6): real checkboxes in a labelled group; a polite summary of the selected Services with the total duration and the total EUR price before «Напред»; the limits explained and enforced at the checkboxes; one whole-visit review; the confirmation lists the server-returned Services; the single-Service path (one checked box) behaves as today.
 
@@ -289,7 +288,7 @@ Scope: the public booking journey inside the Business page now books a **visit**
 
 M6 (the rendered human review) was the next phase; its record follows.
 
-## Phase M6 record: the rendered browser review (executed 2026-10-13; awaiting the human visual approval; **not approved**)
+## Phase M6 record: the rendered browser review (executed 2026-10-13; status then: awaiting the human visual approval; since explicitly approved by the product owner and committed in `abd6b3f`)
 
 Scope: a rendered and interactive review of the M5 journey in the built-in browser against a real backend, with two narrowly justified corrections. **No backend, migration, contract, dependency, security-policy, or Playwright file changed.** Base `HEAD` `2b71845` (M5 committed). The visual design, multi-Service booking, and Issue #18 are **not** marked complete; M7 is not started.
 
@@ -333,7 +332,7 @@ Every guest-booking summary that shows a price and a duration together now uses 
 
 ### Observations, limitations, and wording recommendations (for the human review)
 
-- Two profile reads were observed after a first-send review change in the development server (React StrictMode is on in development); the earlier read is aborted by the later one. This was **not** confirmed on a production build and is left for M7.
+- Two profile reads were observed after a first-send review change in the development server (React StrictMode is on in development); the earlier read is aborted by the later one. This was **not** confirmed on a production build at the time (resolved in M7: the production build issues one read, see the M7 record).
 - The failed-refresh state keeps the old review on screen with «Опитайте отново», which here retries the re-read, not the send; the label is shared and the stale price remains visible until the re-read. Recommendation: keep, or name the action.
 - The disabled retry during a Retry-After wait has no countdown or reason. Recommendation: accept for now.
 - The eligible-no-time state offers only «Назад» although the sentence says to change the selection. Recommendation: acceptable; consider adding «Промяна на избора».
@@ -341,4 +340,114 @@ Every guest-booking summary that shows a price and a duration together now uses 
 - The real `SERVICE_UNAVAILABLE` (not `REVIEW_CHANGED`) is what the backend returns for a Service deactivated after review; the vanished-Service notice via `REVIEW_CHANGED` is covered by automated tests only.
 - Page-level horizontal scroll below 320 CSS px (`body { min-width: 320px }`) is pre-existing and global; the approximately 188 CSS px state fails the no-scroll check and is recorded as a limitation; changing it needs a separate product-wide decision.
 - Proposed sentences, assessed in rendered context, **none declared approved:** the selection hint, the two disabled-option reasons, the empty-intersection sentence, the first-send review-changed message, the frozen review-changed message, the too-long message, the removed-Service notice, the privacy sentence, and the leave warnings all fit their places and wrap without clipping at 320; recommendation for each is **keep as proposed**, pending the product owner's approval. The approved sentences «Въведете име.», «Проверете въведеното име.», and the identity-conflict sentence are unchanged, and the timezone explanation stays removed.
-- Human visual approval status: **not given**. M7 has not started.
+- Human visual approval status at the time of this record: **not given** (historical). It was later given explicitly by the product owner and recorded in the M7 record below, together with the approved price-first presentation «42.00 € — 75 мин.» and «Общо: 198.90 € — 285 мин.».
+
+## Phase M7 record: browser E2E, final verification, and the acceptance reconciliation (implemented and verified locally 2026-10-13; awaiting review; Issue #18 is NOT closed)
+
+Base `HEAD` `abd6b3f` (M1 to M6 committed; CI for that commit succeeded) plus the uncommitted M7 working tree. **No backend, migration, contract, dependency, security-policy, application source, or runner file changed.** The changes are new Playwright specs and their support module, and documentation. Verification is **local only**: CI for the final commit cannot exist before the commit.
+
+### M6 approval, recorded accurately
+
+M6 received **explicit human visual approval from the product owner** and is committed in `abd6b3f` together with the approved price-first presentation: a Service «42.00 € — 75 мин.», a total «Общо: 198.90 € — 285 мин.». M1 to M6 are committed; M7 is the only remaining implementation and verification phase; production public booking still has the explicit release dependency on issue #21.
+
+### New real-browser journeys (29 tests, 6 spec files, one support module)
+
+All run on the unmodified isolated runner (`./scripts/run-e2e.sh`: disposable Compose project `spotyourslot-e2e`, its PostgreSQL, ports and cleanup), against the real backend and the Vite development server. Fixtures are created only through supported HTTP APIs and the invitation UI (Business, owner, Services, StaffMembers, assignments, weekly schedules, Customers); nothing writes to the database; no `sleep`; waits are bounded by `expect` and by explicit response events; the request audit (`recordTraffic`, `countBookingPosts`) is stopped and settled before any page or context closes. No request is intercepted or answered by a stub except the one labelled simulated test below.
+
+| File | Test | Letter |
+|---|---|---|
+| `guest-booking-core.spec.ts` | one Service: one hero action, no per-Service action, price-first facts, one POST in the new shape, server facts, no «Общо», reload and replay create nothing | A |
+| | three Services: display order, price-first strings, only the member who offers all three, one continuous 195-minute slot, canonical request order against a reversed click order, one separated total, one POST, the server's stored lines and totals | B |
+| | new guest, existing Customer with exact contacts, the intentional conflict with the exact approved sentence and no Customer identity | F |
+| `guest-booking-selection.spec.ts` | no selection; sixth Service refused with its reason; 480 refused, exactly 480 accepted, selections always removable; the empty intersection with «Промяна на избора»; eligible members without any time (a different state); changing the set clears staff, date and time but keeps the details; another date never reloads the options | C |
+| `guest-booking-consistency.spec.ts` | every edit action and the direct return to the review; a real `BOOKING_REVIEW_CHANGED` after an owner price change and after a duration change (no automatic POST, refreshed facts, invalid time cleared, details kept, a new attempt identifier, the stale terms never resubmitted, one completed profile read); a real `BOOKING_SERVICE_UNAVAILABLE` after deactivation; a slot taken in another browser; two guests confirming at the same moment (one 201, one `BOOKING_SLOT_UNAVAILABLE`); identical concurrent submissions (one 201, one 200) and a different payload (`BOOKING_ATTEMPT_MISMATCH`); a repeated browser booking replays the same visit | D, E |
+| `guest-booking-time.spec.ts` | 2026-10-25 (the last Sunday of October inside the booking window): both `03:30` values with `(UTC+03:00)` and `(UTC+02:00)`, the second chosen, `+02:00` in the POST, the review and the confirmation, no technical zone name anywhere | G |
+| `guest-booking-experience.spec.ts` | Back and Forward without a trap; the leave guard (a chosen time makes the journey dirty, a selection alone does not); Space on native checkboxes, focus on headings and on the error alert, a visible focus indicator, Back before the forward action in DOM order; 375 and 320 px (no overflow, calendar day cells at least 24 px wide and 44 px high, every other control at least 44 px, long names wrap, five maximum prices); privacy of the URL, storage, cookies, `history.state`, title, console, and the public traffic (no cookie, no Set-Cookie, `no-store`); an owner or administrator session leaves the public answers byte-identical | H, I |
+| `guest-booking-simulated-transport.spec.ts` | **SIMULATED:** the response of a really committed booking is dropped in the browser: the frozen state, its leave protection, Back undone, and the real replay (200) with the same bytes | H |
+
+### Real, simulated, and backend-only evidence
+
+- **Real backend:** everything above except the next item, including the review-consistency check, the service-unavailable code, the slot races, the replay, the identity conflict, the DST offsets, and the headers.
+- **Simulated transport (kept separate):** only `guest-booking-simulated-transport.spec.ts`. The request reaches the real backend and commits; only the answer is dropped in the browser (`page.route`, `route.fetch`, then `route.abort`). A backend that commits and then loses the answer cannot be produced through a supported API. The replay, the Customer count, and every assertion after the drop are real.
+- **Not observable through a supported API, cited from the backend instead:** appointment rows and Service lines (a visit has one row and the lines in public-profile order: `GuestBookingVisitIntegrationTests`, `AppointmentServiceStoreIntegrationTests`, `PublicBookingVisitApiIntegrationTests`), rollback and no partial visit (`GuestBookingConcurrencyIntegrationTests`, `GuestBookingRejectionIntegrationTests`, `GuestBookingScheduleRaceIntegrationTests`), replay without new rows (`GuestBookingReplayIntegrationTests`). The browser tests assert what is observable: the POST and replay responses, the stored lines the server returned, the owner Customer API (counts and search), and the public availability of the slot.
+
+### Defects found
+
+- **Production code: none.** No application source changed.
+- **Test-only authoring corrections while writing the specs** (never a product behavior): the calendar grid renders after its first paint, so the date cell is awaited before the month is changed; after a profile refresh the guest chooses the date again before the time; the first pass uses «Напред» and the edit shortcut «Към прегледа» only after a review edit; the leave guard is dirty only once a time is chosen or details are entered; the guard is an `alertdialog`; the identity-conflict alert also carries the Business telephone; the one-Service confirmation shows duration and price as separate facts.
+
+### The M6 StrictMode observation: not a production defect
+
+M6 saw two profile reads after a first-send review change in the development server. Checked on a **production build** against a real backend: exactly **one** profile read, none aborted or failed. In development (React StrictMode) the extra read exists but is aborted by the later one (`loadCatalog` aborts the previous controller), so no stale answer can be shown and nothing private is involved (a public, credential-free read). `guest-booking-consistency.spec.ts` asserts that besides the page load exactly one profile read completes for a review change, which guards duplicate completed work; no further regression test was needed.
+
+### Verification (executed; local only, on the final code)
+
+| Check | Command | Result |
+|---|---|---|
+| New specs | `run-e2e` equivalent with a file filter (a copy of the runner outside the repository, same Compose project and ports) | each spec file passed: 3, 7, 8, 1, 9, 1 tests |
+| Frontend unit and component | `npm test` | 76 files, 1841 tests passed |
+| Lint, production build | `npm run lint`, `npm run build` | clean |
+| Backend | `./mvnw --batch-mode verify` | 3476 tests, 0 failures, 0 errors, 0 skipped; BUILD SUCCESS |
+| Complete E2E, run 1 | `./scripts/run-e2e.sh` (unmodified) | 110 of 110 passed (81 existing, 29 new); no container, volume, or network left |
+| Complete E2E, run 2 (consecutive, same tree) | `./scripts/run-e2e.sh` | 110 of 110 passed; nothing left |
+| Whitespace | `git diff --check` | clean |
+| Migration integrity | V1 to V13: each file has exactly one commit in `git log` (none edited); hashes in the archive evidence | unchanged |
+| Secret scan | scan of the changed files and the archive for the review credentials and key patterns | clean |
+
+The two complete runs executed the same tree; only documentation changed between them and the archive. The existing E2E specs were not modified, skipped, or given longer timeouts.
+
+### Limitations and accepted boundaries
+
+- The scenarios use the real clock: the DST test needs the last Sunday of October inside the 30-day booking window and is skipped with an announced reason outside it (both complete runs were inside it).
+- The development server renders under StrictMode; the production build was checked once by hand, not by a Playwright run against a production build.
+- The public limiter budgets (10 per address and Business, 30 per address, 5 per Business and contact in 15 minutes) bound how many bookings a run can make; the specs use 25 POSTs, at most 9 in one Business.
+- Browser evidence does not show database rows; the backend tests cited above do.
+- The accepted limitations stay: no Retry-After countdown; below 320 CSS px (about 188 CSS px at 200 % on 375 px) the global `body { min-width: 320px }` makes the page scroll; the calendar day cells use the documented narrow-grid exception (30×44 and 38×44 px, at least 24×24 px and 44 px high).
+- No real screen reader, Safari, or touch device was used.
+
+### Final acceptance matrix for Issue #18
+
+Evidence kinds: **BE** backend tests (`backend/src/test/java/bg/spotyourslot/...`), **VT** Vitest (`frontend/src/public/booking/`), **E2E** the Playwright specs above, **M6** the developer-rendered review, **HV** the product owner's explicit visual approval of M6. A phase record in task 08a or this task holds the detailed table.
+
+**Scope boundaries (explicit).** Issue #18 delivers the appointment core and the public guest booking, extended by the product owner's approved decision of 2026-10-07 (ADR-0027) to atomic visits of one to five Services; the GitHub issue text still lists «Multiple Services in one appointment» as out of scope and was **not** edited by this work. Issue #19 (conflict protection) is satisfied only for guest creation (see the reconciliation in task 08a); manual creation, moving, StaffMember or Service change, authenticated conflict feedback, and Business-user races **remain for #19 and #21**. Production public booking **depends on issue #21** (Business appointment visibility and management). **No claim is made** that Booking as a whole, Customer appointment history, manual appointment administration, cancellation, or notifications are complete.
+
+| # | Issue #18 requirement | Evidence |
+|---|---|---|
+| C1 | An appointment only with valid same-Business Customer, Service and StaffMember | BE `AppointmentStoreIntegrationTests`, `AppointmentServiceStoreIntegrationTests` (composite same-Business keys), `AppointmentDomainTests`, `GuestBookingRejectionIntegrationTests` |
+| C2 | Authoritative duration and EUR price preserved at creation | BE `AppointmentStoreIntegrationTests`, `AppointmentVisitDomainTests`, `GuestBookingVisitIntegrationTests`; E2E core (one and three Services: the server's stored lines and totals) |
+| C3 | `CONFIRMED` occupies the StaffMember's calendar by the conflict rules | BE `AppointmentOverlapConcurrencyIntegrationTests`, `BookingBusyIntervalSourceIntegrationTests`; E2E consistency (the taken slot is no longer offered) |
+| C4 | `CANCELLED` is kept as history and does not block | BE `AppointmentOverlapConcurrencyIntegrationTests` (a directly inserted `CANCELLED` row never blocks), `BookingBusyIntervalSourceIntegrationTests`; VT submission and states tests (a `CANCELLED` replay is not a confirmation); no cancellation API exists (out of scope), so no browser evidence |
+| C5 | Facts not silently changed by later Service, StaffMember, schedule or price changes | BE `AppointmentServiceStoreIntegrationTests` (immutable lines), `GuestBookingReplayIntegrationTests` (replay returns the original snapshots); E2E consistency (the owner's price and duration changes are refused or refreshed, never silently applied) |
+| C6 | Source and lifecycle are deterministic and server-controlled | BE `BookingContractsIntegrationTests`, `PublicBookingCreationApiIntegrationTests` (strict body); E2E core (exact request key set) |
+| C7 | Cross-Business reads and mutations rejected safely | BE `GuestBookingRejectionIntegrationTests`, `PublicBookingVisitApiIntegrationTests`, `PublicProfileApiIntegrationTests`; E2E `public-business-profile.spec.ts` (isolation) |
+| C8 | Client-controlled price, duration, end time, status, source or Business rejected | BE `PublicBookingCreationApiIntegrationTests`, `PublicBookingVisitApiIntegrationTests` (reviewed terms that differ are `BOOKING_REVIEW_CHANGED`); E2E consistency (real `BOOKING_REVIEW_CHANGED`) |
+| C9 | `DRAFT` and `SUSPENDED` lifecycle rules | BE `GuestBookingRejectionIntegrationTests` (parameterized `DRAFT` and `SUSPENDED`), `PublicBookingCreationApiIntegrationTests`; E2E `public-business-profile.spec.ts` (the unavailable presentation); M6 (draft and suspended pages) |
+| C10 | Focused appointment-core tests | BE complete `verify`: 3476 tests |
+| G1 | An unauthenticated Customer completes a booking for an `ACTIVE` Business | E2E core (one and three Services); E2E consistency |
+| G2 | No registration or password | E2E experience (no session cookie, no credentials on public traffic); E2E core |
+| G3 | Select an active Service and an available time | E2E core, selection |
+| G4 | Staff preference per the approved rules | E2E core (no preference; only the eligible member), consistency (a specific member); BE `StaffAssignmentPolicyTests`, `BookingAvailabilitySelectionIntegrationTests` |
+| G5 | Only genuinely available slots offered | BE `BookingAvailabilityIntegrationTests`, `PublicBookingAvailabilityApiIntegrationTests`; E2E consistency (a taken slot disappears), time (the repeated hour) |
+| G6 | Contact information validated safely | VT `BookingJourney.states.test.tsx` and the details tests; BE `PublicBookingCreationApiIntegrationTests`; E2E core (identity conflict), experience (the conflict alert); M6 (local validation) |
+| G7 | An optional note | E2E core (the note is sent and kept through edits); BE `PublicBookingCreationApiIntegrationTests` |
+| G8 | Review before submission | E2E core, consistency (every edit action returns to its step) |
+| G9 | Final submission revalidates availability and conflict protection | E2E consistency (a real review change, a slot taken, a concurrent pair); BE `GuestBookingScheduleRaceIntegrationTests`, `GuestBookingConcurrencyIntegrationTests` |
+| G10 | A successful booking creates exactly one `CONFIRMED` appointment | BE `GuestBookingVisitIntegrationTests`, `PublicBookingVisitApiIntegrationTests` (rows); E2E core (one POST, one 201, the server's single line or three ordered lines, one Customer) |
+| G11 | Repeated submission creates no duplicate | E2E core and consistency (replay 200 with the same body, no new Customer, a different payload is `BOOKING_ATTEMPT_MISMATCH`, identical concurrent submissions give 201 and 200); VT `BookingJourney.submission.test.tsx` (one POST per attempt); BE `GuestBookingReplayIntegrationTests`, `GuestBookingConcurrencyIntegrationTests` |
+| G12 | A slot taken before confirmation gives safe feedback and creates nothing | E2E consistency (the approved recovery, no loser Customer, the slot stays taken); BE `GuestBookingConcurrencyIntegrationTests` |
+| G13 | `DRAFT` and `SUSPENDED` Businesses cannot receive guest bookings | BE `GuestBookingRejectionIntegrationTests`, `PublicBookingCreationApiIntegrationTests` (the POST for `DRAFT` and `SUSPENDED`); E2E `public-business-profile.spec.ts` (the page is unavailable, no booking action) |
+| G14 | Inactive Services and StaffMembers cannot receive new bookings | E2E consistency (a deactivated Service: `BOOKING_SERVICE_UNAVAILABLE` and the way back); BE `GuestBookingRejectionIntegrationTests` (the inactive StaffMember: `BOOKING_STAFF_UNAVAILABLE`); VT states tests |
+| G15 | A clear confirmation with the correct date, time, timezone, Service, StaffMember and price | E2E core (server facts), time (the correct occurrence and offset); HV |
+| G16 | No private Business or other Customer information exposed | E2E experience (the traffic and browser state, the byte-identical public answers), core (the conflict names nothing); BE `PublicBookingSessionSecurityApiIntegrationTests` |
+| G17 | Cross-Business manipulation rejected | BE `GuestBookingRejectionIntegrationTests`, `PublicBookingVisitApiIntegrationTests` |
+| G18 | Usable on desktop and mobile | E2E experience (375 and 320 px), M6 (five widths, zoom boundary), HV |
+| G19 | Existing authenticated administration behavior unchanged | the 81 existing E2E tests in both complete runs; BE complete `verify` |
+| M1 | Multi-Service (ADR-0027): real checkboxes, limits at five Services and 480 minutes, summary and total before «Напред», one review, server lines in the confirmation, one-Service path unchanged | E2E core, selection; VT `BookingJourney.visit.test.tsx`; BE `GuestBookingVisitIntegrationTests`, `PublicBookingVisitApiIntegrationTests`, `AppointmentVisitDomainTests` |
+
+**Not claimed, and remaining for later issues:** the Business-side visibility and management of appointments (#21, a release dependency); Issue #19's manual-creation scope; Customer appointment history; cancellation and notification flows; any production release of public booking.
+
+### Changed-file scope
+
+New: `frontend/e2e/support/booking.ts`, `frontend/e2e/guest-booking-core.spec.ts`, `frontend/e2e/guest-booking-selection.spec.ts`, `frontend/e2e/guest-booking-consistency.spec.ts`, `frontend/e2e/guest-booking-time.spec.ts`, `frontend/e2e/guest-booking-experience.spec.ts`, `frontend/e2e/guest-booking-simulated-transport.spec.ts`. Modified (documentation only): this file, task 08a, `README.md`, `docs/architecture.md`, `docs/data-model.md`, `docs/implementation-plan.md`, `docs/product-roadmap.md`, `docs/product-spec.md`, `docs/security.md`, `docs/testing-strategy.md`, `docs/ui-design-guidelines.md`. No application, backend, migration, script, dependency, or existing-test file changed.
+
+Issue #18 is not closed and its Project status is not changed; closing it needs the product owner's explicit approval.
