@@ -291,9 +291,49 @@ version, list-window, and whole-body failures stay generic. Responses never
 expose SQL diagnostics, constraint names, stack traces, submitted identifiers,
 Membership details, or tenant existence.
 
+### Business Appointment administration authorization (issues #19 and #21; decided in ADR-0028 and ADR-0029, not implemented)
+
+The calendar, the Appointment detail, the Customer appointment history, and every Appointment mutation
+(create, reschedule and reassign, cancel, internal-note edit) derive the user and the selected Business only
+from the authenticated server-managed context; no path, query, or body field carries a Business, user,
+Membership, or role. Access requires an active `BUSINESS_OWNER` Membership for that exact user and Business.
+An absent, inactive, or foreign Membership, or a platform administrator alone, is `ACTIVE_BUSINESS_REQUIRED`;
+an active `MANAGER` or `STAFF` Membership of the selected Business is `ACCESS_DENIED`; an unauthenticated caller is
+`AUTH_REQUIRED`. A StaffMember record grants no access. Missing and cross-Business Appointment, Customer,
+StaffMember, and Service identifiers share one safe `404`.
+
+| Business status | Reads | Mutations |
+|---|---|---|
+| `ACTIVE` | allowed | allowed |
+| `DRAFT` | allowed (read-only preview) | `409 BUSINESS_NOT_ACTIVE` (a deliberate difference from the Service, StaffMember, schedule, and Customer APIs) |
+| `SUSPENDED` | allowed | `409 BUSINESS_SUSPENDED` |
+
+Planned failures (the codes, route names, and Bulgarian wording are working names, finalised and tested in the implementing HTTP or interface phase, and the wording stays Proposed until the rendered human review): `VALIDATION_ERROR` (400),
+`AUTH_REQUIRED`, `ACTIVE_BUSINESS_REQUIRED`, `ACCESS_DENIED`, `APPOINTMENT_NOT_FOUND` and `CUSTOMER_NOT_FOUND` (404),
+`BUSINESS_NOT_ACTIVE`, `BUSINESS_SUSPENDED`, `APPOINTMENT_CONCURRENT_UPDATE` (a stale `expectedVersion`),
+`APPOINTMENT_STATE_CONFLICT` (already cancelled or started), `APPOINTMENT_SLOT_UNAVAILABLE` (the time is not offered,
+is past, or lost the overlap race), `APPOINTMENT_STAFF_UNAVAILABLE`, `APPOINTMENT_SERVICE_UNAVAILABLE`,
+`APPOINTMENT_REVIEW_CHANGED` (409), `APPOINTMENT_TEMPORARILY_UNAVAILABLE` and `APPOINTMENT_OUTCOME_UNCERTAIN` (503), and
+`INTERNAL_ERROR`. A stale version, a state conflict, and a lost slot are always distinct codes. A conflict response never
+reveals another Customer, a note, or an Appointment detail; the owner sees who occupies a time only through the refreshed
+calendar. Every mutation requires CSRF; reschedule, cancel, and note edit carry `expectedVersion`.
+
+Privacy: the calendar and history lists carry the minimum facts (a Customer display name; no note, phone, or email);
+the detail alone carries the contact data and the `customer_note` and `internal_note`, owner-only. Customer names,
+search terms, notes, and the attempt's values never appear in a URL, `history.state`, browser storage, the document
+title, a log, or an error; calendar URL state is limited to the view, the date or week, a StaffMember identifier, and the
+agenda's page and size. `internal_note` is never public and never sent to a Customer. Cancellation never deletes: it
+records `cancelled_at` and `cancelled_by`.
+
+Mutation locks follow the total order of ADR-0029 (Business lifecycle, Membership, StaffMember, schedule revision,
+Service, Customer, Appointment). That order is an ordering argument and not a claim of deadlock freedom; the exclusion-index
+deadlock between two overlapping writers is a documented residual risk handled by a bounded retry. Manual creation has no
+idempotency key in the MVP (the exclusion constraint prevents a duplicate confirmed Appointment); the interface never repeats a
+create automatically after an uncertain result.
+
 Repositories require `business_id`; foreign/composite constraints validate
 common ownership. STAFF is restricted to the linked StaffMember’s schedule and
-Appointments. Cross-Business attempts return safe 404 where existence need not
+Appointments (a future capability: in issues #19 and #21 only `BUSINESS_OWNER` has Appointment access, ADR-0028). Cross-Business attempts return safe 404 where existence need not
 be disclosed, or 403 for an established Business context. Tests cover Business
 A versus Business B reads, lists, writes, indirect IDs, and bulk operations.
 

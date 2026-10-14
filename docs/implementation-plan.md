@@ -162,12 +162,12 @@ working periods were delivered by issue #16 (see Phase 5).
 
 ## Phase 7 — calendar and Appointment operations
 
-- Responsive daily and weekly Business calendar views and staff creation/edit/
-  reschedule/cancel/complete/no-show.
+Decided for issues #19 and #21 (ADR-0028, ADR-0029, `docs/tasks/09a-business-calendar-and-appointment-management.md`; documentation only so far, nothing implemented): twelve phases (decisions; `V14` and the persistence and availability foundations; the read APIs and measured `V15` indexes; manual multi-Service create; form reschedule and reassignment; cancellation and the internal note; the read-only, create, reschedule, and cancellation interfaces; the rendered human visual review, an explicit approval gate; browser E2E and reconciliation, which do not start until that approval is recorded). Only the Business owner has access, and drag-and-drop is a separate future issue.
+
+- Responsive daily, weekly, and agenda Business calendar views, with owner creation (one to five Services), reschedule, reassignment, internal-note editing, cancellation, and a Customer appointment history. *(Amended; the earlier text said: "Responsive daily and weekly Business calendar views and staff creation/edit/reschedule/cancel/complete/no-show.")*
 - Ensure both calendar views can navigate/query the configured booking horizon
   and do not impose a separate limit on future booking.
-- Reject completed/no-show before start; separate Customer and internal notes;
-  enforce STAFF ownership and SUSPENDED read-only mode.
+- Separate Customer and internal notes; a started Appointment is read-only except for the internal note; `DRAFT` and `SUSPENDED` are read-only. *(Amended; the earlier text said: "Reject completed/no-show before start; separate Customer and internal notes; enforce STAFF ownership and SUSPENDED read-only mode." Completed/no-show, STAFF ownership, and Manager access are future capabilities.)*
 - Exit: operational, accessibility, role, and isolation flows pass.
 
 ## Phase 8 — reliable notifications

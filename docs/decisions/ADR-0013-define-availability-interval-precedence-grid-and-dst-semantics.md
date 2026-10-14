@@ -213,3 +213,7 @@ requirement to merge working periods.
 ## Amendment note (ADR-0027, 2026-10-07)
 
 The decision above is preserved. ADR-0027 amends it for a visit of several Services: the occupied duration of a slot becomes the sum of the selected Services' durations (still whole minutes of elapsed time, zero buffers), and the eligible StaffMembers are those assigned to every selected Service. The interval, precedence, 15-minute grid, and DST rules are unchanged. Effective when the availability phase of the multi-Service extension is implemented.
+
+## Amendment note (ADR-0029, 2026-10-14)
+
+The decision above is preserved. [ADR-0029](ADR-0029-calculate-business-availability-with-a-separate-policy-and-serialize-appointment-mutations-with-ordered-locks-optimistic-versions-and-bounded-retry.md) amends it for Business-side operations: the pure engine takes the minimum notice and the date window as inputs instead of the constants `MINIMUM_NOTICE` and `HORIZON_DAYS`. The public path passes exactly the former values (two hours, today through today + 29), so its results are unchanged and the existing engine and daylight-saving tests must pass without modification. The Business path passes zero notice and a requested window of at most 31 dates; a new start must not be before the injected `now`, and an instant is never produced from a bare wall-clock time. The interval precedence, the 15-minute grid, the zero buffers, and the gap and repeated-hour rules are unchanged. Effective when the availability phase of the Business calendar work (task 09a, Phase 2) is implemented.

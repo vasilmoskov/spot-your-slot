@@ -14,7 +14,7 @@ Depends on: the approved identity, authorization, and Business-isolation foundat
 and the Business-owner configuration and navigation where Customer administration is
 rendered.
 Consumers (not prerequisites): #18 (appointment core and guest booking flow; closed, uses the Customer matching contract) and
-#21 (Business calendar and appointment management; open, owns Customer appointment history and manual-appointment integration).
+#21 (Business calendar and appointment management; open, owns Customer appointment history and manual-appointment integration; decided in [task 09a](09a-business-calendar-and-appointment-management.md): the history is a Booking-owned, server-paginated read and manual creation selects an existing Customer by identifier, never `findOrCreate`).
 Decision records: [ADR-0019](../decisions/ADR-0019-model-business-scoped-customers-with-canonical-contact-identifiers-and-no-lifecycle.md),
 [ADR-0020](../decisions/ADR-0020-match-customers-conservatively-and-publish-narrow-customer-contracts.md),
 [ADR-0021](../decisions/ADR-0021-administer-customers-through-a-private-owner-only-versioned-api-with-body-search.md)

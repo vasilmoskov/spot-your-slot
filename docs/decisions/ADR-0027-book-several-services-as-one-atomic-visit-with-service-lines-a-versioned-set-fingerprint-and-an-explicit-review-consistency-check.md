@@ -288,3 +288,7 @@ Phase M5 implemented section 10 in `frontend/src/public/booking/`; the record, t
 ## Conditions for revisiting
 
 Revisit for buffers between Services, a different StaffMember per Service, package or discount pricing, payments or deposits (which may need a stricter review contract), a configurable horizon, retiring the legacy request shape, Business-created multi-Service appointments (issue #21), or measured abuse of the new reads.
+
+## Amendment note (ADR-0028, 2026-10-14)
+
+The decision above is preserved. Its condition for revisiting names "Business-created multi-Service appointments (issue #21)". [ADR-0028](ADR-0028-administer-appointments-through-a-private-owner-only-api-with-immutable-visit-identity-and-business-cancellation.md) decides it: the Business owner's manual creation books the same visit (one to five distinct Services, one explicitly chosen StaffMember, one continuous interval, lines in the public-profile order, the same reviewed-terms check answered `APPOINTMENT_REVIEW_CHANGED`, no persisted claims). The lines stay immutable after creation, so a wrong Service or Customer is corrected by cancelling the Appointment and creating a new one; no operation changes a line, a total, or a snapshot. A cancellation of a visit is one status change on the visit row, as section 9 above anticipated, and records its attribution as [ADR-0028](ADR-0028-administer-appointments-through-a-private-owner-only-api-with-immutable-visit-identity-and-business-cancellation.md) decides.

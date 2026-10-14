@@ -218,8 +218,7 @@ date_range)`.
   `appointment_timestamps_finite_ordered`, `appointment_business_id_id_unique`,
   `appointment_business_public_reference_unique`, `appointment_business_attempt_hash_unique`, and the exclusion
   `appointment_staff_no_overlap`. **No Customer name, phone, or email is copied** (D2). The private
-  staff note, cancellation metadata, and `late_cancellation` are deferred to #21 and the cancellation issue and
-  arrive by forward migrations.
+  note and the cancellation attribution are decided in [ADR-0028](decisions/ADR-0028-administer-appointments-through-a-private-owner-only-api-with-immutable-visit-identity-and-business-cancellation.md) and arrive in the planned forward migration `V14` (not yet created): `internal_note varchar(500)` with the `customer_note` rule; `cancelled_at` and `cancelled_by`, with the invariant that a `CONFIRMED` row has neither, a Business cancellation has `BUSINESS` and a non-null time, and a row cancelled before `V14` is `UNKNOWN` with a null time (`appointment_cancellation_consistent`, `appointment_cancelled_at_valid`). `late_cancellation` and the `CUSTOMER` actor belong to Customer cancellation (#35).
 - **business_schedule_revision** (issue #18 Phase 3, ADR-0025; implemented in `V12`, owned by the `business`
   module): one row per Business with `business_id` (primary key, `business_schedule_revision_pkey`; foreign key
   `business_schedule_revision_business_fk` to `business(id)`, `ON DELETE RESTRICT`), `revision bigint NOT NULL
@@ -241,14 +240,14 @@ date_range)`.
   equal to line 1) and a trigger that rejects every update and delete of a line. Lines are never changed or deleted; cancelling a visit is one status change on the `appointment` row. The idempotency columns are unchanged;
   `fingerprint_encoding_version` 2 identifies the multi-Service encoding and 1 stays valid for every stored attempt.
 - **appointment_event:** `business_id`, Appointment, type, actor, timestamp,
-  non-sensitive summary/correlation ID.
+  non-sensitive summary/correlation ID. Deferred (ADR-0028): the calendar shows no "changed" state and `version` is never history.
 - **cancellation_token:** `business_id`, Appointment, token hash and lifecycle.
 
 All referenced rows must share the Business. Amended by ADR-0022 (the earlier text listed
 `CONFIRMED`, `CANCELLED_BY_CUSTOMER`, `CANCELLED_BY_BUSINESS`, `COMPLETED`, and `NO_SHOW`, and source
 `ONLINE`/`STAFF`): statuses are `CONFIRMED` and `CANCELLED`, and the source is `ONLINE` or `MANUAL`.
 Every successful online/manual Appointment is `CONFIRMED`; no MVP
-confirmation-mode field or `PENDING` status exists. Cancellation attribution and `COMPLETED`/`NO_SHOW` are
+confirmation-mode field or `PENDING` status exists. Cancellation attribution arrives in the planned `V14` (ADR-0028); `COMPLETED`/`NO_SHOW` are
 deferred and arrive by forward migrations.
 
 Only `CONFIRMED` blocks time (implemented in `V11`, the same migration as the table):
@@ -295,7 +294,10 @@ on `(business_id,start_at)`, `(staff_member_id,start_at)`, and
 Business/StaffMember/day; token and outbox indexes; checks for ranges/statuses;
 and restrictive delete behavior. Issue #18 created only the exclusion index and the unique indexes it needs
 (public reference and attempt hash); the calendar and Customer-history indexes are added with the issue that
-queries them (#21).
+queries them (#21). The tenant-scoped candidates, evaluated in the planned `V15`, are `(business_id, start_at, id)`,
+`(business_id, staff_member_id, start_at, id)`, and `(business_id, customer_id, start_at DESC, id DESC)`; each is created
+only if `EXPLAIN ANALYZE` on representative synthetic data justifies it and none duplicates an existing constraint index
+(task 09a); the earlier list above names the intent, not the final shapes.
 
 No health or special-category data is solicited. Export and reviewed
 deletion/anonymization remain future work. Retention and lawful bases require

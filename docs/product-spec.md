@@ -55,6 +55,9 @@ Customers, Appointments, cancellations, notifications, roles, and tenant model.
   owner-only until a separate approved MANAGER design exists (ADR-0021).
 - **STAFF:** sees and manages Appointments and schedule belonging to the linked
   StaffMember, creates manual Appointments, and marks them complete/no-show.
+  *Amended by ADR-0028: in issues #19 and #21 only `BUSINESS_OWNER` has Appointment
+  and calendar access. Manager and Staff access, the optional Membership link, and
+  complete/no-show are future capabilities.*
 - **Customer:** books as an unauthenticated guest; no Customer account exists. A Customer *record* is
   Business-owned data about a guest, not a login: public booking will find or create it automatically from the
   supplied phone or email, and owners also create records manually for telephone, walk-in, and other externally
@@ -87,6 +90,8 @@ password setup. The owner configures the Business before PLATFORM_ADMIN
 activates it. Normal users cannot elevate themselves.
 
 - **DRAFT:** administrative configuration is allowed; public booking is not.
+  Appointment administration is the deliberate exception (ADR-0028): a `DRAFT`
+  Business shows a read-only calendar and allows no Appointment mutation.
 - **ACTIVE:** public booking and authorized administration are allowed.
 - **SUSPENDED:** data is preserved and public booking rejected; Business
   administration is read-only except logout and account-security actions.
@@ -205,6 +210,11 @@ assigned StaffMembers with the fixed values above; Appointments and breaks do no
 exist yet, so no busy time is subtracted. Availability is a current view that
 reserves nothing.
 
+Business-created and rescheduled Appointments use a separate Business-side policy
+(ADR-0029): no minimum notice, no 30-date horizon, a new start never in the past, the
+same 15-minute grid, working schedules, exceptions, eligibility, and conflict protection,
+the stored duration for a move, and instants with offsets only.
+
 For “Без предпочитание”, select among qualified available StaffMembers using
 the fewest non-cancelled Appointments on the local date, then creation time and
 ID. Recalculate during booking. Store actual instants in UTC; interpret recurring
@@ -224,10 +234,20 @@ issues that implement them. An Appointment keeps snapshots of the Service name,
 duration, EUR price, Business timezone, and assigned StaffMember name, and no copy of
 Customer contact data. Normal operations never physically delete an Appointment.
 
+Amended for issues #19 and #21 (ADR-0028 and ADR-0029; decided, not implemented): the
+Business owner creates a manual visit of one to five Services, may reschedule it to
+another start and reassign its StaffMember, may edit a private internal note, and may
+cancel it before it starts. The Customer, the Services, the duration, the price, and the
+snapshots are immutable, so a wrong Customer or Service is corrected by cancelling and
+creating a separate Appointment. A started Appointment is read-only except for the note.
+`COMPLETED`/`NO_SHOW`, a cancellation reason, and audit history stay deferred, and the
+calendar shows no "changed" state.
+
 Customer cancellation uses a secure random link while only its hash is stored.
 A future Appointment may be cancelled after the deadline but is marked late;
-past Appointments cannot be Customer-cancelled. Staff cancellation may include
-a reason.
+past Appointments cannot be Customer-cancelled. Business-side cancellation (ADR-0028) is
+allowed only before the start, is attributed to the Business with its time, and has no
+free-text reason in the MVP.
 
 A Business-owned Customer stores one display name and a canonical phone and/or
 email (at least one), with no account, note, or status (ADR-0019). A normalized
@@ -251,7 +271,9 @@ booking uses formal wording, the neutral step headings listed under the public
 flow, and the option “Без предпочитание” (ADR-0026); the earlier informal question
 “При кого искаш да запазиш час?” is withdrawn.
 `StaffMember` remains the internal English domain and technical term. Daily and
-weekly views do not limit the configured booking window.
+weekly views do not limit the configured booking window. Drag-and-drop rescheduling is
+not part of issue #21 and will be tracked separately; the form-based operation is the
+canonical, accessible one.
 
 The future `EmailService` uses a persistent outbox. Notifications include
 invitation/setup/reset, booking/cancellation/change confirmation, reminder

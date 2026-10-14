@@ -99,7 +99,7 @@ The stable acceptance for the final UI (M5 and M6): real checkboxes in a labelle
 - **Migration on populated data:** the upgrade test, the end-of-migration verification, unchanged V1 to V12 checksums.
 - **Lock inversion:** ascending identifiers at every level and a deterministic test.
 - **A new public contract surface:** strict parsing, exact key sets, and tests for every shape and code.
-- **Consumers still to come** (issue #21 calendar and history, issue #19) read one Service per Appointment today; the headline columns keep them working until they read the lines.
+- **Consumers still to come** (issue #21 calendar and history, issue #19) read one Service per Appointment today; the headline columns keep them working until they read the lines. (Update, 2026-10-14: the calendar and history reads of [task 09a](09a-business-calendar-and-appointment-management.md) read the lines.)
 - **Scope creep** into per-Service StaffMembers, packages, payments, or a cancellation endpoint; excluded by the approved model.
 
 ## Remaining questions
@@ -446,7 +446,7 @@ Evidence kinds: **BE** backend tests (`backend/src/test/java/bg/spotyourslot/...
 | G19 | Existing authenticated administration behavior unchanged | the 81 existing E2E tests in both complete runs; BE complete `verify` |
 | M1 | Multi-Service (ADR-0027): real checkboxes, limits at five Services and 480 minutes, summary and total before «Напред», one review, server lines in the confirmation, one-Service path unchanged | E2E core, selection; VT `BookingJourney.visit.test.tsx`; BE `GuestBookingVisitIntegrationTests`, `PublicBookingVisitApiIntegrationTests`, `AppointmentVisitDomainTests` |
 
-**Not claimed, and remaining for later issues:** the Business-side visibility and management of appointments (#21, a release dependency); Issue #19's manual-creation scope; Customer appointment history; cancellation and notification flows; any production release of public booking.
+**Not claimed, and remaining for later issues:** the Business-side visibility and management of appointments (#21, a release dependency); Issue #19's manual-creation scope; Customer appointment history; cancellation and notification flows; any production release of public booking. (Update, 2026-10-14: the Business-side items are planned in [task 09a](09a-business-calendar-and-appointment-management.md); notifications remain separate, issue #22.)
 
 ### Changed-file scope
 

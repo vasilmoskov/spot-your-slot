@@ -394,6 +394,10 @@ contains a clear page header and primary content region.
 - Global account navigation (“Бизнеси”, “Профил”) and Business-scoped navigation (“Услуги”, “Екип”, “Работно
   време”, “Клиенти”) stay visibly separate: the global links first, then a separated group headed by the selected
   Business's name. The signed-in user and “Изход” close the sidebar; the Business name belongs only to its group.
+- Planned, not yet a durable rule (issue #21, ADR-0028; it becomes one only after the rendered human review): the Business-scoped
+  group gains “График” for the Appointment calendar. The second tab of “Работно време”, “Промени в графика” (a tab, not a
+  sidebar link), keeps its name unless the rendered review proves the two labels, which sit at different navigation levels,
+  confusing. The weekly-schedule wording is unchanged unless the review decides otherwise.
 - Contextual navigation appears only while its context exists: no Business-scoped link is rendered without a
   selected Business, and a user who loses the Business (it became unavailable) returns to “Бизнеси”.
 - Business selection never lives inside personal settings. “Профил” holds only personal data and the password.
@@ -719,6 +723,31 @@ Business-local date comes from the timezone returned by the API. It appears as a
 compact badge in the table, the mobile cards and the detail view. Records are
 never deleted automatically; past ones stay reachable through the date filter.
 Deletion exists only in the detail view.
+
+### 15.3 Calendar views, the agenda, and the Customer history (decided in ADR-0028; not implemented; awaiting the rendered human review)
+
+This section records the section 15.1 checklist for the Business calendar (issue #21) before it is built.
+
+- **Agenda (a data list).** Default and only order: `start_at` ascending, then the Appointment identifier. It has **no sortable column and no
+  responsive sort control**: the chronological order is the meaning of an agenda. This is a recorded, approved exception to the sorting rule of
+  section 15.1; the tie-breaker still ends in the identifier. Pagination is server-side, because a range of up to 31 Business-local dates can hold many
+  Appointments; the default size is 10 and the allowed sizes are 10, 25, and 50, the page and size use the shared `ListPagination`, and every explicit change
+  pushes history while canonicalization and empty-page recovery replace it. A range or StaffMember change returns to page 0. The route carries the view, the
+  date range, the StaffMember identifier, the page, and the size, and invalid values normalize to the defaults. On a narrow screen the rows become cards in the
+  same order. An empty page after the data shrinks recovers to the last valid page.
+- **Day and week grids.** These are layouts of the same data, not data-list tables; the sorting and pagination checklist does not apply to them and this is
+  recorded here. They show the Business-timezone date, never the browser's, the working time, the booked time, and the non-working time without relying on colour
+  alone, and have an accessible alternative in the agenda.
+- **Customer history.** A server-paginated list on the Customer detail with a fixed newest-first order (`start_at` descending, then identifier descending), the
+  sizes 10, 25, and 50, and only the minimum facts. Its fixed order is the same kind of recorded exception.
+- **Privacy.** A Customer name, search term, note, or any private value never appears in a URL, `history.state`, storage, or the title; filters in the URL are
+  limited to safe navigation values.
+- **Stale data.** Section 21 applies: a response of another Business, range, view, or filter never replaces the current calendar, and a successful mutation reloads
+  the authoritative state.
+- **Dialogs and forms.** Section 19 applies to the cancellation (the safe action first and focused, the destructive one never focused by default, and an explanation
+  that creating a replacement is a separate action and that the cancellation cannot be undone); section 16 applies to every form; the action order of section 6 applies.
+- **Dependencies.** No calendar or drag-and-drop library is introduced; the grids use plain React and CSS. Drag-and-drop rescheduling is not part of issue #21.
+- **Wording.** Every Bulgarian label and message of the calendar is Proposed until the rendered human review.
 
 ## 16. Authenticated mutable forms
 

@@ -4,7 +4,7 @@ Status (current, 2026-10-14): **Issue #18 is closed as completed and its Project
 review and UX refinement) and the multi-Service phases M1 to M7 are all committed (final #18 commit `1d6b450`); M6, the rendered browser review of the
 multi-Service journey, received explicit human visual approval. CI passed for exactly `1d6b45099c1aebfb9bd6fc444dc171d228dca9e1` (https://github.com/vasilmoskov/spot-your-slot/actions/runs/38519989453). Recorded final local evidence: backend 3476 tests, frontend 76 files / 1841 tests,
 and two consecutive full browser E2E runs of 110/110 each. Phase M7 replaced the original Phase 8; its record and the final acceptance matrix are in
-[task 08b](08b-multi-service-guest-booking-plan.md). Guest booking supports one to five Services as one atomic visit. Issue #19 remains incomplete where its manual-creation scope is not delivered, and production public booking depends on issue #21 (a release dependency, not an implementation blocker); cancellation, notifications, manual appointment management, and Customer appointment history remain deferred. The dated
+[task 08b](08b-multi-service-guest-booking-plan.md). Guest booking supports one to five Services as one atomic visit. Issue #19 remains incomplete where its manual-creation scope is not delivered, and production public booking depends on issue #21 (a release dependency, not an implementation blocker); cancellation, notifications, manual appointment management, and Customer appointment history remain deferred. Issues #19 and #21 are now one combined delivery planned in [task 09a](09a-business-calendar-and-appointment-management.md) (ADR-0028, ADR-0029). The dated
 phase records below are historical evidence of the state at their own dates (for example, the earlier statements that Phase 6 awaited review and had no rendered browser review).
 GitHub issue: #18 — Build appointment core and guest booking flow
 Depends on: #16, #17, #20; relates to #19 (partly satisfied here) and #21 (release dependency)
@@ -99,6 +99,8 @@ D1 satisfies these #19 requirements for creation. #19 remains incomplete and is 
 The manual-creation path reuses the same store and typed overlap outcome. The GitHub issue and board
 are not modified by this work.
 
+Update (2026-10-14): the items that remain for #19/#21 are decided in ADR-0028 and ADR-0029 and delivered by the combined plan of [task 09a](09a-business-calendar-and-appointment-management.md); this table is historical evidence of the state at its own date.
+
 ## Statuses: the amendment of conflicting permanent documents
 
 No ADR defines Appointment statuses. These approved permanent-document passages are amended by
@@ -116,7 +118,7 @@ ADR-0022 (original text quoted so the history is preserved):
 
 Amended rule: `CONFIRMED` and `CANCELLED` only; cancellation attribution, cancellation time, the
 late-cancellation flag, `COMPLETED`, `NO_SHOW`, and the before-start rule are deferred to the issues that
-implement them (#13 and #21) through forward migrations; source is `ONLINE` or `MANUAL`.
+implement them (Business-side cancellation and the internal note are issue #21, ADR-0028; Customer self-service cancellation is issue #35) through forward migrations; source is `ONLINE` or `MANUAL`. (An earlier version of this line named #13, which is the recurring working-schedules issue.)
 
 ## Wording amendment
 

@@ -90,7 +90,7 @@ Create an ACTIVE Business, qualified StaffMember, Service, schedule, and two
 overlapping requests. Coordinate independent transactions against PostgreSQL;
 assert exactly one success, one 409, one blocking Appointment, and a healthy
 connection afterward. Cover identical/partial overlap, adjacent half-open
-ranges, and rescheduling. The database constraint must key on
+ranges, and rescheduling (the Business-side evidence for create, reschedule, reassign, cancel, and the internal note, issues #19 and #21, is specified in "Business Appointment administration verification" below). The database constraint must key on
 `staff_member_id`. The issue #18 verification (planned by phase, not yet executed) is in "Appointment and
 guest booking verification" below.
 
@@ -312,8 +312,10 @@ industry-specific engine or authorization branch.
    books without an account.
 5. Business calendars show the automatically CONFIRMED Appointment.
 6. Guest cancels securely and the slot returns.
-7. Staff create/edit/reschedule/cancel/complete/no-show within permission and
-   time rules.
+7. The Business owner creates (one or several Services), reschedules, reassigns,
+   cancels, and edits the internal note of Appointments within the lifecycle and time
+   rules (issues #19 and #21). Manager and Staff access, complete, and no-show are
+   future capabilities.
 8. SUSPENDED shows a Bulgarian unavailable state, rejects booking, and permits
    read-only administration; PLATFORM_ADMIN can reactivate.
 
@@ -999,3 +1001,45 @@ flaky) and uses real PostgreSQL through Testcontainers for persistence, concurre
   automated test, before Phase 8.
 - **Phase 8 (browser E2E):** Playwright journeys with fixtures created only through supported APIs, conflict
   recovery, lifecycle states, mobile, tenant isolation, and unchanged administration.
+
+## Business Appointment administration verification (issues #19 and #21; decided in ADR-0028 and ADR-0029; planned, not executed)
+
+Decisions: ADR-0028, ADR-0029; phases and the per-phase evidence: `docs/tasks/09a-business-calendar-and-appointment-management.md`. Every
+test follows the reliability rules above (wait for the asserted state, control time, deferred promises, no sleeps, diagnose before calling anything
+flaky) and uses real PostgreSQL through Testcontainers for persistence, concurrency, and tenant isolation. Injected failures and statuses are kept
+apart from behavior PostgreSQL produces.
+
+- **Persistence and availability (Phase 2).** The `V14` upgrade from V13 (old cancelled rows become `UNKNOWN` with a null time, every other column
+  identical, a corrupt fixture fails the migration and leaves nothing, V1 to V13 hashes unchanged, a fresh install equals an upgraded one); every allowed and
+  forbidden combination of the cancellation invariant; a time-changing and a StaffMember-changing `UPDATE` rejected by the exclusion constraint with the
+  original row and every other row unchanged; a shift inside the row's own interval accepted; a conditional `UPDATE` after a concurrent commit failing with
+  `40001`; the Business availability policy (zero notice, a start beyond 30 dates, a past start, an instant exactly at `now`, a daylight-saving gap, both
+  occurrences of a repeated hour, the stored duration, ignoring only the moved Appointment while adjacent and overlapping neighbors still block); the
+  public availability results unchanged by the engine parameters; the adapted raw-SQL cancellation fixtures.
+- **Read APIs (Phase 3).** The role matrix (owner, Manager, Staff, platform-only, unauthenticated, foreign Business); Business A/B isolation with
+  byte-identical `404` bodies; `DRAFT`, `ACTIVE`, and `SUSPENDED` reads; exact key sets and privacy sentinels in responses, errors, and captured logs; the
+  31-date limit and the date bounds; overlap inclusion at both range edges; a daylight-saving day of 23 or 25 hours; ordering and stable ties; pagination sizes and
+  invalid values; statement counts independent of the number of Appointments and StaffMembers; the Customer history order and minimum fields; the `EXPLAIN ANALYZE`
+  evidence behind each `V15` index; a read-only snapshot that stays consistent when a commit lands between its statements.
+- **Mutations (Phases 4 to 6).** For create: lines in profile order, summed totals, snapshots from locked rows, the reviewed-terms check with zero writes, the
+  eligibility matrix of ADR-0028 section 6, an explicit foreign or missing Customer, no `findOrCreate`, a required explicit eligible StaffMember with no automatic assignment. For reschedule and reassign: a time-only move after a
+  Service was deactivated or an assignment removed, rejection when the current StaffMember is inactive, reassignment to an unassigned or inactive target
+  rejected, the stored duration used after a Service duration change, price, lines, Customer, and source unchanged, started and cancelled Appointments rejected, a
+  failed move leaving the row byte-identical. For cancel and the note: attribution, before-start only, repeated and stale attempts, the freed time offered again,
+  the note on future, past, confirmed, and cancelled Appointments only while `ACTIVE`.
+- **Concurrency, deterministic and without sleeps (latches, `pg_stat_activity`, `pg_blocking_pids`, `FOR UPDATE SKIP LOCKED` probes).** The lock order of each
+  operation; create versus create, create versus guest booking, move versus create, move versus guest booking; two moves of one Appointment; reassign in both
+  orders; cancel versus move and cancel versus cancel; note versus move; schedule, exception, StaffMember, assignment, Service, and Business changes against create and
+  reschedule; a stale version, a state conflict, and a lost slot asserted as three distinct results; the loser leaves no row and the winner is untouched; the
+  controlled exclusion-index deadlock retried in a new transaction with one winner; retry bounded at three attempts with distinct transaction identifiers and
+  snapshots; commit-uncertainty classification with real `afterCommit` failures separate from injected statuses.
+- **Boundaries.** `BookingModuleBoundaryTests`, `CustomerModuleBoundaryTests` (the `customer` module still does not depend on `booking`),
+  `ScheduleRevisionModuleBoundaryTests`, `AvailabilityMutationInventoryTests`, and a test that the Business runner is not `@Transactional` and uses no `REQUIRES_NEW`
+  or savepoint; none is weakened.
+- **Frontend (Phases 7 to 10).** Component tests with deferred promises for stale and out-of-order responses, a fixed clock and timezone, a daylight-saving day,
+  long names, route parsing, the Business switch, role and lifecycle states, the single-flight guard, no automatic repeat after an uncertain create, the unsaved-changes
+  guard, the action order, the cancel dialog's focus rules, and no Customer data in the URL or storage.
+- **Human review and browser E2E (Phases 11 and 12).** Phase 11 is the formal rendered review and an explicit approval gate: the review covers desktop, tablet, mobile, 200% zoom, keyboard use, long Customer, Service, and StaffMember names, the day, week, and agenda views, the read-only `DRAFT` and `SUSPENDED` states, every form, conflict, and dialog, and the Customer history; the notifications after Phases 7 and 10 are not approvals; Phase 12 does not start until the approval is recorded, and a review that asks for changes keeps Phase 11 open until they are applied, verified, and approved. Human approval is recorded separately from automated tests. Phase 12 is Playwright
+  journeys on the unmodified isolated runner for view, create (one and several Services), conflict recovery, reschedule, reassign, cancel, note, Customer history,
+  isolation, denials, `DRAFT` and `SUSPENDED`, mobile, privacy of the URL and storage, and the unchanged existing journeys. The fixtures count against the public booking
+  limiter (10 bookings per address and Business in 15 minutes), so a spec that books must count its POSTs.
