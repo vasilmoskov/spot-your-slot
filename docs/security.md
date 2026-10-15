@@ -291,7 +291,7 @@ version, list-window, and whole-body failures stay generic. Responses never
 expose SQL diagnostics, constraint names, stack traces, submitted identifiers,
 Membership details, or tenant existence.
 
-### Business Appointment administration authorization (issues #19 and #21; decided in ADR-0028 and ADR-0029, not implemented)
+### Business Appointment administration authorization (issues #19 and #21; decided in ADR-0028 and ADR-0029; the read routes are implemented in Phase 3, the mutations are not)
 
 The calendar, the Appointment detail, the Customer appointment history, and every Appointment mutation
 (create, reschedule and reassign, cancel, internal-note edit) derive the user and the selected Business only
@@ -308,7 +308,9 @@ StaffMember, and Service identifiers share one safe `404`.
 | `DRAFT` | allowed (read-only preview) | `409 BUSINESS_NOT_ACTIVE` (a deliberate difference from the Service, StaffMember, schedule, and Customer APIs) |
 | `SUSPENDED` | allowed | `409 BUSINESS_SUSPENDED` |
 
-Planned failures (the codes, route names, and Bulgarian wording are working names, finalised and tested in the implementing HTTP or interface phase, and the wording stays Proposed until the rendered human review): `VALIDATION_ERROR` (400),
+**Implemented read routes (issue #21 Phase 3; all `GET`, owner-only, no CSRF token needed, every response `Cache-Control: no-store` from the default security headers).** `/api/business/calendar` and `/api/business/appointments` take `from` and `to` (required, canonical `YYYY-MM-DD`, inclusive Business-local dates, at most 31, within 2000-01-01 to 2100-12-31) and an optional `staffMemberId`; the agenda also takes `page` (from 0) and `size` (10, 25, or 50; default 10). `/api/business/appointments/{appointmentId}` is the owner-only detail and `/api/business/customers/{customerId}/appointments` the Customer history (`page`, `size`). `ACTIVE`, `DRAFT`, and `SUSPENDED` Businesses are all readable and the calendar, agenda, and detail say which in `businessStatus`. Failures: `AUTH_REQUIRED` (401); `ACTIVE_BUSINESS_REQUIRED` and `ACCESS_DENIED` (403, as above); `VALIDATION_ERROR` (400, generic, never naming a field or echoing a value); `APPOINTMENT_NOT_FOUND` ("Часът не е намерен."), `CUSTOMER_NOT_FOUND` ("Клиентът не е намерен."), and `STAFF_MEMBER_NOT_FOUND` ("Членът на екипа не е намерен.") (404, byte-identical for a missing and a foreign identifier of the same resource type); `INTERNAL_ERROR` (500). Each route family has one fixed, non-echoing problem `instance`, the family's base path (the convention of the Customer API): `/api/business/calendar` for the calendar, `/api/business/appointments` for the agenda and the detail, and `/api/business/customers` for the Customer history; no identifier, query value, slug, or raw request path is ever echoed. Calendar and agenda rows carry no note, no cancellation actor, no public reference, and no contact data; the history carries neither a Customer name nor any note, reference, price, or attribution; only the owner detail carries the contact data, both notes, the public reference, the version, and the cancellation attribution. The unfiltered calendar lists every active StaffMember plus an inactive one only when it has an Appointment in the window; an explicit `staffMemberId` may name an inactive same-Business StaffMember.
+
+Failures planned for the mutations (the codes, route names, and Bulgarian wording are working names, finalised and tested in the implementing HTTP or interface phase, and the wording stays Proposed until the rendered human review): `VALIDATION_ERROR` (400),
 `AUTH_REQUIRED`, `ACTIVE_BUSINESS_REQUIRED`, `ACCESS_DENIED`, `APPOINTMENT_NOT_FOUND` and `CUSTOMER_NOT_FOUND` (404),
 `BUSINESS_NOT_ACTIVE`, `BUSINESS_SUSPENDED`, `APPOINTMENT_CONCURRENT_UPDATE` (a stale `expectedVersion`),
 `APPOINTMENT_STATE_CONFLICT` (already cancelled or started), `APPOINTMENT_SLOT_UNAVAILABLE` (the time is not offered,

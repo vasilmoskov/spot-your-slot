@@ -87,7 +87,7 @@ class AppointmentAdministrationMigrationIntegrationTests extends PostgresIntegra
         Map<UUID, String> before = rowsAsJson(upgrade, schema, "to_jsonb(a)");
         Map<UUID, String> statusBefore = column(upgrade, schema, "status");
 
-        migrate(dataSource, schema, null);
+        migrate(dataSource, schema, "14");
 
         assertThat(statusBefore.values()).contains("CONFIRMED", "CANCELLED");
         Map<UUID, String> after = rowsAsJson(upgrade, schema,
@@ -126,7 +126,7 @@ class AppointmentAdministrationMigrationIntegrationTests extends PostgresIntegra
         Map<UUID, String> xminBefore = column(upgrade, schema, "xmin::text");
         Map<UUID, String> statuses = column(upgrade, schema, "status");
 
-        migrate(dataSource, schema, null);
+        migrate(dataSource, schema, "14");
 
         // No full replacement of the table file ...
         assertThat(relfilenode(upgrade, schema, "appointment"))
@@ -149,7 +149,7 @@ class AppointmentAdministrationMigrationIntegrationTests extends PostgresIntegra
     void theNewColumnsHaveNoDefaultAndAreNullable() {
         String schema = "v14_columns";
         PGSimpleDataSource dataSource = dataSource(schema);
-        migrate(dataSource, schema, null);
+        migrate(dataSource, schema, "14");
         JdbcClient upgrade = JdbcClient.create(dataSource);
 
         List<String> columns = upgrade.sql("""
@@ -182,7 +182,7 @@ class AppointmentAdministrationMigrationIntegrationTests extends PostgresIntegra
                 + "WHERE status = 'CONFIRMED' LIMIT 1)").update();
         Map<UUID, String> cancelledBefore = column(upgrade, schema, "status");
 
-        Throwable failure = catchThrowable(() -> migrate(dataSource, schema, null));
+        Throwable failure = catchThrowable(() -> migrate(dataSource, schema, "14"));
 
         assertThat(failure).isInstanceOf(FlywayException.class);
         assertThat(upgrade.sql("""
@@ -207,7 +207,7 @@ class AppointmentAdministrationMigrationIntegrationTests extends PostgresIntegra
         String schema = "v14_verify_block";
         PGSimpleDataSource dataSource = dataSource(schema);
         JdbcClient upgrade = seedAtV13(dataSource, schema);
-        migrate(dataSource, schema, null);
+        migrate(dataSource, schema, "14");
         // Dropping the constraint reproduces a failed backfill without needing a second migration.
         upgrade.sql("ALTER TABLE " + schema
                 + ".appointment DROP CONSTRAINT appointment_cancellation_consistent").update();
@@ -227,7 +227,7 @@ class AppointmentAdministrationMigrationIntegrationTests extends PostgresIntegra
         String schema = "v14_verify_note";
         PGSimpleDataSource dataSource = dataSource(schema);
         JdbcClient upgrade = seedAtV13(dataSource, schema);
-        migrate(dataSource, schema, null);
+        migrate(dataSource, schema, "14");
         upgrade.sql("UPDATE " + schema + ".appointment SET internal_note = 'бележка'").update();
 
         executeScript(dataSource, "SET search_path TO " + schema + ";\n" + verificationBlock());

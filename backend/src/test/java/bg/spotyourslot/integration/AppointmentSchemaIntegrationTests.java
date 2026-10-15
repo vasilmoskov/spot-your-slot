@@ -92,7 +92,7 @@ class AppointmentSchemaIntegrationTests extends PostgresIntegrationTest {
     // ---- migration integrity -------------------------------------------------
 
     @Test
-    void migrationsFromEmptyAreExactlyV1ThroughV14WithV14Newest() {
+    void migrationsFromEmptyAreExactlyV1ThroughV15WithV15Newest() {
         List<String> versions = jdbc.sql("""
                         SELECT version
                         FROM flyway_schema_history
@@ -103,7 +103,7 @@ class AppointmentSchemaIntegrationTests extends PostgresIntegrationTest {
                 .list();
 
         assertThat(versions)
-                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14");
+                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15");
     }
 
     @Test
@@ -261,7 +261,10 @@ class AppointmentSchemaIntegrationTests extends PostgresIntegrationTest {
                 "appointment_business_id_id_unique",
                 "appointment_business_public_reference_unique",
                 "appointment_business_attempt_hash_unique",
-                "appointment_staff_no_overlap");
+                "appointment_staff_no_overlap",
+                // The read indexes of V15 (issue #21 Phase 3).
+                "appointment_business_start_idx",
+                "appointment_business_customer_start_idx");
     }
 
     @Test

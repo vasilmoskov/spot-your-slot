@@ -1,0 +1,138 @@
+package bg.spotyourslot.architecture;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import bg.spotyourslot.SpotYourSlotApplication;
+import com.tngtech.archunit.core.domain.Dependency;
+import com.tngtech.archunit.core.domain.JavaClass;
+import com.tngtech.archunit.core.domain.JavaClasses;
+import com.tngtech.archunit.core.importer.ClassFileImporter;
+import com.tngtech.archunit.core.importer.ImportOption;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
+import org.junit.jupiter.api.Test;
+import org.springframework.modulith.core.ApplicationModule;
+import org.springframework.modulith.core.ApplicationModules;
+
+/**
+ * Issue #21 Phase 3: the private {@code calendar} HTTP adapter depends only on the published
+ * {@code booking} root package and on the published {@code identity} context type, owns no
+ * transaction, store, or logging, exposes exactly the four approved {@code GET} routes, and no
+ * module depends on it.
+ */
+class CalendarModuleBoundaryTests {
+    private final ApplicationModules modules = ApplicationModules.of(SpotYourSlotApplication.class);
+    private final JavaClasses main = new ClassFileImporter()
+            .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
+            .importPackages("bg.spotyourslot");
+
+    private Set<String> dependenciesOf(String moduleName) {
+        ApplicationModule module = modules.getModuleByName(moduleName).orElseThrow();
+        return module.getDirectDependencies(modules).uniqueModules()
+                .map(dependency -> dependency.getIdentifier().toString())
+                .collect(Collectors.toSet());
+    }
+
+    @Test
+    void calendarIsADetectedModuleThatDependsOnlyOnBookingAndIdentity() {
+        assertThat(modules.getModuleByName("calendar")).isPresent();
+        assertThat(dependenciesOf("calendar")).containsExactlyInAnyOrder("booking", "identity");
+    }
+
+    @Test
+    void noModuleDependsOnCalendar() {
+        for (ApplicationModule module : modules) {
+            String name = module.getIdentifier().toString();
+            if (!name.equals("calendar")) {
+                assertThat(dependenciesOf(name)).as(name).doesNotContain("calendar");
+            }
+        }
+    }
+
+    @Test
+    void theAdapterUsesOnlyPublishedRootTypesOfBookingAndIdentity() {
+        Set<String> targets = new TreeSet<>();
+        for (JavaClass type : main) {
+            if (!type.getPackageName().startsWith("bg.spotyourslot.calendar")) {
+                continue;
+            }
+            for (Dependency dependency : type.getDirectDependenciesFromSelf()) {
+                String name = dependency.getTargetClass().getName();
+                String packageName = dependency.getTargetClass().getPackageName();
+                if (packageName.startsWith("bg.spotyourslot.") && !packageName.startsWith("bg.spotyourslot.calendar")) {
+                    targets.add(name);
+                    assertThat(packageName).as(type.getName() + " -> " + name)
+                            .isIn("bg.spotyourslot.booking", "bg.spotyourslot.identity");
+                }
+            }
+        }
+
+        assertThat(targets).allMatch(name -> name.startsWith("bg.spotyourslot.booking.AppointmentCalendar")
+                || name.equals("bg.spotyourslot.identity.AuthenticatedBusinessContext")
+                || name.equals("bg.spotyourslot.identity.SelectedBusinessRequired"));
+        assertThat(targets).contains(
+                "bg.spotyourslot.booking.AppointmentCalendar",
+                "bg.spotyourslot.identity.AuthenticatedBusinessContext");
+    }
+
+    @Test
+    void theAdapterOwnsNoTransactionStoreSqlOrLogging() throws Exception {
+        try (var files = Files.walk(Path.of("src/main/java/bg/spotyourslot/calendar"))) {
+            for (Path file : files.filter(path -> path.toString().endsWith(".java")).toList()) {
+                String code = Files.readString(file).replaceAll("(?s)/\\*.*?\\*/", "");
+                assertThat(code).as(file.toString())
+                        .doesNotContain("@Transactional")
+                        .doesNotContain("TransactionTemplate")
+                        .doesNotContain("JdbcClient")
+                        .doesNotContain("DataSource")
+                        .doesNotContain("Logger")
+                        .doesNotContain("HttpServletRequest")
+                        .doesNotContain("getRequestURI")
+                        .doesNotContain("Thread.sleep");
+            }
+        }
+    }
+
+    @Test
+    void exactlyTheFourApprovedGetRoutesExistAndNothingElseIsMapped() throws Exception {
+        List<String> mappings = new ArrayList<>();
+        try (var files = Files.walk(Path.of("src/main/java/bg/spotyourslot/calendar/web"))) {
+            for (Path file : files.filter(path -> path.toString().endsWith("Controller.java")).toList()) {
+                String code = Files.readString(file).replaceAll("(?s)/\\*.*?\\*/", "");
+                String base = Pattern.compile("@RequestMapping\\(\"([^\"]+)\"\\)")
+                        .matcher(code).results().map(match -> match.group(1)).findFirst().orElseThrow();
+                assertThat(code).doesNotContain("@PostMapping").doesNotContain("@PutMapping")
+                        .doesNotContain("@DeleteMapping").doesNotContain("@PatchMapping")
+                        .doesNotContain("@RequestBody");
+                Matcher get = Pattern
+                        .compile("@GetMapping(?:\\(\"([^\"]*)\"\\))?").matcher(code);
+                while (get.find()) {
+                    mappings.add("GET " + base + (get.group(1) == null ? "" : get.group(1)));
+                }
+            }
+        }
+
+        assertThat(mappings).containsExactlyInAnyOrder(
+                "GET /api/business/calendar",
+                "GET /api/business/appointments",
+                "GET /api/business/appointments/{appointmentId}",
+                "GET /api/business/customers/{customerId}/appointments");
+    }
+
+    @Test
+    void customerNeverDependsOnBookingOrCalendar() {
+        assertThat(dependenciesOf("customer")).doesNotContain("booking", "calendar");
+    }
+
+    @Test
+    void theWholeModuleGraphStaysAcyclicAndVerified() {
+        modules.verify();
+    }
+}

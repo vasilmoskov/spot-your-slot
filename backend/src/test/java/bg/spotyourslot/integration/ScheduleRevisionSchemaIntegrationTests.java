@@ -86,7 +86,7 @@ class ScheduleRevisionSchemaIntegrationTests extends PostgresIntegrationTest {
     // ---- migration integrity -------------------------------------------------
 
     @Test
-    void migrationsFromEmptyAreExactlyV1ThroughV14WithV14Newest() {
+    void migrationsFromEmptyAreExactlyV1ThroughV15WithV15Newest() {
         List<String> versions = jdbc.sql("""
                         SELECT version
                         FROM flyway_schema_history
@@ -97,7 +97,7 @@ class ScheduleRevisionSchemaIntegrationTests extends PostgresIntegrationTest {
                 .list();
 
         assertThat(versions).containsExactly(
-                "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14");
+                "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15");
     }
 
     @Test
@@ -172,7 +172,7 @@ class ScheduleRevisionSchemaIntegrationTests extends PostgresIntegrationTest {
                         ORDER BY installed_rank DESC
                         LIMIT 1
                         """)
-                .query(String.class).single()).isEqualTo("14");
+                .query(String.class).single()).isEqualTo("15");
 
         // The trigger resolves the revision table through the session search path, which Flyway
         // configured for its own connection only; a plain connection selects the upgraded schema.

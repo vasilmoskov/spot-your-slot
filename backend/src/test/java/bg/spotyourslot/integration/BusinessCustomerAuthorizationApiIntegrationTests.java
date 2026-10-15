@@ -380,6 +380,9 @@ class BusinessCustomerAuthorizationApiIntegrationTests extends BusinessCustomerA
                 "[GET] /api/business/customers/{customerId:^(?!search$).+}",
                 "[POST] /api/business/customers",
                 "[PUT] /api/business/customers/{customerId:^(?!search$).+}");
-        assertThat(outsideTheCustomerPrefix).isEmpty();
+        // The one deliberate exception (ADR-0028 section 11): the Booking-owned Customer appointment
+        // history lives under the Customer path but is served by the calendar adapter, read-only.
+        assertThat(outsideTheCustomerPrefix)
+                .containsExactly("/api/business/customers/{customerId}/appointments");
     }
 }

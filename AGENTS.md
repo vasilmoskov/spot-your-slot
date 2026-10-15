@@ -74,6 +74,22 @@
   only and never limit how far ahead booking is possible.
 - Normal business operations never physically delete appointments.
 
+## Phase-start preconditions and CI
+
+Continuous integration is advisory, not a hard gate, for starting the next phase.
+
+- Before implementing a phase, require only: the preceding phase is committed, `HEAD`
+  equals `origin/main`, and the working tree and staging area are clean.
+- Inspect CI read-only for the exact `HEAD` and report its state. If it is queued or in
+  progress, continue without waiting. If it failed, record the failing run and jobs, do not
+  expand the current phase to fix them, and continue when the failure is clearly unrelated to the
+  planned work. Stop and report a concrete blocker only when the failure shows that the committed
+  base is unsafe for the current phase.
+- Never rerun, cancel, or otherwise mutate GitHub Actions, and never edit, move, or close issues
+  or Project items; the product owner performs every GitHub mutation manually.
+- Report local verification and CI verification separately (see
+  `docs/testing-strategy.md`). Dated phase records that describe an earlier gate stay as history.
+
 ## Risk-based workflow
 
 Use the lightest workflow that still gives credible evidence, scaled to the

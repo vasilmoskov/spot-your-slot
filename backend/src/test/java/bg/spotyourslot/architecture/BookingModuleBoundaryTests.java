@@ -9,18 +9,22 @@ import com.tngtech.archunit.core.domain.JavaClass;
 import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.springframework.modulith.core.ApplicationModule;
 import org.springframework.modulith.core.ApplicationModules;
 
 /**
- * Issue #18 Phases 2, 4, and 5: the {@code booking} module owns Appointment persistence, the real
+ * Issue #18 Phases 2, 4, and 5 and issue #21 Phase 3: the {@code booking} module owns Appointment persistence, the real
  * busy-interval source, the guest booking orchestration, and the public abuse limiter. It depends only on the published
- * contracts of Business, Catalog, Workforce, Scheduling, and Customer and on the shared contact
- * canonicalization policy; only the public booking adapter depends on it, {@code scheduling} never imports it, and exactly
+ * contracts of Business, Catalog, Workforce, Scheduling, Customer, and the narrow identity context
+ * types and on the shared contact canonicalization policy; only the two HTTP adapters (the public
+ * booking adapter and the private calendar adapter) depend on it, {@code scheduling} never imports it, and exactly
  * one busy-interval source exists.
  */
 class BookingModuleBoundaryTests {
@@ -33,7 +37,7 @@ class BookingModuleBoundaryTests {
     void theBookingModuleDependsOnlyOnThePublishedContractsAndTheSharedContactPolicy() {
         assertThat(modules.getModuleByName("booking")).isPresent();
         assertThat(dependenciesOf("booking")).containsExactlyInAnyOrder(
-                "business", "catalog", "workforce", "scheduling", "customer", "shared");
+                "business", "catalog", "workforce", "scheduling", "customer", "identity", "shared");
         // The only shared package used is the published contact canonicalization policy.
         for (JavaClass type : main) {
             if (type.getPackageName().startsWith("bg.spotyourslot.booking")) {
@@ -54,7 +58,7 @@ class BookingModuleBoundaryTests {
             if (name.equals("booking")) {
                 continue;
             }
-            if (name.equals("publicbooking")) {
+            if (name.equals("publicbooking") || name.equals("calendar")) {
                 assertThat(dependenciesOf(name)).as(name).contains("booking");
             } else {
                 assertThat(dependenciesOf(name)).as(name).doesNotContain("booking");
@@ -126,6 +130,44 @@ class BookingModuleBoundaryTests {
                 .collect(Collectors.toSet());
     }
 
+    /** ADR-0028 section 13: booking reaches identity only for the server-derived owner context. */
+    @Test
+    void bookingUsesOnlyTheThreeNarrowIdentityContextTypes() {
+        Set<String> identityTargets = new TreeSet<>();
+        for (JavaClass type : main) {
+            if (type.getPackageName().startsWith("bg.spotyourslot.booking")) {
+                for (Dependency dependency : type.getDirectDependenciesFromSelf()) {
+                    String target = dependency.getTargetClass().getName();
+                    if (target.startsWith("bg.spotyourslot.identity")) {
+                        identityTargets.add(target);
+                    }
+                }
+            }
+        }
+
+        assertThat(identityTargets).containsExactlyInAnyOrder(
+                "bg.spotyourslot.identity.AuthenticatedBusinessContext",
+                "bg.spotyourslot.identity.SelectedBusinessOwnerAccess",
+                "bg.spotyourslot.identity.SelectedBusinessOwnerAccess$Authorization",
+                "bg.spotyourslot.identity.SelectedBusinessRequired");
+    }
+
+    @Test
+    void theCalendarReadServiceIsReadOnlyRepeatableReadAndTakesNoLockOrWrite() throws Exception {
+        String code = Files.readString(Path.of(
+                "src/main/java/bg/spotyourslot/booking/application/AppointmentCalendarService.java"))
+                .replaceAll("(?s)/\\*.*?\\*/", "");
+        assertThat(code).contains("Isolation.REPEATABLE_READ").contains("readOnly = true")
+                .doesNotContain("REQUIRES_NEW").doesNotContain("Savepoint")
+                .doesNotContain("lockAndAuthorize").doesNotContain("lockScheduleContext")
+                .doesNotContain("Thread.sleep").doesNotContain("Logger");
+        String store = Files.readString(Path.of(
+                "src/main/java/bg/spotyourslot/booking/infrastructure/AppointmentReadStore.java"))
+                .replaceAll("(?s)/\\*.*?\\*/", "");
+        assertThat(store).doesNotContain("FOR UPDATE").doesNotContain("FOR SHARE")
+                .doesNotContain("INSERT ").doesNotContain("UPDATE appointment").doesNotContain("DELETE ");
+    }
+
     @Test
     void exactlyOneClassImplementsTheBusyIntervalSourceAndItIsTheBookingOwnedOne() {
         List<String> implementations = main.stream()
@@ -175,7 +217,10 @@ class BookingModuleBoundaryTests {
                         "BookingResult",
                         "BookedAppointment",
                         "BookingField",
-                        "BookingOrchestrationFailure");
+                        "BookingOrchestrationFailure",
+                        "AppointmentCalendar",
+                        "AppointmentCalendarRecords",
+                        "AppointmentCalendarException");
     }
 
     @Test
@@ -198,7 +243,8 @@ class BookingModuleBoundaryTests {
             }
             for (Dependency dependency : type.getDirectDependenciesFromSelf()) {
                 String target = dependency.getTargetClass().getPackageName();
-                for (String module : List.of("business", "catalog", "workforce", "scheduling", "customer")) {
+                for (String module : List.of(
+                        "business", "catalog", "workforce", "scheduling", "customer", "identity")) {
                     assertThat(target).as(type.getName() + " -> " + dependency.getTargetClass().getName())
                             .isNotIn(
                                     "bg.spotyourslot." + module + ".application",
@@ -212,7 +258,7 @@ class BookingModuleBoundaryTests {
 
     @Test
     void theOrchestrationEntryPointIsNotTransactionalAndNeverUsesRequiresNewOrSavepoints() throws Exception {
-        String source = java.nio.file.Files.readString(java.nio.file.Path.of(
+        String source = Files.readString(Path.of(
                 "src/main/java/bg/spotyourslot/booking/application/GuestBookingService.java"));
         // Code only: the Javadoc may mention the rejected alternatives.
         String code = source.replaceAll("(?s)/\\*.*?\\*/", "");

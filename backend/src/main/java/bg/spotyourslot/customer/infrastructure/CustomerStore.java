@@ -18,7 +18,10 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -162,6 +165,30 @@ public class CustomerStore {
                 .param("customerId", customerId)
                 .query(this::customer)
                 .optional());
+    }
+
+    /**
+     * One statement, no lock: the display names of the requested Customers of the Business. A
+     * missing or foreign identifier is absent from the result.
+     */
+    public Map<UUID, String> findDisplayNames(UUID businessId, Collection<UUID> customerIds) {
+        Map<UUID, String> names = new HashMap<>();
+        execute(() -> jdbc.sql("""
+                        SELECT id, display_name
+                        FROM customer
+                        WHERE business_id = :businessId
+                          AND id IN (:customerIds)
+                        """)
+                .param("businessId", businessId)
+                .param("customerIds", List.copyOf(customerIds))
+                .query((resultSet, rowNumber) -> {
+                    names.put(
+                            resultSet.getObject("id", UUID.class),
+                            resultSet.getString("display_name"));
+                    return rowNumber;
+                })
+                .list());
+        return names;
     }
 
     public Optional<Customer> findByPhone(UUID businessId, String phone) {

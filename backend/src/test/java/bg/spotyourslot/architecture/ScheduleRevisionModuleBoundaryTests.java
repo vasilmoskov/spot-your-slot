@@ -107,8 +107,9 @@ class ScheduleRevisionModuleBoundaryTests {
         assertThat(dependenciesOf("scheduling")).doesNotContain("booking");
         for (ApplicationModule module : modules) {
             String name = module.getIdentifier().toString();
-            // Only the public HTTP adapter of guest booking (ADR-0026) depends on booking.
-            if (!name.equals("publicbooking")) {
+            // Only the two HTTP adapters depend on booking: the public guest-booking adapter
+            // (ADR-0026) and the private owner calendar adapter (ADR-0028).
+            if (!name.equals("publicbooking") && !name.equals("calendar")) {
                 assertThat(dependenciesOf(name)).as(name).doesNotContain("booking");
             }
         }

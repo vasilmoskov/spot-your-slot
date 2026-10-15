@@ -80,7 +80,8 @@ merely that the test is slow when it fails. A failure that is not understood is 
   in addition, by the relevant existing browser journey. A new browser test is added only when it
   covers behavior no deterministic test can.
 - Report local verification and CI verification separately. A green CI run approves only the exact
-  commit it checked.
+  commit it checked. CI state is advisory for starting the next phase (see AGENTS.md, "Phase-start
+  preconditions and CI"); it never replaces the local checks required before handing work over.
 
 ## Mandatory high-risk tests
 
@@ -1002,7 +1003,7 @@ flaky) and uses real PostgreSQL through Testcontainers for persistence, concurre
 - **Phase 8 (browser E2E):** Playwright journeys with fixtures created only through supported APIs, conflict
   recovery, lifecycle states, mobile, tenant isolation, and unchanged administration.
 
-## Business Appointment administration verification (issues #19 and #21; decided in ADR-0028 and ADR-0029; Phase 2 executed, Phases 3 to 12 planned)
+## Business Appointment administration verification (issues #19 and #21; decided in ADR-0028 and ADR-0029; Phases 2 and 3 executed, Phases 4 to 12 planned)
 
 Decisions: ADR-0028, ADR-0029; phases and the per-phase evidence: `docs/tasks/09a-business-calendar-and-appointment-management.md`. Every
 test follows the reliability rules above (wait for the asserted state, control time, deferred promises, no sleeps, diagnose before calling anything
@@ -1016,7 +1017,7 @@ apart from behavior PostgreSQL produces.
   `40001`; the Business availability policy (zero notice, a start beyond 30 dates, a past start, an instant exactly at `now`, a daylight-saving gap, both
   occurrences of a repeated hour, the stored duration, ignoring only the moved Appointment while adjacent and overlapping neighbors still block); the
   public availability results unchanged by the engine parameters; the adapted raw-SQL cancellation fixtures.
-- **Read APIs (Phase 3).** The role matrix (owner, Manager, Staff, platform-only, unauthenticated, foreign Business); Business A/B isolation with
+- **Read APIs (Phase 3; executed, evidence in the Phase 3 record of task 09a).** The role matrix (owner, Manager, Staff, platform-only, unauthenticated, foreign Business); Business A/B isolation with
   byte-identical `404` bodies; `DRAFT`, `ACTIVE`, and `SUSPENDED` reads; exact key sets and privacy sentinels in responses, errors, and captured logs; the
   31-date limit and the date bounds; overlap inclusion at both range edges; a daylight-saving day of 23 or 25 hours; ordering and stable ties; pagination sizes and
   invalid values; statement counts independent of the number of Appointments and StaffMembers; the Customer history order and minimum fields; the `EXPLAIN ANALYZE`

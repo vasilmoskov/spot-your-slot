@@ -218,6 +218,8 @@ class CustomerModuleBoundaryTests {
                 IdentityField.class.getName(),
                 CustomerReferenceAccess.class.getName(),
                 CustomerReferenceAccess.CustomerReference.class.getName(),
+                bg.spotyourslot.customer.CustomerDirectory.class.getName(),
+                bg.spotyourslot.customer.CustomerDirectory.CustomerContact.class.getName(),
                 CustomerConcurrentConflict.class.getName(),
                 CustomerOperationFailure.class.getName());
         assertThat(published).noneMatch(name -> name.contains("Administration")
