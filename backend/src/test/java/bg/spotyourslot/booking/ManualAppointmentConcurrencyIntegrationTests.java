@@ -128,7 +128,10 @@ class ManualAppointmentConcurrencyIntegrationTests extends ManualAppointmentTest
     void theAttemptTakesBusinessMembershipStaffMemberRevisionServiceInThatOrderAndTheCustomerOnlyAtTheInsert() {
         List<String> points = new ArrayList<>();
         List<Set<String>> held = new ArrayList<>();
-        for (ManualBookingHooks.Point point : ManualBookingHooks.Point.values()) {
+        for (ManualBookingHooks.Point point : List.of(
+                ManualBookingHooks.Point.BEFORE_OWNER_LOCK,
+                ManualBookingHooks.Point.BEFORE_CUSTOMER_READ,
+                ManualBookingHooks.Point.BEFORE_INSERT)) {
             manualHooks.on(point, invocation -> {
                 points.add(invocation.point().name());
                 held.add(lockedRows(ownerUser()));

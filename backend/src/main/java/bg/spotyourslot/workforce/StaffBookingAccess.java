@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -39,6 +40,16 @@ public interface StaffBookingAccess {
      */
     List<BookingStaffMember> lockEligibleForBooking(
             UUID businessId, Collection<UUID> serviceIds, UUID requestedStaffMemberId);
+
+    /**
+     * Locks one StaffMember of the Business {@code FOR SHARE} when it is active, with no Service
+     * assignment check: the lock of the time-only move of an Appointment, which keeps its StaffMember
+     * even when an assignment was removed later (ADR-0028 section 6). One statement; the same
+     * {@link ConcurrentConflict} and {@link Failure} translation as the eligibility locks.
+     *
+     * @return the locked StaffMember; empty when it is missing, foreign, or inactive (indistinguishable)
+     */
+    Optional<BookingStaffMember> lockActiveForBooking(UUID businessId, UUID staffMemberId);
 
     /**
      * @param displayName the canonical StaffMember display name, copied unchanged into the

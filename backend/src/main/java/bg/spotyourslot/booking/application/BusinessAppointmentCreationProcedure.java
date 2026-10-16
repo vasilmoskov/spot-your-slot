@@ -3,6 +3,7 @@ package bg.spotyourslot.booking.application;
 import bg.spotyourslot.booking.AppointmentAdministrationRecords.CreateAppointmentCommand;
 import bg.spotyourslot.booking.AppointmentAdministrationRecords.CreatedAppointment;
 import bg.spotyourslot.booking.AppointmentAdministrationRecords.CreatedService;
+import bg.spotyourslot.booking.AppointmentAdministrationRecords.RescheduledAppointment;
 import bg.spotyourslot.booking.AppointmentAdministrationRecords.ReviewedService;
 import bg.spotyourslot.booking.domain.Appointment;
 import bg.spotyourslot.booking.domain.AppointmentSource;
@@ -53,6 +54,9 @@ import org.springframework.stereotype.Component;
  * SHARE}, all selected Services {@code FOR SHARE}; then the Appointment and its lines are written
  * (the Customer foreign key takes its implicit {@code KEY SHARE} there). The Customer reference
  * check before the locks is a plain read and not a lock level.
+ *
+ * <p>The reschedule/reassignment body is {@link BusinessAppointmentRescheduleProcedure}; the outcome
+ * and rejection types below are shared by both so that one runner classifies both.
  *
  * <p>Decisions in this precedence: authorization, lifecycle, domain bounds, Customer, then, with all
  * locks held, Service availability, StaffMember eligibility, reviewed terms, and last the slot.
@@ -106,10 +110,25 @@ class BusinessAppointmentCreationProcedure {
         SERVICE_UNAVAILABLE,
         STAFF_UNAVAILABLE,
         REVIEW_CHANGED,
-        SLOT_UNAVAILABLE
+        SLOT_UNAVAILABLE,
+        APPOINTMENT_NOT_FOUND,
+        CONCURRENT_UPDATE,
+        STATE_CONFLICT
     }
 
-    sealed interface Outcome permits Created, Rejected {
+    /**
+     * What one attempt of any Business Appointment operation produced. The reschedule outcome
+     * shares this type so the single runner classifies both; its body is
+     * {@link BusinessAppointmentRescheduleProcedure}.
+     */
+    sealed interface Outcome permits Created, Rescheduled, Rejected {
+    }
+
+    record Rescheduled(RescheduledAppointment appointment) implements Outcome {
+        @Override
+        public String toString() {
+            return "Rescheduled[redacted]";
+        }
     }
 
     record Created(CreatedAppointment appointment) implements Outcome {

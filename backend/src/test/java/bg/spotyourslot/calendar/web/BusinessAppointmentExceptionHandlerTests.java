@@ -103,4 +103,31 @@ class BusinessAppointmentExceptionHandlerTests {
             assertThat(handle(throwable)).as(type.getSimpleName()).isNotNull();
         }
     }
+
+    @Test
+    void theRescheduleRouteRewordsExactlyTheResultsWhoseCreateWordingSpeaksOfCreatingOrSaving() throws Exception {
+        Method method = BusinessAppointmentExceptionHandler.class.getDeclaredMethod(
+                "rescheduleFailure", RescheduleFailure.class);
+        method.setAccessible(true);
+        List<AppointmentAdministrationException> reworded = List.of(
+                new BusinessNotActive(), new StaffUnavailable(), new TemporarilyUnavailable(), new OutcomeUncertain());
+
+        for (AppointmentAdministrationException failure : reworded) {
+            ProblemDetail create = handle(failure.getClass());
+            ProblemDetail reschedule = (ProblemDetail) method.invoke(handler, new RescheduleFailure(failure));
+            assertThat(reschedule.getStatus()).as(failure.getClass().getSimpleName()).isEqualTo(create.getStatus());
+            assertThat(reschedule.getProperties()).isEqualTo(create.getProperties());
+            assertThat(reschedule.getDetail()).as(failure.getClass().getSimpleName())
+                    .isNotEqualTo(create.getDetail())
+                    .doesNotContainIgnoringCase("създа")
+                    .doesNotContainIgnoringCase("запаз");
+        }
+        for (AppointmentAdministrationException same : List.<AppointmentAdministrationException>of(
+                new SlotUnavailable(), new BusinessSuspended(), new InvalidInput(), new AccessDenied())) {
+            ProblemDetail create = handle(same.getClass());
+            ProblemDetail reschedule = (ProblemDetail) method.invoke(handler, new RescheduleFailure(same));
+            assertThat(reschedule.getDetail()).isEqualTo(create.getDetail());
+            assertThat(reschedule.getStatus()).isEqualTo(create.getStatus());
+        }
+    }
 }

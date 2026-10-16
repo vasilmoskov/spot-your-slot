@@ -291,7 +291,7 @@ version, list-window, and whole-body failures stay generic. Responses never
 expose SQL diagnostics, constraint names, stack traces, submitted identifiers,
 Membership details, or tenant existence.
 
-### Business Appointment administration authorization (issues #19 and #21; decided in ADR-0028 and ADR-0029; the read routes are implemented in Phase 3, the mutations are not)
+### Business Appointment administration authorization (issues #19 and #21; decided in ADR-0028 and ADR-0029; the read routes are implemented in Phase 3, create in Phase 4, reschedule and reassign in Phase 5; cancel and the note edit are not)
 
 The calendar, the Appointment detail, the Customer appointment history, and every Appointment mutation
 (create, reschedule and reassign, cancel, internal-note edit) derive the user and the selected Business only
@@ -326,9 +326,28 @@ is required. Wording: `BUSINESS_NOT_ACTIVE` "Бизнесът не е актив
 услуги вече не е налична.", `APPOINTMENT_STAFF_UNAVAILABLE` "Избраният член на екипа не е наличен за тези услуги.", `APPOINTMENT_REVIEW_CHANGED` "Услугите са променени.
 Прегледайте ги отново и опитайте пак.", `APPOINTMENT_SLOT_UNAVAILABLE` "Избраният час вече не е свободен.", `APPOINTMENT_TEMPORARILY_UNAVAILABLE` (503) "Часът не беше
 запазен. Опитайте отново след малко.", `APPOINTMENT_OUTCOME_UNCERTAIN` (503) "Не е ясно дали часът е запазен. Проверете графика, преди да опитате отново."; all remain
-Proposed until the rendered human review. A request of another media type is `415 UNSUPPORTED_MEDIA_TYPE`. The reschedule, reassign, cancel, and note codes below are still planned.
+Proposed until the rendered human review. A request of another media type is `415 UNSUPPORTED_MEDIA_TYPE`.
 
-Failures planned for the mutations (the codes, route names, and Bulgarian wording are working names, finalised and tested in the implementing HTTP or interface phase, and the wording stays Proposed until the rendered human review): `VALIDATION_ERROR` (400),
+**Implemented reschedule route (issue #19 Phase 5).** `POST /api/business/appointments/{appointmentId}/reschedule` moves a `CONFIRMED`, not yet started Appointment to a new start, to
+another StaffMember, or both, in one atomic change guarded by the expected version. The path identifier must be a canonical UUID. The body has exactly the keys `expectedVersion` (required,
+an integer) and, optionally, `start` (an ISO-8601 date-time with an explicit offset) and `staffMemberId` (a canonical UUID); an absent key keeps the current value. An explicit `null`, any
+other key (a Customer, Service, duration, price, or Business included), a non-canonical identifier, a non-integral version, or a start without an offset is `400 VALIDATION_ERROR`. After
+authorization and lifecycle the service also answers `400 VALIDATION_ERROR` for a negative version, a request that names neither `start` nor `staffMemberId`, a start outside 2000-01-01
+to 2100-12-31, and a request that changes nothing (the same start and the same, or no, StaffMember): the last is judged only after the version and the state, and never advances the
+version. Precedence, which keeps the results distinct: authentication and authorization; lifecycle (`BUSINESS_NOT_ACTIVE`, `BUSINESS_SUSPENDED`, before any domain validation); domain
+bounds; existence (`404 APPOINTMENT_NOT_FOUND`, byte-identical for a missing and a foreign Appointment); the version (`409 APPOINTMENT_CONCURRENT_UPDATE`); the state (`409
+APPOINTMENT_STATE_CONFLICT`: cancelled, or already started, an Appointment whose start is at or before the clock instant of the attempt having started); no change; the StaffMember (`409
+APPOINTMENT_STAFF_UNAVAILABLE`); a start before the clock instant, a start that is not offered, and a start that is taken or lost the overlap race (all `409 APPOINTMENT_SLOT_UNAVAILABLE`).
+A time-only move (no `staffMemberId`, or the current one) needs only the current StaffMember to be active: a Service deactivated later or an assignment removed later does not block it.
+A reassignment needs a target that is active and currently assigned to every Service of the visit; a missing, foreign, inactive, or unassigned target is one byte-identical
+`APPOINTMENT_STAFF_UNAVAILABLE`, so no existence is revealed. Customer, Services, duration, price, source, reference, and the StaffMember snapshot of a time-only move never change. Success is
+`200` (no `Location`) with the keys `id, reference, status, source, start, end, timezone, staffMemberId, staffDisplayName, customerId, services[position,name,durationMinutes,price],
+durationMinutes, price, internalNote, version, createdAt, updatedAt` and no Customer name, phone, email, or Customer note. The problem `instance` is the fixed `/api/business/appointments`;
+`no-store` comes from the default headers; CSRF is required. The route has its own operation-appropriate wording, final for the backend (it may still receive human UX feedback; the same code and status are mapped to different details on the create and the reschedule routes, and no reschedule detail speaks of creating or saving an Appointment). Every detail this route can return: `VALIDATION_ERROR` (400) "Проверете въведените данни."; `ACCESS_DENIED` (403) "Нямате достъп до тази операция."; `BUSINESS_NOT_ACTIVE` (409) "Бизнесът не е активен. Часовете могат да се променят само в активен бизнес."; `BUSINESS_SUSPENDED` (409) "Спрян бизнес може само да преглежда данните си."; `APPOINTMENT_NOT_FOUND` (404) "Часът не е намерен."; `APPOINTMENT_CONCURRENT_UPDATE` (409) "Часът е променен междувременно. Презаредете графика и опитайте отново."; `APPOINTMENT_STATE_CONFLICT` (409) "Часът не може да бъде променен, защото е отменен или вече е започнал."; `APPOINTMENT_STAFF_UNAVAILABLE` (409) "Членът на екипа не е наличен за тази промяна."; `APPOINTMENT_SLOT_UNAVAILABLE` (409) "Избраният час вече не е свободен."; `APPOINTMENT_TEMPORARILY_UNAVAILABLE` (503) "Промяната не беше направена. Часът е непроменен. Опитайте отново след малко."; `APPOINTMENT_OUTCOME_UNCERTAIN` (503) "Не е ясно дали промяната е направена. Презаредете графика и проверете часа, преди да опитате отново."; `UNSUPPORTED_MEDIA_TYPE` (415) "Заявката не може да бъде изпълнена."; `INTERNAL_ERROR` (500) "Възникна неочаквана грешка." The create-only results (`CUSTOMER_NOT_FOUND`, `APPOINTMENT_SERVICE_UNAVAILABLE`, `APPOINTMENT_REVIEW_CHANGED`) cannot occur here and would be the generic `INTERNAL_ERROR`, never create wording. A proven rollback after three attempts is `503 APPOINTMENT_TEMPORARILY_UNAVAILABLE`; a change that cannot be confirmed (the commit may
+have succeeded, or the row was changed again before the verification read) is `503 APPOINTMENT_OUTCOME_UNCERTAIN` and is never retried; success is reported only after a read outside
+the transaction finds the row at the new version with the requested start and StaffMember.
+
+Failures planned for the remaining mutations, cancel and note edit (the codes, route names, and Bulgarian wording are working names, finalised and tested in the implementing HTTP or interface phase, and the wording stays Proposed until the rendered human review; reschedule and reassign are final above): `VALIDATION_ERROR` (400),
 `AUTH_REQUIRED`, `ACTIVE_BUSINESS_REQUIRED`, `ACCESS_DENIED`, `APPOINTMENT_NOT_FOUND` and `CUSTOMER_NOT_FOUND` (404),
 `BUSINESS_NOT_ACTIVE`, `BUSINESS_SUSPENDED`, `APPOINTMENT_CONCURRENT_UPDATE` (a stale `expectedVersion`),
 `APPOINTMENT_STATE_CONFLICT` (already cancelled or started), `APPOINTMENT_SLOT_UNAVAILABLE` (the time is not offered,

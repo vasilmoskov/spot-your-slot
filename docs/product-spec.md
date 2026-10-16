@@ -234,7 +234,7 @@ issues that implement them. An Appointment keeps snapshots of the Service name,
 duration, EUR price, Business timezone, and assigned StaffMember name, and no copy of
 Customer contact data. Normal operations never physically delete an Appointment.
 
-Amended for issues #19 and #21 (ADR-0028 and ADR-0029; the owner-created visit is implemented by issue #19 Phase 4, the rest is decided, not implemented): the
+Amended for issues #19 and #21 (ADR-0028 and ADR-0029; the owner-created visit is implemented by issue #19 Phase 4 and the form-based reschedule and StaffMember reassignment by issue #19 Phase 5, the rest is decided, not implemented): the
 Business owner creates a manual visit of one to five Services, may reschedule it to
 another start and reassign its StaffMember, may edit a private internal note, and may
 cancel it before it starts. The Customer, the Services, the duration, the price, and the

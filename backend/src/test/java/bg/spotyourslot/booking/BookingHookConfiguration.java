@@ -139,6 +139,12 @@ public class BookingHookConfiguration {
                 hooks.fire(Point.BEFORE_STAFF_LOCK);
                 return delegate.lockEligibleForBooking(businessId, serviceIds, requestedStaffMemberId);
             }
+
+            @Override
+            public Optional<BookingStaffMember> lockActiveForBooking(UUID businessId, UUID staffMemberId) {
+                hooks.fire(Point.BEFORE_STAFF_LOCK);
+                return delegate.lockActiveForBooking(businessId, staffMemberId);
+            }
         };
     }
 
@@ -174,7 +180,8 @@ public class BookingHookConfiguration {
 
     @Bean
     @Primary
-    AvailabilityQuery hookedAvailabilityQuery(AvailabilityQueryService delegate, BookingTestHooks hooks) {
+    AvailabilityQuery hookedAvailabilityQuery(
+            AvailabilityQueryService delegate, BookingTestHooks hooks, ManualBookingHooks manualHooks) {
         return new AvailabilityQuery() {
             @Override
             public AvailabilitySnapshot calculate(
@@ -200,9 +207,11 @@ public class BookingHookConfiguration {
                     Instant now,
                     UUID ignoredAppointmentIdOrNull) {
                 hooks.fire(Point.BEFORE_AVAILABILITY);
-                return delegate.calculateForBusiness(
+                BusinessAvailability result = delegate.calculateForBusiness(
                         businessId, occupiedDuration, staffMemberId, firstDate, lastDate, now,
                         ignoredAppointmentIdOrNull);
+                manualHooks.fire(ManualBookingHooks.Point.AFTER_BUSINESS_AVAILABILITY);
+                return result;
             }
         };
     }

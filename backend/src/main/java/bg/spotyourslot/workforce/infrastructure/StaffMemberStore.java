@@ -167,6 +167,27 @@ public class StaffMemberStore {
     }
 
     /**
+     * Locks one active StaffMember of the Business {@code FOR SHARE} without any Service assignment
+     * check (the time-only move of an Appointment keeps its StaffMember; ADR-0028 section 6). Empty
+     * when the StaffMember is missing, foreign, or inactive. One statement.
+     */
+    public Optional<StaffMemberRow> lockActiveForBooking(UUID businessId, UUID staffMemberId) {
+        return execute(() -> jdbc.sql("""
+                        SELECT id, business_id, display_name, contact_email, contact_phone,
+                               active, version, created_at, updated_at
+                        FROM staff_member
+                        WHERE business_id = :businessId
+                          AND id = :staffMemberId
+                          AND active
+                        FOR SHARE
+                        """)
+                .param("businessId", businessId)
+                .param("staffMemberId", staffMemberId)
+                .query(this::staffMemberRow)
+                .optional());
+    }
+
+    /**
      * The active StaffMembers of the Business assigned to the Service, in the administration name
      * order. One statement, no lock, tenant-scoped; only the identifier and display name leave.
      */

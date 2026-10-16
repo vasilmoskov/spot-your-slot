@@ -103,7 +103,7 @@ class CalendarModuleBoundaryTests {
     }
 
     @Test
-    void exactlyTheFourApprovedGetRoutesAndTheOneApprovedPostExistAndNothingElseIsMapped() throws Exception {
+    void exactlyTheFourApprovedGetRoutesAndTheTwoApprovedPostsExistAndNothingElseIsMapped() throws Exception {
         List<String> mappings = new ArrayList<>();
         try (var files = Files.walk(Path.of("src/main/java/bg/spotyourslot/calendar/web"))) {
             for (Path file : files.filter(path -> path.toString().endsWith("Controller.java")).toList()) {
@@ -112,10 +112,11 @@ class CalendarModuleBoundaryTests {
                         .matcher(code).results().map(match -> match.group(1)).findFirst().orElseThrow();
                 assertThat(code).doesNotContain("@PutMapping")
                         .doesNotContain("@DeleteMapping").doesNotContain("@PatchMapping");
-                // Phase 4: exactly one mutation, the owner-created Appointment, in the appointments controller.
+                // Phases 4 and 5: exactly two mutations, the owner-created Appointment and its reschedule
+                // or reassignment, in the appointments controller.
                 boolean appointments = base.equals("/api/business/appointments");
-                assertThat(code.split("@PostMapping", -1).length - 1).isEqualTo(appointments ? 1 : 0);
-                assertThat(code.split("@RequestBody", -1).length - 1).isEqualTo(appointments ? 1 : 0);
+                assertThat(code.split("@PostMapping", -1).length - 1).isEqualTo(appointments ? 2 : 0);
+                assertThat(code.split("@RequestBody", -1).length - 1).isEqualTo(appointments ? 2 : 0);
                 Matcher post = Pattern.compile("@PostMapping(?:\\(\"([^\"]*)\"\\))?").matcher(code);
                 while (post.find()) {
                     mappings.add("POST " + base + (post.group(1) == null ? "" : post.group(1)));
@@ -130,6 +131,7 @@ class CalendarModuleBoundaryTests {
 
         assertThat(mappings).containsExactlyInAnyOrder(
                 "POST /api/business/appointments",
+                "POST /api/business/appointments/{appointmentId}/reschedule",
                 "GET /api/business/calendar",
                 "GET /api/business/appointments",
                 "GET /api/business/appointments/{appointmentId}",

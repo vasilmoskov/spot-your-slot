@@ -34,6 +34,24 @@ public final class AppointmentAdministrationRecords {
         }
     }
 
+    /**
+     * The one atomic change of a stored Appointment's start and/or StaffMember (ADR-0028 section 3).
+     * The Customer, the Services, the duration, and the price cannot be named here.
+     *
+     * @param appointmentId the Appointment of the selected Business
+     * @param expectedVersion the version the owner saw; required, not negative
+     * @param start the new start instant, or {@code null} to keep the current start
+     * @param staffMemberId the new StaffMember, or {@code null} to keep the current one; naming the
+     *        current StaffMember is the same as {@code null}
+     */
+    public record RescheduleAppointmentCommand(
+            UUID appointmentId, long expectedVersion, Instant start, UUID staffMemberId) {
+        @Override
+        public String toString() {
+            return "RescheduleAppointmentCommand[redacted]";
+        }
+    }
+
     /** The terms of one Service as the owner reviewed them; compared, never stored. */
     public record ReviewedService(
             UUID serviceId, String serviceName, int durationMinutes, long priceCents) {
@@ -83,6 +101,44 @@ public final class AppointmentAdministrationRecords {
         @Override
         public String toString() {
             return "CreatedService[redacted]";
+        }
+    }
+
+    /**
+     * The updated visit: the stored facts only (no Customer name, phone, email, or Customer note).
+     * Customer identity, Services, duration, price, source, and reference are exactly as before.
+     */
+    public record RescheduledAppointment(
+            UUID id,
+            String reference,
+            String status,
+            String source,
+            Instant start,
+            Instant end,
+            String timezone,
+            UUID staffMemberId,
+            String staffDisplayName,
+            UUID customerId,
+            List<CreatedService> services,
+            int durationMinutes,
+            BigDecimal price,
+            String internalNote,
+            long version,
+            Instant createdAt,
+            Instant updatedAt) {
+        public RescheduledAppointment {
+            Objects.requireNonNull(id, "id");
+            Objects.requireNonNull(reference, "reference");
+            Objects.requireNonNull(start, "start");
+            Objects.requireNonNull(end, "end");
+            Objects.requireNonNull(timezone, "timezone");
+            Objects.requireNonNull(updatedAt, "updatedAt");
+            services = List.copyOf(services);
+        }
+
+        @Override
+        public String toString() {
+            return "RescheduledAppointment[redacted]";
         }
     }
 }

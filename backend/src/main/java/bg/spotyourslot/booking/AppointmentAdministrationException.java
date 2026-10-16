@@ -13,6 +13,9 @@ public abstract sealed class AppointmentAdministrationException extends RuntimeE
                 AppointmentAdministrationException.BusinessNotActive,
                 AppointmentAdministrationException.BusinessSuspended,
                 AppointmentAdministrationException.CustomerNotFound,
+                AppointmentAdministrationException.AppointmentNotFound,
+                AppointmentAdministrationException.ConcurrentUpdate,
+                AppointmentAdministrationException.StateConflict,
                 AppointmentAdministrationException.ServiceUnavailable,
                 AppointmentAdministrationException.StaffUnavailable,
                 AppointmentAdministrationException.ReviewChanged,
@@ -71,6 +74,33 @@ public abstract sealed class AppointmentAdministrationException extends RuntimeE
         }
     }
 
+    /** The Appointment is missing or belongs to another Business (identical). */
+    public static final class AppointmentNotFound extends AppointmentAdministrationException {
+        private static final long serialVersionUID = 1L;
+
+        public AppointmentNotFound() {
+            super("Appointment was not found", false);
+        }
+    }
+
+    /** The Appointment's version differs from the expected one, directly or after a lost row race. */
+    public static final class ConcurrentUpdate extends AppointmentAdministrationException {
+        private static final long serialVersionUID = 1L;
+
+        public ConcurrentUpdate() {
+            super("The Appointment was changed concurrently", false);
+        }
+    }
+
+    /** The version matches but the state forbids the change: already cancelled, or already started. */
+    public static final class StateConflict extends AppointmentAdministrationException {
+        private static final long serialVersionUID = 1L;
+
+        public StateConflict() {
+            super("The Appointment state does not allow this change", false);
+        }
+    }
+
     /** A Service is missing, foreign, or inactive. */
     public static final class ServiceUnavailable extends AppointmentAdministrationException {
         private static final long serialVersionUID = 1L;
@@ -80,7 +110,10 @@ public abstract sealed class AppointmentAdministrationException extends RuntimeE
         }
     }
 
-    /** The StaffMember is missing, foreign, inactive, or not assigned to every selected Service. */
+    /**
+     * The StaffMember is missing, foreign, inactive, or (for a creation or a reassignment) not
+     * assigned to every Service of the visit.
+     */
     public static final class StaffUnavailable extends AppointmentAdministrationException {
         private static final long serialVersionUID = 1L;
 

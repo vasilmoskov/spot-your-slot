@@ -169,14 +169,12 @@ public final class AppointmentTransitions {
         Instant requestedEnd = requestedStart.plus(Duration.ofMinutes(current.durationMinutes()));
         AppointmentRules.requireInstant(requestedEnd);
 
-        Rejection refusal = stateRefusal(current, expectedVersion, instant);
+        Rejection refusal = rescheduleRefusal(
+                current, expectedVersion, requestedStart, target == null ? null : target.staffMemberId(), instant);
         if (refusal != null) {
             return new Rejected<>(refusal);
         }
         boolean reassigned = target != null && !target.staffMemberId().equals(current.staffMemberId());
-        if (!reassigned && requestedStart.equals(current.startAt())) {
-            return new Rejected<>(Rejection.NO_CHANGE);
-        }
         if (requestedStart.isBefore(instant)) {
             return new Rejected<>(Rejection.START_BEFORE_NOW);
         }
@@ -192,6 +190,37 @@ public final class AppointmentTransitions {
                 reassigned ? target.staffMemberId() : current.staffMemberId(),
                 reassigned ? target.displayName() : current.staffDisplayName(),
                 instant));
+    }
+
+    /**
+     * The refusals of a reschedule or reassignment that depend only on the Appointment as read, in the
+     * order of ADR-0029 section 11: a stale version, a state that is not {@code CONFIRMED}, an
+     * Appointment that has started, and a request that changes nothing. It is the check the
+     * orchestration makes <em>before</em> it takes any StaffMember lock, so it needs the target's
+     * identifier only. The requested start is judged against the attempt instant later, after the
+     * eligibility decisions ({@link Rejection#START_BEFORE_NOW}), exactly as {@link #reschedule}
+     * does. Returns {@code null} when none applies.
+     *
+     * @param targetStaffMemberId the requested StaffMember, or {@code null} to keep the current one
+     */
+    public static Rejection rescheduleRefusal(
+            Appointment current,
+            long expectedVersion,
+            Instant requestedStart,
+            UUID targetStaffMemberId,
+            Instant now) {
+        Objects.requireNonNull(current, "current");
+        Objects.requireNonNull(requestedStart, "requestedStart");
+        Instant instant = attemptInstant(current, now);
+        Rejection refusal = stateRefusal(current, expectedVersion, instant);
+        if (refusal != null) {
+            return refusal;
+        }
+        boolean reassigned = targetStaffMemberId != null && !targetStaffMemberId.equals(current.staffMemberId());
+        if (!reassigned && requestedStart.equals(current.startAt())) {
+            return Rejection.NO_CHANGE;
+        }
+        return null;
     }
 
     /**

@@ -7,15 +7,18 @@ import bg.spotyourslot.booking.AppointmentAdministrationRecords.CreateAppointmen
 import bg.spotyourslot.booking.AppointmentAdministrationRecords.CreatedAppointment;
 import bg.spotyourslot.booking.AppointmentAdministrationRecords.ReviewedService;
 import bg.spotyourslot.identity.AuthenticatedBusinessContext;
+import bg.spotyourslot.integration.ConcurrencyTestSupport;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -38,6 +41,49 @@ public abstract class ManualAppointmentTest extends BookingIntegrationTest {
         manualHooks.reset();
         ownerContext = owner(tenant.business());
         customerId = fixtures.customer(tenant.business());
+    }
+
+    // ---- bounded helper threads ----------------------------------------------------------------
+
+    /**
+     * A future whose {@code join()} waits at most the shared test timeout and then fails with an
+     * assertion. A hook that runs inside an attempt and joins a helper thread whose SQL waits for a
+     * lock of that very attempt would otherwise block forever (a deadlock between a Java wait and a
+     * PostgreSQL lock that the database cannot see), leave the transaction open, and block the next
+     * test's cleanup: the failure must be a bounded, reported assertion instead.
+     */
+    private static final class BoundedFuture<T> extends CompletableFuture<T> {
+        @Override
+        public T join() {
+            try {
+                return get(ConcurrencyTestSupport.TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+            } catch (TimeoutException timeout) {
+                // The join usually runs inside an attempt hook, where this AssertionError becomes the
+                // sanitized internal failure of the attempt; the test then fails in failureOf or
+                // completed, which name this cause.
+                throw new AssertionError("A helper thread joined from the test did not finish within "
+                        + ConcurrencyTestSupport.TIMEOUT.toSeconds() + " s: it most likely waits for a lock held"
+                        + " by the very transaction that joins it", timeout);
+            } catch (ExecutionException failed) {
+                throw new CompletionException(failed.getCause());
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError("The helper-thread join was interrupted", interrupted);
+            }
+        }
+    }
+
+    @Override
+    protected <T> CompletableFuture<T> async(java.util.function.Supplier<T> task) {
+        BoundedFuture<T> bounded = new BoundedFuture<>();
+        super.async(task).whenComplete((value, failure) -> {
+            if (failure != null) {
+                bounded.completeExceptionally(failure);
+            } else {
+                bounded.complete(value);
+            }
+        });
+        return bounded;
     }
 
     // ---- commands ---------------------------------------------------------------
@@ -143,7 +189,9 @@ public abstract class ManualAppointmentTest extends BookingIntegrationTest {
         } catch (ExecutionException exception) {
             return exception.getCause();
         } catch (Exception exception) {
-            throw new AssertionError("the creation did not complete", exception);
+            throw new AssertionError("the operation did not complete within " + ConcurrencyTestSupport.TIMEOUT.toSeconds()
+                    + " s; if an attempt hook joins a helper thread, that thread may be waiting for a lock held by"
+                    + " the attempt's own transaction (a Java wait that PostgreSQL cannot see)", exception);
         }
         throw new AssertionError("the creation succeeded but a failure was expected");
     }

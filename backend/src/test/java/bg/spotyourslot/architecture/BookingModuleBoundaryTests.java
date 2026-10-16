@@ -284,7 +284,10 @@ class BookingModuleBoundaryTests {
      */
     @Test
     void theBusinessRunnerIsNotTransactionalAndNeverUsesRequiresNewOrSavepoints() throws Exception {
-        for (String name : List.of("BusinessAppointmentAdministrationService", "BusinessAppointmentCreationProcedure")) {
+        for (String name : List.of(
+                "BusinessAppointmentAdministrationService",
+                "BusinessAppointmentCreationProcedure",
+                "BusinessAppointmentRescheduleProcedure")) {
             String source = Files.readString(Path.of("src/main/java/bg/spotyourslot/booking/application/" + name + ".java"));
             String code = source.replaceAll("(?s)/\\*.*?\\*/", "");
             assertThat(code).as(name).doesNotContain("@Transactional")
@@ -306,7 +309,10 @@ class BookingModuleBoundaryTests {
      */
     @Test
     void theBusinessRunnerAndProcedureNeverInspectPersistenceExceptionsOrSqlStates() throws Exception {
-        for (String name : List.of("BusinessAppointmentAdministrationService", "BusinessAppointmentCreationProcedure")) {
+        for (String name : List.of(
+                "BusinessAppointmentAdministrationService",
+                "BusinessAppointmentCreationProcedure",
+                "BusinessAppointmentRescheduleProcedure")) {
             JavaClass type = main.get("bg.spotyourslot.booking.application." + name);
             for (Dependency dependency : type.getDirectDependenciesFromSelf()) {
                 String target = dependency.getTargetClass().getName();

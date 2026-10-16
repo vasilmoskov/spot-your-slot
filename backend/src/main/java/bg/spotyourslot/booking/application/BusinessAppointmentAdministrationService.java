@@ -3,8 +3,10 @@ package bg.spotyourslot.booking.application;
 import bg.spotyourslot.booking.AppointmentAdministration;
 import bg.spotyourslot.booking.AppointmentAdministrationException;
 import bg.spotyourslot.booking.AppointmentAdministrationException.AccessDenied;
+import bg.spotyourslot.booking.AppointmentAdministrationException.AppointmentNotFound;
 import bg.spotyourslot.booking.AppointmentAdministrationException.BusinessNotActive;
 import bg.spotyourslot.booking.AppointmentAdministrationException.BusinessSuspended;
+import bg.spotyourslot.booking.AppointmentAdministrationException.ConcurrentUpdate;
 import bg.spotyourslot.booking.AppointmentAdministrationException.CustomerNotFound;
 import bg.spotyourslot.booking.AppointmentAdministrationException.Failure;
 import bg.spotyourslot.booking.AppointmentAdministrationException.InvalidInput;
@@ -12,15 +14,20 @@ import bg.spotyourslot.booking.AppointmentAdministrationException.OutcomeUncerta
 import bg.spotyourslot.booking.AppointmentAdministrationException.ReviewChanged;
 import bg.spotyourslot.booking.AppointmentAdministrationException.ServiceUnavailable;
 import bg.spotyourslot.booking.AppointmentAdministrationException.SlotUnavailable;
+import bg.spotyourslot.booking.AppointmentAdministrationException.StateConflict;
 import bg.spotyourslot.booking.AppointmentAdministrationException.StaffUnavailable;
 import bg.spotyourslot.booking.AppointmentAdministrationException.TemporarilyUnavailable;
 import bg.spotyourslot.booking.AppointmentAdministrationRecords.CreateAppointmentCommand;
 import bg.spotyourslot.booking.AppointmentAdministrationRecords.CreatedAppointment;
+import bg.spotyourslot.booking.AppointmentAdministrationRecords.RescheduleAppointmentCommand;
+import bg.spotyourslot.booking.AppointmentAdministrationRecords.RescheduledAppointment;
 import bg.spotyourslot.booking.BookingOrchestrationFailure;
 import bg.spotyourslot.booking.application.BusinessAppointmentCreationProcedure.Created;
 import bg.spotyourslot.booking.application.BusinessAppointmentCreationProcedure.CreatedIds;
 import bg.spotyourslot.booking.application.BusinessAppointmentCreationProcedure.Outcome;
 import bg.spotyourslot.booking.application.BusinessAppointmentCreationProcedure.Rejected;
+import bg.spotyourslot.booking.application.BusinessAppointmentCreationProcedure.Rescheduled;
+import bg.spotyourslot.booking.domain.Appointment;
 import bg.spotyourslot.booking.infrastructure.AppointmentPersistenceException;
 import bg.spotyourslot.booking.infrastructure.AppointmentStore;
 import bg.spotyourslot.business.BusinessScheduleContextAccess;
@@ -42,17 +49,19 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Implements {@link AppointmentAdministration}: the transaction owner, the bounded whole-transaction
- * retry loop, and the classification of every way an attempt can end (ADR-0029 sections 2, 8, 9). It
- * is deliberately not {@code @Transactional}: a proxy that joined a caller transaction would defeat
- * the guarantee that every attempt is a completely new transaction. The guest runner is not shared
- * or changed.
+ * retry loop, and the classification of every way an attempt can end (ADR-0029 sections 2, 8, 9). One
+ * runner serves the creation and the reschedule/reassignment; each operation supplies only its
+ * attempt body ({@link BusinessAppointmentCreationProcedure},
+ * {@link BusinessAppointmentRescheduleProcedure}). It is deliberately not {@code @Transactional}: a
+ * proxy that joined a caller transaction would defeat the guarantee that every attempt is a
+ * completely new transaction. The guest runner is not shared or changed.
  *
  * <p><b>Transactions.</b> A {@link TransactionTemplate} with {@code REQUIRED}, {@code
  * REPEATABLE_READ}, read-write begins each attempt. The entry guard proves no transaction exists, so
  * {@code REQUIRED} always creates a new one; the loop runs outside every transaction, so an attempt
  * has ended before the next begins.
  *
- * <p><b>Only {@code Created} commits.</b> A rejection wrote nothing and ends its attempt by
+ * <p><b>Only a written outcome commits.</b> A rejection wrote nothing and ends its attempt by
  * rollback.
  *
  * <p><b>Retry.</b> At most {@value #MAX_ATTEMPTS} attempts, immediately, each completely new.
@@ -63,26 +72,32 @@ import org.springframework.transaction.support.TransactionTemplate;
  * every deterministic rejection, the entry guard, a failure after a commit, and anything else.
  *
  * <p><b>Rollback versus uncertainty.</b> What happens before the body returns proves {@code COMMIT}
- * was never issued. After a {@code Created} body returns, Spring's own completion report decides:
- * {@code COMMITTED} followed by a failure is uncertain and never retried; {@code ROLLED_BACK} is a
- * proven rollback and is reported as temporarily unavailable (a commit-phase failure carries no
- * approved retryable conflict); {@code UNKNOWN} or no report is uncertain.
+ * was never issued. After a written body returns, Spring's own completion report decides: {@code
+ * COMMITTED} followed by a failure is uncertain and never retried; {@code ROLLED_BACK} is a proven
+ * rollback and the complete operation is retried in a fresh transaction (within the attempt limit);
+ * {@code UNKNOWN} or no report is uncertain. After a normal completion one read outside any
+ * transaction verifies the outcome: a created Appointment must exist; a rescheduled one must be at
+ * the written version with the requested start and StaffMember (still at the expected version is a
+ * proven silent rollback, any other state is uncertain).
  */
 @Service
 public class BusinessAppointmentAdministrationService implements AppointmentAdministration {
     static final int MAX_ATTEMPTS = 3;
 
     private final BusinessAppointmentCreationProcedure procedure;
+    private final BusinessAppointmentRescheduleProcedure rescheduleProcedure;
     private final BookingDiagnostics diagnostics;
     private final AppointmentStore appointments;
     private final TransactionTemplate transaction;
 
     BusinessAppointmentAdministrationService(
             BusinessAppointmentCreationProcedure procedure,
+            BusinessAppointmentRescheduleProcedure rescheduleProcedure,
             BookingDiagnostics diagnostics,
             AppointmentStore appointments,
             PlatformTransactionManager transactionManager) {
         this.procedure = procedure;
+        this.rescheduleProcedure = rescheduleProcedure;
         this.diagnostics = diagnostics;
         this.appointments = appointments;
         this.transaction = new TransactionTemplate(transactionManager);
@@ -93,6 +108,31 @@ public class BusinessAppointmentAdministrationService implements AppointmentAdmi
 
     @Override
     public CreatedAppointment create(AuthenticatedBusinessContext context, CreateAppointmentCommand command) {
+        return ((Created) perform(context, (userId, businessId, state) ->
+                        procedure.execute(userId, businessId, command, state.createdIds)))
+                .appointment();
+    }
+
+    @Override
+    public RescheduledAppointment reschedule(
+            AuthenticatedBusinessContext context, RescheduleAppointmentCommand command) {
+        return ((Rescheduled) perform(context, (userId, businessId, state) ->
+                        rescheduleProcedure.execute(userId, businessId, command)))
+                .appointment();
+    }
+
+    /** The body of one attempt: it runs inside the attempt's transaction. */
+    @FunctionalInterface
+    private interface AttemptBody {
+        Outcome execute(UUID userId, UUID businessId, AttemptState state);
+    }
+
+    /**
+     * The shared runner: the entry guard, the identity checks, then at most {@value #MAX_ATTEMPTS}
+     * completely new transactions. Returns the verified written outcome ({@code Created} or
+     * {@code Rescheduled}) or throws the typed failure.
+     */
+    private Outcome perform(AuthenticatedBusinessContext context, AttemptBody body) {
         requireNoCallerTransaction();
         if (context == null || context.userId() == null) {
             throw new AccessDenied();
@@ -102,9 +142,9 @@ public class BusinessAppointmentAdministrationService implements AppointmentAdmi
 
         AttemptEnd end = null;
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-            end = runAttempt(userId, businessId, command);
+            end = runAttempt(userId, businessId, body);
             if (end instanceof Finished finished) {
-                return finished.result();
+                return finished.written();
             }
         }
         throw exhausted((Retry) end);
@@ -121,16 +161,16 @@ public class BusinessAppointmentAdministrationService implements AppointmentAdmi
         }
     }
 
-    private AttemptEnd runAttempt(UUID userId, UUID businessId, CreateAppointmentCommand command) {
-        AttemptState state = new AttemptState();
+    private AttemptEnd runAttempt(UUID userId, UUID businessId, AttemptBody body) {
+        AttemptState state = new AttemptState(businessId);
         try {
             Outcome outcome = transaction.execute(status -> {
                 // Spring reports how the transaction really ended; that, not an exception's content,
                 // is the evidence the classification below relies on.
                 TransactionSynchronizationManager.registerSynchronization(new CompletionRecorder(state));
-                Outcome result = procedure.execute(userId, businessId, command, state.createdIds);
+                Outcome result = body.execute(userId, businessId, state);
                 state.bodyOutcome = result;
-                if (!(result instanceof Created)) {
+                if (isRejected(result)) {
                     status.setRollbackOnly();
                 }
                 return result;
@@ -154,9 +194,12 @@ public class BusinessAppointmentAdministrationService implements AppointmentAdmi
         if (outcome instanceof Rejected rejected) {
             throw rejection(rejected);
         }
+        if (outcome instanceof Rescheduled rescheduled) {
+            return verifiedReschedule(rescheduled, state);
+        }
         try {
             if (appointments.find(state.createdIds.businessId(), state.createdIds.appointmentId()).isPresent()) {
-                return new Finished(((Created) outcome).appointment());
+                return new Finished(outcome);
             }
         } catch (RuntimeException unreadable) {
             diagnostics.event("admin-commit-unverifiable", unreadable);
@@ -164,6 +207,40 @@ public class BusinessAppointmentAdministrationService implements AppointmentAdmi
         }
         diagnostics.event("admin-silent-rollback");
         throw new TemporarilyUnavailable();
+    }
+
+    /**
+     * The read-after-completion rule of a reschedule (ADR-0029 section 9), one primary-key read
+     * outside any transaction: the row at the version the attempt wrote, with the requested start and
+     * StaffMember, is a confirmed success; the row still at the expected version proves the silent
+     * rollback (a known rollback, not retried); every other state, including a row another
+     * transaction already changed again or one that cannot be found, is uncertain and the owner
+     * reloads. A failed read is uncertain too (the caller maps the exception).
+     */
+    private AttemptEnd verifiedReschedule(Rescheduled outcome, AttemptState state) {
+        RescheduledAppointment written = outcome.appointment();
+        Appointment stored;
+        try {
+            stored = appointments.find(state.businessId, written.id()).orElse(null);
+        } catch (RuntimeException unreadable) {
+            diagnostics.event("admin-commit-unverifiable", unreadable);
+            throw new OutcomeUncertain();
+        }
+        if (stored == null) {
+            diagnostics.event("admin-commit-unverifiable");
+            throw new OutcomeUncertain();
+        }
+        if (stored.version() == written.version()
+                && stored.startAt().equals(written.start())
+                && stored.staffMemberId().equals(written.staffMemberId())) {
+            return new Finished(outcome);
+        }
+        if (stored.version() == written.version() - 1) {
+            diagnostics.event("admin-silent-rollback");
+            throw new TemporarilyUnavailable();
+        }
+        diagnostics.event("admin-commit-unverifiable");
+        throw new OutcomeUncertain();
     }
 
     private AttemptEnd classify(RuntimeException failure, AttemptState state) {
@@ -177,7 +254,7 @@ public class BusinessAppointmentAdministrationService implements AppointmentAdmi
             diagnostics.event("admin-attempt-failed", failure);
             throw new Failure();
         }
-        if (!(state.bodyOutcome instanceof Created)) {
+        if (isRejected(state.bodyOutcome)) {
             // A rollback-only attempt wrote nothing, whatever went wrong while ending it.
             diagnostics.event("admin-rollback-failed", failure);
             throw rejection((Rejected) state.bodyOutcome);
@@ -248,7 +325,14 @@ public class BusinessAppointmentAdministrationService implements AppointmentAdmi
             case STAFF_UNAVAILABLE -> new StaffUnavailable();
             case REVIEW_CHANGED -> new ReviewChanged();
             case SLOT_UNAVAILABLE -> new SlotUnavailable();
+            case APPOINTMENT_NOT_FOUND -> new AppointmentNotFound();
+            case CONCURRENT_UPDATE -> new ConcurrentUpdate();
+            case STATE_CONFLICT -> new StateConflict();
         };
+    }
+
+    private static boolean isRejected(Outcome outcome) {
+        return outcome instanceof Rejected;
     }
 
     private enum RetryReason {
@@ -259,7 +343,7 @@ public class BusinessAppointmentAdministrationService implements AppointmentAdmi
     private sealed interface AttemptEnd permits Finished, Retry {
     }
 
-    private record Finished(CreatedAppointment result) implements AttemptEnd {
+    private record Finished(Outcome written) implements AttemptEnd {
     }
 
     private record Retry(RetryReason reason) implements AttemptEnd {
@@ -269,10 +353,15 @@ public class BusinessAppointmentAdministrationService implements AppointmentAdmi
     private static final class AttemptState {
         private static final int NO_COMPLETION = -1;
 
+        private final UUID businessId;
         private final CreatedIds createdIds = new CreatedIds();
         private Outcome bodyOutcome;
         /** One of {@code TransactionSynchronization.STATUS_*}, or {@value #NO_COMPLETION}. */
         private int completion = NO_COMPLETION;
+
+        private AttemptState(UUID businessId) {
+            this.businessId = businessId;
+        }
     }
 
     /** Records Spring's completion report for the attempt's transaction. */

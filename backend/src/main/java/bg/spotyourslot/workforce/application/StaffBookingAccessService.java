@@ -6,6 +6,7 @@ import java.sql.SQLException;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
@@ -48,6 +49,19 @@ public class StaffBookingAccessService implements StaffBookingAccess {
             return store.lockEligibleForBooking(businessId, serviceIds, requestedStaffMemberId).stream()
                     .map(row -> new BookingStaffMember(row.id(), row.displayName(), row.createdAt()))
                     .toList();
+        } catch (RuntimeException exception) {
+            throw translate(exception);
+        }
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Optional<BookingStaffMember> lockActiveForBooking(UUID businessId, UUID staffMemberId) {
+        Objects.requireNonNull(businessId, "businessId");
+        Objects.requireNonNull(staffMemberId, "staffMemberId");
+        try {
+            return store.lockActiveForBooking(businessId, staffMemberId)
+                    .map(row -> new BookingStaffMember(row.id(), row.displayName(), row.createdAt()));
         } catch (RuntimeException exception) {
             throw translate(exception);
         }

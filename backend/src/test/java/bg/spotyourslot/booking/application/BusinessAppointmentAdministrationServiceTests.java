@@ -10,7 +10,10 @@ import static org.mockito.Mockito.when;
 
 import bg.spotyourslot.booking.AppointmentAdministrationException;
 import bg.spotyourslot.booking.AppointmentAdministrationException.AccessDenied;
+import bg.spotyourslot.booking.AppointmentAdministrationException.AppointmentNotFound;
 import bg.spotyourslot.booking.AppointmentAdministrationException.BusinessNotActive;
+import bg.spotyourslot.booking.AppointmentAdministrationException.ConcurrentUpdate;
+import bg.spotyourslot.booking.AppointmentAdministrationException.StateConflict;
 import bg.spotyourslot.booking.AppointmentAdministrationException.BusinessSuspended;
 import bg.spotyourslot.booking.AppointmentAdministrationException.CustomerNotFound;
 import bg.spotyourslot.booking.AppointmentAdministrationException.Failure;
@@ -85,6 +88,8 @@ class BusinessAppointmentAdministrationServiceTests {
     private static final String SENTINEL = "SENTINEL-PRIVATE-TEXT-42";
 
     private final BusinessAppointmentCreationProcedure procedure = mock(BusinessAppointmentCreationProcedure.class);
+    private final BusinessAppointmentRescheduleProcedure rescheduleProcedure =
+            mock(BusinessAppointmentRescheduleProcedure.class);
     private final AppointmentStore appointments = mock(AppointmentStore.class);
     private final FakeTransactionManager transactions = new FakeTransactionManager();
     private final ListAppender<ILoggingEvent> logs = new ListAppender<>();
@@ -97,7 +102,7 @@ class BusinessAppointmentAdministrationServiceTests {
         diagnosticsLogger.addAppender(logs);
         diagnosticsLogger.setLevel(Level.WARN);
         service = new BusinessAppointmentAdministrationService(
-                procedure, new BookingDiagnostics(), appointments, transactions);
+                procedure, rescheduleProcedure, new BookingDiagnostics(), appointments, transactions);
     }
 
     @AfterEach
@@ -215,7 +220,10 @@ class BusinessAppointmentAdministrationServiceTests {
                 new Object[] {Rejection.SERVICE_UNAVAILABLE, ServiceUnavailable.class},
                 new Object[] {Rejection.STAFF_UNAVAILABLE, StaffUnavailable.class},
                 new Object[] {Rejection.REVIEW_CHANGED, ReviewChanged.class},
-                new Object[] {Rejection.SLOT_UNAVAILABLE, SlotUnavailable.class});
+                new Object[] {Rejection.SLOT_UNAVAILABLE, SlotUnavailable.class},
+                new Object[] {Rejection.APPOINTMENT_NOT_FOUND, AppointmentNotFound.class},
+                new Object[] {Rejection.CONCURRENT_UPDATE, ConcurrentUpdate.class},
+                new Object[] {Rejection.STATE_CONFLICT, StateConflict.class});
     }
 
     @ParameterizedTest
@@ -229,7 +237,7 @@ class BusinessAppointmentAdministrationServiceTests {
                 .hasNoCause();
 
         assertThat(transactions.events).containsExactly("begin", "rollback");
-        assertThat(Rejection.values()).hasSize(9);
+        assertThat(Rejection.values()).hasSize(12);
     }
 
     // ---- retry ---------------------------------------------------------------------
@@ -493,60 +501,5 @@ class BusinessAppointmentAdministrationServiceTests {
     // ---- fakes ---------------------------------------------------------------------------
 
     private record Context(UUID userId, Optional<UUID> selectedBusinessId) implements AuthenticatedBusinessContext {
-    }
-
-    private record CommitFault(RuntimeException failure, int completion) {
-        static final int NO_REPORT = -99;
-    }
-
-    /** Records the lifecycle, injects failures, and emulates what Spring does around the callbacks. */
-    private static final class FakeTransactionManager implements PlatformTransactionManager {
-        private final List<String> events = new ArrayList<>();
-        private final List<TransactionDefinition> definitions = new ArrayList<>();
-        private final Deque<CommitFault> commitFailures = new ArrayDeque<>();
-        private RuntimeException failRollback;
-
-        @Override
-        public TransactionStatus getTransaction(TransactionDefinition definition) {
-            events.add("begin");
-            definitions.add(definition);
-            TransactionSynchronizationManager.initSynchronization();
-            return new SimpleTransactionStatus(true);
-        }
-
-        @Override
-        public void commit(TransactionStatus status) {
-            if (status.isRollbackOnly()) {
-                rollback(status);
-                return;
-            }
-            CommitFault fault = commitFailures.pollFirst();
-            if (fault == null) {
-                complete(TransactionSynchronization.STATUS_COMMITTED);
-                events.add("commit");
-                return;
-            }
-            events.add("commit-failed");
-            if (fault.completion() != CommitFault.NO_REPORT) {
-                complete(fault.completion());
-            } else {
-                TransactionSynchronizationManager.clear();
-            }
-            throw fault.failure();
-        }
-
-        @Override
-        public void rollback(TransactionStatus status) {
-            events.add("rollback");
-            complete(TransactionSynchronization.STATUS_ROLLED_BACK);
-            if (failRollback != null) {
-                throw failRollback;
-            }
-        }
-
-        private static void complete(int completion) {
-            TransactionSynchronizationUtils.triggerAfterCompletion(completion);
-            TransactionSynchronizationManager.clear();
-        }
     }
 }

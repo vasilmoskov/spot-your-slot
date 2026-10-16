@@ -2,6 +2,7 @@ package bg.spotyourslot.calendar.web;
 
 import bg.spotyourslot.booking.AppointmentAdministrationRecords.CreatedAppointment;
 import bg.spotyourslot.booking.AppointmentAdministrationRecords.CreatedService;
+import bg.spotyourslot.booking.AppointmentAdministrationRecords.RescheduledAppointment;
 import bg.spotyourslot.booking.AppointmentCalendarRecords.AgendaPage;
 import bg.spotyourslot.booking.AppointmentCalendarRecords.AppointmentDetail;
 import bg.spotyourslot.booking.AppointmentCalendarRecords.CalendarAppointment;
@@ -94,6 +95,57 @@ public final class BusinessCalendarHttpRecords {
         @Override
         public String toString() {
             return "CreatedAppointmentResponse[redacted]";
+        }
+    }
+
+    /**
+     * The owner-only {@code 200} body of a rescheduled or reassigned Appointment: the stored facts
+     * only, no Customer name, phone, email, or Customer note. Customer identity, Services, duration,
+     * price, source, and reference are exactly as before; the version and update time advanced.
+     */
+    public record RescheduledAppointmentResponse(
+            UUID id,
+            String reference,
+            String status,
+            String source,
+            String start,
+            String end,
+            String timezone,
+            UUID staffMemberId,
+            String staffDisplayName,
+            UUID customerId,
+            List<CreatedServiceResponse> services,
+            int durationMinutes,
+            BigDecimal price,
+            String internalNote,
+            long version,
+            String createdAt,
+            String updatedAt) {
+        public static RescheduledAppointmentResponse from(RescheduledAppointment updated) {
+            ZoneId zone = ZoneId.of(updated.timezone());
+            return new RescheduledAppointmentResponse(
+                    updated.id(),
+                    updated.reference(),
+                    updated.status(),
+                    updated.source(),
+                    format(updated.start(), zone),
+                    format(updated.end(), zone),
+                    updated.timezone(),
+                    updated.staffMemberId(),
+                    updated.staffDisplayName(),
+                    updated.customerId(),
+                    updated.services().stream().map(CreatedServiceResponse::from).toList(),
+                    updated.durationMinutes(),
+                    updated.price(),
+                    updated.internalNote(),
+                    updated.version(),
+                    format(updated.createdAt(), zone),
+                    format(updated.updatedAt(), zone));
+        }
+
+        @Override
+        public String toString() {
+            return "RescheduledAppointmentResponse[redacted]";
         }
     }
 

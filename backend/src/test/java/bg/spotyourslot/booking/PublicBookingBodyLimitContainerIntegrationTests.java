@@ -28,14 +28,20 @@ import org.springframework.test.context.TestPropertySource;
  * a way to wait for a result.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@TestPropertySource(properties = "spotyourslot.booking.max-request-body-bytes=2048")
+@TestPropertySource(properties = {
+    "spotyourslot.booking.max-request-body-bytes=2048",
+    // Bind the container to the loopback address the client connects to. A wildcard bind can share an
+    // ephemeral port with an unrelated loopback-only listener of the developer machine (observed: an IDE
+    // service on 127.0.0.1), and the client would then talk to that process instead of the application.
+    "server.address=127.0.0.1"
+})
 class PublicBookingBodyLimitContainerIntegrationTests extends PublicBookingApiIntegrationTest {
     private static final int LIMIT = 2048;
 
     @LocalServerPort int port;
 
     private HttpResponse<String> chunked(String slug, byte[] content) throws Exception {
-        HttpRequest request = HttpRequest.newBuilder(URI.create("http://localhost:" + port + bookingsUrl(slug)))
+        HttpRequest request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + bookingsUrl(slug)))
                 .version(HttpClient.Version.HTTP_1_1)
                 .header("Content-Type", "application/json")
                 .timeout(Duration.ofSeconds(30))
@@ -57,10 +63,10 @@ class PublicBookingBodyLimitContainerIntegrationTests extends PublicBookingApiIn
      * (the response body may be chunked and is checked in the HttpClient tests).
      */
     private String raw(String slug, long declared, byte[] content) throws Exception {
-        try (Socket socket = new Socket("localhost", port)) {
+        try (Socket socket = new Socket("127.0.0.1", port)) {
             socket.setSoTimeout(30_000);
             OutputStream out = socket.getOutputStream();
-            out.write(("POST " + bookingsUrl(slug) + " HTTP/1.1\r\nHost: localhost\r\n"
+            out.write(("POST " + bookingsUrl(slug) + " HTTP/1.1\r\nHost: 127.0.0.1\r\n"
                     + "Content-Type: application/json\r\nConnection: close\r\n"
                     + "Content-Length: " + declared + "\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
             out.write(content);

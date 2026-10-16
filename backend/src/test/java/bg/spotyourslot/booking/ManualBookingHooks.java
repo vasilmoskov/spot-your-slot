@@ -24,7 +24,13 @@ public final class ManualBookingHooks {
         /** After the owner Membership lock, before the plain Customer reference read. */
         BEFORE_CUSTOMER_READ,
         /** After every decision and the availability calculation, immediately before the insert. */
-        BEFORE_INSERT
+        BEFORE_INSERT,
+        /**
+         * Immediately after the Business-side availability calculation returned: for a reschedule
+         * nothing but pure decisions separates it from the conditional {@code UPDATE}; for a creation
+         * it precedes the reference generation and the insert.
+         */
+        AFTER_BUSINESS_AVAILABILITY
     }
 
     /** One firing of a point: the attempt's thread and how many times this thread reached the point. */
