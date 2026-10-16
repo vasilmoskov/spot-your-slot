@@ -141,4 +141,71 @@ public final class AppointmentAdministrationRecords {
             return "RescheduledAppointment[redacted]";
         }
     }
+
+    /**
+     * The Business cancellation of one Appointment (ADR-0028 section 8): no reason, no actor, no
+     * time. The actor is always the Business and the time is the attempt's clock instant.
+     *
+     * @param appointmentId the Appointment of the selected Business
+     * @param expectedVersion the version the owner saw; required, not negative
+     */
+    public record CancelAppointmentCommand(UUID appointmentId, long expectedVersion) {
+        @Override
+        public String toString() {
+            return "CancelAppointmentCommand[redacted]";
+        }
+    }
+
+    /**
+     * The edit of the private internal note (ADR-0028 section 9).
+     *
+     * @param appointmentId the Appointment of the selected Business
+     * @param expectedVersion the version the owner saw; required, not negative
+     * @param internalNote the new note as submitted; required (not {@code null}); a blank note clears it
+     */
+    public record EditInternalNoteCommand(UUID appointmentId, long expectedVersion, String internalNote) {
+        @Override
+        public String toString() {
+            return "EditInternalNoteCommand[redacted]";
+        }
+    }
+
+    /**
+     * The verified result of a cancellation or an internal-note edit: the stored facts of the
+     * Appointment read after the transaction completed. It carries no Customer name, phone, email, or
+     * Customer note, and no cancellation actor.
+     */
+    public record UpdatedAppointment(
+            UUID id,
+            String reference,
+            String status,
+            String source,
+            Instant start,
+            Instant end,
+            String timezone,
+            UUID staffMemberId,
+            String staffDisplayName,
+            UUID customerId,
+            List<CreatedService> services,
+            int durationMinutes,
+            BigDecimal price,
+            String internalNote,
+            long version,
+            Instant createdAt,
+            Instant updatedAt) {
+        public UpdatedAppointment {
+            Objects.requireNonNull(id, "id");
+            Objects.requireNonNull(reference, "reference");
+            Objects.requireNonNull(start, "start");
+            Objects.requireNonNull(end, "end");
+            Objects.requireNonNull(timezone, "timezone");
+            Objects.requireNonNull(updatedAt, "updatedAt");
+            services = List.copyOf(services);
+        }
+
+        @Override
+        public String toString() {
+            return "UpdatedAppointment[redacted]";
+        }
+    }
 }

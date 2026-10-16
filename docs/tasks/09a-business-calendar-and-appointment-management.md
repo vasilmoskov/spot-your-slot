@@ -1,6 +1,6 @@
 # SpotYourSlot — Business Calendar and Appointment Management (Issues #19 and #21)
 
-Status (current, 2026-10-16): **Phases 1 to 4 are committed (`HEAD` `260e81df4e7b609707f609df64025ea4cc9011dc` includes the Phase 4 owner-created multi-Service Appointment, `POST /api/business/appointments`, issue #19, and its review corrections; the CI run of that commit was still in progress at the start of Phase 5, which is advisory); Phase 5 (form-based rescheduling and StaffMember reassignment, `POST /api/business/appointments/{appointmentId}/reschedule`, issue #19) is implemented in the working tree and awaits review (nothing staged or committed); Phases 6 to 12 are not started.** Issues #19 and #21 are one combined delivery and both are In Progress on the Project board. The product owner alone edits GitHub (issue texts, comments, states, Project status); this repository work never does. The decisions are recorded in [ADR-0028](../decisions/ADR-0028-administer-appointments-through-a-private-owner-only-api-with-immutable-visit-identity-and-business-cancellation.md) and [ADR-0029](../decisions/ADR-0029-calculate-business-availability-with-a-separate-policy-and-serialize-appointment-mutations-with-ordered-locks-optimistic-versions-and-bounded-retry.md); this record holds the plan, the acceptance mapping, the contract and migration plan, the phase plan, and the exact proposed GitHub amendment texts.
+Status (current, 2026-10-16): **Phases 1 to 5 are committed (`HEAD` `10ce4889f1b524c6799680f4a738080d32e7f1d4` includes the Phase 5 form-based rescheduling and StaffMember reassignment, `POST /api/business/appointments/{appointmentId}/reschedule`, issue #19; its CI run succeeded); Phase 6 (the Business cancellation, `POST …/{appointmentId}/cancel`, and the private internal-note edit, `PUT …/{appointmentId}/internal-note`, issue #21, backend only) is implemented in the working tree and awaits review (nothing staged or committed); Phases 7 to 12 are not started.** Issues #19 and #21 are one combined delivery and both are In Progress on the Project board. The product owner alone edits GitHub (issue texts, comments, states, Project status); this repository work never does. The decisions are recorded in [ADR-0028](../decisions/ADR-0028-administer-appointments-through-a-private-owner-only-api-with-immutable-visit-identity-and-business-cancellation.md) and [ADR-0029](../decisions/ADR-0029-calculate-business-availability-with-a-separate-policy-and-serialize-appointment-mutations-with-ordered-locks-optimistic-versions-and-bounded-retry.md); this record holds the plan, the acceptance mapping, the contract and migration plan, the phase plan, and the exact proposed GitHub amendment texts.
 
 GitHub issues: #19 — Prevent double booking and handle booking conflicts; #21 — Build the Business calendar and appointment management
 Depends on: #16, #17, #18, #20 (all closed). Related, not part of this work: #22 (notifications), #35 (Customer self-service cancellation), #36 (Customer self-service rescheduling), #37 (Customer-specific durations).
@@ -209,7 +209,7 @@ Every phase is its own change with its own approval, is verified before the next
 
 ### Phase 6 — cancellation and internal-note edit (#21)
 
-- **Scope:** `POST …/cancel`, `PUT …/internal-note`, the attribution, the started-Appointment rule. **Exclusions:** reasons, restore, frontend.
+- **Scope (amended 2026-10-16: the routes and the transaction policy are final in the Phase 6 record):** `POST …/cancel`, `PUT …/internal-note`, the attribution, the started-Appointment rule. **Exclusions:** reasons, restore, frontend.
 - **Verification:** cancellation attribution and the `V14` invariants through the real service; before-start only; repeat and stale attempts; a cancelled Appointment stops blocking and the time is offered again; the note on future, past, confirmed, and cancelled Appointments, only while `ACTIVE`; privacy of the note in responses, logs, and errors.
 - **Concurrency evidence:** cancel versus cancel, cancel versus move, note versus move, with latches; the cancel predicate is shown to be the same one a Customer cancellation (#35) will use.
 - **Gate:** Strict. **Commit:** `feat: cancel Appointments and edit the internal note (#21)`.
@@ -801,7 +801,7 @@ Narrow corrections applied after the product owner's review; the sections above 
 
 Phase 4 stops here for review. Phase 5 needs its own read-only plan and explicit approval.
 
-## Phase 5 record (2026-10-16; implemented, verified locally, awaiting the product owner's review; nothing staged or committed)
+## Phase 5 record (2026-10-16; implemented, verified locally; status update 2026-10-16: committed as `10ce488`, CI of that commit succeeded)
 
 Base `HEAD` `260e81df4e7b609707f609df64025ea4cc9011dc` (Phase 4 with its review corrections, clean, equal to `origin/main`). **CI observed at the start (advisory, read-only):** run 38859449131 for that commit was `in_progress`; it did not delay or block the work, and no GitHub state was touched. Scope: issue #19, Strict. No migration (`V1` to `V15` byte-identical to `HEAD`), no frontend, no options route, no cancel or note edit, no drag-and-drop, no Phase 6.
 
@@ -896,3 +896,93 @@ The create-only results (`CUSTOMER_NOT_FOUND`, `APPOINTMENT_SERVICE_UNAVAILABLE`
 ### Stopping point
 
 Phase 5 stops here for review. Phase 6 needs its own read-only plan and explicit approval.
+
+## Phase 6 record (2026-10-16; implemented, verified locally, awaiting the product owner's review; nothing staged or committed)
+
+Base `HEAD` `10ce4889f1b524c6799680f4a738080d32e7f1d4` (Phase 5, clean, equal to `origin/main`). **CI observed at the start (advisory, read-only):** run 38900976388 for that commit was `in_progress`; it did not delay or block the work, and it had completed successfully when the phase ended. No GitHub state was touched. Scope: issue #21, Strict. No migration (`V1` to `V15` byte-identical to `HEAD`), no frontend, no options route, no reason, restore, deletion, history row, notification, refund, or Customer-facing cancellation, no Phase 7.
+
+### Decision made before implementation (approved by the product owner, 2026-10-16)
+
+Read-only inspection found one ambiguity: ADR-0029 section 9 said that cancel and note edit "have no separate classification" (an unexpected failure is the generic safe error), while the Phase 4 and 5 runner classifies by completion status and verifies after completion, and the phase brief required the completion statuses, the verification read, and the `503` outcomes. The smallest decision package offered three options; the product owner approved **Option A: one `READ COMMITTED` attempt, completion-status-only classification, a post-completion verification read, and no retry (not even after a proven rollback)**, together with the default routes, bodies, and wording below. It is recorded as an appended note in ADR-0029 and the superseded sentence of section 9 is marked in place. The reason for no retry: these are short `READ COMMITTED` optimistic-version mutations and an automatic second attempt cannot safely reinterpret the caller's expected version or intent.
+
+| # | Decision |
+|---|---|
+| P1 | Routes: `POST /api/business/appointments/{appointmentId}/cancel` with exactly `{"expectedVersion": n}`; `PUT /api/business/appointments/{appointmentId}/internal-note` with exactly `{"expectedVersion": n, "internalNote": "…"}`. |
+| P2 | `internalNote` is a required JSON string; a blank string clears it through the shared `NoteText` policy; `null`, a missing key, and an unknown key are `400`. |
+| P3 | Note editing is allowed in every status (including `CANCELLED`, started, and past). |
+| P4 | An unchanged normalized note is a `200` with the current row, issues no `UPDATE`, advances neither `version` nor `updated_at`, and is judged only after existence and the version check (a stale version is still `APPOINTMENT_CONCURRENT_UPDATE`). |
+| P5 | Both responses are the complete private representation (the keys of the reschedule response), read after the transaction completed; no `cancelled_by`, no `cancelledAt`, no Customer name, phone, email, or Customer note. |
+| P6 | The precedence is authorization, lifecycle, the domain bounds of the command, existence, version, state, then (the note only) the note rule. |
+| P7 | A separate service and published contract (`AppointmentLifecycleAdministration`, `BusinessAppointmentLifecycleService`, `BusinessAppointmentLifecycleProcedure`) instead of a third operation on the repeatable-read runner: the `READ COMMITTED` single-attempt rules and the three-attempt runner stay structurally separate, and no Phase 4 or 5 test changed. |
+
+### Final contract
+
+Both routes: owner only, `ACTIVE` Business only, CSRF required, `application/json` only, `no-store`, the fixed problem `instance` `/api/business/appointments`, problem keys `title, status, detail, instance, code`, canonical identifiers. Success is `200`, no `Location`, no `Set-Cookie`, keys `id, reference, status, source, start, end, timezone, staffMemberId, staffDisplayName, customerId, services[position,name,durationMinutes,price], durationMinutes, price, internalNote, version, createdAt, updatedAt` (local offsets, exact two-decimal prices; `internalNote` is an explicit `null` when cleared). The complete status, code, and detail table per route is in [`security.md`](../security.md) and reproduced here:
+
+| Status | Code | Cancellation detail | Internal-note detail |
+|---|---|---|---|
+| 400 | `VALIDATION_ERROR` | Проверете въведените данни. | Проверете въведените данни. |
+| 401 | `AUTH_REQUIRED` | fixed body of the security chain | the same |
+| 403 | `ACTIVE_BUSINESS_REQUIRED` | as for every owner route | the same |
+| 403 | `ACCESS_DENIED` | Нямате достъп до тази операция. | Нямате достъп до тази операция. |
+| 404 | `APPOINTMENT_NOT_FOUND` | Часът не е намерен. | Часът не е намерен. |
+| 409 | `BUSINESS_NOT_ACTIVE` | Бизнесът не е активен. Часовете могат да се отменят само в активен бизнес. | Бизнесът не е активен. Бележките могат да се променят само в активен бизнес. |
+| 409 | `BUSINESS_SUSPENDED` | Спрян бизнес може само да преглежда данните си. | Спрян бизнес може само да преглежда данните си. |
+| 409 | `APPOINTMENT_CONCURRENT_UPDATE` | Часът е променен междувременно. Презаредете графика и опитайте отново. | Часът е променен междувременно. Презаредете графика и опитайте отново. |
+| 409 | `APPOINTMENT_STATE_CONFLICT` | Часът не може да бъде отменен, защото вече е отменен или е започнал. | unreachable: `INTERNAL_ERROR` |
+| 503 | `APPOINTMENT_TEMPORARILY_UNAVAILABLE` | Часът не беше отменен. Той е непроменен. Опитайте отново след малко. | Бележката не беше променена. Опитайте отново след малко. |
+| 503 | `APPOINTMENT_OUTCOME_UNCERTAIN` | Не е ясно дали часът е отменен. Презаредете графика и проверете часа, преди да опитате отново. | Не е ясно дали бележката е променена. Презаредете графика и проверете часа, преди да опитате отново. |
+| 415 | `UNSUPPORTED_MEDIA_TYPE` | Заявката не може да бъде изпълнена. | Заявката не може да бъде изпълнена. |
+| 500 | `INTERNAL_ERROR` | Възникна неочаквана грешка. | Възникна неочаквана грешка. |
+
+The create and reschedule only results map to the generic `INTERNAL_ERROR` on these routes. The wording stays open to the Phase 11 human review.
+
+### Cancellation and note behavior
+
+A cancellation is `CONFIRMED → CANCELLED` of an Appointment whose `start_at` is after the single clock instant of the attempt (an Appointment starting exactly at the instant has started): it writes `cancelled_at` and `updated_at` (that instant at microsecond precision), `cancelled_by = 'BUSINESS'`, and `version` plus one, and changes no other column (compared column by column and by tuple version); the Service lines, the Customer, the StaffMember, the period, the prices, and the snapshots are unchanged, and the time is released through the existing exclusion predicate. A repeated cancellation is `APPOINTMENT_STATE_CONFLICT` (or `APPOINTMENT_CONCURRENT_UPDATE` with the old version), never a success. The cancel predicate (`status = 'CONFIRMED' AND start_at > :now AND version = :expectedVersion`, scoped to the Business) is pinned by `AvailabilityMutationInventoryTests` and is the one a Customer cancellation (#35) will use with a different actor. A note edit writes only `internal_note`, `version` plus one, and `updated_at` and matches by Business, identifier, and expected version; the normalization, the 500 code point limit, and the character rules are the shared `NoteText` policy and nothing is ever truncated.
+
+### Transaction, locks, completion, retry
+
+One service-owned `REQUIRED`, `READ COMMITTED`, read-write transaction per call; the entry guard rejects an active caller transaction or synchronization with the sanitized `BookingOrchestrationFailure` before any clock read, statement, lock, or domain call. Lock order (each hook point probed with `FOR UPDATE SKIP LOCKED`): the Business schedule context `FOR SHARE`, the owner Membership `FOR SHARE`, then the plain Appointment read, the one clock read, and the conditional `UPDATE` last; the unchanged note never locks the Appointment; no StaffMember, revision, Service, or Customer row is touched. The exact completion table (also in the ADR-0029 Phase 6 note):
+
+| Situation | Completion | Result | Retried |
+|---|---|---|---|
+| deterministic rejection | rollback by the service | the typed rejection | never |
+| body threw before returning; a published sanitized conflict (Business schedule context, owner Membership, Appointment persistence) | rolled back by Spring | `APPOINTMENT_CONCURRENT_UPDATE` | never |
+| body threw before returning; anything else | rolled back by Spring | `INTERNAL_ERROR` | never |
+| write attempted, body returned, later failure | `COMMITTED` | `APPOINTMENT_OUTCOME_UNCERTAIN` | never |
+| the same | `ROLLED_BACK` | `APPOINTMENT_TEMPORARILY_UNAVAILABLE` | never |
+| the same | `UNKNOWN` or no report | `APPOINTMENT_OUTCOME_UNCERTAIN` | never |
+| unchanged-note no-op, later failure | any | `INTERNAL_ERROR` (nothing written) | never |
+| write, normal completion | one primary-key read outside every transaction: written version with the requested facts | success (the verified row) | n/a |
+| the same | row still at the expected version | `APPOINTMENT_TEMPORARILY_UNAVAILABLE` | never |
+| the same | any other row state, no row, or an unreadable row (including a change between the commit and the read) | `APPOINTMENT_OUTCOME_UNCERTAIN` | never |
+| no-op, normal completion | the same read: same version and same note | success; anything else is `APPOINTMENT_OUTCOME_UNCERTAIN` | n/a |
+
+No cause, SQLState, driver exception, or `DataAccessException` chain is inspected (pinned by a boundary test and by the mutation M11/M12 results). At `READ COMMITTED` a conditional `UPDATE` that waits for a competing writer re-checks its predicate and matches nothing instead of raising `40001`; the zero-row classification read then yields the typed stale-version or state result in the same transaction.
+
+### Evidence (tests added in this phase; counts from the final complete run)
+
+Real PostgreSQL and the real orchestration unless stated. `AppointmentCancellationIntegrationTests` 21 (the exact facts, immutability, multi-Service lines, the single clock read, the exact start boundary, state and version results, tenant isolation, roles, lifecycle, entry guard, isolation, freed time, guest replay), `AppointmentInternalNoteIntegrationTests` 30 (create, replace, clear, canonical whitespace and Unicode, the 500 code point limit without truncation, control characters and surrogates, every status, the no-op that issues no `UPDATE`, stale before invalid, roles, lifecycle, guard, isolation, privacy), `AppointmentLifecycleConcurrencyIntegrationTests` 19 (lock order for cancel, note, and no-op, different Appointments, cancel versus cancel in two shapes and at a barrier, cancel versus move and reassignment in both orders, cancel versus note in both orders, note versus note and move in both orders, cancellation versus creation and guest booking), `AppointmentLifecycleCommitFailureIntegrationTests` 17 (five misleading after-commit failures for both operations, a change between commit and verification, a pre-commit rollback, a failure and a swallowed failed statement inside the body, a silent rollback, a terminated backend, the verified no-op versus a silent rollback, a no-op changed before verification, a committed cancellation never reported as a rollback), `BusinessAppointmentLifecycleApiIntegrationTests` 24 (both routes: exact bodies and headers, CSRF, roles, lifecycle precedence, every shape violation, media type and verbs, byte-identical not-found, the note absent from the calendar, agenda, and history payloads, no log or problem leak, statement counts: 10 for a cancellation and for a note edit whatever the number of Services, 6 for the no-op, one `UPDATE` and none for the no-op). **Injected:** `BusinessAppointmentLifecycleServiceTests` 64 (scripted body, fake transaction manager, every completion status). **Test double:** `BusinessAppointmentLifecycleUnavailableApiIntegrationTests` 4 (every result of both routes through the real route with the capability replaced, **injected**). Unit and structural: `LifecycleRequestParserTests` 41, `BusinessAppointmentLifecycleBoundaryTests` 11 (lock order as call order, collaborator set, one clock read per body, the only callers of the two updates, no retry construct, no cause or SQLState read, READ COMMITTED), plus the changed `CalendarModuleBoundaryTests` (the exact route list: three `POST` and one `PUT`) and `BookingModuleBoundaryTests` (the published root types) and the test wiring (`MutableTestClock.onRead`, `ManualBookingHooks.Point.AFTER_CLOCK_READ`, `BookingHookConfiguration`). That is 231 new tests; none was weakened. **Not covered / limits:** a deterministic `40P01` is not forced (this operation holds only locks of the levels L1, L2, and L7 in order, which is an ordering argument and not a proof that no deadlock can occur); the `503` HTTP results come from a test double of the capability by design; the unbounded `join()` calls in the guest-booking and older suites remain recorded test debt (not audited line by line, not part of this phase).
+
+### Mutation and control checks
+
+Each mutant was applied to the working tree, the focused suite of 217 tests was run, and every mutated source was restored from its in-memory baseline (the SHA-256 of every mutated source equals the baseline afterwards, and `git diff` of the unrelated mutated files is empty). **All 14 were killed:** M01 cancellation allowed after start (domain check and store predicate removed; 7 failures); M02 cancelled Appointment accepted again (7); M03 expected-version predicate missing from the cancel and note `UPDATE` (8); M04 cancellation facts written partially, `updated_at` not written (11 failures, 2 errors; a first attempt at M04 changed the reschedule statement by mistake because its text is similar, was recognised as a surviving mutant of the wrong statement, and was repeated against the cancel statement); M05 immutable data changed during cancellation, the StaffMember name snapshot (2); M06 the note edit changing status and cancellation facts (4); M07 note persisted without the shared normalization (9 failures, 1 error); M08 the note exposed through the guest replay (2); M09 concurrent mutations both reported successful, a missed `UPDATE` reported as the write (7); M10 success reported without honouring the post-completion verification (11); M11 retry after `COMMITTED` or `UNKNOWN` (15); M12 a retry beyond the approved maximum of zero, after a proven rollback (7); M13 wrong isolation, `REPEATABLE READ` (5); M14 wrong lock order, Membership before the Business (4). No test hung.
+
+### Verification (executed)
+
+Focused suites while developing. **Final complete verification on the final tree:** `./mvnw --batch-mode clean verify`: **4421 tests, 0 failures, 0 errors, 0 skipped, `BUILD SUCCESS`** (4190 after Phase 5; 231 added), 03:27 minutes. `git diff --check` is clean; a scan of every changed and new Java file found no tab, trailing whitespace, wildcard import, compressed empty body, or missing final newline; `V1` to `V15` are byte-identical to `HEAD`; the frontend was not touched and no frontend suite was run. Local result only; the exact-HEAD CI result of the commit that will contain this phase is a separate report.
+
+### Deviations, limitations, and residual risks
+
+1. **Section 9 of ADR-0029 is superseded in one sentence for cancel and note** (approved Option A); the original sentence is kept and marked.
+2. **A separate service, not a third operation of the Business runner (P7).** The two runners now duplicate the completion-recorder idea (a small private class each); a shared extraction needs its own approval and evidence.
+3. A change that another transaction commits between this call's commit and the verification read makes a successful operation report `APPOINTMENT_OUTCOME_UNCERTAIN`; the interface reloads. A success is never reported without confirmation.
+4. A clock before the Appointment's creation fails the call as `INTERNAL_ERROR` (the domain refuses it), as in Phase 5.
+5. The note is private Business data and travels in the authenticated detail and the two mutation responses; it is deliberately absent from the lists, the history, the guest replay, problems, and logs, and a log or URL never contains it (asserted).
+6. The Bulgarian wording stays open to the Phase 11 review. `cancelled_by` is not part of the mutation responses; the detail of Phase 3 remains the only place that shows it.
+7. No rate limit exists on these owner routes, as for the other owner mutations.
+
+### Stopping point
+
+Phase 6 stops here for review. Phase 7 (the read-only frontend) needs its own plan and explicit approval.

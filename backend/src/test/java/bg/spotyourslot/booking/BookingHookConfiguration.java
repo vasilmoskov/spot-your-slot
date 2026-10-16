@@ -48,8 +48,10 @@ public class BookingHookConfiguration {
 
     @Bean
     @Primary
-    MutableTestClock bookingTestClock() {
-        return new MutableTestClock(NOW);
+    MutableTestClock bookingTestClock(ObjectProvider<ManualBookingHooks> hooks) {
+        MutableTestClock clock = new MutableTestClock(NOW);
+        clock.onRead(() -> hooks.getObject().fire(ManualBookingHooks.Point.AFTER_CLOCK_READ));
+        return clock;
     }
 
     @Bean

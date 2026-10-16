@@ -76,6 +76,7 @@ class CalendarModuleBoundaryTests {
 
         assertThat(targets).allMatch(name -> name.startsWith("bg.spotyourslot.booking.AppointmentCalendar")
                 || name.startsWith("bg.spotyourslot.booking.AppointmentAdministration")
+                || name.equals("bg.spotyourslot.booking.AppointmentLifecycleAdministration")
                 || name.equals("bg.spotyourslot.booking.BookingOrchestrationFailure")
                 || name.equals("bg.spotyourslot.identity.AuthenticatedBusinessContext")
                 || name.equals("bg.spotyourslot.identity.SelectedBusinessRequired"));
@@ -103,23 +104,28 @@ class CalendarModuleBoundaryTests {
     }
 
     @Test
-    void exactlyTheFourApprovedGetRoutesAndTheTwoApprovedPostsExistAndNothingElseIsMapped() throws Exception {
+    void exactlyTheFourApprovedGetRoutesTheThreeApprovedPostsAndTheOnePutExistAndNothingElseIsMapped() throws Exception {
         List<String> mappings = new ArrayList<>();
         try (var files = Files.walk(Path.of("src/main/java/bg/spotyourslot/calendar/web"))) {
             for (Path file : files.filter(path -> path.toString().endsWith("Controller.java")).toList()) {
                 String code = Files.readString(file).replaceAll("(?s)/\\*.*?\\*/", "");
                 String base = Pattern.compile("@RequestMapping\\(\"([^\"]+)\"\\)")
                         .matcher(code).results().map(match -> match.group(1)).findFirst().orElseThrow();
-                assertThat(code).doesNotContain("@PutMapping")
-                        .doesNotContain("@DeleteMapping").doesNotContain("@PatchMapping");
-                // Phases 4 and 5: exactly two mutations, the owner-created Appointment and its reschedule
-                // or reassignment, in the appointments controller.
+                assertThat(code).doesNotContain("@DeleteMapping").doesNotContain("@PatchMapping");
+                // Phases 4 to 6: exactly four mutations, all in the appointments controller: the
+                // owner-created Appointment, its reschedule or reassignment, its cancellation (three
+                // POSTs), and the internal-note edit (the one PUT).
                 boolean appointments = base.equals("/api/business/appointments");
-                assertThat(code.split("@PostMapping", -1).length - 1).isEqualTo(appointments ? 2 : 0);
-                assertThat(code.split("@RequestBody", -1).length - 1).isEqualTo(appointments ? 2 : 0);
+                assertThat(code.split("@PostMapping", -1).length - 1).isEqualTo(appointments ? 3 : 0);
+                assertThat(code.split("@PutMapping", -1).length - 1).isEqualTo(appointments ? 1 : 0);
+                assertThat(code.split("@RequestBody", -1).length - 1).isEqualTo(appointments ? 4 : 0);
                 Matcher post = Pattern.compile("@PostMapping(?:\\(\"([^\"]*)\"\\))?").matcher(code);
                 while (post.find()) {
                     mappings.add("POST " + base + (post.group(1) == null ? "" : post.group(1)));
+                }
+                Matcher put = Pattern.compile("@PutMapping(?:\\(\"([^\"]*)\"\\))?").matcher(code);
+                while (put.find()) {
+                    mappings.add("PUT " + base + (put.group(1) == null ? "" : put.group(1)));
                 }
                 Matcher get = Pattern
                         .compile("@GetMapping(?:\\(\"([^\"]*)\"\\))?").matcher(code);
@@ -132,6 +138,8 @@ class CalendarModuleBoundaryTests {
         assertThat(mappings).containsExactlyInAnyOrder(
                 "POST /api/business/appointments",
                 "POST /api/business/appointments/{appointmentId}/reschedule",
+                "POST /api/business/appointments/{appointmentId}/cancel",
+                "PUT /api/business/appointments/{appointmentId}/internal-note",
                 "GET /api/business/calendar",
                 "GET /api/business/appointments",
                 "GET /api/business/appointments/{appointmentId}",

@@ -163,6 +163,56 @@ public class BusinessAppointmentExceptionHandler extends BusinessCalendarProblem
         };
     }
 
+    /**
+     * The cancellation and internal-note routes. The statuses and codes are those of the other
+     * routes; the details of the results whose wording names another operation are reworded for the
+     * operation that failed. The results that cannot occur (a state conflict of a note edit, and the
+     * create or reschedule eligibility results) are the generic internal error, never misleading
+     * wording. The cause is only inspected for its type.
+     */
+    @ExceptionHandler(LifecycleFailure.class)
+    ProblemDetail lifecycleFailure(LifecycleFailure failure) {
+        boolean cancel = failure.operation() == LifecycleFailure.Operation.CANCEL;
+        return switch (failure.failure()) {
+            case AppointmentAdministrationException.InvalidInput invalid -> invalidAdministrationInput();
+            case AppointmentAdministrationException.AccessDenied denied -> administrationAccessDenied();
+            case AppointmentAdministrationException.BusinessNotActive inactive -> problem(
+                    HttpStatus.CONFLICT,
+                    "BUSINESS_NOT_ACTIVE",
+                    cancel
+                            ? "Бизнесът не е активен. Часовете могат да се отменят само в активен бизнес."
+                            : "Бизнесът не е активен. Бележките могат да се променят само в активен бизнес.");
+            case AppointmentAdministrationException.BusinessSuspended suspended -> businessSuspended();
+            case AppointmentAdministrationException.AppointmentNotFound missing ->
+                    administrationAppointmentNotFound();
+            case AppointmentAdministrationException.ConcurrentUpdate stale -> concurrentUpdate();
+            case AppointmentAdministrationException.StateConflict state -> cancel
+                    ? problem(
+                            HttpStatus.CONFLICT,
+                            "APPOINTMENT_STATE_CONFLICT",
+                            "Часът не може да бъде отменен, защото вече е отменен или е започнал.")
+                    : administrationFailure();
+            case AppointmentAdministrationException.TemporarilyUnavailable unavailable -> problem(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "APPOINTMENT_TEMPORARILY_UNAVAILABLE",
+                    cancel
+                            ? "Часът не беше отменен. Той е непроменен. Опитайте отново след малко."
+                            : "Бележката не беше променена. Опитайте отново след малко.");
+            case AppointmentAdministrationException.OutcomeUncertain uncertain -> problem(
+                    HttpStatus.SERVICE_UNAVAILABLE,
+                    "APPOINTMENT_OUTCOME_UNCERTAIN",
+                    cancel
+                            ? "Не е ясно дали часът е отменен. Презаредете графика и проверете часа, преди да опитате отново."
+                            : "Не е ясно дали бележката е променена. Презаредете графика и проверете часа, преди да опитате отново.");
+            case AppointmentAdministrationException.CustomerNotFound unexpected -> administrationFailure();
+            case AppointmentAdministrationException.ServiceUnavailable unexpected -> administrationFailure();
+            case AppointmentAdministrationException.StaffUnavailable unexpected -> administrationFailure();
+            case AppointmentAdministrationException.ReviewChanged unexpected -> administrationFailure();
+            case AppointmentAdministrationException.SlotUnavailable unexpected -> administrationFailure();
+            case AppointmentAdministrationException.Failure failed -> administrationFailure();
+        };
+    }
+
     @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
     ProblemDetail unsupportedMediaType() {
         return problem(

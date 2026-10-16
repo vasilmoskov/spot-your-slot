@@ -11,6 +11,8 @@ import java.util.concurrent.atomic.AtomicReference;
 public final class MutableTestClock extends Clock {
     private final AtomicReference<Instant> now;
     private final AtomicInteger reads = new AtomicInteger();
+    private volatile Runnable onRead = () -> {
+    };
 
     public MutableTestClock(Instant initial) {
         this.now = new AtomicReference<>(initial);
@@ -22,6 +24,11 @@ public final class MutableTestClock extends Clock {
 
     public int reads() {
         return reads.get();
+    }
+
+    /** Runs on the reading thread after every read, so a test can pause an attempt at its clock read. */
+    public void onRead(Runnable action) {
+        this.onRead = action;
     }
 
     public void resetReads() {
@@ -41,6 +48,8 @@ public final class MutableTestClock extends Clock {
     @Override
     public Instant instant() {
         reads.incrementAndGet();
-        return now.get();
+        Instant instant = now.get();
+        onRead.run();
+        return instant;
     }
 }

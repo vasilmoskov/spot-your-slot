@@ -30,7 +30,12 @@ public final class ManualBookingHooks {
          * nothing but pure decisions separates it from the conditional {@code UPDATE}; for a creation
          * it precedes the reference generation and the insert.
          */
-        AFTER_BUSINESS_AVAILABILITY
+        AFTER_BUSINESS_AVAILABILITY,
+        /**
+         * Immediately after the attempt's clock read (the cancellation and note edit read it once,
+         * after the plain Appointment read and immediately before the conditional {@code UPDATE}).
+         */
+        AFTER_CLOCK_READ
     }
 
     /** One firing of a point: the attempt's thread and how many times this thread reached the point. */

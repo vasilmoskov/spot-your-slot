@@ -226,6 +226,7 @@ class BookingModuleBoundaryTests {
                         "AppointmentCalendarRecords",
                         "AppointmentCalendarException",
                         "AppointmentAdministration",
+                        "AppointmentLifecycleAdministration",
                         "AppointmentAdministrationRecords",
                         "AppointmentAdministrationException");
     }

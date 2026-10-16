@@ -291,7 +291,7 @@ version, list-window, and whole-body failures stay generic. Responses never
 expose SQL diagnostics, constraint names, stack traces, submitted identifiers,
 Membership details, or tenant existence.
 
-### Business Appointment administration authorization (issues #19 and #21; decided in ADR-0028 and ADR-0029; the read routes are implemented in Phase 3, create in Phase 4, reschedule and reassign in Phase 5; cancel and the note edit are not)
+### Business Appointment administration authorization (issues #19 and #21; decided in ADR-0028 and ADR-0029; the read routes are implemented in Phase 3, create in Phase 4, reschedule and reassign in Phase 5; cancel and the note edit in Phase 6, backend only)
 
 The calendar, the Appointment detail, the Customer appointment history, and every Appointment mutation
 (create, reschedule and reassign, cancel, internal-note edit) derive the user and the selected Business only
@@ -347,7 +347,32 @@ durationMinutes, price, internalNote, version, createdAt, updatedAt` and no Cust
 have succeeded, or the row was changed again before the verification read) is `503 APPOINTMENT_OUTCOME_UNCERTAIN` and is never retried; success is reported only after a read outside
 the transaction finds the row at the new version with the requested start and StaffMember.
 
-Failures planned for the remaining mutations, cancel and note edit (the codes, route names, and Bulgarian wording are working names, finalised and tested in the implementing HTTP or interface phase, and the wording stays Proposed until the rendered human review; reschedule and reassign are final above): `VALIDATION_ERROR` (400),
+**Implemented cancellation and internal-note routes (issue #21 Phase 6).** Both are owner-only, require CSRF, accept only `application/json` (`415 UNSUPPORTED_MEDIA_TYPE` otherwise), carry `Cache-Control: no-store`, and use the fixed problem `instance` `/api/business/appointments`. A non-canonical identifier in the path, a non-object body, a missing, `null`, or unknown key, and a non-integral or out-of-range `expectedVersion` are the same `400 VALIDATION_ERROR` that echoes nothing.
+
+- `POST /api/business/appointments/{appointmentId}/cancel`, body exactly `{"expectedVersion": n}` (no reason, actor, time, or status can be named). Success: `200` with the complete private Appointment (keys `id, reference, status, source, start, end, timezone, staffMemberId, staffDisplayName, customerId, services[position,name,durationMinutes,price], durationMinutes, price, internalNote, version, createdAt, updatedAt`), `status` `CANCELLED`, `version` plus one, `updatedAt` the cancellation instant; it exposes no `cancelled_by`, no `cancelledAt`, no Customer name, phone, email, or Customer note.
+- `PUT /api/business/appointments/{appointmentId}/internal-note`, body exactly `{"expectedVersion": n, "internalNote": "…"}`; `internalNote` is a required JSON string, a blank string clears the note (the response carries an explicit `null`), the shared note rule applies (at most 500 code points, no control character except tab and line feed, no unpaired surrogate, never truncated). Success: `200` with the same representation; an unchanged normalized note is a `200` with the current row and no `UPDATE`, `version`, and `updatedAt` unchanged.
+
+Precedence: authentication and CSRF, selected Business and role, lifecycle (`DRAFT`, `SUSPENDED`), the domain bounds of the command, existence, version, state, and for the note the note rule. Every result, with its final operation-specific Bulgarian detail (the same code and status are mapped to different details than on the create and reschedule routes, and no detail names another operation):
+
+| Status | Code | Cancellation detail | Internal-note detail |
+|---|---|---|---|
+| 400 | `VALIDATION_ERROR` | Проверете въведените данни. | Проверете въведените данни. |
+| 401 | `AUTH_REQUIRED` | the fixed body of the security chain | the same |
+| 403 | `ACTIVE_BUSINESS_REQUIRED` | as for every owner route | the same |
+| 403 | `ACCESS_DENIED` | Нямате достъп до тази операция. | Нямате достъп до тази операция. |
+| 404 | `APPOINTMENT_NOT_FOUND` (a missing and a foreign Appointment, byte-identical) | Часът не е намерен. | Часът не е намерен. |
+| 409 | `BUSINESS_NOT_ACTIVE` | Бизнесът не е активен. Часовете могат да се отменят само в активен бизнес. | Бизнесът не е активен. Бележките могат да се променят само в активен бизнес. |
+| 409 | `BUSINESS_SUSPENDED` | Спрян бизнес може само да преглежда данните си. | Спрян бизнес може само да преглежда данните си. |
+| 409 | `APPOINTMENT_CONCURRENT_UPDATE` (a stale or lost version) | Часът е променен междувременно. Презаредете графика и опитайте отново. | Часът е променен междувременно. Презаредете графика и опитайте отново. |
+| 409 | `APPOINTMENT_STATE_CONFLICT` (already cancelled, or started) | Часът не може да бъде отменен, защото вече е отменен или е започнал. | unreachable (a note is editable in every status): `INTERNAL_ERROR` |
+| 503 | `APPOINTMENT_TEMPORARILY_UNAVAILABLE` (a proven rollback; never retried) | Часът не беше отменен. Той е непроменен. Опитайте отново след малко. | Бележката не беше променена. Опитайте отново след малко. |
+| 503 | `APPOINTMENT_OUTCOME_UNCERTAIN` (the commit may have succeeded, or the written row cannot be confirmed) | Не е ясно дали часът е отменен. Презаредете графика и проверете часа, преди да опитате отново. | Не е ясно дали бележката е променена. Презаредете графика и проверете часа, преди да опитате отново. |
+| 415 | `UNSUPPORTED_MEDIA_TYPE` | Заявката не може да бъде изпълнена. | Заявката не може да бъде изпълнена. |
+| 500 | `INTERNAL_ERROR` | Възникна неочаквана грешка. | Възникна неочаквана грешка. |
+
+The results that cannot occur on these routes (`CUSTOMER_NOT_FOUND`, `APPOINTMENT_SERVICE_UNAVAILABLE`, `APPOINTMENT_STAFF_UNAVAILABLE`, `APPOINTMENT_REVIEW_CHANGED`, `APPOINTMENT_SLOT_UNAVAILABLE`) are the generic `INTERNAL_ERROR`, never create or reschedule wording. A problem body never contains SQL, a constraint name, a class, a cause, a foreign identifier, a Customer contact value, or the note. The orchestration (one `READ COMMITTED` attempt, completion-status classification, the verification read, and no retry, not even after a proven rollback) is decided in the Phase 6 note of ADR-0029. The internal note is private Business data: it never appears in a guest booking response or replay, a public log, a public error, a URL, the calendar or agenda lists, or the Customer history; only the authenticated detail and these two mutation responses carry it.
+
+**[Superseded for the cancellation and the note edit by the two routes above, whose codes, wording, and statuses are final for the backend; kept as the historical plan.]** Failures planned for the remaining mutations, cancel and note edit (the codes, route names, and Bulgarian wording are working names, finalised and tested in the implementing HTTP or interface phase, and the wording stays Proposed until the rendered human review; reschedule and reassign are final above): `VALIDATION_ERROR` (400),
 `AUTH_REQUIRED`, `ACTIVE_BUSINESS_REQUIRED`, `ACCESS_DENIED`, `APPOINTMENT_NOT_FOUND` and `CUSTOMER_NOT_FOUND` (404),
 `BUSINESS_NOT_ACTIVE`, `BUSINESS_SUSPENDED`, `APPOINTMENT_CONCURRENT_UPDATE` (a stale `expectedVersion`),
 `APPOINTMENT_STATE_CONFLICT` (already cancelled or started), `APPOINTMENT_SLOT_UNAVAILABLE` (the time is not offered,

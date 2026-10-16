@@ -5,11 +5,13 @@ import bg.spotyourslot.booking.AppointmentAdministrationException;
 import bg.spotyourslot.booking.AppointmentAdministrationRecords.CreatedAppointment;
 import bg.spotyourslot.booking.AppointmentAdministrationRecords.RescheduleAppointmentCommand;
 import bg.spotyourslot.booking.AppointmentCalendar;
+import bg.spotyourslot.booking.AppointmentLifecycleAdministration;
 import bg.spotyourslot.booking.AppointmentCalendarException.InvalidInput;
 import bg.spotyourslot.calendar.web.BusinessCalendarHttpRecords.AgendaResponse;
 import bg.spotyourslot.calendar.web.BusinessCalendarHttpRecords.CreatedAppointmentResponse;
 import bg.spotyourslot.calendar.web.BusinessCalendarHttpRecords.DetailResponse;
 import bg.spotyourslot.calendar.web.BusinessCalendarHttpRecords.RescheduledAppointmentResponse;
+import bg.spotyourslot.calendar.web.BusinessCalendarHttpRecords.UpdatedAppointmentResponse;
 import bg.spotyourslot.identity.AuthenticatedBusinessContext;
 import java.net.URI;
 import java.time.LocalDate;
@@ -19,6 +21,7 @@ import org.springframework.security.core.annotation.CurrentSecurityContext;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -30,18 +33,23 @@ import tools.jackson.databind.JsonNode;
  * {@code GET /api/business/appointments/{id}} (the owner-only detail), and
  * {@code POST /api/business/appointments} (the owner-created multi-Service Appointment), and
  * {@code POST /api/business/appointments/{id}/reschedule} (the form-based move and StaffMember
- * reassignment).
+ * reassignment), {@code POST /api/business/appointments/{id}/cancel} (the Business cancellation) and
+ * {@code PUT /api/business/appointments/{id}/internal-note} (the private note edit).
  */
 @RestController
 @RequestMapping("/api/business/appointments")
 public class BusinessAppointmentController {
     private final AppointmentCalendar calendar;
     private final AppointmentAdministration administration;
+    private final AppointmentLifecycleAdministration lifecycle;
 
     public BusinessAppointmentController(
-            AppointmentCalendar calendar, AppointmentAdministration administration) {
+            AppointmentCalendar calendar,
+            AppointmentAdministration administration,
+            AppointmentLifecycleAdministration lifecycle) {
         this.calendar = calendar;
         this.administration = administration;
+        this.lifecycle = lifecycle;
     }
 
     /**
@@ -76,6 +84,42 @@ public class BusinessAppointmentController {
         } catch (AppointmentAdministrationException failure) {
             // The route publishes its own wording for the shared results (see the handler).
             throw new RescheduleFailure(failure);
+        }
+    }
+
+    /**
+     * Cancels one Appointment of the selected Business as the Business, guarded by
+     * {@code expectedVersion}. The body is exactly {@code {"expectedVersion": n}}.
+     */
+    @PostMapping("/{appointmentId}/cancel")
+    public UpdatedAppointmentResponse cancel(
+            @CurrentSecurityContext(expression = "authentication")
+                    AuthenticatedBusinessContext context,
+            @PathVariable String appointmentId,
+            @RequestBody JsonNode body) {
+        var command = CancelAppointmentRequestParser.parse(appointmentId, body);
+        try {
+            return UpdatedAppointmentResponse.from(lifecycle.cancel(context, command));
+        } catch (AppointmentAdministrationException failure) {
+            throw new LifecycleFailure(LifecycleFailure.Operation.CANCEL, failure);
+        }
+    }
+
+    /**
+     * Replaces the private internal note of one Appointment of the selected Business, guarded by
+     * {@code expectedVersion}. The body is exactly {@code {"expectedVersion": n, "internalNote": s}}.
+     */
+    @PutMapping("/{appointmentId}/internal-note")
+    public UpdatedAppointmentResponse editInternalNote(
+            @CurrentSecurityContext(expression = "authentication")
+                    AuthenticatedBusinessContext context,
+            @PathVariable String appointmentId,
+            @RequestBody JsonNode body) {
+        var command = EditInternalNoteRequestParser.parse(appointmentId, body);
+        try {
+            return UpdatedAppointmentResponse.from(lifecycle.editInternalNote(context, command));
+        } catch (AppointmentAdministrationException failure) {
+            throw new LifecycleFailure(LifecycleFailure.Operation.INTERNAL_NOTE, failure);
         }
     }
 
