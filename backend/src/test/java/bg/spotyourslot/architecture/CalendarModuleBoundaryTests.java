@@ -76,6 +76,7 @@ class CalendarModuleBoundaryTests {
 
         assertThat(targets).allMatch(name -> name.startsWith("bg.spotyourslot.booking.AppointmentCalendar")
                 || name.startsWith("bg.spotyourslot.booking.AppointmentAdministration")
+                || name.startsWith("bg.spotyourslot.booking.AppointmentCreationOptions")
                 || name.equals("bg.spotyourslot.booking.AppointmentLifecycleAdministration")
                 || name.equals("bg.spotyourslot.booking.BookingOrchestrationFailure")
                 || name.equals("bg.spotyourslot.identity.AuthenticatedBusinessContext")
@@ -104,7 +105,7 @@ class CalendarModuleBoundaryTests {
     }
 
     @Test
-    void exactlyTheFourApprovedGetRoutesTheThreeApprovedPostsAndTheOnePutExistAndNothingElseIsMapped() throws Exception {
+    void exactlyTheSixApprovedGetRoutesTheThreeApprovedPostsAndTheOnePutExistAndNothingElseIsMapped() throws Exception {
         List<String> mappings = new ArrayList<>();
         try (var files = Files.walk(Path.of("src/main/java/bg/spotyourslot/calendar/web"))) {
             for (Path file : files.filter(path -> path.toString().endsWith("Controller.java")).toList()) {
@@ -143,7 +144,9 @@ class CalendarModuleBoundaryTests {
                 "GET /api/business/calendar",
                 "GET /api/business/appointments",
                 "GET /api/business/appointments/{appointmentId}",
-                "GET /api/business/customers/{customerId}/appointments");
+                "GET /api/business/customers/{customerId}/appointments",
+                "GET /api/business/appointment-options",
+                "GET /api/business/appointment-options/availability");
     }
 
     @Test

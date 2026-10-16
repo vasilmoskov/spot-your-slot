@@ -1,6 +1,6 @@
 # SpotYourSlot — Business Calendar and Appointment Management (Issues #19 and #21)
 
-Status (current, 2026-10-16): **Phases 1 to 6 are committed (`HEAD` `82edadd36e7adb64863428094cfa8ca3d23b450f` includes Phase 6, the Business cancellation and the private internal-note edit, backend only, issue #21; its CI run was still in progress when Phase 7 started and is advisory). Phase 7 (the read-only Business calendar, Appointment detail and Customer Appointment history frontend, issue #21) is implemented in the working tree and awaits review (nothing staged or committed); Phases 8 to 12 are not started.** *(Superseded status text: the previous version of this line said that Phase 6 awaited review in the working tree; it was committed as `82edadd`.)* Issues #19 and #21 are one combined delivery and both are In Progress on the Project board. The product owner alone edits GitHub (issue texts, comments, states, Project status); this repository work never does. The decisions are recorded in [ADR-0028](../decisions/ADR-0028-administer-appointments-through-a-private-owner-only-api-with-immutable-visit-identity-and-business-cancellation.md) and [ADR-0029](../decisions/ADR-0029-calculate-business-availability-with-a-separate-policy-and-serialize-appointment-mutations-with-ordered-locks-optimistic-versions-and-bounded-retry.md); this record holds the plan, the acceptance mapping, the contract and migration plan, the phase plan, and the exact proposed GitHub amendment texts.
+Status (current, 2026-10-16): **Phases 1 to 7 are committed (`HEAD` `6ea345f87ab876997f51dbc4c59d6d659214dd2c` includes Phase 7, the read-only calendar, Appointment detail and Customer history frontend, issue #21; its CI run was still in progress when the Phase 8 prerequisite started and is advisory). A discovered Phase 8 backend prerequisite, the manual-create read routes `GET /api/business/appointment-options` and `GET /api/business/appointment-options/availability` (issue #21, backend only), is implemented in the working tree and awaits review (nothing staged or committed); the Phase 8 frontend itself is not started, and Phases 9 to 12 are not started.** *(Superseded status text: the previous version of this line said that Phase 6 awaited review in the working tree; it was committed as `82edadd`.)* Issues #19 and #21 are one combined delivery and both are In Progress on the Project board. The product owner alone edits GitHub (issue texts, comments, states, Project status); this repository work never does. The decisions are recorded in [ADR-0028](../decisions/ADR-0028-administer-appointments-through-a-private-owner-only-api-with-immutable-visit-identity-and-business-cancellation.md) and [ADR-0029](../decisions/ADR-0029-calculate-business-availability-with-a-separate-policy-and-serialize-appointment-mutations-with-ordered-locks-optimistic-versions-and-bounded-retry.md); this record holds the plan, the acceptance mapping, the contract and migration plan, the phase plan, and the exact proposed GitHub amendment texts.
 
 GitHub issues: #19 — Prevent double booking and handle booking conflicts; #21 — Build the Business calendar and appointment management
 Depends on: #16, #17, #18, #20 (all closed). Related, not part of this work: #22 (notifications), #35 (Customer self-service cancellation), #36 (Customer self-service rescheduling), #37 (Customer-specific durations).
@@ -73,7 +73,7 @@ All routes derive the Business and the user from the authenticated context; none
 | `GET /api/business/appointments?from=&to=[&staffMemberId=]&page=&size=` | The agenda: the same facts, server-paginated, fixed chronological order | 3 |
 | `GET /api/business/appointments/{id}` | The detail: status, source, lines, totals, notes, Customer contact (owner only), `version` | 3 |
 | `GET /api/business/customers/{customerId}/appointments?page=&size=` | The Customer history: minimum facts, newest first | 3 |
-| `GET /api/business/appointment-options?...` | Authoritative starts for a create or a reschedule (advisory, reserves nothing) | deferred out of Phase 4 (see the Phase 4 record); introduced as its own Strict backend step before the Phase 8 form |
+| `GET /api/business/appointment-options?serviceId=…` and `GET /api/business/appointment-options/availability?serviceId=…&staffMemberId=…&date=…` | The StaffMembers who may perform the selected Services with their summed duration, and the authoritative starts of one explicit StaffMember on one Business-local date for a create (advisory, reserves nothing; the reschedule form will extend the availability route with the stored duration and the ignored Appointment in Phase 9) | deferred out of Phase 4; implemented as the discovered Phase 8 prerequisite (see its record) |
 | `POST /api/business/appointments` | Create | 4 |
 | `POST /api/business/appointments/{appointmentId}/reschedule` | Move and/or reassign in one atomic request (final in Phase 5; see the Phase 5 record) | 5 |
 | `POST /api/business/appointments/{id}/cancel` | Cancel | 6 |
@@ -1044,3 +1044,73 @@ Focused suites while developing; then one complete `npm test` (84 files, 1938 te
 ### Stopping point
 
 Phase 7 stops here for review. Phase 8 (the manual-create frontend) needs its own approval. **The read-only calendar is available for optional browser inspection; this is a notification, not a gate: formal human visual approval remains Phase 11.**
+
+## Phase 8 prerequisite record (2026-10-16; implemented and verified locally; awaiting the product owner's review; nothing staged or committed)
+
+Base `HEAD` `6ea345f87ab876997f51dbc4c59d6d659214dd2c` (Phase 7, clean, equal to `origin/main`). **CI observed at the start (advisory, read-only):** the run for that commit was `in_progress`; it did not affect the work. Scope: issue #21, Strict, backend only. This is a **discovered Phase 8 prerequisite, not completed frontend work**: no frontend file changed, the manual-create form is not started, no migration (`V1` to `V15` byte-identical to `HEAD`), no change to any existing route, contract, or production behaviour, and no GitHub change.
+
+### Why the route was missing
+
+Phase 4 decision Q1 deferred `GET /api/business/appointment-options` because it needed a plain-read Catalog duration contract, and Phases 5 and 6 left it deferred; the plan said it would be introduced "as its own Strict backend step before the Phase 8 form". When Phase 8 was started the repository confirmed that no Business-side read of the eligible StaffMembers or of the offered starts existed (the only availability reads are the unauthenticated public routes, whose two-hour notice and 30-date horizon are the wrong policy and which are public by design), so the frontend could not obtain authoritative starts. The plain-read Catalog contract turned out to exist already (`ServiceAvailabilityAccess.findBookableServices`, one statement, added for the public availability), so no Catalog contract was added.
+
+### Contract decision
+
+Two routes under the authenticated namespace, mirroring the public pair (`booking-options` and `availability`), were chosen over a single combined route: the StaffMember choice must precede the date, the first read is cheap and stable while the second is date-specific, and a combined route would need an optional StaffMember and date and answer two different questions. They are named `appointment-options` as the record already did. The Service facts of the reviewed terms (name, duration, price) are **not** repeated: the form already obtains them, exactly and per Service, from the Service administration API, and the creation compares them with the locked rows anyway (`APPOINTMENT_REVIEW_CHANGED`); the routes return only the authoritative summed duration, which is the one the availability and the creation use. The public routes are not reused. The Phase 9 reschedule form will extend the availability route (the stored duration and the ignored Appointment); nothing speculative is added now.
+
+### Finalised HTTP contracts
+
+Both routes are `GET`, owner-only, derive the Business and the user only from the authenticated context (a `businessId` parameter is ignored), need no CSRF token, and answer `Cache-Control: no-store`. The selection is the repeated query parameter `serviceId`, one canonical 8-4-4-4-12 UUID per occurrence, one to five, no duplicate, order irrelevant (a comma list stays one malformed value); `staffMemberId` is one canonical UUID; `date` is a canonical `YYYY-MM-DD` Business-local date from 2000-01-01 to 2100-12-31. Unknown parameters are ignored; a repeated `staffMemberId` or `date` is invalid. No Customer, contact, note, price, or Appointment datum is in a request or a response.
+
+| Route | Success keys (in order) |
+|---|---|
+| `GET /api/business/appointment-options?serviceId=…` | `timezone, durationMinutes, staffMembers[id, displayName]` — the active StaffMembers assigned to **every** selected Service (the intersection), ordered by canonical display name then identifier; empty when nobody supports the whole selection (a `200`, distinct from eligible StaffMembers without free time) |
+| `GET /api/business/appointment-options/availability?serviceId=…&staffMemberId=…&date=…` | `timezone, date, durationMinutes, slots[start, end]` — the starts of that one StaffMember on that date, ordered by instant; every timestamp is ISO-8601 with the Business-local offset, so both occurrences of a repeated wall-clock hour are distinct |
+
+The policy is the Business-side policy of ADR-0029 section 1 through the existing `AvailabilityQuery.calculateForBusiness`: **zero minimum notice** (the earliest start is the clock instant, inclusive, on the 15-minute grid), the summed **current** Service duration, the Business timezone and its daylight-saving rules, the schedule and its exceptions, every blocking Appointment, no ignored Appointment, and exactly the explicit StaffMember (never an automatic assignment). The clock is read once and truncated to microseconds, as the creation does, so the offered starts are exactly the starts the creation accepts (proved against the real creation).
+
+| Status | Code | Detail |
+|---|---|---|
+| 400 | `VALIDATION_ERROR` | Проверете въведените данни. (every malformed or out-of-bound request, and a current duration sum over 480 minutes; nothing is echoed) |
+| 401 | `AUTH_REQUIRED` | fixed body of the security chain |
+| 403 | `ACTIVE_BUSINESS_REQUIRED` | as for every owner route |
+| 403 | `ACCESS_DENIED` | Нямате достъп до тази операция. (Manager and Staff) |
+| 409 | `BUSINESS_NOT_ACTIVE` | Бизнесът не е активен. Часове могат да се създават само в активен бизнес. (`DRAFT`) |
+| 409 | `BUSINESS_SUSPENDED` | Спрян бизнес може само да преглежда данните си. |
+| 409 | `APPOINTMENT_SERVICE_UNAVAILABLE` | Някоя от избраните услуги вече не е налична. (a missing, foreign, and inactive Service, byte-identical) |
+| 409 | `APPOINTMENT_STAFF_UNAVAILABLE` | Избраният член на екипа не е наличен за тези услуги. (availability only; a missing, foreign, inactive, and unassigned StaffMember, byte-identical) |
+| 500 | `INTERNAL_ERROR` | Възникна неочаквана грешка. |
+
+The fixed problem `instance` is `/api/business/appointment-options` for both routes; the statuses, codes, and wording are the creation's, so the form shows one text whether a problem appears while choosing or while saving.
+
+### Lifecycle decision
+
+The choices follow the availability of the mutation they prepare (ADR-0028 section 2: only `ACTIVE` mutates): a `DRAFT` Business gets `409 BUSINESS_NOT_ACTIVE` and a `SUSPENDED` one `409 BUSINESS_SUSPENDED`, the creation's own results, before any Service or StaffMember is read. The engine itself already refuses a non-`ACTIVE` Business. The frontend therefore shows no create entry for them and, if reached, explains with the shared wording.
+
+### Module and decision order
+
+`booking` publishes `AppointmentCreationOptions`, `AppointmentCreationOptionsRecords`, and `AppointmentCreationOptionsException` (three new root types; `BookingModuleBoundaryTests` and `CalendarModuleBoundaryTests` changed deliberately, none weakened) and implements them in `AppointmentCreationOptionsService`, which uses two existing narrow contracts (`ServiceAvailabilityAccess` and `PublicStaffAccess`, both plain reads) and `AvailabilityQuery`. The adapter adds `BusinessAppointmentOptionsController`, its HTTP records, and its exception handler to the `calendar` module, which still depends only on published root types of `booking` and `identity`. Decision order, as in the creation: authorization, lifecycle, domain bounds, Service availability, StaffMember eligibility. Shape errors (an unparsable identifier or date, a bad count) are raised in the adapter before authorization, exactly like the calendar reads.
+
+### Transactions and statement counts
+
+Each operation is one read-only `REPEATABLE READ` transaction whose first statement (the Business context) fixes the snapshot; it takes no lock, writes nothing, and reads the clock once. Statements, asserted through the published contract and identical for 1 and for 5 Services, 1 and 13 StaffMembers, and 0 and 72 Appointments: **options 4** (Business context, owner Membership, Service durations, StaffMember intersection); **availability 8** (the same four, then the engine's Business context, the StaffMember's weekly periods, the schedule exceptions, and the busy Appointments). The same count holds for a busy day, a day with no slots, and a past date.
+
+### Evidence
+
+Real PostgreSQL unless stated. `BusinessAppointmentOptionsApiIntegrationTests` 31 (exact bodies, headers, and keys; one and five Services; order independence; intersection, empty intersection, inactive and unassigned StaffMembers; the 480-minute boundary; missing, foreign, and inactive Services and StaffMembers byte-identical; zero notice and the grid; adjacency, overlap, a cancelled Appointment, another StaffMember's Appointment, the schedule and a day off; a repeated hour and a spring gap; `DRAFT`, `ACTIVE`, `SUSPENDED`; anonymous, no selection, Manager, Staff, inactive, foreign, and platform-only sessions; a client-supplied `businessId`; every malformed request; the supported date edges; CSRF-free reads and refused verbs; privacy of bodies, problems, and logs), `AppointmentCreationOptionsTransactionIntegrationTests` 6 (statement counts and tables, one read-only `REPEATABLE READ` transaction, no write or lock, and two snapshot proofs that commit a change on another thread between two statements, joined before the read continues, no sleep), `AppointmentCreationOptionsAgreeWithCreationIntegrationTests` 3 (the real creation accepts every offered start and rejects an unoffered one, the stored duration equals the reported one), and `AppointmentCreationOptionsServiceTests` 14 (**injected** collaborators and a counting clock, labelled so: the decision order, the exact engine call, the single truncated clock read, and the sanitized failure). **Mutation controls** (each applied, the named suites run, the file restored and byte-compared; **all 6 killed**): union instead of intersection, the public two-hour notice instead of zero notice, the longest instead of the summed duration, an unassigned StaffMember accepted, a foreign StaffMember accepted (check skipped and the engine's refusal swallowed), and ignored busy intervals.
+
+### Verification (executed)
+
+Focused suites while developing; one complete `./mvnw --batch-mode clean verify`: **4475 tests, 0 failures, 0 errors, 0 skipped, `BUILD SUCCESS`** (4421 after Phase 6; 54 added), 03:32 minutes. `V1` to `V15` are byte-identical to `HEAD`; `git diff --check` is clean. The frontend was not touched and no frontend suite was run. Local result only; the exact-HEAD CI result is a separate report.
+
+### Deviations, limitations, and residual risks
+
+1. The options carry no Service facts; the form takes them from the Service administration API (a separate read), and the creation remains the authority (`APPOINTMENT_REVIEW_CHANGED`).
+2. A current duration sum over 480 minutes is a `400`, like the creation's domain bound, and not a distinct code.
+3. The result is advisory and may be stale at once; the creation revalidates everything under its own locks.
+4. `PublicStaffAccess` carries a "public" name but is a plain, identifier-and-name read; reusing it avoided a duplicate contract.
+5. The availability covers one date per request; a month overview of free dates is not offered.
+6. The reschedule form (Phase 9) needs the stored duration and the ignored Appointment; that extension is out of scope here.
+
+### Stopping point
+
+This prerequisite stops here for review and a separate commit. The Phase 8 frontend must not start until it is committed.
