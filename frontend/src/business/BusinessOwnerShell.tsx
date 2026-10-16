@@ -2,7 +2,7 @@ import { useId, useRef, useState, useLayoutEffect, type ReactNode } from 'react'
 import { Button } from '../ui/Button'
 import { ShellNavigation } from '../ui/ShellNavigation'
 import type { AuthenticatedRoute } from '../navigation'
-import { suspendedNotice } from './lifecycleNotice'
+import { calendarLifecycleNotice, suspendedNotice } from './lifecycleNotice'
 
 export type ActiveBusinessIdentity = {
   displayName: string
@@ -22,6 +22,8 @@ type BusinessOwnerShellProps = {
 }
 
 function sectionTitle(route: AuthenticatedRoute): string {
+  if (route.kind === 'business-calendar') return 'График'
+  if (route.kind === 'business-appointment-detail') return 'Час'
   if (route.kind === 'business-service-new') return 'Нова услуга'
   if (route.kind === 'business-service-detail') return 'Услуга'
   if (route.kind === 'business-staff') return 'Екип'
@@ -83,6 +85,11 @@ export function BusinessOwnerShell({
   }
 
   const suspended = activeBusiness?.status === 'SUSPENDED'
+  // A DRAFT Business is only explained on the calendar screens, whose reads it allows but whose
+  // changes it forbids; the other screens keep their established behaviour.
+  const bannerText = suspended
+    ? suspendedNotice(route)
+    : calendarLifecycleNotice(route, activeBusiness?.status)
 
   return (
     <div className="platform-shell">
@@ -153,10 +160,10 @@ export function BusinessOwnerShell({
             {sectionTitle(route)}
           </h1>
         </div>
-        {suspended && (
+        {bannerText && (
           <div className="platform-content">
             <p className="shell-banner" role="status">
-              {suspendedNotice(route)}
+              {bannerText}
             </p>
           </div>
         )}

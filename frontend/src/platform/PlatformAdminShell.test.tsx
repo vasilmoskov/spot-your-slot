@@ -55,7 +55,7 @@ describe('PlatformAdminShell navigation', () => {
   it('shows only the global destinations, without any Business link, when no Business is selected', () => {
     shell({ hasOwnedBusinesses: true })
     expect(links()).toEqual(['Бизнеси', 'Профил'])
-    for (const name of ['Услуги', 'Екип', 'Работно време', 'Клиенти']) {
+    for (const name of ['График', 'Услуги', 'Екип', 'Работно време', 'Клиенти']) {
       expect(screen.queryByRole('link', { name })).not.toBeInTheDocument()
     }
     expect(screen.queryByRole('group')).not.toBeInTheDocument()
@@ -71,6 +71,7 @@ describe('PlatformAdminShell navigation', () => {
     expect(links()).toEqual([
       'Бизнеси',
       'Профил',
+      'График',
       'Услуги',
       'Екип',
       'Работно време',
@@ -78,6 +79,7 @@ describe('PlatformAdminShell navigation', () => {
     ])
     const group = screen.getByRole('group', { name: 'Студио Активно' })
     expect(within(group).getAllByRole('link').map((link) => link.textContent)).toEqual([
+      'График',
       'Услуги',
       'Екип',
       'Работно време',
@@ -145,6 +147,7 @@ describe('PlatformAdminShell navigation', () => {
       'Бизнеси',
       'Моите бизнеси',
       'Профил',
+      'График',
       'Услуги',
       'Екип',
       'Работно време',

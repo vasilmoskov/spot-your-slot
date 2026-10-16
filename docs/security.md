@@ -655,3 +655,7 @@ Automated coverage includes role matrices, Business A/B isolation, CSRF/CORS,
 session lifecycle, token expiry/single use, enumeration-safe errors, lifecycle
 states, validation/log redaction, and real-PostgreSQL concurrent booking. A
 pre-launch threat model and dependency/container scan are required.
+
+### Business calendar frontend privacy (issue #21 Phase 7)
+
+The read-only calendar, the Appointment detail, and the Customer history are owner-only in the interface as in the API (Manager, Staff, and platform-only sessions are redirected and never see the destination). The route carries only the view, a Business-local date, an opaque StaffMember identifier, and the agenda page and size; a Customer name, contact value, note, or Appointment detail never appears in a URL, `history.state`, the document title, browser storage, or the console (asserted by component and application tests, and by a mutation that tries to put private text in the URL). Failures render frontend-owned Bulgarian text and never the backend text or a network diagnostic; a missing, foreign, or malformed Appointment shows the same not-found state; a lost Business context uses the shared recovery. A late answer of a previous Business, date, view, or filter never replaces newer data. `version` and `cancelledBy` are not displayed.

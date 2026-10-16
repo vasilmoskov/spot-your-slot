@@ -21,6 +21,7 @@ import {
   BUSINESSES_ROUTE,
   PLATFORM_BUSINESSES_ROUTE,
   PLATFORM_BUSINESS_NEW_ROUTE,
+  BUSINESS_CALENDAR_ROUTE,
   BUSINESS_SERVICES_ROUTE,
   BUSINESS_STAFF_ROUTE,
   BUSINESS_CUSTOMERS_ROUTE,
@@ -35,6 +36,7 @@ import {
   routeHref,
   subscribeToNavigation,
   type AuthenticatedRoute,
+  type CalendarState,
   type IdentityPage,
   type ExceptionListState,
   type ListNavigationMode,
@@ -55,6 +57,8 @@ import { StaffDetail } from './business/staff/StaffDetail'
 import { CustomerList } from './business/customers/CustomerList'
 import { CustomerCreate } from './business/customers/CustomerCreate'
 import { CustomerDetail } from './business/customers/CustomerDetail'
+import { BusinessCalendar } from './business/calendar/BusinessCalendar'
+import { AppointmentDetail } from './business/calendar/AppointmentDetail'
 import { StaffWorkingSchedule } from './business/schedule/StaffWorkingSchedule'
 import { ScheduleTabs } from './business/schedule/ScheduleTabs'
 import { ScheduleExceptionList } from './business/schedule/exceptions/ScheduleExceptionList'
@@ -656,6 +660,24 @@ export function AuthenticatedApplication({
     // leaves the Business screens, and nothing here may override that.
     if (!session.activeBusinessId) return
     const current = routeRef.current
+    // The calendar view, date, StaffMember filter and agenda page of one Business are never carried
+    // to another: the calendar resolves "today" from the new Business timezone.
+    if (current.kind === 'business-calendar') {
+      if (current.calendar.date === null && current.calendar.staffMemberId === null) return
+      const reset: AuthenticatedRoute = {
+        kind: 'business-calendar',
+        calendar: { ...current.calendar, date: null, staffMemberId: null, page: 0 },
+      }
+      replaceRoute(reset)
+      setRoute(reset)
+      return
+    }
+    if (current.kind === 'business-appointment-detail') {
+      // An Appointment of the previous Business is not reachable from the new one.
+      replaceRoute(BUSINESS_CALENDAR_ROUTE)
+      setRoute(BUSINESS_CALENDAR_ROUTE)
+      return
+    }
     // A date window chosen for one Business is never carried to another: the
     // list resolves its own canonical window from the new Business timezone.
     if (current.kind === 'business-schedule-exceptions' && current.window) {
@@ -734,6 +756,17 @@ export function AuthenticatedApplication({
   const updateBusinessCustomersList = (next: ListQueryState, mode: ListNavigationMode = 'push') => {
     if (route.kind !== 'business-customers') return
     const nextRoute: AuthenticatedRoute = { ...route, list: next }
+    if (mode === 'replace') {
+      replaceRoute(nextRoute)
+    } else {
+      pushRoute(nextRoute)
+    }
+    setRoute(nextRoute)
+  }
+
+  const updateBusinessCalendar = (next: CalendarState, mode: ListNavigationMode = 'push') => {
+    if (route.kind !== 'business-calendar') return
+    const nextRoute: AuthenticatedRoute = { ...route, calendar: next }
     if (mode === 'replace') {
       replaceRoute(nextRoute)
     } else {
@@ -902,7 +935,38 @@ export function AuthenticatedApplication({
             <FeedbackMessage feedback={feedback} />
           </div>
         )}
-        {route.kind === 'business-services' ? (
+        {route.kind === 'business-calendar' ? (
+          <BusinessCalendar
+            key={businessKey}
+            state={route.calendar}
+            onStateChange={updateBusinessCalendar}
+            onAuthenticationRequired={authenticationRequired}
+            onOpenAppointment={(appointmentId, calendar) =>
+              navigate({
+                kind: 'business-appointment-detail',
+                appointmentId,
+                origin: { kind: 'calendar', calendar },
+              })
+            }
+          />
+        ) : route.kind === 'business-appointment-detail' ? (
+          <AppointmentDetail
+            key={`${businessKey}-${route.appointmentId}`}
+            appointmentId={route.appointmentId}
+            origin={route.origin}
+            onAuthenticationRequired={authenticationRequired}
+            onBack={() =>
+              navigate(
+                route.origin.kind === 'customer'
+                  ? { kind: 'business-customer-detail', customerId: route.origin.customerId, returnList: null }
+                  : { kind: 'business-calendar', calendar: route.origin.calendar },
+              )
+            }
+            onOpenCustomer={(customerId) =>
+              navigate({ kind: 'business-customer-detail', customerId, returnList: null })
+            }
+          />
+        ) : route.kind === 'business-services' ? (
           <ServiceList
             key={businessKey}
             readOnly={readOnly}
@@ -992,6 +1056,13 @@ export function AuthenticatedApplication({
             onInitialSuccessShown={() => setCreatedCustomer(null)}
             onAuthenticationRequired={authenticationRequired}
             onBack={() => navigate(customerListRoute(route.returnList))}
+            onOpenAppointment={(appointmentId) =>
+              navigate({
+                kind: 'business-appointment-detail',
+                appointmentId,
+                origin: { kind: 'customer', customerId: route.customerId },
+              })
+            }
           />
         ) : route.kind === 'business-schedule' ? (
           <>

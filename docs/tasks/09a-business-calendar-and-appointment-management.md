@@ -1,6 +1,6 @@
 # SpotYourSlot — Business Calendar and Appointment Management (Issues #19 and #21)
 
-Status (current, 2026-10-16): **Phases 1 to 5 are committed (`HEAD` `10ce4889f1b524c6799680f4a738080d32e7f1d4` includes the Phase 5 form-based rescheduling and StaffMember reassignment, `POST /api/business/appointments/{appointmentId}/reschedule`, issue #19; its CI run succeeded); Phase 6 (the Business cancellation, `POST …/{appointmentId}/cancel`, and the private internal-note edit, `PUT …/{appointmentId}/internal-note`, issue #21, backend only) is implemented in the working tree and awaits review (nothing staged or committed); Phases 7 to 12 are not started.** Issues #19 and #21 are one combined delivery and both are In Progress on the Project board. The product owner alone edits GitHub (issue texts, comments, states, Project status); this repository work never does. The decisions are recorded in [ADR-0028](../decisions/ADR-0028-administer-appointments-through-a-private-owner-only-api-with-immutable-visit-identity-and-business-cancellation.md) and [ADR-0029](../decisions/ADR-0029-calculate-business-availability-with-a-separate-policy-and-serialize-appointment-mutations-with-ordered-locks-optimistic-versions-and-bounded-retry.md); this record holds the plan, the acceptance mapping, the contract and migration plan, the phase plan, and the exact proposed GitHub amendment texts.
+Status (current, 2026-10-16): **Phases 1 to 6 are committed (`HEAD` `82edadd36e7adb64863428094cfa8ca3d23b450f` includes Phase 6, the Business cancellation and the private internal-note edit, backend only, issue #21; its CI run was still in progress when Phase 7 started and is advisory). Phase 7 (the read-only Business calendar, Appointment detail and Customer Appointment history frontend, issue #21) is implemented in the working tree and awaits review (nothing staged or committed); Phases 8 to 12 are not started.** *(Superseded status text: the previous version of this line said that Phase 6 awaited review in the working tree; it was committed as `82edadd`.)* Issues #19 and #21 are one combined delivery and both are In Progress on the Project board. The product owner alone edits GitHub (issue texts, comments, states, Project status); this repository work never does. The decisions are recorded in [ADR-0028](../decisions/ADR-0028-administer-appointments-through-a-private-owner-only-api-with-immutable-visit-identity-and-business-cancellation.md) and [ADR-0029](../decisions/ADR-0029-calculate-business-availability-with-a-separate-policy-and-serialize-appointment-mutations-with-ordered-locks-optimistic-versions-and-bounded-retry.md); this record holds the plan, the acceptance mapping, the contract and migration plan, the phase plan, and the exact proposed GitHub amendment texts.
 
 GitHub issues: #19 — Prevent double booking and handle booking conflicts; #21 — Build the Business calendar and appointment management
 Depends on: #16, #17, #18, #20 (all closed). Related, not part of this work: #22 (notifications), #35 (Customer self-service cancellation), #36 (Customer self-service rescheduling), #37 (Customer-specific durations).
@@ -897,7 +897,7 @@ The create-only results (`CUSTOMER_NOT_FOUND`, `APPOINTMENT_SERVICE_UNAVAILABLE`
 
 Phase 5 stops here for review. Phase 6 needs its own read-only plan and explicit approval.
 
-## Phase 6 record (2026-10-16; implemented, verified locally, awaiting the product owner's review; nothing staged or committed)
+## Phase 6 record (2026-10-16; implemented, verified locally; status update 2026-10-16: committed as `82edadd`)
 
 Base `HEAD` `10ce4889f1b524c6799680f4a738080d32e7f1d4` (Phase 5, clean, equal to `origin/main`). **CI observed at the start (advisory, read-only):** run 38900976388 for that commit was `in_progress`; it did not delay or block the work, and it had completed successfully when the phase ended. No GitHub state was touched. Scope: issue #21, Strict. No migration (`V1` to `V15` byte-identical to `HEAD`), no frontend, no options route, no reason, restore, deletion, history row, notification, refund, or Customer-facing cancellation, no Phase 7.
 
@@ -986,3 +986,61 @@ Focused suites while developing. **Final complete verification on the final tree
 ### Stopping point
 
 Phase 6 stops here for review. Phase 7 (the read-only frontend) needs its own plan and explicit approval.
+
+## Phase 7 record (2026-10-16; implemented and verified locally; awaiting the product owner's review; nothing staged or committed)
+
+Base `HEAD` `82edadd36e7adb64863428094cfa8ca3d23b450f` (Phase 6, clean, equal to `origin/main`). **CI observed at the start (advisory, read-only):** the run for that commit was `in_progress`; it did not affect the work. Scope: issue #21, Standard, frontend only. The backend, the migrations (`V1` to `V15`, byte-identical to `HEAD`) and every API contract are untouched; no contract defect was found. No create, reschedule, reassignment, cancellation or note-edit control exists; Phase 8 is not started.
+
+### Routes and navigation
+
+| Route (hash) | Screen |
+|---|---|
+| `#/business/calendar?view=day\|week\|agenda[&date=yyyy-MM-dd][&staff=<id>][&page=&size=]` | The calendar; `page` and `size` only for the agenda; invalid values normalize to the defaults |
+| `#/business/appointments/{appointmentId}?customer=<id>` or the calendar query | The read-only Appointment detail; the query records where Back returns (a Customer, or the exact calendar state) |
+| `#/business/customers/{customerId}` | unchanged route; the Customer detail gains the history section |
+
+`График` is the first link of the Business group of the sidebar (active on the calendar and the detail routes); `Промени в графика` stays the second tab of `Работно време`, unrenamed. Only opaque identifiers, the view, a Business-local date, and the agenda page and size travel in the URL; no Customer value, filter text, note, or Appointment detail ever does (asserted for the URL, `history.state`, the title, storage, and the console). **Correction of the Phase 7 brief (approved by the product owner):** the brief's sentence "do not put … filters … in query strings" conflicted with ADR-0028 and UI guide §15.3, which put the view, the date, the opaque StaffMember identifier, the page, and the size in the route. The approved decision is to follow ADR-0028 and the guide; the hash may carry exactly those safe navigation values and never Customer data, contact data, internal notes, or Appointment contents. This is a correction of the brief, not a product deviation.
+
+### Views
+
+- **Day:** one column per StaffMember (as the API returns them) beside an hour axis, positioned by the elapsed time inside the day's own start and end instants (so a 23- or 25-hour day is exact). Working time is the plain surface, non-working time is hatched, and each column states its working time and any full-day closure in text. Overlapping entries (a cancelled and a confirmed entry of one StaffMember) take separate lanes; entries of different StaffMembers sit in their own columns and are never merged. Below 900 px the same data is a chronological list per StaffMember (deliberate responsive substitution; `matchMedia`, wide when unavailable).
+- **Week:** Monday to Sunday sections of entry cards, with closure and time-off markers (cards, not a positional grid: a cross-day time axis would disagree on a daylight-saving day).
+- **Agenda:** the calendar month containing the date (at most 31 dates), server-paginated with the shared `ListPagination` (10, 25, 50), page and size in the route, empty-page recovery by replacing history, a fixed chronological order (the recorded §15.1 exception).
+- **Period navigation:** `Предишен`, `Днес`, `Следващ` (Back before Next), a native date field, and a native StaffMember select with an all-staff state; a StaffMember that disappears (`404 STAFF_MEMBER_NOT_FOUND`) clears the filter by replacing history and says so once. The StaffMember options come from the existing Staff catalog.
+- **Entry:** start and end in the Business timezone (a repeated local time carries its offset: `03:30 (UTC+03:00)`), written status (`Потвърден` or `Отменен`; a cancelled entry is also dashed and struck through), Customer display name, ordered Services, StaffMember, and the server's total duration. Totals are never computed from client data.
+- **Detail:** status, date and times, StaffMember, Services in stored order with their snapshots, the server's total duration and price, source, reference, timezone, Customer (name linking to the Customer, phone, email), both notes, and the cancellation time only when the contract supplies it. `cancelledBy`, `version`, and the audit timestamps are not shown. A missing, foreign, or malformed identifier shows one safe not-found state with focus and the way back.
+- **Customer history:** a section of the Customer detail; the server page exactly as returned (newest first), `Предстоящ` or `Минал` from the entry's own instant (confirmed entries only), `Отменен` as written status; minimum facts only; the page and size (10, 25, 50) are component state, not route state (recorded decision, to avoid changing the Customer route).
+
+### Timezone and bootstrap
+
+All date-only values are handled as numeric parts in UTC; instants are formatted in the timezone the response returns. The only use of the browser timezone is the provisional "today" of a calendar opened without a date: the first answer names the Business timezone, the route is then replaced with the Business "today", and the request is repeated only when the day differs.
+
+### Lifecycle
+
+`ACTIVE`, `DRAFT`, and `SUSPENDED` all read. The shell shows one statement per screen: for `SUSPENDED` the calendar wording (`…Можете да преглеждате графика и часовете, но не можете да ги променяте.`), for `DRAFT` on the calendar screens only `Бизнесът още не е активен. …`, none for `ACTIVE`. Customer screens keep their own `SUSPENDED` wording and edit exception. A lost Business context uses the shared recovery; Manager, Staff, and platform-only sessions never see the destination or the routes.
+
+### Evidence
+
+New suites: `navigation.calendar.test.ts` 6, `dates.test.ts` 6 (calendar), `presentation.test.ts` 8, `BusinessCalendar.test.tsx` 34, `AppointmentDetail.test.tsx` 11, `CustomerAppointmentHistory.test.tsx` 8, `calendarLayout.test.ts` 4, `App.calendar.test.tsx` 17, and three calendar rows in `App.contextRecovery.test.tsx`. Existing suites adapted deliberately (never weakened): the navigation link lists gained `График` (`App.test`, `App.businessSelection.test`, `BusinessOwnerShell.test`, `PlatformAdminShell.test`), and the Customer detail and application tests mock the new history request. **Mutation and control checks (all killed; each mutated file restored and byte-compared):** the browser timezone shifting a date (M1), a late response replacing newer data (M2), a range longer than 31 dates (M3), the cancelled status missing from the text (M4a) or from the structure (M4b), private text entering the URL (M5), a mutation control on the detail (M6) and on the calendar (M8), `version` shown (M7), and a refetch on every render (M9).
+
+### Rendered developer inspection (not the Phase 11 approval)
+
+A throwaway Node mock of the read APIs with synthetic data only (no database, nothing in the repository; the built bundle served from the scratchpad) was inspected in the built-in browser at 1280, 820, 375, and 320 px: the populated day with overlapping entries, a cancelled entry, a three-Service visit, and long Customer, Service, and StaffMember names; the week; the paged agenda; the repeated-hour and spring-gap days; the Appointment detail and the Customer history; the `DRAFT` and `SUSPENDED` Businesses; keyboard focus (a real Tab shows the 3 px focus ring); and horizontal overflow (`scrollWidth` equals `clientWidth` on every screen at 1280, 375, and 320). The inspection found and fixed three defects: the hour axis drifted from the columns when a name wrapped (now a subgrid), short blocks clipped their status badge (a quiet confirmed badge, a legend, a compact block), and the axis label of a repeated hour was truncated. Limits: no 200% zoom run, no real backend, no screen reader; formal review is Phase 11.
+
+### Verification (executed)
+
+Focused suites while developing; then one complete `npm test` (84 files, 1938 tests passed), `npm run lint` (clean), `npm run build` (succeeded), and `git diff --check` (clean). Backend tests were not run because no backend file changed. Local result only; the exact-HEAD CI result is a separate report.
+
+### Deviations, limitations, and residual risks
+
+1. None for the route state: the StaffMember filter in the route is the approved reading of ADR-0028 (see the correction of the brief above).
+2. The week is a card layout, not a positional grid; the day grid is positional.
+3. The agenda covers the calendar month of the date, not a free range.
+4. A grid block clips its text when its range is short; the same facts are in the entry link, the week, and the agenda.
+5. The Customer history page and size are not in the route.
+6. The StaffMember select needs the Staff catalog; if it fails, only "all members" and the current selection are offered.
+7. Bulgarian wording stays Proposed until Phase 11.
+
+### Stopping point
+
+Phase 7 stops here for review. Phase 8 (the manual-create frontend) needs its own approval. **The read-only calendar is available for optional browser inspection; this is a notification, not a gate: formal human visual approval remains Phase 11.**

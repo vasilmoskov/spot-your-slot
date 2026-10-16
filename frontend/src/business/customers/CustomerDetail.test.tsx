@@ -5,12 +5,18 @@ import { ApiError } from '../../identity/api'
 import { UnsavedChangesGuardProvider } from '../../ui/UnsavedChangesGuard'
 import { getCustomer, updateCustomer } from './api'
 import { CustomerDetail } from './CustomerDetail'
+import { getCustomerAppointments } from '../calendar/api'
 import { detail } from './testFixtures'
 
 vi.mock('./api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./api')>()),
   getCustomer: vi.fn(),
   updateCustomer: vi.fn(),
+}))
+
+vi.mock('../calendar/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../calendar/api')>()),
+  getCustomerAppointments: vi.fn(),
 }))
 
 const mockedGet = vi.mocked(getCustomer)
@@ -22,6 +28,7 @@ function renderDetail(
   const handlers = {
     onAuthenticationRequired: vi.fn(),
     onBack: vi.fn(),
+    onOpenAppointment: vi.fn(),
   }
   render(
     <UnsavedChangesGuardProvider>
@@ -48,6 +55,14 @@ beforeEach(() => {
   mockedGet.mockReset()
   mockedUpdate.mockReset()
   mockedGet.mockResolvedValue(detail())
+  vi.mocked(getCustomerAppointments).mockReset()
+  vi.mocked(getCustomerAppointments).mockResolvedValue({
+    timezone: 'Europe/Sofia',
+    items: [],
+    page: 0,
+    size: 10,
+    total: 0,
+  })
 })
 
 describe('CustomerDetail read mode', () => {

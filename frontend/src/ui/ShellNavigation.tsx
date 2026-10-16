@@ -1,6 +1,7 @@
 import { useId, type MouseEvent, type Ref } from 'react'
 import {
   BUSINESSES_ROUTE,
+  BUSINESS_CALENDAR_ROUTE,
   BUSINESS_CUSTOMERS_ROUTE,
   BUSINESS_SCHEDULE_ROUTE,
   BUSINESS_SERVICES_ROUTE,
@@ -32,6 +33,11 @@ const SCOPED_LINKS: ReadonlyArray<{
   route: AuthenticatedRoute
   kinds: readonly string[]
 }> = [
+  {
+    label: 'График',
+    route: BUSINESS_CALENDAR_ROUTE,
+    kinds: ['business-calendar', 'business-appointment-detail'],
+  },
   {
     label: 'Услуги',
     route: BUSINESS_SERVICES_ROUTE,

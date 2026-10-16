@@ -445,3 +445,7 @@ health checks, and audit/delivery records support operations. BusinessType is
 descriptive only. Scaling begins with measurement, indexes, stateless replicas,
 pool tuning, and worker coordination; speculative industry abstractions, Redis,
 Kafka, microservices, and Kubernetes are excluded.
+
+### Business calendar frontend (issue #21 Phase 7; read-only)
+
+`frontend/src/business/calendar/` owns the read-only calendar: `api.ts` (the four read routes through `businessRequest`), `dates.ts` (Business-local date arithmetic on `yyyy-MM-dd` text, at most 31 dates), `presentation.ts` and `CalendarViews.tsx` (the day grid, the week cards, the agenda, overlap lanes), `BusinessCalendar.tsx` (one abortable request per view, date, StaffMember, and page; the previous answer stays visible while a refresh is pending; the Business timezone adopted from the first answer), `AppointmentDetail.tsx`, and `CustomerAppointmentHistory.tsx` (a section of the Customer detail). The routes (`business-calendar`, `business-appointment-detail`) live in `navigation.ts` and carry only the view, a Business-local date, an opaque StaffMember identifier, and the agenda page and size. The screens are keyed by the active Business, and a Business switch resets the calendar route. No mutation exists in the frontend yet (Phases 8 to 10).

@@ -307,3 +307,5 @@ budget/backups/recovery, email domain/templates/retry window, slug redirects
 (reserved words and post-activation slug immutability are decided for
 issue #17 in ADR-0018), and phone-normalization handling. Exact dependency/tool versions
 are selected during bootstrap under the documented compatibility policy.
+
+Update for issue #21 Phase 7: the Business owner can now view the Business calendar (day, week, and agenda, with a StaffMember filter), open a read-only Appointment detail, and see a Customer's Appointment history on the Customer detail, in every Business state (`DRAFT` and `SUSPENDED` read-only). Creating, rescheduling, reassigning, cancelling, and note editing have no interface yet (Phases 8 to 10), and the wording remains Proposed until the rendered human review (Phase 11).

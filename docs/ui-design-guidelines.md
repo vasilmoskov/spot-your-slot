@@ -724,9 +724,9 @@ compact badge in the table, the mobile cards and the detail view. Records are
 never deleted automatically; past ones stay reachable through the date filter.
 Deletion exists only in the detail view.
 
-### 15.3 Calendar views, the agenda, and the Customer history (decided in ADR-0028; not implemented; awaiting the rendered human review)
+### 15.3 Calendar views, the agenda, and the Customer history (decided in ADR-0028; read-only interface implemented in issue #21 Phase 7, awaiting the rendered human review)
 
-This section records the section 15.1 checklist for the Business calendar (issue #21) before it is built.
+This section records the section 15.1 checklist for the Business calendar (issue #21). Phase 7 implemented the read-only part; the forms of Phases 8 to 10 are not built.
 
 - **Agenda (a data list).** Default and only order: `start_at` ascending, then the Appointment identifier. It has **no sortable column and no
   responsive sort control**: the chronological order is the meaning of an agenda. This is a recorded, approved exception to the sorting rule of
@@ -746,6 +746,7 @@ This section records the section 15.1 checklist for the Business calendar (issue
   the authoritative state.
 - **Dialogs and forms.** Section 19 applies to the cancellation (the safe action first and focused, the destructive one never focused by default, and an explanation
   that creating a replacement is a separate action and that the cancellation cannot be undone); section 16 applies to every form; the action order of section 6 applies.
+- **As implemented in Phase 7.** The destination is `График` (first link of the Business group); the views are `Ден`, `Седмица`, and `Списък` (links with `aria-current`), followed by `Предишен`, `Днес`, `Следващ`, a native date field and a native StaffMember select. The day is a positional grid (a column per StaffMember, hatched non-working time, a legend, text for working time and closures) at 900 px and wider and a chronological list per StaffMember below it; the week is Monday-to-Sunday sections of cards; the agenda covers the calendar month of the date (at most 31 dates). A cancelled entry is dashed, struck through, and written `Отменен`; a confirmed one is written `Потвърден` (visually quiet inside a cramped grid block). The Customer history is a section of the Customer detail whose page and size are component state. The lifecycle statement is the single shell banner (`SUSPENDED` always, `DRAFT` on the calendar screens); the calendar screens have no action row to leave blank.
 - **Dependencies.** No calendar or drag-and-drop library is introduced; the grids use plain React and CSS. Drag-and-drop rescheduling is not part of issue #21.
 - **Wording.** Every Bulgarian label and message of the calendar is Proposed until the rendered human review.
 

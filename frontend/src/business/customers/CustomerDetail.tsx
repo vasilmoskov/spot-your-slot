@@ -17,6 +17,7 @@ import {
   isAuthenticationRequired,
   isConcurrentUpdate,
 } from './errors'
+import { CustomerAppointmentHistory } from '../calendar/CustomerAppointmentHistory'
 import { formatCustomerPhone } from './presentation'
 import type { CustomerField } from './validation'
 
@@ -27,6 +28,7 @@ type CustomerDetailProps = {
   onInitialSuccessShown?: (() => void) | undefined
   onAuthenticationRequired: (detail: string) => void
   onBack: () => void
+  onOpenAppointment: (appointmentId: string) => void
 }
 
 type LoadFailure = { message: string; retryable: boolean }
@@ -37,6 +39,7 @@ export function CustomerDetail({
   onInitialSuccessShown,
   onAuthenticationRequired,
   onBack,
+  onOpenAppointment,
 }: CustomerDetailProps) {
   const [customer, setCustomer] = useState<CustomerDetailsResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -232,6 +235,12 @@ export function CustomerDetail({
           </div>
         )}
       </section>
+
+      <CustomerAppointmentHistory
+        customerId={customer.id}
+        onAuthenticationRequired={onAuthenticationRequired}
+        onOpenAppointment={onOpenAppointment}
+      />
     </div>
   )
 }

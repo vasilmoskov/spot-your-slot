@@ -59,7 +59,43 @@ export const SCHEDULE_MIN_DATE = '2000-01-01'
 export const SCHEDULE_MAX_DATE = '2100-12-31'
 export const SCHEDULE_MAX_WINDOW_DATES = 93
 
+export type CalendarView = 'day' | 'week' | 'agenda'
+export const CALENDAR_VIEWS: readonly CalendarView[] = ['day', 'week', 'agenda']
+
+/**
+ * The complete route-owned state of the Business calendar. Only safe navigation values travel in the
+ * URL: the view, a Business-local date, an opaque StaffMember identifier and the agenda page and size.
+ * `date` null means "today in the Business timezone", which only the first response can reveal.
+ */
+export type CalendarState = {
+  view: CalendarView
+  date: string | null
+  staffMemberId: string | null
+  page: number
+  size: ListPageSize
+}
+
+export const CALENDAR_DEFAULT_STATE: CalendarState = {
+  view: 'day',
+  date: null,
+  staffMemberId: null,
+  page: 0,
+  size: 10,
+}
+
+/** Where an Appointment detail returns to: the calendar state, or the Customer whose history opened it. */
+export type AppointmentOrigin =
+  | { kind: 'calendar'; calendar: CalendarState }
+  | { kind: 'customer'; customerId: string }
+
+export const CALENDAR_ORIGIN: AppointmentOrigin = {
+  kind: 'calendar',
+  calendar: CALENDAR_DEFAULT_STATE,
+}
+
 export type BusinessOwnerRoute =
+  | { kind: 'business-calendar'; calendar: CalendarState }
+  | { kind: 'business-appointment-detail'; appointmentId: string; origin: AppointmentOrigin }
   | { kind: 'business-services'; list: ListQueryState }
   | { kind: 'business-service-new' }
   | { kind: 'business-service-detail'; serviceId: string }
@@ -122,6 +158,11 @@ export const BUSINESSES_DEFAULT_LIST: ListQueryState = {
   size: 10,
   sort: 'displayName',
   direction: 'asc',
+}
+
+export const BUSINESS_CALENDAR_ROUTE: AuthenticatedRoute = {
+  kind: 'business-calendar',
+  calendar: CALENDAR_DEFAULT_STATE,
 }
 
 export const PROFILE_ROUTE: AuthenticatedRoute = { kind: 'profile' }
@@ -287,6 +328,54 @@ function returnListQuery(list: ListQueryState | null): string {
   return list ? serializeListQuery(list) : ''
 }
 
+const OPAQUE_ID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
+
+function parseOpaqueId(value: string | null): string | null {
+  return value !== null && OPAQUE_ID.test(value) ? value.toLowerCase() : null
+}
+
+function parseCalendarState(query: string): CalendarState {
+  const params = new URLSearchParams(query)
+  const view = params.get('view')
+  const date = params.get('date')
+  const resolvedView = (CALENDAR_VIEWS as readonly string[]).includes(view ?? '')
+    ? (view as CalendarView)
+    : CALENDAR_DEFAULT_STATE.view
+  const validDate =
+    date !== null && isCanonicalDate(date) && date >= SCHEDULE_MIN_DATE && date <= SCHEDULE_MAX_DATE
+  return {
+    view: resolvedView,
+    date: validDate ? date : null,
+    staffMemberId: parseOpaqueId(params.get('staff')),
+    page: resolvedView === 'agenda' ? (parsePage(params.get('page')) ?? 0) : 0,
+    size: resolvedView === 'agenda' ? (parseSize(params.get('size')) ?? 10) : 10,
+  }
+}
+
+function calendarQuery(calendar: CalendarState): string {
+  const params = new URLSearchParams({ view: calendar.view })
+  if (calendar.date !== null) params.set('date', calendar.date)
+  if (calendar.staffMemberId !== null) params.set('staff', calendar.staffMemberId)
+  if (calendar.view === 'agenda') {
+    params.set('page', String(calendar.page))
+    params.set('size', String(calendar.size))
+  }
+  return `?${params.toString()}`
+}
+
+function parseOrigin(query: string): AppointmentOrigin {
+  const customerId = parseOpaqueId(new URLSearchParams(query).get('customer'))
+  return customerId
+    ? { kind: 'customer', customerId }
+    : { kind: 'calendar', calendar: parseCalendarState(query) }
+}
+
+function originQuery(origin: AppointmentOrigin): string {
+  return origin.kind === 'customer'
+    ? `?customer=${encodeURIComponent(origin.customerId)}`
+    : calendarQuery(origin.calendar)
+}
+
 function splitHash(hash: string): { path: string; query: string } {
   const separator = hash.indexOf('?')
   return separator === -1
@@ -335,6 +424,9 @@ export function readAuthenticatedRoute(hash = window.location.hash): Authenticat
   if (path === '#/business/customers/new') {
     return { kind: 'business-customer-new', returnList: parseReturnList(query) }
   }
+  if (path === '#/business/calendar') {
+    return { kind: 'business-calendar', calendar: parseCalendarState(query) }
+  }
   if (path === '#/business/schedule') return BUSINESS_SCHEDULE_ROUTE
   if (path === '#/business/schedule/exceptions') {
     return { kind: 'business-schedule-exceptions', window: parseDateWindow(query) }
@@ -352,6 +444,19 @@ export function readAuthenticatedRoute(hash = window.location.hash): Authenticat
       }
     } catch {
       return PLATFORM_BUSINESSES_ROUTE
+    }
+  }
+
+  const appointmentDetail = path.match(/^#\/business\/appointments\/([^/?#]+)$/)
+  if (appointmentDetail?.[1]) {
+    try {
+      return {
+        kind: 'business-appointment-detail',
+        appointmentId: decodeURIComponent(appointmentDetail[1]),
+        origin: parseOrigin(query),
+      }
+    } catch {
+      return BUSINESS_CALENDAR_ROUTE
     }
   }
 
@@ -415,6 +520,14 @@ export function routeHref(route: AuthenticatedRoute): string {
   if (route.kind === 'platform-business-new') return '/#/platform/businesses/new'
   if (route.kind === 'platform-business-detail') {
     return `/#/platform/businesses/${encodeURIComponent(route.businessId)}`
+  }
+  if (route.kind === 'business-calendar') {
+    return `/#/business/calendar${calendarQuery(route.calendar)}`
+  }
+  if (route.kind === 'business-appointment-detail') {
+    return `/#/business/appointments/${encodeURIComponent(route.appointmentId)}${originQuery(
+      route.origin,
+    )}`
   }
   if (route.kind === 'business-services') {
     return `/#/business/services${serializeListQuery(route.list)}`

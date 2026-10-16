@@ -89,7 +89,7 @@ describe('without a selected Business', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Бизнеси' })).toBeInTheDocument()
     expect(window.location.hash).toBe('#/businesses')
     expect(linkNames()).toEqual(['Бизнеси', 'Профил'])
-    for (const name of ['Услуги', 'Екип', 'Работно време', 'Клиенти']) {
+    for (const name of ['График', 'Услуги', 'Екип', 'Работно време', 'Клиенти']) {
       expect(screen.queryByRole('link', { name })).not.toBeInTheDocument()
     }
     expect(screen.queryByRole('group')).not.toBeInTheDocument()
@@ -156,6 +156,7 @@ describe('selecting a Business', () => {
     expect(window.location.hash).toBe('#/business/services?page=0&size=10&sort=name&direction=asc')
     const group = screen.getByRole('group', { name: 'Студио Активно' })
     expect(within(group).getAllByRole('link').map((link) => link.textContent)).toEqual([
+      'График',
       'Услуги',
       'Екип',
       'Работно време',

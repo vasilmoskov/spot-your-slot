@@ -38,13 +38,14 @@ describe('BusinessOwnerShell', () => {
     expect(screen.getAllByRole('link').map((link) => link.textContent)).toEqual([
       'Бизнеси',
       'Профил',
+      'График',
       'Услуги',
       'Екип',
       'Работно време',
       'Клиенти',
     ])
     const group = screen.getByRole('group', { name: 'Студио А' })
-    expect(within(group).getAllByRole('link')).toHaveLength(4)
+    expect(within(group).getAllByRole('link')).toHaveLength(5)
     expect(screen.queryByRole('link', { name: 'Моите бизнеси' })).not.toBeInTheDocument()
   })
 

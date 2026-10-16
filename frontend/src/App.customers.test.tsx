@@ -13,6 +13,7 @@ import {
   updateCustomer,
   type CustomerPage,
 } from './business/customers/api'
+import { getCustomerAppointments } from './business/calendar/api'
 import { deferred, detail, pageOf, summary } from './business/customers/testFixtures'
 
 vi.mock('./identity/api', async (importOriginal) => ({
@@ -25,6 +26,11 @@ vi.mock('./business/customers/api', async (importOriginal) => ({
   getCustomer: vi.fn(),
   createCustomer: vi.fn(),
   updateCustomer: vi.fn(),
+}))
+
+vi.mock('./business/calendar/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./business/calendar/api')>()),
+  getCustomerAppointments: vi.fn(),
 }))
 
 const mockedRequest = vi.mocked(request)
@@ -60,6 +66,14 @@ beforeEach(() => {
   mockedGet.mockReset()
   mockedGet.mockResolvedValue(detail({ id: 'c1', displayName: 'Анна Тестова' }))
   mockedCreate.mockReset()
+  vi.mocked(getCustomerAppointments).mockReset()
+  vi.mocked(getCustomerAppointments).mockResolvedValue({
+    timezone: 'Europe/Sofia',
+    items: [],
+    page: 0,
+    size: 10,
+    total: 0,
+  })
 })
 
 afterEach(() => {
