@@ -1,14 +1,18 @@
 package bg.spotyourslot.booking;
 
 import bg.spotyourslot.booking.BookingTestHooks.Point;
+import bg.spotyourslot.booking.application.PublicReferenceSource;
 import bg.spotyourslot.business.ScheduleRevisionGuard;
 import bg.spotyourslot.business.application.ScheduleRevisionService;
 import bg.spotyourslot.catalog.ServiceBookingAccess;
 import bg.spotyourslot.catalog.ServiceBookingAccess.BookingService;
 import bg.spotyourslot.catalog.application.ServiceBookingAccessService;
 import bg.spotyourslot.customer.CustomerIdentification;
+import bg.spotyourslot.customer.CustomerReferenceAccess;
 import bg.spotyourslot.customer.CustomerMatchOutcome;
 import bg.spotyourslot.customer.application.CustomerIdentificationService;
+import bg.spotyourslot.identity.SelectedBusinessOwnerAccess;
+import bg.spotyourslot.identity.application.BusinessAuthorizer;
 import bg.spotyourslot.integration.MutableTestClock;
 import bg.spotyourslot.scheduling.AvailabilityQuery;
 import bg.spotyourslot.scheduling.AvailabilityRecords.AvailabilitySnapshot;
@@ -26,6 +30,8 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
@@ -49,6 +55,65 @@ public class BookingHookConfiguration {
     @Bean
     BookingTestHooks bookingTestHooks() {
         return new BookingTestHooks();
+    }
+
+    @Bean
+    ManualBookingHooks manualBookingHooks() {
+        return new ManualBookingHooks();
+    }
+
+    /** Fires {@code BEFORE_OWNER_LOCK} before the Membership lock of the owner-created attempt. */
+    @Bean
+    @Primary
+    SelectedBusinessOwnerAccess hookedOwnerAccess(BusinessAuthorizer delegate, ManualBookingHooks hooks) {
+        return new SelectedBusinessOwnerAccess() {
+            @Override
+            public Authorization authorize(UUID userId, UUID businessId) {
+                return delegate.authorize(userId, businessId);
+            }
+
+            @Override
+            public Authorization lockAndAuthorize(UUID userId, UUID businessId) {
+                return delegate.lockAndAuthorize(userId, businessId);
+            }
+
+            @Override
+            public Authorization lockAndAuthorizeSanitized(UUID userId, UUID businessId) {
+                hooks.fire(ManualBookingHooks.Point.BEFORE_OWNER_LOCK);
+                return delegate.lockAndAuthorizeSanitized(userId, businessId);
+            }
+        };
+    }
+
+    /** Fires {@code BEFORE_CUSTOMER_READ} before the plain Customer reference read. */
+    @Bean
+    @Primary
+    CustomerReferenceAccess hookedCustomerReferenceAccess(
+            CustomerIdentificationService delegate, ManualBookingHooks hooks) {
+        return (businessId, customerId) -> {
+            hooks.fire(ManualBookingHooks.Point.BEFORE_CUSTOMER_READ);
+            return delegate.find(businessId, customerId);
+        };
+    }
+
+    /**
+     * Wraps the public reference source so {@code BEFORE_INSERT} fires immediately before the
+     * Appointment insert (the reference is generated as the last step before persistence).
+     */
+    @Bean
+    static BeanPostProcessor referenceSourceHook(ObjectProvider<ManualBookingHooks> hooks) {
+        return new BeanPostProcessor() {
+            @Override
+            public Object postProcessAfterInitialization(Object bean, String beanName) {
+                if (bean instanceof PublicReferenceSource source) {
+                    return (PublicReferenceSource) () -> {
+                        hooks.getObject().fire(ManualBookingHooks.Point.BEFORE_INSERT);
+                        return source.next();
+                    };
+                }
+                return bean;
+            }
+        };
     }
 
     /** Replaces Boot's identical manager, which backs off when a transaction manager exists. */

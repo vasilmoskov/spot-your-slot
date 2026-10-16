@@ -24,8 +24,8 @@ import org.springframework.modulith.core.ApplicationModules;
 /**
  * Issue #21 Phase 3: the private {@code calendar} HTTP adapter depends only on the published
  * {@code booking} root package and on the published {@code identity} context type, owns no
- * transaction, store, or logging, exposes exactly the four approved {@code GET} routes, and no
- * module depends on it.
+ * transaction, store, or logging, exposes exactly the four approved {@code GET} routes and (issue #19
+ * Phase 4) the one approved {@code POST /api/business/appointments}, and no module depends on it.
  */
 class CalendarModuleBoundaryTests {
     private final ApplicationModules modules = ApplicationModules.of(SpotYourSlotApplication.class);
@@ -75,6 +75,8 @@ class CalendarModuleBoundaryTests {
         }
 
         assertThat(targets).allMatch(name -> name.startsWith("bg.spotyourslot.booking.AppointmentCalendar")
+                || name.startsWith("bg.spotyourslot.booking.AppointmentAdministration")
+                || name.equals("bg.spotyourslot.booking.BookingOrchestrationFailure")
                 || name.equals("bg.spotyourslot.identity.AuthenticatedBusinessContext")
                 || name.equals("bg.spotyourslot.identity.SelectedBusinessRequired"));
         assertThat(targets).contains(
@@ -101,16 +103,23 @@ class CalendarModuleBoundaryTests {
     }
 
     @Test
-    void exactlyTheFourApprovedGetRoutesExistAndNothingElseIsMapped() throws Exception {
+    void exactlyTheFourApprovedGetRoutesAndTheOneApprovedPostExistAndNothingElseIsMapped() throws Exception {
         List<String> mappings = new ArrayList<>();
         try (var files = Files.walk(Path.of("src/main/java/bg/spotyourslot/calendar/web"))) {
             for (Path file : files.filter(path -> path.toString().endsWith("Controller.java")).toList()) {
                 String code = Files.readString(file).replaceAll("(?s)/\\*.*?\\*/", "");
                 String base = Pattern.compile("@RequestMapping\\(\"([^\"]+)\"\\)")
                         .matcher(code).results().map(match -> match.group(1)).findFirst().orElseThrow();
-                assertThat(code).doesNotContain("@PostMapping").doesNotContain("@PutMapping")
-                        .doesNotContain("@DeleteMapping").doesNotContain("@PatchMapping")
-                        .doesNotContain("@RequestBody");
+                assertThat(code).doesNotContain("@PutMapping")
+                        .doesNotContain("@DeleteMapping").doesNotContain("@PatchMapping");
+                // Phase 4: exactly one mutation, the owner-created Appointment, in the appointments controller.
+                boolean appointments = base.equals("/api/business/appointments");
+                assertThat(code.split("@PostMapping", -1).length - 1).isEqualTo(appointments ? 1 : 0);
+                assertThat(code.split("@RequestBody", -1).length - 1).isEqualTo(appointments ? 1 : 0);
+                Matcher post = Pattern.compile("@PostMapping(?:\\(\"([^\"]*)\"\\))?").matcher(code);
+                while (post.find()) {
+                    mappings.add("POST " + base + (post.group(1) == null ? "" : post.group(1)));
+                }
                 Matcher get = Pattern
                         .compile("@GetMapping(?:\\(\"([^\"]*)\"\\))?").matcher(code);
                 while (get.find()) {
@@ -120,6 +129,7 @@ class CalendarModuleBoundaryTests {
         }
 
         assertThat(mappings).containsExactlyInAnyOrder(
+                "POST /api/business/appointments",
                 "GET /api/business/calendar",
                 "GET /api/business/appointments",
                 "GET /api/business/appointments/{appointmentId}",

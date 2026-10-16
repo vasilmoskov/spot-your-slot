@@ -201,7 +201,12 @@ public abstract class BookingIntegrationTest extends PostgresIntegrationTest {
 
     /** Runs a booking on a thread named {@code booking-<label>} so hooks and the log see it. */
     protected CompletableFuture<BookingResult> submit(String label, GuestBookingRequest request) {
-        return CompletableFuture.supplyAsync(() -> booking.book(request), runnable -> executor.execute(() -> {
+        return onBookingThread(label, () -> booking.book(request));
+    }
+
+    /** Runs any task on a thread named {@code booking-<label>}, so the hooks and the log see it. */
+    protected <T> CompletableFuture<T> onBookingThread(String label, java.util.function.Supplier<T> task) {
+        return CompletableFuture.supplyAsync(task, runnable -> executor.execute(() -> {
             Thread thread = Thread.currentThread();
             String original = thread.getName();
             thread.setName(threadOf(label));

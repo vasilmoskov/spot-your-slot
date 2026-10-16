@@ -38,7 +38,7 @@ class GuestBookingIntegrationTests extends BookingIntegrationTest {
         }).join();
 
         assertThat(failure).isInstanceOf(BookingOrchestrationFailure.class)
-                .hasMessage("Guest booking must be invoked without an active transaction");
+                .hasMessage("Booking orchestration requires no active caller transaction");
         assertThat(failure.getCause()).isNull();
         // Nothing was read or written: no clock read, no hook point reached, and the only
         // transaction the caller thread ever began is the caller's own.

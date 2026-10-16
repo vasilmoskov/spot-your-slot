@@ -71,7 +71,7 @@ class ScheduleRevisionModuleBoundaryTests {
     }
 
     @Test
-    void onlyWorkforceAndSchedulingBumpAndOnlyTheBookingAttemptTakesTheSharedGuard() {
+    void onlyWorkforceAndSchedulingBumpAndOnlyTheTwoBookingAttemptsTakeTheSharedGuard() {
         assertThat(dependentsOf(ScheduleRevisionBump.class.getName()))
                 .containsExactlyInAnyOrder(
                         SERVICE,
@@ -79,7 +79,9 @@ class ScheduleRevisionModuleBoundaryTests {
                         "bg.spotyourslot.scheduling.application.ScheduleExceptionAdministrationService");
         assertThat(dependentsOf(ScheduleRevisionGuard.class.getName()))
                 .containsExactlyInAnyOrder(
-                        SERVICE, "bg.spotyourslot.booking.application.BookingAttemptProcedure");
+                        SERVICE,
+                        "bg.spotyourslot.booking.application.BookingAttemptProcedure",
+                        "bg.spotyourslot.booking.application.BusinessAppointmentCreationProcedure");
     }
 
     @Test

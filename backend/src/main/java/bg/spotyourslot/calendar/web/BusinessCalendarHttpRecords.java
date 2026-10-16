@@ -1,5 +1,7 @@
 package bg.spotyourslot.calendar.web;
 
+import bg.spotyourslot.booking.AppointmentAdministrationRecords.CreatedAppointment;
+import bg.spotyourslot.booking.AppointmentAdministrationRecords.CreatedService;
 import bg.spotyourslot.booking.AppointmentCalendarRecords.AgendaPage;
 import bg.spotyourslot.booking.AppointmentCalendarRecords.AppointmentDetail;
 import bg.spotyourslot.booking.AppointmentCalendarRecords.CalendarAppointment;
@@ -44,6 +46,66 @@ public final class BusinessCalendarHttpRecords {
             return parsed.toString().equals(value) ? parsed : null;
         } catch (DateTimeException invalid) {
             return null;
+        }
+    }
+
+    /**
+     * The owner-only {@code 201} body of a created Appointment: the stored facts only, no Customer
+     * name, phone, email, or Customer note.
+     */
+    public record CreatedAppointmentResponse(
+            UUID id,
+            String reference,
+            String status,
+            String source,
+            String start,
+            String end,
+            String timezone,
+            UUID staffMemberId,
+            String staffDisplayName,
+            UUID customerId,
+            List<CreatedServiceResponse> services,
+            int durationMinutes,
+            BigDecimal price,
+            String internalNote,
+            long version,
+            String createdAt) {
+        public static CreatedAppointmentResponse from(CreatedAppointment created) {
+            ZoneId zone = ZoneId.of(created.timezone());
+            return new CreatedAppointmentResponse(
+                    created.id(),
+                    created.reference(),
+                    created.status(),
+                    created.source(),
+                    format(created.start(), zone),
+                    format(created.end(), zone),
+                    created.timezone(),
+                    created.staffMemberId(),
+                    created.staffDisplayName(),
+                    created.customerId(),
+                    created.services().stream().map(CreatedServiceResponse::from).toList(),
+                    created.durationMinutes(),
+                    created.price(),
+                    created.internalNote(),
+                    created.version(),
+                    format(created.createdAt(), zone));
+        }
+
+        @Override
+        public String toString() {
+            return "CreatedAppointmentResponse[redacted]";
+        }
+    }
+
+    public record CreatedServiceResponse(int position, String name, int durationMinutes, BigDecimal price) {
+        static CreatedServiceResponse from(CreatedService service) {
+            return new CreatedServiceResponse(
+                    service.position(), service.name(), service.durationMinutes(), service.price());
+        }
+
+        @Override
+        public String toString() {
+            return "CreatedServiceResponse[redacted]";
         }
     }
 

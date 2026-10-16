@@ -214,7 +214,9 @@ class PublicBookingCreationApiIntegrationTests extends PublicBookingApiIntegrati
 
         assertThat(replayed.getResponse().getStatus()).isEqualTo(200);
         assertThat(text(replayed.getResponse())).isEqualTo(text(created.getResponse()));
-        assertThat(text(replayed.getResponse())).doesNotContain("Преименувана").doesNotContain("99");
+        assertThat(text(replayed.getResponse())).doesNotContain("Преименувана")
+                // The changed price and duration, not the bare digits: the random Service name may hold "99".
+                .doesNotContain("99.00").doesNotContain("\"durationMinutes\":60");
     }
 
     @Test

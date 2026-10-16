@@ -34,7 +34,8 @@ public record NewAppointment(
         String publicReference,
         BookingAttempt attempt,
         Instant createdAt,
-        List<AppointmentServiceLine> serviceLines) {
+        List<AppointmentServiceLine> serviceLines,
+        String internalNote) {
     public NewAppointment {
         Objects.requireNonNull(id, "id");
         Objects.requireNonNull(businessId, "businessId");
@@ -59,12 +60,56 @@ public record NewAppointment(
         AppointmentRules.requireSnapshotName(serviceName);
         AppointmentRules.requireSnapshotName(staffDisplayName);
         AppointmentRules.requireNote(customerNote);
+        AppointmentRules.requireNote(internalNote);
         AppointmentRules.requirePublicReference(publicReference);
         serviceLines = AppointmentRules.requireVisit(
                 serviceLines, serviceId, serviceName, durationMinutes, priceEur);
         if (source == AppointmentSource.ONLINE && attempt == null) {
             throw new IllegalArgumentException("An online Appointment requires a booking attempt");
         }
+        if (source == AppointmentSource.MANUAL && attempt != null) {
+            throw new IllegalArgumentException("A manual Appointment has no booking attempt");
+        }
+    }
+
+    /** A guest-shaped Appointment (ADR-0027): the lines are given and there is no internal note. */
+    public NewAppointment(
+            UUID id,
+            UUID businessId,
+            UUID customerId,
+            UUID serviceId,
+            UUID staffMemberId,
+            AppointmentSource source,
+            Instant startAt,
+            int durationMinutes,
+            BigDecimal priceEur,
+            String timezone,
+            String serviceName,
+            String staffDisplayName,
+            String customerNote,
+            String publicReference,
+            BookingAttempt attempt,
+            Instant createdAt,
+            List<AppointmentServiceLine> serviceLines) {
+        this(
+                id,
+                businessId,
+                customerId,
+                serviceId,
+                staffMemberId,
+                source,
+                startAt,
+                durationMinutes,
+                priceEur,
+                timezone,
+                serviceName,
+                staffDisplayName,
+                customerNote,
+                publicReference,
+                attempt,
+                createdAt,
+                serviceLines,
+                null);
     }
 
     /**

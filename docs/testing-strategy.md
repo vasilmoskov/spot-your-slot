@@ -1003,7 +1003,7 @@ flaky) and uses real PostgreSQL through Testcontainers for persistence, concurre
 - **Phase 8 (browser E2E):** Playwright journeys with fixtures created only through supported APIs, conflict
   recovery, lifecycle states, mobile, tenant isolation, and unchanged administration.
 
-## Business Appointment administration verification (issues #19 and #21; decided in ADR-0028 and ADR-0029; Phases 2 and 3 executed, Phases 4 to 12 planned)
+## Business Appointment administration verification (issues #19 and #21; decided in ADR-0028 and ADR-0029; Phases 2 to 4 executed, Phases 5 to 12 planned)
 
 Decisions: ADR-0028, ADR-0029; phases and the per-phase evidence: `docs/tasks/09a-business-calendar-and-appointment-management.md`. Every
 test follows the reliability rules above (wait for the asserted state, control time, deferred promises, no sleeps, diagnose before calling anything
@@ -1022,7 +1022,19 @@ apart from behavior PostgreSQL produces.
   31-date limit and the date bounds; overlap inclusion at both range edges; a daylight-saving day of 23 or 25 hours; ordering and stable ties; pagination sizes and
   invalid values; statement counts independent of the number of Appointments and StaffMembers; the Customer history order and minimum fields; the `EXPLAIN ANALYZE`
   evidence behind each `V15` index; a read-only snapshot that stays consistent when a commit lands between its statements.
-- **Mutations (Phases 4 to 6).** For create: lines in profile order, summed totals, snapshots from locked rows, the reviewed-terms check with zero writes, the
+- **Owner-created Appointment (Phase 4; executed, evidence in the Phase 4 record of task 09a).** Real PostgreSQL and the real orchestration: a stored `MANUAL`, `CONFIRMED`,
+  version-0 visit with null idempotency columns and server facts only; lines in the stored profile order whatever the request order; the reviewed name, duration, and
+  price compared exactly by identifier with zero writes; the precedence (lifecycle, domain bounds, Customer, then Service, StaffMember, terms, slot); missing, foreign, and
+  inactive Services and StaffMembers byte-identical; zero notice, no horizon, the grid, the daylight-saving gap and both repeated-hour instants; the role and lifecycle
+  matrix over HTTP; CSRF; exact response keys; fixed problems; privacy sentinels in responses, problems, and captured logs; a statement count independent of the number of
+  Services. Concurrency (latches, `pg_blocking_pids`, `FOR UPDATE SKIP LOCKED` lock probes, no sleeps): the lock order, two owners and a guest booking for one slot, the
+  exclusion-index race, Service, StaffMember, assignment, Business, and Membership changes before and after the snapshot and while in flight, all thirteen schedule
+  paths in three commit orders with a guard-bypass control, a concurrent Customer contact update that does not wait, neighbouring Appointments cancelled or moved through the
+  Phase 2 persistence primitives only (the Phase 5 and 6 orchestration races are not covered), retry exhaustion, and real commit failures (an after-commit failure, a
+  pre-commit rollback, a swallowed failed statement, a silent rollback found by the verification read, a terminated backend). Injected completion statuses (`COMMITTED`,
+  `ROLLED_BACK`, `UNKNOWN`, none) are proven in the runner unit tests and labelled as injected; a proven `ROLLED_BACK` is retried in a fresh transaction (at most three attempts, then temporarily unavailable), `COMMITTED`, `UNKNOWN`, and no report are uncertain and never retried, no cause or SQLState is read, and both `503` outcomes are proven through the real route with a test double of the administration capability (Phase 4 review corrections). The translation of the Business and Membership lock failures is proven in
+  the owning modules' unit tests.
+- **Mutations (Phases 5 and 6, and the remaining rules of Phase 4).** For create: lines in profile order, summed totals, snapshots from locked rows, the reviewed-terms check with zero writes, the
   eligibility matrix of ADR-0028 section 6, an explicit foreign or missing Customer, no `findOrCreate`, a required explicit eligible StaffMember with no automatic assignment. For reschedule and reassign: a time-only move after a
   Service was deactivated or an assignment removed, rejection when the current StaffMember is inactive, reassignment to an unassigned or inactive target
   rejected, the stored duration used after a Service duration change, price, lines, Customer, and source unchanged, started and cancelled Appointments rejected, a

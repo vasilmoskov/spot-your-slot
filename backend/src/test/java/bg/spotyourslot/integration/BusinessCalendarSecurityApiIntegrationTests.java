@@ -244,7 +244,14 @@ class BusinessCalendarSecurityApiIntegrationTests extends BusinessCalendarApiInt
             int post = mvc.perform(post(path).cookie(owner.session()).with(csrf())).andReturn().getResponse().getStatus();
             int put = mvc.perform(put(path).cookie(owner.session()).with(csrf())).andReturn().getResponse().getStatus();
             int delete = mvc.perform(delete(path).cookie(owner.session()).with(csrf())).andReturn().getResponse().getStatus();
-            assertThat(List.of(post, put, delete)).allMatch(code -> code == 405 || code == 404);
+            // Issue #19 Phase 4: POST /api/business/appointments is the one routed mutation; with an empty
+            // body it is a generic validation error (400) and writes nothing. Every other verb stays refused.
+            if (path.equals("/api/business/appointments")) {
+                assertThat(post).isEqualTo(400);
+                assertThat(List.of(put, delete)).allMatch(code -> code == 405 || code == 404);
+            } else {
+                assertThat(List.of(post, put, delete)).allMatch(code -> code == 405 || code == 404);
+            }
         }
         assertThat(jdbc.sql("SELECT count(*) FROM appointment").query(Long.class).single()).isEqualTo(before);
         assertThat(jdbc.sql("SELECT to_jsonb(a)::text || xmin::text FROM appointment a WHERE id = :id")

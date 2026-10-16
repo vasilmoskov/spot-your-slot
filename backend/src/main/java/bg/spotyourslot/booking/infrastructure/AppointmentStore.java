@@ -162,7 +162,7 @@ public class AppointmentStore {
                             customer_note, public_reference, booking_attempt_hash,
                             request_fingerprint, fingerprint_encoding_version,
                             fingerprint_key_version, version, created_at, updated_at,
-                            service_count)
+                            service_count, internal_note)
                         VALUES (
                             :id, :businessId, :customerId, :serviceId, :staffMemberId,
                             :source, 'CONFIRMED', :startAt, :endAt, :occupiedUntil, :timezone,
@@ -170,7 +170,7 @@ public class AppointmentStore {
                             :customerNote, :publicReference, :attemptHash,
                             :requestFingerprint, :encodingVersion,
                             :keyVersion, 0, :createdAt, :createdAt,
-                            :serviceCount)
+                            :serviceCount, :internalNote)
                         RETURNING
                         """ + RETURNING_COLUMNS)
                 .param("id", appointment.id())
@@ -204,6 +204,7 @@ public class AppointmentStore {
                         Types.SMALLINT)
                 .param("createdAt", databaseTime(appointment.createdAt()))
                 .param("serviceCount", appointment.serviceCount(), Types.SMALLINT)
+                .param("internalNote", appointment.internalNote(), Types.VARCHAR)
                 .query(this::row)
                 .single());
         execute(() -> insertLines(appointment));

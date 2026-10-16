@@ -136,7 +136,7 @@ class GuestBookingServiceTests {
 
         assertThatThrownBy(() -> service.book(request()))
                 .isInstanceOf(BookingOrchestrationFailure.class)
-                .hasMessage("Guest booking must be invoked without an active transaction")
+                .hasMessage("Booking orchestration requires no active caller transaction")
                 .hasNoCause();
 
         verifyNoInteractions(procedure);

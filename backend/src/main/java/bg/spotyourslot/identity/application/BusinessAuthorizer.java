@@ -5,8 +5,10 @@ import bg.spotyourslot.identity.SelectedBusinessOwnerAccess.Authorization;
 import bg.spotyourslot.identity.application.IdentityRecords.BusinessAccess;
 import bg.spotyourslot.identity.domain.MembershipRole;
 import bg.spotyourslot.identity.infrastructure.IdentityStore;
+import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.UUID;
+import org.springframework.dao.DataAccessException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
@@ -39,6 +41,28 @@ public class BusinessAuthorizer implements SelectedBusinessOwnerAccess {
     @Transactional(propagation = Propagation.MANDATORY)
     public Authorization lockAndAuthorize(UUID userId, UUID businessId) {
         return authorization(store.lockActiveOwnerMembership(userId, businessId));
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Authorization lockAndAuthorizeSanitized(UUID userId, UUID businessId) {
+        try {
+            return authorization(store.lockActiveOwnerMembership(userId, businessId));
+        } catch (DataAccessException exception) {
+            throw translate(exception);
+        }
+    }
+
+    private static RuntimeException translate(DataAccessException exception) {
+        for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
+            if (cause instanceof SQLException sqlException && sqlException.getSQLState() != null) {
+                return switch (sqlException.getSQLState()) {
+                    case "40001", "40P01" -> new ConcurrentConflict();
+                    default -> new Failure();
+                };
+            }
+        }
+        return new Failure();
     }
 
     private Authorization authorization(boolean granted) {

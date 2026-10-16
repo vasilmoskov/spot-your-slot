@@ -300,7 +300,7 @@ Membership, or role. Access requires an active `BUSINESS_OWNER` Membership for t
 An absent, inactive, or foreign Membership, or a platform administrator alone, is `ACTIVE_BUSINESS_REQUIRED`;
 an active `MANAGER` or `STAFF` Membership of the selected Business is `ACCESS_DENIED`; an unauthenticated caller is
 `AUTH_REQUIRED`. A StaffMember record grants no access. Missing and cross-Business Appointment, Customer,
-StaffMember, and Service identifiers share one safe `404`.
+StaffMember, and Service identifiers share one safe `404` (amended by issue #19 Phase 4: a missing, foreign, or inactive Service or StaffMember is instead one byte-identical `409`; see the create route below).
 
 | Business status | Reads | Mutations |
 |---|---|---|
@@ -309,6 +309,24 @@ StaffMember, and Service identifiers share one safe `404`.
 | `SUSPENDED` | allowed | `409 BUSINESS_SUSPENDED` |
 
 **Implemented read routes (issue #21 Phase 3; all `GET`, owner-only, no CSRF token needed, every response `Cache-Control: no-store` from the default security headers).** `/api/business/calendar` and `/api/business/appointments` take `from` and `to` (required, canonical `YYYY-MM-DD`, inclusive Business-local dates, at most 31, within 2000-01-01 to 2100-12-31) and an optional `staffMemberId`; the agenda also takes `page` (from 0) and `size` (10, 25, or 50; default 10). `/api/business/appointments/{appointmentId}` is the owner-only detail and `/api/business/customers/{customerId}/appointments` the Customer history (`page`, `size`). `ACTIVE`, `DRAFT`, and `SUSPENDED` Businesses are all readable and the calendar, agenda, and detail say which in `businessStatus`. Failures: `AUTH_REQUIRED` (401); `ACTIVE_BUSINESS_REQUIRED` and `ACCESS_DENIED` (403, as above); `VALIDATION_ERROR` (400, generic, never naming a field or echoing a value); `APPOINTMENT_NOT_FOUND` ("Часът не е намерен."), `CUSTOMER_NOT_FOUND` ("Клиентът не е намерен."), and `STAFF_MEMBER_NOT_FOUND` ("Членът на екипа не е намерен.") (404, byte-identical for a missing and a foreign identifier of the same resource type); `INTERNAL_ERROR` (500). Each route family has one fixed, non-echoing problem `instance`, the family's base path (the convention of the Customer API): `/api/business/calendar` for the calendar, `/api/business/appointments` for the agenda and the detail, and `/api/business/customers` for the Customer history; no identifier, query value, slug, or raw request path is ever echoed. Calendar and agenda rows carry no note, no cancellation actor, no public reference, and no contact data; the history carries neither a Customer name nor any note, reference, price, or attribution; only the owner detail carries the contact data, both notes, the public reference, the version, and the cancellation attribution. The unfiltered calendar lists every active StaffMember plus an inactive one only when it has an Appointment in the window; an explicit `staffMemberId` may name an inactive same-Business StaffMember.
+
+**Implemented create route (issue #19 Phase 4).** `POST /api/business/appointments` creates one `CONFIRMED`, `MANUAL` Appointment of one to five distinct Services for an
+existing same-Business Customer and one explicit StaffMember. The body has exactly the keys `customerId`, `staffMemberId`, `start` (an ISO-8601 date-time with an explicit
+offset), `services` (each exactly `serviceId`, `reviewedServiceName`, `reviewedDurationMinutes`, `reviewedPriceCents`), and an optional `internalNote`; any other key, a
+non-canonical UUID, a non-integral number, or a start without an offset is `400 VALIDATION_ERROR`. The domain bounds (one to five distinct Services, each duration 1 to 480
+minutes, claimed durations at most 480, price 0 to 999,999,999,999 cents, a note of at most 500 code points, a start date inside 2000-01-01 to 2100-12-31) are checked by the
+service after authorization and lifecycle, so `BUSINESS_NOT_ACTIVE` and `BUSINESS_SUSPENDED` win over an invalid domain value, and a missing Customer wins over every Service,
+StaffMember, terms, and slot result. A reviewed name, duration, or price that differs from the locked Service is `409 APPOINTMENT_REVIEW_CHANGED` without saying which. A missing,
+foreign, or inactive Service is one `409 APPOINTMENT_SERVICE_UNAVAILABLE`, and a missing, foreign, inactive, or unassigned StaffMember one `409 APPOINTMENT_STAFF_UNAVAILABLE`
+(byte-identical, so no existence is revealed); a missing and a foreign Customer are one `404 CUSTOMER_NOT_FOUND`. This amends the earlier sentence that Service and StaffMember
+identifiers share a `404`: only Appointment and Customer identifiers do. Success is `201` with `Location: /api/business/appointments/{id}` and the keys `id, reference, status,
+source, start, end, timezone, staffMemberId, staffDisplayName, customerId, services[position,name,durationMinutes,price], durationMinutes, price, internalNote, version, createdAt`;
+it carries no Customer name, phone, email, or Customer note. The problem `instance` is the fixed `/api/business/appointments`; `no-store` comes from the default headers; CSRF
+is required. Wording: `BUSINESS_NOT_ACTIVE` "Бизнесът не е активен. Часове могат да се създават само в активен бизнес.", `APPOINTMENT_SERVICE_UNAVAILABLE` "Някоя от избраните
+услуги вече не е налична.", `APPOINTMENT_STAFF_UNAVAILABLE` "Избраният член на екипа не е наличен за тези услуги.", `APPOINTMENT_REVIEW_CHANGED` "Услугите са променени.
+Прегледайте ги отново и опитайте пак.", `APPOINTMENT_SLOT_UNAVAILABLE` "Избраният час вече не е свободен.", `APPOINTMENT_TEMPORARILY_UNAVAILABLE` (503) "Часът не беше
+запазен. Опитайте отново след малко.", `APPOINTMENT_OUTCOME_UNCERTAIN` (503) "Не е ясно дали часът е запазен. Проверете графика, преди да опитате отново."; all remain
+Proposed until the rendered human review. A request of another media type is `415 UNSUPPORTED_MEDIA_TYPE`. The reschedule, reassign, cancel, and note codes below are still planned.
 
 Failures planned for the mutations (the codes, route names, and Bulgarian wording are working names, finalised and tested in the implementing HTTP or interface phase, and the wording stays Proposed until the rendered human review): `VALIDATION_ERROR` (400),
 `AUTH_REQUIRED`, `ACTIVE_BUSINESS_REQUIRED`, `ACCESS_DENIED`, `APPOINTMENT_NOT_FOUND` and `CUSTOMER_NOT_FOUND` (404),

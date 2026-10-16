@@ -488,6 +488,11 @@ class StaffWorkingScheduleLockingIntegrationTests extends PostgresIntegrationTes
         }
 
         @Override
+        public Optional<BusinessScheduleContext> lockScheduleContextSanitized(UUID businessId) {
+            return delegate.lockScheduleContextSanitized(businessId);
+        }
+
+        @Override
         public Optional<BusinessScheduleContext> findScheduleContext(UUID businessId) {
             return delegate.findScheduleContext(businessId);
         }
@@ -512,6 +517,11 @@ class StaffWorkingScheduleLockingIntegrationTests extends PostgresIntegrationTes
             this.delegate = delegate;
             this.jdbc = jdbc;
             this.observation = observation;
+        }
+
+        @Override
+        public Authorization lockAndAuthorizeSanitized(UUID userId, UUID businessId) {
+            return delegate.lockAndAuthorizeSanitized(userId, businessId);
         }
 
         @Override

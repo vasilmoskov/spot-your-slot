@@ -1,30 +1,57 @@
 package bg.spotyourslot.calendar.web;
 
+import bg.spotyourslot.booking.AppointmentAdministration;
+import bg.spotyourslot.booking.AppointmentAdministrationRecords.CreatedAppointment;
 import bg.spotyourslot.booking.AppointmentCalendar;
 import bg.spotyourslot.booking.AppointmentCalendarException.InvalidInput;
 import bg.spotyourslot.calendar.web.BusinessCalendarHttpRecords.AgendaResponse;
+import bg.spotyourslot.calendar.web.BusinessCalendarHttpRecords.CreatedAppointmentResponse;
 import bg.spotyourslot.calendar.web.BusinessCalendarHttpRecords.DetailResponse;
 import bg.spotyourslot.identity.AuthenticatedBusinessContext;
+import java.net.URI;
 import java.time.LocalDate;
 import java.util.UUID;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.CurrentSecurityContext;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import tools.jackson.databind.JsonNode;
 
 /**
  * {@code GET /api/business/appointments} (the paginated agenda) and
- * {@code GET /api/business/appointments/{id}} (the owner-only detail).
+ * {@code GET /api/business/appointments/{id}} (the owner-only detail), and
+ * {@code POST /api/business/appointments} (the owner-created multi-Service Appointment).
  */
 @RestController
 @RequestMapping("/api/business/appointments")
 public class BusinessAppointmentController {
     private final AppointmentCalendar calendar;
+    private final AppointmentAdministration administration;
 
-    public BusinessAppointmentController(AppointmentCalendar calendar) {
+    public BusinessAppointmentController(
+            AppointmentCalendar calendar, AppointmentAdministration administration) {
         this.calendar = calendar;
+        this.administration = administration;
+    }
+
+    /**
+     * Creates one atomic multi-Service Appointment for the selected Business. The body is read by
+     * shape only; the service validates after authorization and lifecycle.
+     */
+    @PostMapping
+    public ResponseEntity<CreatedAppointmentResponse> create(
+            @CurrentSecurityContext(expression = "authentication")
+                    AuthenticatedBusinessContext context,
+            @RequestBody JsonNode body) {
+        CreatedAppointment created = administration.create(
+                context, CreateAppointmentRequestParser.parse(body));
+        return ResponseEntity.created(URI.create("/api/business/appointments/" + created.id()))
+                .body(CreatedAppointmentResponse.from(created));
     }
 
     @GetMapping

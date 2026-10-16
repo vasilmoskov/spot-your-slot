@@ -472,6 +472,11 @@ class ServiceAuthorizationLockingIntegrationTests extends PostgresIntegrationTes
         }
 
         @Override
+        public Authorization lockAndAuthorizeSanitized(UUID userId, UUID businessId) {
+            return delegate.lockAndAuthorizeSanitized(userId, businessId);
+        }
+
+        @Override
         public Authorization authorize(UUID userId, UUID businessId) {
             return delegate.authorize(userId, businessId);
         }

@@ -36,6 +36,7 @@ import java.util.IdentityHashMap;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -101,6 +102,28 @@ public class BusinessAdministrationService
     @Transactional(propagation = Propagation.MANDATORY)
     public Optional<BusinessScheduleContext> lockScheduleContext(UUID businessId) {
         return store.findByIdForShare(businessId).map(this::scheduleContext);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public Optional<BusinessScheduleContext> lockScheduleContextSanitized(UUID businessId) {
+        try {
+            return store.findByIdForShare(businessId).map(this::scheduleContext);
+        } catch (DataAccessException exception) {
+            throw translateLock(exception);
+        }
+    }
+
+    private static RuntimeException translateLock(DataAccessException exception) {
+        for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
+            if (cause instanceof SQLException sqlException && sqlException.getSQLState() != null) {
+                return switch (sqlException.getSQLState()) {
+                    case "40001", "40P01" -> new BusinessScheduleContextAccess.ConcurrentConflict();
+                    default -> new BusinessScheduleContextAccess.Failure();
+                };
+            }
+        }
+        return new BusinessScheduleContextAccess.Failure();
     }
 
     @Override

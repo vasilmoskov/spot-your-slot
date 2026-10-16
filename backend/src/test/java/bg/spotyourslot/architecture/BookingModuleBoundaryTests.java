@@ -130,9 +130,12 @@ class BookingModuleBoundaryTests {
                 .collect(Collectors.toSet());
     }
 
-    /** ADR-0028 section 13: booking reaches identity only for the server-derived owner context. */
+    /**
+     * ADR-0028 section 13: booking reaches identity only for the server-derived owner context and, since
+     * the owner-created Appointment (ADR-0029), the sanitized conflict of the Membership lock.
+     */
     @Test
-    void bookingUsesOnlyTheThreeNarrowIdentityContextTypes() {
+    void bookingUsesOnlyTheNarrowIdentityContextAndOwnerLockTypes() {
         Set<String> identityTargets = new TreeSet<>();
         for (JavaClass type : main) {
             if (type.getPackageName().startsWith("bg.spotyourslot.booking")) {
@@ -149,6 +152,7 @@ class BookingModuleBoundaryTests {
                 "bg.spotyourslot.identity.AuthenticatedBusinessContext",
                 "bg.spotyourslot.identity.SelectedBusinessOwnerAccess",
                 "bg.spotyourslot.identity.SelectedBusinessOwnerAccess$Authorization",
+                "bg.spotyourslot.identity.SelectedBusinessOwnerAccess$ConcurrentConflict",
                 "bg.spotyourslot.identity.SelectedBusinessRequired");
     }
 
@@ -220,7 +224,10 @@ class BookingModuleBoundaryTests {
                         "BookingOrchestrationFailure",
                         "AppointmentCalendar",
                         "AppointmentCalendarRecords",
-                        "AppointmentCalendarException");
+                        "AppointmentCalendarException",
+                        "AppointmentAdministration",
+                        "AppointmentAdministrationRecords",
+                        "AppointmentAdministrationException");
     }
 
     @Test
@@ -268,5 +275,71 @@ class BookingModuleBoundaryTests {
                 .doesNotContain("Savepoint")
                 .doesNotContain("Thread.sleep");
         assertThat(code).contains("PROPAGATION_REQUIRED").contains("TRANSACTION_REPEATABLE_READ");
+    }
+
+    /**
+     * The owner-created Appointment runner mirrors the guest runner's transaction rules (ADR-0029
+     * section 2): it is not transactional, begins every attempt with REQUIRED and REPEATABLE_READ, and
+     * never uses a new-transaction propagation, a savepoint, or a sleep.
+     */
+    @Test
+    void theBusinessRunnerIsNotTransactionalAndNeverUsesRequiresNewOrSavepoints() throws Exception {
+        for (String name : List.of("BusinessAppointmentAdministrationService", "BusinessAppointmentCreationProcedure")) {
+            String source = Files.readString(Path.of("src/main/java/bg/spotyourslot/booking/application/" + name + ".java"));
+            String code = source.replaceAll("(?s)/\\*.*?\\*/", "");
+            assertThat(code).as(name).doesNotContain("@Transactional")
+                    .doesNotContain("REQUIRES_NEW")
+                    .doesNotContain("PROPAGATION_NESTED")
+                    .doesNotContain("Savepoint")
+                    .doesNotContain("Thread.sleep");
+            if (name.endsWith("Service")) {
+                assertThat(code).contains("PROPAGATION_REQUIRED").contains("TRANSACTION_REPEATABLE_READ")
+                        .contains("requireNoCallerTransaction");
+            }
+        }
+    }
+
+    /**
+     * Q7: neither the runner nor the procedure inspects an SQLState, a driver exception, or a Spring
+     * persistence exception. The owning modules translate their lock failures into published,
+     * sanitized, cause-free conflicts, and the runner retries only those.
+     */
+    @Test
+    void theBusinessRunnerAndProcedureNeverInspectPersistenceExceptionsOrSqlStates() throws Exception {
+        for (String name : List.of("BusinessAppointmentAdministrationService", "BusinessAppointmentCreationProcedure")) {
+            JavaClass type = main.get("bg.spotyourslot.booking.application." + name);
+            for (Dependency dependency : type.getDirectDependenciesFromSelf()) {
+                String target = dependency.getTargetClass().getName();
+                assertThat(target).as(name + " -> " + target)
+                        .doesNotStartWith("java.sql")
+                        .doesNotStartWith("org.postgresql")
+                        .doesNotStartWith("org.springframework.dao")
+                        .doesNotStartWith("org.springframework.jdbc");
+            }
+            String code = Files.readString(Path.of("src/main/java/bg/spotyourslot/booking/application/" + name + ".java"))
+                    .replaceAll("(?s)/\\*.*?\\*/", "");
+            assertThat(code).as(name).doesNotContain("getSQLState").doesNotContain("SQLException")
+                    .doesNotContain("getCause");
+        }
+    }
+
+    /** The conflicts the runner retries are exactly the published sanitized types (ADR-0029 section 8). */
+    @Test
+    void theRunnerRetriesExactlyThePublishedSanitizedConflicts() throws Exception {
+        String code = Files.readString(Path.of(
+                "src/main/java/bg/spotyourslot/booking/application/BusinessAppointmentAdministrationService.java"))
+                .replaceAll("(?s)/\\*.*?\\*/", "");
+        String retry = code.substring(code.indexOf("private static Retry retryReason"), code.indexOf("private AppointmentAdministrationException exhausted"));
+        assertThat(retry).contains("AppointmentPersistenceException.OverlapConflict")
+                .contains("BusinessScheduleContextAccess.ConcurrentConflict")
+                .contains("SelectedBusinessOwnerAccess.ConcurrentConflict")
+                .contains("StaffBookingAccess.ConcurrentConflict")
+                .contains("ScheduleRevisionConcurrentConflict")
+                .contains("ServiceBookingAccess.ConcurrentConflict")
+                .contains("AppointmentPersistenceException.ConcurrentFailure")
+                .contains("AppointmentPersistenceException.DuplicatePublicReference")
+                .doesNotContain("Exception ").doesNotContain("RuntimeException")
+                .doesNotContain("DuplicateAttempt")
+                .doesNotContain("CustomerConcurrentConflict");
     }
 }

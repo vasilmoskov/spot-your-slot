@@ -71,7 +71,7 @@ abstract class BusinessCalendarProblems {
                 HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "Възникна неочаквана грешка.");
     }
 
-    private ProblemDetail problem(HttpStatus status, String code, String detail) {
+    ProblemDetail problem(HttpStatus status, String code, String detail) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(status, detail);
         problem.setTitle("Заявката не може да бъде изпълнена.");
         problem.setInstance(instance);
