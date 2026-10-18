@@ -36,7 +36,7 @@ const SCOPED_LINKS: ReadonlyArray<{
   {
     label: 'График',
     route: BUSINESS_CALENDAR_ROUTE,
-    kinds: ['business-calendar', 'business-appointment-detail'],
+    kinds: ['business-calendar', 'business-appointment-detail', 'business-appointment-new'],
   },
   {
     label: 'Услуги',

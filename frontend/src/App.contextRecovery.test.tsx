@@ -95,6 +95,7 @@ const staffRecord = {
 describe('a lost Business context on every Business-scoped screen', () => {
   it.each([
     ['Calendar', '#/business/calendar?view=week&date=2026-10-14'],
+    ['Manual create form', '#/business/appointments/new?view=week&date=2026-10-14'],
     ['Appointment agenda', '#/business/calendar?view=agenda&date=2026-10-14&page=0&size=10'],
     ['Appointment detail', '#/business/appointments/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'],
     ['Services list', '#/business/services?page=0&size=10&sort=name&direction=asc'],

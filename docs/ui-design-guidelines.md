@@ -873,3 +873,16 @@ Manual visual review uses only supported APIs and normal application flows, or
 a throwaway mock that never touches the development database. Never write to
 the database directly, hand-edit password hashes, or delete volumes, and report
 any fixture data created or mutated together with cleanup instructions.
+
+## 23. Manual Appointment create (issue #21 Phase 8; implemented, awaiting the rendered human review)
+
+The owner-only flow `Нов час` is a six-step form in one component: **Клиент**, **Избор на услуги**, **Избор на служител**, **Дата и час**, **Вътрешна бележка**, **Преглед и потвърждение** (the first and the fifth are new, the others reuse the public headings; all Bulgarian wording is Proposed until the review).
+
+- The entry is a primary `Нов час` button on the calendar, present only for the owner of an `ACTIVE` Business and **absent**, not disabled, otherwise (section 8: no empty action row is left).
+- Steps are a labelled group of native controls (radios for the Customer, the StaffMember, and the start; checkboxes for the Services) with rows of at least 2.75 rem; an unavailable option stays readable and states its reason in text; nothing is preselected; a selected option is always removable.
+- Money is always `price — duration`, `42.00 € — 75 мин.`, summed in integer cents; the Services summary and the review show the total the same way.
+- Action order (section 6): Back on the left, `Напред` or `Създай час` on the right in one row; `Обратно към графика` sits above, disabled while the request is pending.
+- Focus: the step heading after a step change, the first invalid control after a failed `Напред`, the notice after a failure. Field errors are inline; a notice about a result of the server is a single alert and is never repeated by a step.
+- The review has a `Промени` per section and returns straight to the review when the later choices remain valid; it states that the Customer and the Services of a created Appointment cannot be changed.
+- No private value reaches the URL, `history.state`, the title, storage, or the console; leaving a started form goes through the shared guard (`Несъздаден час`, `Остани` focused).
+- Results (section 8 and the Phase 8 record of task 09a): a slot, StaffMember, Service, Customer, or terms result returns to the step that can repair it and keeps the rest; a temporary refusal is a known rollback (nothing was created) and allows an explicit retry; an **unresolved** result (uncertain, a lost or unreadable response, an unknown failure) freezes the form: the submitted review stays visible and read-only, only `Обратно към графика` and `Към графика` remain (to the originating calendar state, without the ordinary prompt), the message claims neither success nor failure, and no new creation is possible from that form before the calendar was checked, because the create has no idempotency. Leaving elsewhere shows `Неясен резултат`.

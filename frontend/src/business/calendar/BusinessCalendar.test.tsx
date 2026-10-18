@@ -663,6 +663,37 @@ describe('narrow screens', () => {
   })
 })
 
+describe('the create entry', () => {
+  function renderWith(props: { canCreate?: boolean }) {
+    const created: CalendarState[] = []
+    render(
+      <BusinessCalendar
+        state={BASE}
+        now={() => NOW}
+        canCreate={props.canCreate ?? false}
+        onCreate={(calendar) => created.push(calendar)}
+        onStateChange={() => undefined}
+        onOpenAppointment={() => undefined}
+        onAuthenticationRequired={() => undefined}
+      />,
+    )
+    return created
+  }
+
+  it('offers Нов час only when creating is allowed, with the calendar state it returns to', async () => {
+    const created = renderWith({ canCreate: true })
+    await screen.findByText('Мария Тестова')
+    fireEvent.click(screen.getByRole('button', { name: 'Нов час' }))
+    expect(created).toEqual([BASE])
+  })
+
+  it('renders no create control at all, not even a disabled one, otherwise', async () => {
+    renderWith({ canCreate: false })
+    await screen.findByText('Мария Тестова')
+    expect(screen.queryByText('Нов час')).toBeNull()
+  })
+})
+
 describe('read-only and privacy', () => {
   it('offers no create, reschedule, reassign, cancel or note control', async () => {
     renderCalendar()

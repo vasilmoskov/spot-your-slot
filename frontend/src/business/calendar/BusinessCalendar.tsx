@@ -39,6 +39,9 @@ type BusinessCalendarProps = {
   now?: () => Date
   onStateChange: (next: CalendarState, mode?: ListNavigationMode) => void
   onOpenAppointment: (appointmentId: string, calendar: CalendarState) => void
+  // Only an ACTIVE Business may create: otherwise no control exists at all (not a disabled one).
+  canCreate?: boolean
+  onCreate?: (calendar: CalendarState) => void
   onAuthenticationRequired: (detail: string) => void
 }
 
@@ -70,6 +73,8 @@ export function BusinessCalendar({
   now = defaultNow,
   onStateChange,
   onOpenAppointment,
+  canCreate = false,
+  onCreate,
   onAuthenticationRequired,
 }: BusinessCalendarProps) {
   const [load, setLoad] = useState<LoadState>({ kind: 'loading' })
@@ -211,6 +216,13 @@ export function BusinessCalendar({
 
   return (
     <div className="platform-content calendar-page">
+      {canCreate && onCreate && (
+        <div className="business-page-actions">
+          <Button type="button" onClick={() => onCreate({ ...state, date })}>
+            Нов час
+          </Button>
+        </div>
+      )}
       <div className="calendar-toolbar">
         <nav className="schedule-tabs calendar-views" aria-label="Изглед на графика">
           {CALENDAR_VIEWS.map((option) => (

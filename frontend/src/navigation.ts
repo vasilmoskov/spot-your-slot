@@ -96,6 +96,8 @@ export const CALENDAR_ORIGIN: AppointmentOrigin = {
 export type BusinessOwnerRoute =
   | { kind: 'business-calendar'; calendar: CalendarState }
   | { kind: 'business-appointment-detail'; appointmentId: string; origin: AppointmentOrigin }
+  // The manual-create flow; it carries only the calendar state Cancel and completion return to.
+  | { kind: 'business-appointment-new'; returnCalendar: CalendarState }
   | { kind: 'business-services'; list: ListQueryState }
   | { kind: 'business-service-new' }
   | { kind: 'business-service-detail'; serviceId: string }
@@ -427,6 +429,9 @@ export function readAuthenticatedRoute(hash = window.location.hash): Authenticat
   if (path === '#/business/calendar') {
     return { kind: 'business-calendar', calendar: parseCalendarState(query) }
   }
+  if (path === '#/business/appointments/new') {
+    return { kind: 'business-appointment-new', returnCalendar: parseCalendarState(query) }
+  }
   if (path === '#/business/schedule') return BUSINESS_SCHEDULE_ROUTE
   if (path === '#/business/schedule/exceptions') {
     return { kind: 'business-schedule-exceptions', window: parseDateWindow(query) }
@@ -523,6 +528,9 @@ export function routeHref(route: AuthenticatedRoute): string {
   }
   if (route.kind === 'business-calendar') {
     return `/#/business/calendar${calendarQuery(route.calendar)}`
+  }
+  if (route.kind === 'business-appointment-new') {
+    return `/#/business/appointments/new${calendarQuery(route.returnCalendar)}`
   }
   if (route.kind === 'business-appointment-detail') {
     return `/#/business/appointments/${encodeURIComponent(route.appointmentId)}${originQuery(

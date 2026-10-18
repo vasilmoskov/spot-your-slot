@@ -15,7 +15,11 @@ const CALENDAR_DRAFT_NOTICE =
   'Бизнесът още не е активен. Можете да преглеждате графика и часовете, но не можете да ги променяте.'
 
 export function isCalendarRoute(route: AuthenticatedRoute): boolean {
-  return route.kind === 'business-calendar' || route.kind === 'business-appointment-detail'
+  return (
+    route.kind === 'business-calendar' ||
+    route.kind === 'business-appointment-detail' ||
+    route.kind === 'business-appointment-new'
+  )
 }
 
 /** The one lifecycle statement of a calendar screen, or null when the Business state needs none. */

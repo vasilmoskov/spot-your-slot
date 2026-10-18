@@ -24,6 +24,7 @@ type BusinessOwnerShellProps = {
 function sectionTitle(route: AuthenticatedRoute): string {
   if (route.kind === 'business-calendar') return 'График'
   if (route.kind === 'business-appointment-detail') return 'Час'
+  if (route.kind === 'business-appointment-new') return 'Нов час'
   if (route.kind === 'business-service-new') return 'Нова услуга'
   if (route.kind === 'business-service-detail') return 'Услуга'
   if (route.kind === 'business-staff') return 'Екип'

@@ -43,3 +43,24 @@ describe('calendar layout rules', () => {
     expect(rule('.calendar-results.is-refreshing')).toContain('opacity: 0.6')
   })
 })
+
+describe('manual-create layout rules', () => {
+  it('lets every text container shrink and wrap, and keeps the choices tappable', () => {
+    for (const selector of ['.manual-create', '.manual-step']) {
+      expect(rule(selector), selector).toContain('min-width: 0')
+    }
+    expect(css).toMatch(/\.manual-choices,\s*\.manual-slots \{[^}]*min-width: 0/)
+    expect(rule('.manual-choice-title')).toContain('overflow-wrap: anywhere')
+    expect(rule('.manual-review-row dd')).toContain('overflow-wrap: anywhere')
+    expect(css).toMatch(/\.manual-choice,\s*\.manual-slot \{[^}]*min-height: 2\.75rem/)
+  })
+
+  it('keeps Back first and the forward action last in one row', () => {
+    expect(rule('.manual-actions')).toContain('justify-content: space-between')
+  })
+
+  it('never relies on colour alone for an unavailable choice', () => {
+    expect(rule('.manual-choice--unavailable')).toContain('cursor: not-allowed')
+    expect(rule('.manual-choice-reason')).toContain('font-weight: 600')
+  })
+})

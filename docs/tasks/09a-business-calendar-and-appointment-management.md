@@ -1,6 +1,6 @@
 # SpotYourSlot — Business Calendar and Appointment Management (Issues #19 and #21)
 
-Status (current, 2026-10-16): **Phases 1 to 7 are committed (`HEAD` `6ea345f87ab876997f51dbc4c59d6d659214dd2c` includes Phase 7, the read-only calendar, Appointment detail and Customer history frontend, issue #21; its CI run was still in progress when the Phase 8 prerequisite started and is advisory). A discovered Phase 8 backend prerequisite, the manual-create read routes `GET /api/business/appointment-options` and `GET /api/business/appointment-options/availability` (issue #21, backend only), is implemented in the working tree and awaits review (nothing staged or committed); the Phase 8 frontend itself is not started, and Phases 9 to 12 are not started.** *(Superseded status text: the previous version of this line said that Phase 6 awaited review in the working tree; it was committed as `82edadd`.)* Issues #19 and #21 are one combined delivery and both are In Progress on the Project board. The product owner alone edits GitHub (issue texts, comments, states, Project status); this repository work never does. The decisions are recorded in [ADR-0028](../decisions/ADR-0028-administer-appointments-through-a-private-owner-only-api-with-immutable-visit-identity-and-business-cancellation.md) and [ADR-0029](../decisions/ADR-0029-calculate-business-availability-with-a-separate-policy-and-serialize-appointment-mutations-with-ordered-locks-optimistic-versions-and-bounded-retry.md); this record holds the plan, the acceptance mapping, the contract and migration plan, the phase plan, and the exact proposed GitHub amendment texts.
+Status (current, 2026-10-16): **Phases 1 to 7 and the Phase 8 backend prerequisite are committed (`HEAD` `2002a0187b92b955d06d0ed4f0c666543065e175` includes the manual-create read routes `GET /api/business/appointment-options` and `…/availability`, issue #21; its CI run was still in progress when Phase 8 started and is advisory). Phase 8 (the owner-only manual-create Appointment frontend, issue #21) is implemented in the working tree and awaits review (nothing staged or committed); Phases 9 to 12 are not started.** *(Superseded status text: the previous version of this line said that Phase 6 awaited review in the working tree; it was committed as `82edadd`.)* Issues #19 and #21 are one combined delivery and both are In Progress on the Project board. The product owner alone edits GitHub (issue texts, comments, states, Project status); this repository work never does. The decisions are recorded in [ADR-0028](../decisions/ADR-0028-administer-appointments-through-a-private-owner-only-api-with-immutable-visit-identity-and-business-cancellation.md) and [ADR-0029](../decisions/ADR-0029-calculate-business-availability-with-a-separate-policy-and-serialize-appointment-mutations-with-ordered-locks-optimistic-versions-and-bounded-retry.md); this record holds the plan, the acceptance mapping, the contract and migration plan, the phase plan, and the exact proposed GitHub amendment texts.
 
 GitHub issues: #19 — Prevent double booking and handle booking conflicts; #21 — Build the Business calendar and appointment management
 Depends on: #16, #17, #18, #20 (all closed). Related, not part of this work: #22 (notifications), #35 (Customer self-service cancellation), #36 (Customer self-service rescheduling), #37 (Customer-specific durations).
@@ -222,6 +222,8 @@ Every phase is its own change with its own approval, is verified before the next
 - **Gate:** Standard; the report notifies that the read-only calendar is visually testable and gives the manual steps; this notification is not the visual approval, which is Phase 11. **Commit:** `feat: add the read-only Business calendar and Customer history (#21)`.
 
 ### Phase 8 — manual-create frontend (#21)
+
+*(Implemented 2026-10-16; the exact record is the "Phase 8 record" at the end of this file. The plan text below is kept as approved.)*
 
 - **Scope:** the create form (Customer selection or creation through the Customer capability, one to five Services, StaffMember, the authoritative starts, an optional internal note, a review, the single-flight guard, the unsaved-changes guard), the conflict and uncertain-outcome recovery of ADR-0029 section 10. **Verification:** validation and focus, action order, duplicate-submit protection, no automatic repeat after an uncertain outcome, reload of the authoritative calendar after any failure, the repeated-hour disambiguation, wrapped errors. **Gate:** Standard. **Commit:** `feat: add the manual Appointment form (#21)`.
 
@@ -1114,3 +1116,85 @@ Focused suites while developing; one complete `./mvnw --batch-mode clean verify`
 ### Stopping point
 
 This prerequisite stops here for review and a separate commit. The Phase 8 frontend must not start until it is committed.
+
+## Phase 8 record (2026-10-16; implemented and verified locally; awaiting the product owner's review; nothing staged or committed)
+
+Base `HEAD` `2002a0187b92b955d06d0ed4f0c666543065e175` (the Phase 8 prerequisite, clean, equal to `origin/main`). **CI observed at the start (advisory, read-only):** the run for that commit was `in_progress`; it did not affect the work. Scope: issue #21, Standard, frontend only. No backend file, no migration (`V1` to `V15` byte-identical to `HEAD`), and no API contract changed; no missing contract or blocking contradiction was found. No reschedule, reassignment, cancellation, or internal-note editing of an existing Appointment exists; Phase 9 is not started.
+
+### Route, entry, and lifecycle
+
+| Route (hash) | Screen |
+|---|---|
+| `#/business/appointments/new` plus the calendar query (`view`, `date`, `staff`, `page`, `size`) | the manual-create flow; the query is only the calendar state that Cancel and the completion return to |
+
+The entry is the `Нов час` button on the calendar, rendered **only** for the owner of an `ACTIVE` Business: for `DRAFT` and `SUSPENDED` no control exists at all, neither enabled nor disabled. The route is also guarded: a `DRAFT` or `SUSPENDED` Business, a Manager, a Staff, a platform-only session, and an anonymous visitor never reach the form (the first two are redirected to the calendar without any read, the others by the existing owner-route rules); a Business switch discards the form. The hidden control is not the only protection: every create, options, and availability refusal of the server (`BUSINESS_NOT_ACTIVE`, `BUSINESS_SUSPENDED`, `ACCESS_DENIED`, `ACTIVE_BUSINESS_REQUIRED`) is handled, blocks the confirmation, and points back to the calendar. A lost Business context uses the shared recovery. Nothing private is in the route: no Customer, contact, note, Service, price, or attempt state.
+
+### Flow and headings
+
+Six steps, one component in memory only (`business/appointments/`): **Клиент**, **Избор на услуги**, **Избор на служител**, **Дата и час**, **Вътрешна бележка**, **Преглед и потвърждение**. The durable documents define only the public headings («Избор на услуги», «Избор на служител», «Дата и час», «Преглед и потвърждение»), which the owner flow reuses; **Клиент** and **Вътрешна бележка** are new and, like every Bulgarian text of the flow, Proposed until the Phase 11 review. The button wording is `Напред`, `Назад`, `Създай час`, `Обратно към графика`.
+
+- **Customer.** An existing Customer of the Business through the Customer search (the term travels only in the POST body of `…/customers/search`; a blank term lists the first ten; containing, case-insensitive semantics are the backend's; the standard debounce and abort rules). One contact line (phone, else email) disambiguates; more than ten matches say to narrow the search. **No Customer is created here**: `Добави клиент` is navigation away through the unsaved-changes guard (ADR-0028 section 5: a Customer is a deliberate record created through the Customer administration), and the flow does not return automatically.
+- **Services.** All active Services in catalog (name) order from the Service administration API; native checkboxes in a labelled group; one to five, at most 480 minutes, enforced by disabling an unselected option with its reason in text while a selected one always stays removable; the selection panel lists the chosen Services with `Общо: 42.00 € — 75 мин.` (price first, integer cents).
+- **StaffMember.** The options route for the canonical selection; native radios, none preselected, never assigned automatically; an empty intersection is its own message with `Промени услугите`; a failed read is a different message with a retry.
+- **Date and time.** A native date (not before the Business "today"), the availability route for exactly (selection, StaffMember, date), the starts as radios; a repeated local time carries its offset (`03:30 (UTC+03:00)`), the spring gap offers nothing inside it; no timezone identifier and no explanatory sentence are shown; no start is a distinct message.
+- **Note.** Optional, private; normalized (line breaks to LF, edge white space removed, blank omitted from the request, never truncated); too long or invalid characters are an inline error without a number.
+- **Review.** Customer, ordered Services with the total, StaffMember, date and time, note; each section has its own `Промени`; the text says that the Customer and the Services of a created Appointment cannot be changed. Back is on the left, the forward action (`Напред`, `Създай час`) on the right.
+
+### Invalidation and direct review edits
+
+A changed Service set clears the StaffMember, the date, and the start; a changed StaffMember or date clears the start; the Customer and the note depend on nothing (the date is an input of the availability query, so a changed StaffMember keeps it). From the review each `Промени` returns to the review as soon as the later choices are still valid, otherwise to the first incomplete step. Every read is keyed by what it answers, aborted when superseded, and ignored if late; a change of the Customer or the note reloads nothing; the options are kept while an unrelated step is edited from the review.
+
+### The request and the results
+
+One `POST /api/business/appointments` per deliberate confirmation (a synchronous reference guard on top of the disabled button, and a permanent freeze after an unresolved outcome), exactly the Phase 4 keys: `customerId`, `staffMemberId`, `start` (the offered instant with its offset), `services[]` (`serviceId`, `reviewedServiceName`, `reviewedDurationMinutes`, `reviewedPriceCents`, sorted by canonical identifier, so the same set is the same bytes whatever the click order), and `internalNote` only when present. No client total, end, status, or idempotency value. The Service claims are the facts the review showed; if the authoritative duration of the options differs from them the terms are read again. A response that arrives after the form was left never navigates.
+
+| Result | Frontend behavior |
+|---|---|
+| `201` | the form's state is dropped, history is **replaced** by the Appointment detail (so no resubmittable form stays, and Back returns to the originating calendar), `Часът е създаден.`, and the detail shows the data read from the server |
+| `400 VALIDATION_ERROR` | generic message on the review |
+| `401` | shared authentication recovery |
+| `403`, `409 BUSINESS_NOT_ACTIVE`, `409 BUSINESS_SUSPENDED` | the confirmation is blocked, the message is shown, `Към графика` |
+| `404 CUSTOMER_NOT_FOUND` | the Customer is dropped; back to the Customer step, everything else kept |
+| `409 APPOINTMENT_SERVICE_UNAVAILABLE` | the catalog and options are read again; unavailable Services leave the selection; back to the Services |
+| `409 APPOINTMENT_STAFF_UNAVAILABLE` | the options are read again; the StaffMember and start are dropped; back to the StaffMember |
+| `409 APPOINTMENT_REVIEW_CHANGED` | the terms are read again and the new total is shown on the review; if the duration changed the start is dropped; the owner confirms again, never automatically |
+| `409 APPOINTMENT_SLOT_UNAVAILABLE` | the starts are read again; only the start is dropped; back to Дата и час |
+| `503 APPOINTMENT_TEMPORARILY_UNAVAILABLE` | "Часът не беше създаден. Опитайте отново след малко."; an explicit retry only |
+| `503 APPOINTMENT_OUTCOME_UNCERTAIN`, a response that never arrived, an unreadable success response, and any other result that does not rule the creation out (`500`, an unknown or gateway failure) | **unresolved: the form freezes** (see below) |
+| `500` and anything else | generic message, "Проверете графика…"; backend text is never shown |
+
+**Known rollback versus unresolved outcome (correction before the commit).** A deterministic rejection and `503 APPOINTMENT_TEMPORARILY_UNAVAILABLE` are known rollbacks: the review stays editable and an explicit retry (`Създай час` again, or a repair step) is allowed. Every result that does not rule the creation out is **unresolved**, and because the manual create has no idempotency another POST before the calendar is checked could duplicate the visit, so the form freezes for good: the submitted review stays visible exactly as shown, `Създай час`, `Назад`, `Напред`, every `Промени`, and every input are removed (no way to edit and resubmit from the same unresolved form), the message claims neither that the Appointment exists nor that it does not (`Не е ясно дали часът е създаден. Проверете графика, преди да опитате отново, за да не създадете втори час.`), and nothing is sent again by a click, a repeated click, a stale handler, a rerender, or the passage of time. The only controls are `Обратно към графика` and the primary `Към графика`, both returning to the originating calendar state (view, date, StaffMember, page, size) without an ordinary unsaved-changes prompt; leaving elsewhere (the sidebar, browser Back) uses the guard with the warning `Неясен резултат` (`Не е ясно дали часът е създаден.` / `Проверете графика, преди да създавате часа отново.`); Forward or a Business switch only ever reaches a new, empty form. There is no `Започни отначало` in this phase (the durable documents do not require it). Nothing of the unresolved request is stored anywhere: it exists only in the memory of the mounted component.
+
+`APPOINTMENT_CONCURRENT_UPDATE` is not a result of the create. A response that never arrived is treated as uncertain, not as "nothing was created", because the request may have been applied.
+
+### Guard, accessibility, and privacy
+
+The shared unsaved-changes guard covers the route-level Cancel, the sidebar, `Добави клиент`, the browser Back and Forward, and the Business switch (`Несъздаден час`, `Остани` first and focused, `Напусни` destructive). Focus moves to the step heading on every step change and to the first invalid control after a failed `Напред`; errors are inline and tied to their controls; groups are labelled fieldsets of native controls with 44 px rows. No private value reaches the URL, `history.state`, the title, local or session storage, cookies, or the console (asserted, together with a mutation that writes the note to storage).
+
+### Evidence
+
+**Automated** (Vitest and Testing Library; only the network helper mocked): `ManualCreate.test.tsx` 23 (the flow and headings, Customer search, the Services and cents arithmetic, the StaffMember and starts, DST), `ManualCreate.recovery.test.tsx` 44 (invalidation, direct review edits, stale and late responses, the note, the single POST and double click, every create result, validation and focus, five Services, privacy), `model.test.ts` 14, `App.manualCreate.test.tsx` 24 (the entry and lifecycle, route and return context, the guard, Back and Forward, success and history, Business switching, privacy), and additions to `BusinessCalendar.test.tsx` (2), `calendarLayout.test.ts` (3), and `App.contextRecovery.test.tsx` (1): **111 new tests**. **Mutation and control checks** (each applied, the focused suites run, the file restored and byte-compared; **all 15 killed**; two survived the first run, the floating-point total and the automatic retry after an uncertain result, because the tests used prices that a float adds exactly and a retry the reference guard happened to block, and were strengthened): independent POSTs per Service, an automatic StaffMember assignment, floating-point totals, click-order-dependent bytes, a stale StaffMember, date, and start kept after a Service change, an automatic retry after an uncertain result, a removed double-submit guard, the note written to storage, a create control shown for every lifecycle, a removed route guard, and the client terms trusted over the server duration; and, with the correction, an uncertain outcome that is not frozen, the create button available after an uncertain outcome, a stale callback that can still submit, and review edit controls available after an uncertain outcome.
+
+**Developer-rendered** (a throwaway Node mock of the APIs with synthetic data in the scratchpad, never a database; not the Phase 11 approval): the whole flow at 1280, 820, 375, and 320 px and at 640 px (the 200% zoom of a 1280 px screen); one and five Services, long names, the sixth Service disabled, an empty intersection, a validation error, the uncertain outcome, a slot conflict with recovery, the dirty-leave dialog (`Остани` focused), success to the created Appointment, `DRAFT` and `SUSPENDED` (no control, redirect, one banner), a real keyboard-only pass (search, a radio with Space, `Напред` with Enter, heading focus), and `scrollWidth` equal to `clientWidth` at every step and width. Defects found and fixed: the empty-intersection step showed no error for `Напред`, the note label repeated the step heading, and an options or lifecycle refusal was shown twice.
+
+The unresolved state was inspected again after the correction at desktop and mobile width (the review stays, only the two calendar actions exist, the primary action returns to the originating calendar state).
+
+**Reserved:** the formal human visual review (Phase 11), a real 200% browser zoom, a screen reader, a real backend, and the browser E2E (Phase 12). The reviewed-terms, temporary-unavailable, `DRAFT`, and long-name states were inspected through the mock and tests, not against real data.
+
+### Verification (executed)
+
+Focused suites while developing; then one complete `npm test` (88 files, **2049 tests passed**), `npm run lint` (clean), `npm run build` (succeeded), and `git diff --check` (clean). Backend tests were not run because no backend file changed. Local result only; the exact-HEAD CI result is a separate report.
+
+### Deviations, limitations, and residual risks
+
+1. `Добави клиент` leaves the form and discards it (through the guard); the owner returns to the calendar and starts again.
+2. The Customer search lists only the first ten matches (narrow the search) and shows a contact line.
+3. The Service terms come from the Service administration API; the server remains the authority (`APPOINTMENT_REVIEW_CHANGED`).
+4. A network failure, an unreadable success response, and any other result that does not rule the creation out are unresolved (the form freezes); only a known rollback allows an explicit retry.
+5. After an unresolved outcome the owner must start a new creation from the calendar after checking it; the submitted data is not kept (no persistence by design, and no `Започни отначало`).
+6. A changed StaffMember keeps the date (it is an input of the availability query).
+7. Wording and layout stay Proposed until Phase 11.
+
+### Stopping point
+
+Phase 8 stops here for review. Phase 9 (the reschedule and reassignment frontend) needs its own approval. **The manual-create flow is available for optional browser inspection; this is a notification, not a gate: formal human visual approval remains Phase 11.**

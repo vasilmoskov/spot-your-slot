@@ -59,6 +59,7 @@ import { CustomerCreate } from './business/customers/CustomerCreate'
 import { CustomerDetail } from './business/customers/CustomerDetail'
 import { BusinessCalendar } from './business/calendar/BusinessCalendar'
 import { AppointmentDetail } from './business/calendar/AppointmentDetail'
+import { ManualCreate } from './business/appointments/ManualCreate'
 import { StaffWorkingSchedule } from './business/schedule/StaffWorkingSchedule'
 import { ScheduleTabs } from './business/schedule/ScheduleTabs'
 import { ScheduleExceptionList } from './business/schedule/exceptions/ScheduleExceptionList'
@@ -474,8 +475,13 @@ function permittedRoute(route: AuthenticatedRoute, session: Session): Authentica
   const ownsBusinesses = ownedBusinessesOf(session).length > 0
   if (isPlatformRoute(route)) return session.platformAdmin ? route : PROFILE_ROUTE
   if (isBusinessOwnerRoute(route)) {
-    if (isBusinessOwnerSession(session)) return route
-    return ownsBusinesses ? BUSINESSES_ROUTE : PROFILE_ROUTE
+    if (!isBusinessOwnerSession(session)) return ownsBusinesses ? BUSINESSES_ROUTE : PROFILE_ROUTE
+    // Creating an Appointment is an ACTIVE-only mutation: a DRAFT or SUSPENDED Business has no path to
+    // the form (the server refuses it as well; this is not the only protection).
+    if (route.kind === 'business-appointment-new' && activeBusinessOf(session)?.status !== 'ACTIVE') {
+      return { kind: 'business-calendar', calendar: route.returnCalendar }
+    }
+    return route
   }
   if (route.kind === 'businesses') {
     return !session.platformAdmin || ownsBusinesses ? route : PROFILE_ROUTE
@@ -672,8 +678,8 @@ export function AuthenticatedApplication({
       setRoute(reset)
       return
     }
-    if (current.kind === 'business-appointment-detail') {
-      // An Appointment of the previous Business is not reachable from the new one.
+    if (current.kind === 'business-appointment-detail' || current.kind === 'business-appointment-new') {
+      // An Appointment, and a form begun for the previous Business, are not carried to the new one.
       replaceRoute(BUSINESS_CALENDAR_ROUTE)
       setRoute(BUSINESS_CALENDAR_ROUTE)
       return
@@ -940,6 +946,8 @@ export function AuthenticatedApplication({
             key={businessKey}
             state={route.calendar}
             onStateChange={updateBusinessCalendar}
+            canCreate={activeBusiness?.status === 'ACTIVE'}
+            onCreate={(calendar) => navigate({ kind: 'business-appointment-new', returnCalendar: calendar })}
             onAuthenticationRequired={authenticationRequired}
             onOpenAppointment={(appointmentId, calendar) =>
               navigate({
@@ -948,6 +956,25 @@ export function AuthenticatedApplication({
                 origin: { kind: 'calendar', calendar },
               })
             }
+          />
+        ) : route.kind === 'business-appointment-new' ? (
+          <ManualCreate
+            key={businessKey}
+            onAuthenticationRequired={authenticationRequired}
+            onCancel={() => navigate({ kind: 'business-calendar', calendar: route.returnCalendar })}
+            onAddCustomer={() => navigate({ kind: 'business-customer-new', returnList: null })}
+            onCreated={(appointmentId) => {
+              // History is replaced: no resubmittable form stays behind, and Back returns to the
+              // calendar the owner came from.
+              const created: AuthenticatedRoute = {
+                kind: 'business-appointment-detail',
+                appointmentId,
+                origin: { kind: 'calendar', calendar: route.returnCalendar },
+              }
+              replaceRoute(created)
+              setRoute(created)
+              setFeedback({ kind: 'success', text: 'Часът е създаден.' })
+            }}
           />
         ) : route.kind === 'business-appointment-detail' ? (
           <AppointmentDetail

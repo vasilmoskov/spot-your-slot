@@ -3100,3 +3100,221 @@ label {
     transition: none;
   }
 }
+
+/* ---------- Manual Appointment create (issue #21 Phase 8) ---------- */
+
+.manual-create {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.manual-step {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+  padding: var(--space-5) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+}
+
+.manual-step > *,
+.manual-step-body > * {
+  min-width: 0;
+  margin: 0;
+}
+
+.manual-step h2 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.manual-progress {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.manual-step-body {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.manual-choices,
+.manual-slots {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.manual-slots {
+  grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+}
+
+.manual-slots legend {
+  grid-column: 1 / -1;
+  padding: 0;
+  font-weight: 700;
+}
+
+.manual-choice,
+.manual-slot {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-3);
+  min-height: 2.75rem;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  cursor: pointer;
+}
+
+.manual-choice:has(input:checked),
+.manual-slot:has(input:checked) {
+  border-color: var(--color-action-primary);
+  background: var(--color-action-primary-subtle);
+}
+
+.manual-choice:has(input:focus-visible),
+.manual-slot:has(input:focus-visible) {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.manual-choice input,
+.manual-slot input {
+  width: 1.25rem;
+  height: 1.25rem;
+  min-height: 0;
+  margin: 0.15rem 0 0;
+  padding: 0;
+  accent-color: var(--color-action-primary);
+}
+
+.manual-choice--unavailable {
+  cursor: not-allowed;
+  background: var(--color-page-background);
+}
+
+.manual-choice-body {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.manual-choice-title {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.manual-choice-facts,
+.manual-choice-reason,
+.manual-hint,
+.manual-date-text {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.9375rem;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+
+.manual-choice-reason {
+  font-weight: 600;
+}
+
+.manual-chosen,
+.manual-selection,
+.manual-selection-empty {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-control);
+  background: var(--color-action-primary-subtle);
+  overflow-wrap: anywhere;
+}
+
+.manual-selection {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.manual-selection ul,
+.manual-review-services {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding-left: var(--space-5);
+}
+
+.manual-selection-title,
+.manual-selection-total {
+  margin: 0;
+  font-weight: 700;
+}
+
+.manual-side-action {
+  display: flex;
+}
+
+.manual-date-field {
+  max-width: 16rem;
+}
+
+.manual-review {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.manual-review-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "label edit" "value value";
+  align-items: start;
+  gap: var(--space-1) var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.manual-review-row dt {
+  grid-area: label;
+  color: var(--color-text-secondary);
+  font-size: 0.9375rem;
+}
+
+.manual-review-row dd {
+  grid-area: value;
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.manual-review-edit {
+  grid-area: edit;
+}
+
+/* Back on the left, the forward action on the right; the DOM order is the visual order. */
+.manual-actions {
+  justify-content: space-between;
+}
+
+.manual-actions .button:only-child {
+  margin-left: auto;
+}
+
+@media (max-width: 26rem) {
+  .manual-step {
+    padding: var(--space-4) var(--space-3);
+  }
+
+  .manual-actions .button {
+    flex: 1 1 auto;
+  }
+}
