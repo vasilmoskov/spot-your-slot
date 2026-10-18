@@ -224,6 +224,18 @@ public final class AppointmentTransitions {
     }
 
     /**
+     * The state refusals of a reschedule or reassignment that depend only on the Appointment and the
+     * attempt instant, without a version: {@link Rejection#NOT_CONFIRMED} or
+     * {@link Rejection#ALREADY_STARTED}, decided by exactly the check {@link #rescheduleRefusal} makes
+     * (the read side of the reschedule options, which has no expected version). Returns {@code null}
+     * when the Appointment may still be moved.
+     */
+    public static Rejection rescheduleStateRefusal(Appointment current, Instant now) {
+        Objects.requireNonNull(current, "current");
+        return stateRefusal(current, current.version(), attemptInstant(current, now));
+    }
+
+    /**
      * Cancels a {@code CONFIRMED}, not yet started Appointment as the Business. The cancellation
      * time and the update time are the attempt instant.
      */
