@@ -60,6 +60,7 @@ import { CustomerDetail } from './business/customers/CustomerDetail'
 import { BusinessCalendar } from './business/calendar/BusinessCalendar'
 import { AppointmentDetail } from './business/calendar/AppointmentDetail'
 import { ManualCreate } from './business/appointments/ManualCreate'
+import { Reschedule } from './business/appointments/Reschedule'
 import { StaffWorkingSchedule } from './business/schedule/StaffWorkingSchedule'
 import { ScheduleTabs } from './business/schedule/ScheduleTabs'
 import { ScheduleExceptionList } from './business/schedule/exceptions/ScheduleExceptionList'
@@ -481,6 +482,11 @@ function permittedRoute(route: AuthenticatedRoute, session: Session): Authentica
     if (route.kind === 'business-appointment-new' && activeBusinessOf(session)?.status !== 'ACTIVE') {
       return { kind: 'business-calendar', calendar: route.returnCalendar }
     }
+    // Changing an Appointment is an ACTIVE-only mutation as well: a DRAFT or SUSPENDED Business has
+    // no path to the form and returns to the read-only detail it came from.
+    if (route.kind === 'business-appointment-reschedule' && activeBusinessOf(session)?.status !== 'ACTIVE') {
+      return { kind: 'business-appointment-detail', appointmentId: route.appointmentId, origin: route.origin }
+    }
     return route
   }
   if (route.kind === 'businesses') {
@@ -678,7 +684,11 @@ export function AuthenticatedApplication({
       setRoute(reset)
       return
     }
-    if (current.kind === 'business-appointment-detail' || current.kind === 'business-appointment-new') {
+    if (
+      current.kind === 'business-appointment-detail' ||
+      current.kind === 'business-appointment-new' ||
+      current.kind === 'business-appointment-reschedule'
+    ) {
       // An Appointment, and a form begun for the previous Business, are not carried to the new one.
       replaceRoute(BUSINESS_CALENDAR_ROUTE)
       setRoute(BUSINESS_CALENDAR_ROUTE)
@@ -976,11 +986,52 @@ export function AuthenticatedApplication({
               setFeedback({ kind: 'success', text: 'Часът е създаден.' })
             }}
           />
+        ) : route.kind === 'business-appointment-reschedule' ? (
+          <Reschedule
+            key={`${businessKey}-${route.appointmentId}`}
+            appointmentId={route.appointmentId}
+            origin={route.origin}
+            onAuthenticationRequired={authenticationRequired}
+            onBackToDetail={() =>
+              navigate({
+                kind: 'business-appointment-detail',
+                appointmentId: route.appointmentId,
+                origin: route.origin,
+              })
+            }
+            onLeaveToOrigin={() =>
+              navigate(
+                route.origin.kind === 'customer'
+                  ? { kind: 'business-customer-detail', customerId: route.origin.customerId, returnList: null }
+                  : { kind: 'business-calendar', calendar: route.origin.calendar },
+              )
+            }
+            onRescheduled={() => {
+              // History is replaced: no resubmittable form stays behind, and the authoritative detail is
+              // read again. The calendar the owner came from reads its data when it is opened.
+              const changed: AuthenticatedRoute = {
+                kind: 'business-appointment-detail',
+                appointmentId: route.appointmentId,
+                origin: route.origin,
+              }
+              replaceRoute(changed)
+              setRoute(changed)
+              setFeedback({ kind: 'success', text: 'Часът е променен.' })
+            }}
+          />
         ) : route.kind === 'business-appointment-detail' ? (
           <AppointmentDetail
             key={`${businessKey}-${route.appointmentId}`}
             appointmentId={route.appointmentId}
             origin={route.origin}
+            canChange={activeBusiness?.status === 'ACTIVE'}
+            onReschedule={() =>
+              navigate({
+                kind: 'business-appointment-reschedule',
+                appointmentId: route.appointmentId,
+                origin: route.origin,
+              })
+            }
             onAuthenticationRequired={authenticationRequired}
             onBack={() =>
               navigate(

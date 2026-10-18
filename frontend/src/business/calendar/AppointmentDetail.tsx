@@ -21,6 +21,11 @@ import {
 type AppointmentDetailProps = {
   appointmentId: string
   origin: AppointmentOrigin
+  // True for the owner of an ACTIVE Business; the server decides again on every request.
+  canChange?: boolean
+  // Injected clock, only used to tell whether the visit has already started.
+  now?: () => Date
+  onReschedule?: () => void
   onAuthenticationRequired: (detail: string) => void
   onBack: () => void
   onOpenCustomer: (customerId: string) => void
@@ -31,6 +36,9 @@ type LoadFailure = { message: string; retryable: boolean }
 export function AppointmentDetail({
   appointmentId,
   origin,
+  canChange = false,
+  now = () => new Date(),
+  onReschedule,
   onAuthenticationRequired,
   onBack,
   onOpenCustomer,
@@ -124,6 +132,16 @@ export function AppointmentDetail({
   const timezone = appointment.timezone
   const cancelled = appointment.status === 'CANCELLED'
   const date = businessDateOf(appointment.start, timezone)
+  // Only an eligible, future, confirmed Appointment of an ACTIVE Business can be changed; an action
+  // that cannot work is absent, not disabled.
+  const startMoment = parseInstant(appointment.start)
+  const changeable =
+    canChange &&
+    onReschedule !== undefined &&
+    appointment.businessStatus === 'ACTIVE' &&
+    appointment.status === 'CONFIRMED' &&
+    startMoment !== null &&
+    startMoment > now().getTime()
   const cancelledAt = appointment.cancellation?.cancelledAt ?? null
   const cancelledMoment =
     cancelledAt !== null && parseInstant(cancelledAt) !== null
@@ -136,6 +154,11 @@ export function AppointmentDetail({
         <Button type="button" variant="secondary" onClick={onBack}>
           {backLabel}
         </Button>
+        {changeable && (
+          <Button type="button" onClick={onReschedule}>
+            Промени часа
+          </Button>
+        )}
       </div>
 
       <header className="business-detail-header">

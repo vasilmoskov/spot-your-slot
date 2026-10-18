@@ -18,7 +18,8 @@ export function isCalendarRoute(route: AuthenticatedRoute): boolean {
   return (
     route.kind === 'business-calendar' ||
     route.kind === 'business-appointment-detail' ||
-    route.kind === 'business-appointment-new'
+    route.kind === 'business-appointment-new' ||
+    route.kind === 'business-appointment-reschedule'
   )
 }
 

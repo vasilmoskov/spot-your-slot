@@ -98,6 +98,9 @@ export type BusinessOwnerRoute =
   | { kind: 'business-appointment-detail'; appointmentId: string; origin: AppointmentOrigin }
   // The manual-create flow; it carries only the calendar state Cancel and completion return to.
   | { kind: 'business-appointment-new'; returnCalendar: CalendarState }
+  // The reschedule and reassignment flow of one Appointment; like the detail it carries only the safe
+  // origin (calendar state or Customer) that Cancel and completion return to.
+  | { kind: 'business-appointment-reschedule'; appointmentId: string; origin: AppointmentOrigin }
   | { kind: 'business-services'; list: ListQueryState }
   | { kind: 'business-service-new' }
   | { kind: 'business-service-detail'; serviceId: string }
@@ -452,6 +455,19 @@ export function readAuthenticatedRoute(hash = window.location.hash): Authenticat
     }
   }
 
+  const appointmentReschedule = path.match(/^#\/business\/appointments\/([^/?#]+)\/reschedule$/)
+  if (appointmentReschedule?.[1]) {
+    try {
+      return {
+        kind: 'business-appointment-reschedule',
+        appointmentId: decodeURIComponent(appointmentReschedule[1]),
+        origin: parseOrigin(query),
+      }
+    } catch {
+      return BUSINESS_CALENDAR_ROUTE
+    }
+  }
+
   const appointmentDetail = path.match(/^#\/business\/appointments\/([^/?#]+)$/)
   if (appointmentDetail?.[1]) {
     try {
@@ -531,6 +547,11 @@ export function routeHref(route: AuthenticatedRoute): string {
   }
   if (route.kind === 'business-appointment-new') {
     return `/#/business/appointments/new${calendarQuery(route.returnCalendar)}`
+  }
+  if (route.kind === 'business-appointment-reschedule') {
+    return `/#/business/appointments/${encodeURIComponent(route.appointmentId)}/reschedule${originQuery(
+      route.origin,
+    )}`
   }
   if (route.kind === 'business-appointment-detail') {
     return `/#/business/appointments/${encodeURIComponent(route.appointmentId)}${originQuery(
