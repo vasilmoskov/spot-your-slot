@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
+import { StrictMode } from 'react'
 import { vi, type Mock } from 'vitest'
 import { UnsavedChangesGuardProvider } from '../../ui/UnsavedChangesGuard'
 import { ManualCreate } from './ManualCreate'
@@ -16,18 +17,19 @@ export function installBackend(mocked: Mock): FakeBackend {
   return backend
 }
 
-export function renderForm() {
+export function renderForm(options: { strict?: boolean } = {}) {
   const handlers = {
     onCancel: vi.fn(),
     onCreated: vi.fn(),
     onAddCustomer: vi.fn(),
     onAuthenticationRequired: vi.fn(),
   }
-  const view = render(
+  const form = (
     <UnsavedChangesGuardProvider>
       <ManualCreate now={() => NOW} {...handlers} />
-    </UnsavedChangesGuardProvider>,
+    </UnsavedChangesGuardProvider>
   )
+  const view = render(options.strict ? <StrictMode>{form}</StrictMode> : form)
   return { ...handlers, view }
 }
 

@@ -128,12 +128,14 @@ export function ManualCreate({
     unresolved ? UNRESOLVED_NOTICE : LEAVE_NOTICE,
   )
 
-  useEffect(
-    () => () => {
+  // Setup resets the flag: React StrictMode (the development server) runs every effect twice, and a flag that
+  // is only ever set to true made the form ignore every answer of the server (Phase 11 review).
+  useEffect(() => {
+    closed.current = false
+    return () => {
       closed.current = true
-    },
-    [],
-  )
+    }
+  }, [])
 
   // ---- reads ---------------------------------------------------------------------------------
 
