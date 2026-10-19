@@ -954,6 +954,7 @@ test.describe('Business isolation and browser-context separation', () => {
     await expect(navigation.getByRole('link')).toHaveText([
       'Бизнеси',
       'Профил',
+      'График',
       'Услуги',
       'Екип',
       'Работно време',

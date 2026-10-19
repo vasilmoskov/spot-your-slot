@@ -130,7 +130,7 @@ test.describe('Navigation and Business context', () => {
     await expect(page.getByRole('heading', { name: 'Услуги', level: 1, exact: true })).toBeVisible()
 
     const group = nav(page).getByRole('group', { name: FORMS_NAME })
-    await expect(group.getByRole('link')).toHaveText(['Услуги', 'Екип', 'Работно време', 'Клиенти'])
+    await expect(group.getByRole('link')).toHaveText(['График', 'Услуги', 'Екип', 'Работно време', 'Клиенти'])
     const headingBox = await group.locator('.navigation-context-heading').boundingBox()
     const firstLinkBox = await group.getByRole('link').first().boundingBox()
     expect(headingBox!.y).toBeLessThan(firstLinkBox!.y)
