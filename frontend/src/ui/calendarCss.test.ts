@@ -34,4 +34,15 @@ describe('the calendar day-cell CSS prerequisites (not a rendered-size proof)', 
     expect(spacing).not.toBeNull()
     expect(Number(spacing![1])).toBeLessThanOrEqual(2)
   })
+
+  it('lets the day grid scroll inside the page instead of widening it (Phase 11 regression)', () => {
+    // Six StaffMember columns widened the whole page because the grid's parent had an automatic minimum width.
+    expect(block('.calendar-day')).toMatch(/min-width:\s*0/)
+    expect(block('.calendar-grid')).toMatch(/overflow-x:\s*auto/)
+    expect(block('.calendar-results')).toMatch(/min-width:\s*0/)
+  })
+
+  it('keeps the Appointment status badge at its own width beside a long wrapping date heading (Phase 11 regression)', () => {
+    expect(block('.appointment-detail .business-detail-header > p')).toMatch(/flex:\s*0 0 auto/)
+  })
 })

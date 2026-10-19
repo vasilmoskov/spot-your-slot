@@ -2940,6 +2940,12 @@ label {
   font-weight: 400;
 }
 
+/* The grid is the only scroll container: without this the item's automatic minimum width is the grid's
+   min-content width, so six StaffMember columns widened the whole page (found in the Phase 11 review). */
+.calendar-day {
+  min-width: 0;
+}
+
 /* Positional day grid: one column per StaffMember beside an hour axis. A subgrid keeps the heading
    rows of every column the same height, so the axis and every timeline stay aligned however long a
    name wraps. */
@@ -3090,6 +3096,12 @@ label {
 }
 
 /* The two owner operations of the Appointment detail (issue #21 Phase 10) are separate blocks. */
+/* The status badge keeps its own width; the long date heading wraps instead (the badge overflowed the card
+   next to a repeated-hour heading at 820 px, found in the Phase 11 review). */
+.appointment-detail .business-detail-header > p {
+  flex: 0 0 auto;
+}
+
 .appointment-notes,
 .appointment-note-form,
 .appointment-cancel {

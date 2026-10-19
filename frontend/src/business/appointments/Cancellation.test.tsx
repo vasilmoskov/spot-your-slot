@@ -305,7 +305,7 @@ const KNOWN: Case[] = [
   {
     name: 'concurrent update',
     error: () => backend.problem(409, 'APPOINTMENT_CONCURRENT_UPDATE'),
-    text: 'Часът е променен междувременно и не е отменен. Прегледайте актуалните данни и опитайте отново.',
+    text: 'Часът е променен междувременно. Прегледайте актуалните данни и опитайте отново, ако все още е нужно.',
     retry: true,
   },
 ]
@@ -494,6 +494,21 @@ describe('Cancellation: recovery and reconciliation', () => {
     confirmCancel()
     await screen.findByText('Отменен')
     expect(backend.posts().map((call) => call.body)).toEqual([{ expectedVersion: 7 }, { expectedVersion: 9 }])
+  })
+
+  it('a concurrent update that follows a commit of this very cancellation shows the cancelled Appointment and no contradicting claim (Phase 11 regression)', async () => {
+    backend.cancel = () => {
+      backend.current = cancelled()
+      throw backend.problem(409, 'APPOINTMENT_CONCURRENT_UPDATE')
+    }
+    renderDetail()
+    await ready()
+    openCancel()
+    confirmCancel()
+    const alert = await screen.findByRole('alert')
+    expect(await screen.findByText('Отменен')).toBeInTheDocument()
+    expect(alert.textContent).not.toMatch(/не е отменен/)
+    expect(cancelButton()).toBeNull()
   })
 
   it('after a state conflict the re-read cancelled Appointment is shown and no control remains', async () => {

@@ -622,7 +622,7 @@ describe('Internal note: a concurrent update establishes a new baseline', () => 
   it('re-reads the Appointment, shows the returned note, and drops the obsolete edit', async () => {
     const alert = await concurrent()
     expect(alert.textContent).toBe(
-      'Часът е променен междувременно и бележката не е запазена. Прегледайте актуалните данни и въведете промяната отново.',
+      'Часът е променен междувременно. Прегледайте актуалните данни и въведете промяната отново, ако все още е нужна.',
     )
     expect(screen.queryByRole('textbox')).toBeNull()
     expect(await screen.findByText('Бележка на колега', { selector: 'dd' })).toBeInTheDocument()

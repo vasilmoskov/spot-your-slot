@@ -117,4 +117,12 @@ describe('failure classification', () => {
       }
     }
   })
+
+  it('never claims that a concurrent update left the operation undone (Phase 11 regression)', () => {
+    // A browser may silently repeat a POST whose response was lost; the repeat then meets the real new
+    // version, so a concurrent-update answer can follow a commit of this very operation.
+    for (const operation of ['cancel', 'note'] as const) {
+      expect(lifecycleText(operation, 'concurrent-update')).not.toMatch(/не е отменен|не е запазена|не беше/)
+    }
+  })
 })
