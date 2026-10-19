@@ -3089,6 +3089,35 @@ label {
   overflow-wrap: anywhere;
 }
 
+/* The two owner operations of the Appointment detail (issue #21 Phase 10) are separate blocks. */
+.appointment-notes,
+.appointment-note-form,
+.appointment-cancel {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.appointment-note-form .form-field textarea {
+  width: 100%;
+  min-height: 7rem;
+  resize: vertical;
+}
+
+.appointment-cancel p,
+.cancel-dialog p {
+  margin: 0;
+}
+
+.cancel-dialog-summary {
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.cancel-dialog {
+  outline: none;
+}
+
 @media (min-width: 64rem) {
   .calendar-week {
     grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr));

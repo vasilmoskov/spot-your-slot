@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError, request } from '../../identity/api'
 import type { AppointmentOrigin } from '../../navigation'
+import { UnsavedChangesGuardProvider } from '../../ui/UnsavedChangesGuard'
 import { AppointmentDetail } from './AppointmentDetail'
 import { APPOINTMENT_ONE, CUSTOMER_ONE, detailResponse } from './testFixtures'
 
@@ -31,7 +32,11 @@ function renderDetail(origin: AppointmentOrigin = { kind: 'calendar', calendar: 
     onBack: vi.fn(),
     onOpenCustomer: vi.fn(),
   }
-  render(<AppointmentDetail appointmentId={APPOINTMENT_ONE} origin={origin} {...handlers} />)
+  render(
+    <UnsavedChangesGuardProvider>
+      <AppointmentDetail appointmentId={APPOINTMENT_ONE} origin={origin} {...handlers} />
+    </UnsavedChangesGuardProvider>,
+  )
   return handlers
 }
 
