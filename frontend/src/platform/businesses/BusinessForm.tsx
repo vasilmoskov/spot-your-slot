@@ -338,19 +338,19 @@ export function BusinessForm({
         />
       </label>
       <div className="action-group">
+        <Button disabled={busy}>
+          {busy ? 'Запазване…' : submitLabel}
+        </Button>
         {onCancel && (
           <Button
             type="button"
-            variant="secondary"
+            variant="destructive"
             disabled={busy}
             onClick={onCancel}
           >
             Отказ
           </Button>
         )}
-        <Button disabled={busy}>
-          {busy ? 'Запазване…' : submitLabel}
-        </Button>
       </div>
     </form>
   )

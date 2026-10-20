@@ -562,9 +562,16 @@ export function BusinessDetail({
                 </p>
                 <div className="action-group">
                   <Button
+                    type="button"
+                    disabled={invitationBusy}
+                    onClick={() => void sendInvitation(resendEmail)}
+                  >
+                    Потвърди изпращането
+                  </Button>
+                  <Button
                     ref={resendCancel}
                     type="button"
-                    variant="secondary"
+                    variant="destructive"
                     disabled={invitationBusy}
                     onClick={() => {
                       restoreFocusTo.current = 'invitation'
@@ -573,13 +580,6 @@ export function BusinessDetail({
                     }}
                   >
                     Отказ
-                  </Button>
-                  <Button
-                    type="button"
-                    disabled={invitationBusy}
-                    onClick={() => void sendInvitation(resendEmail)}
-                  >
-                    Потвърди изпращането
                   </Button>
                 </div>
               </div>
@@ -649,9 +649,18 @@ export function BusinessDetail({
                 <p>{lifecycle.confirmationText}</p>
                 <div className="action-group">
                   <Button
+                    type="button"
+                    variant={lifecycle.danger ? 'destructive' : 'primary'}
+                    disabled={lifecycleBusy}
+                    onClick={() => void changeStatus()}
+                  >
+                    {lifecycleBusy ? 'Запазване…' : lifecycle.confirmationLabel}
+                  </Button>
+                  <Button
                     ref={lifecycleCancel}
                     type="button"
-                    variant="secondary"
+                    variant="destructive"
+                    className={lifecycle.danger ? 'button--outline' : undefined}
                     disabled={lifecycleBusy}
                     onClick={() => {
                       restoreFocusTo.current = 'lifecycle'
@@ -660,14 +669,6 @@ export function BusinessDetail({
                     }}
                   >
                     Отказ
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={lifecycle.danger ? 'destructive' : 'primary'}
-                    disabled={lifecycleBusy}
-                    onClick={() => void changeStatus()}
-                  >
-                    {lifecycleBusy ? 'Запазване…' : lifecycle.confirmationLabel}
                   </Button>
                 </div>
               </div>

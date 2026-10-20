@@ -369,21 +369,22 @@ export function ScheduleExceptionDetail({
             <p id="delete-exception-description-2">Сигурни ли сте, че искате да продължите?</p>
             <div className="action-group">
               <Button
-                ref={cancelDeleteButton}
-                type="button"
-                variant="secondary"
-                disabled={deleting}
-                onClick={closeDeleteDialog}
-              >
-                Отказ
-              </Button>
-              <Button
                 type="button"
                 variant="destructive"
                 disabled={deleting}
                 onClick={() => void remove()}
               >
                 {deleting ? 'Изтриване…' : 'Изтрий промяната'}
+              </Button>
+              <Button
+                ref={cancelDeleteButton}
+                type="button"
+                variant="destructive"
+                className="button--outline"
+                disabled={deleting}
+                onClick={closeDeleteDialog}
+              >
+                Отказ
               </Button>
             </div>
           </div>

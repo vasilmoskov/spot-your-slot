@@ -2,7 +2,7 @@ import { formatServiceDuration, formatServicePrice } from '../../business/servic
 import { Button } from '../../ui/Button'
 import { dialableNumber } from '../presentation'
 import type { ConfirmedBooking } from './api'
-import { formatInstantDate, formatTimeDistinct } from './dates'
+import { formatInstantDate, formatVisitRange } from './dates'
 import { formatCents } from './money'
 import { priceToCents } from './money'
 
@@ -85,7 +85,7 @@ export function ConfirmationView({
         <div>
           <dt>Час</dt>
           <dd>
-            {formatTimeDistinct(booking.start, timezone)} – {formatTimeDistinct(booking.end, timezone)}
+            {formatVisitRange(booking.start, booking.end, timezone)}
           </dd>
         </div>
         <div>

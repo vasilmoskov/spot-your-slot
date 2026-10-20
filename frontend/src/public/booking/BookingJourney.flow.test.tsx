@@ -363,17 +363,17 @@ describe('dates, timezone and the repeated daylight-saving hour', () => {
     const labels = within(group)
       .getAllByRole('radio')
       .map((radio) => radio.closest('label')?.textContent)
-    expect(labels).toEqual(['03:30 (UTC+03:00)', '03:30 (UTC+02:00)'])
+    expect(labels).toEqual(['03:30 — първи път', '03:30 — втори път'])
 
-    await pickSlot('03:30 (UTC+02:00)')
+    await pickSlot('03:30 — втори път')
     await next()
     await fillDetails()
     await next()
     // The elapsed time of the first slot crosses the change, and each end keeps its own offset.
-    expect(document.querySelector('.booking-summary')).toHaveTextContent('03:30 (UTC+02:00) – 04:15')
+    expect(document.querySelector('.booking-summary')).toHaveTextContent('03:30 — втори път – 04:15')
     await submit()
     expect(parsedBody(server.posts[0])).toMatchObject({ start: '2026-10-25T03:30:00+02:00' })
-    expect(document.querySelector('.booking-facts')).toHaveTextContent('03:30 (UTC+02:00) – 04:15')
+    expect(document.querySelector('.booking-facts')).toHaveTextContent('03:30 — втори път – 04:15')
   })
 
   it('formats the confirmation in the returned timezone, whatever the browser uses', async () => {

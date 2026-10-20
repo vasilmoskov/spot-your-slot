@@ -74,7 +74,7 @@ const FORM = `#/business/appointments/${APPOINTMENT_ONE}/reschedule?${ORIGIN}`
 async function openDetail(hash = DETAIL) {
   history.replaceState({}, '', `/${hash}`)
   render(<App />)
-  await screen.findByRole('region', { name: 'Час' })
+  await screen.findByRole('region', { name: 'Детайли' })
 }
 
 async function openForm(hash = DETAIL) {
@@ -135,7 +135,7 @@ describe('the entry on the Appointment detail', () => {
     session = sessionOf(status)
     history.replaceState({}, '', `/${FORM}`)
     render(<App />)
-    await screen.findByRole('region', { name: 'Час' })
+    await screen.findByRole('region', { name: 'Детайли' })
     await waitFor(() => expect(window.location.hash).toBe(DETAIL))
     expect(backend.count('/reschedule-options')).toBe(0)
     expect(screen.queryByRole('heading', { name: 'Избор на служител' })).toBeNull()
@@ -229,7 +229,7 @@ describe('leaving, returning and completing', () => {
     fireEvent.click(await screen.findByRole('radio', { name: /Георги/ }))
     act(() => history.back())
     fireEvent.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Напусни' }))
-    await screen.findByRole('region', { name: 'Час' })
+    await screen.findByRole('region', { name: 'Детайли' })
     const reads = backend.count('/reschedule-options')
 
     act(() => history.forward())
@@ -334,7 +334,7 @@ describe('an unfinished proposal after a slot conflict', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Обратно към часа' }))
     fireEvent.click(within(await screen.findByRole('alertdialog', { name: 'Непотвърдена промяна' })).getByRole('button', { name: 'Напусни' }))
-    await screen.findByRole('region', { name: 'Час' })
+    await screen.findByRole('region', { name: 'Детайли' })
     expect(window.location.hash).toBe(DETAIL)
     expect(backend.posts()).toHaveLength(1)
   })
@@ -363,7 +363,7 @@ describe('an unresolved outcome', () => {
     await uncertain()
     const reads = backend.count(`/${APPOINTMENT_ONE}`)
     fireEvent.click(screen.getByRole('button', { name: 'Към часа' }))
-    await screen.findByRole('region', { name: 'Час' })
+    await screen.findByRole('region', { name: 'Детайли' })
     expect(window.location.hash).toBe(DETAIL)
     expect(backend.count(`/${APPOINTMENT_ONE}`)).toBe(reads + 1)
     expect(screen.queryByRole('alertdialog')).toBeNull()
@@ -384,7 +384,7 @@ describe('an unresolved outcome', () => {
     act(() => history.back())
     const dialog = await screen.findByRole('alertdialog', { name: 'Неясен резултат' })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Напусни' }))
-    await screen.findByRole('region', { name: 'Час' })
+    await screen.findByRole('region', { name: 'Детайли' })
     act(() => history.forward())
     expect(await screen.findByRole('heading', { level: 2, name: 'Избор на служител' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Промени часа' })).toBeNull()

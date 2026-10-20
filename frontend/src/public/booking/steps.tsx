@@ -12,7 +12,7 @@ import {
   type Slot,
 } from './api'
 import { BookingCalendar } from './BookingCalendar'
-import { formatDateOnlyLong, formatTimeDistinct, isRepeatedLocalTime } from './dates'
+import { CLOCK_RETURN_DAY_NOTE, formatDateOnlyLong, formatTimeDistinct, formatVisitRange, isRepeatedLocalTime } from './dates'
 import { useWaiting, type ReadView } from './hooks'
 import {
   LIMIT_COUNT_REASON,
@@ -488,6 +488,10 @@ export function DateTimeStep({
               ) : slots.length === 0 ? (
                 <p className="public-empty">Няма свободни часове за тази дата.</p>
               ) : (
+                <>
+                {slots.some((candidate) => isRepeatedLocalTime(candidate.start, timezone)) && (
+                  <p className="booking-slots-note">{CLOCK_RETURN_DAY_NOTE}</p>
+                )}
                 <div className="booking-slot-list">
                   {slots.map((candidate) => {
                     const repeated = isRepeatedLocalTime(candidate.start, timezone)
@@ -511,13 +515,14 @@ export function DateTimeStep({
                     )
                   })}
                 </div>
+                </>
               )}
             </fieldset>
           )}
         </div>
         <p className="booking-picker-summary" role="status">
           {offered && date !== null && slot !== null
-            ? `Избрано: ${formatDateOnlyLong(date)}, ${formatTimeDistinct(slot.start, timezone)} – ${formatTimeDistinct(slot.end, timezone)}`
+            ? `Избрано: ${formatDateOnlyLong(date)}, ${formatVisitRange(slot.start, slot.end, timezone)}`
             : ''}
         </p>
       </div>

@@ -91,8 +91,8 @@ describe('StaffList', () => {
     expect(await screen.findByText('Анна Иванова')).toBeInTheDocument()
     expect(screen.getByText('anna@example.invalid')).toBeInTheDocument()
     expect(screen.getByText('Активен')).toBeInTheDocument()
-    expect(screen.getByText('1–1 от 1 членове на екипа')).toBeInTheDocument()
-    expect(screen.getByText('Страница 1 от 1')).toBeInTheDocument()
+    expect(screen.queryByText(/от 1 членове на екипа/)).toBeNull()
+    expect(screen.queryByRole('navigation', { name: 'Странициране на екипа' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Добави нов член' })).toBeInTheDocument()
   })
 
@@ -294,13 +294,13 @@ describe('StaffList', () => {
   })
 
   it('changing the page size selector resets to page 0', async () => {
-    mockedListStaffMembers.mockResolvedValue(populatedPage)
+    mockedListStaffMembers.mockResolvedValue({ ...populatedPage, totalElements: 30 })
     const { onListChange } = renderStaffList({
       list: { page: 1, size: 10, sort: 'name', direction: 'asc' },
     })
     await screen.findByText('Анна Иванова')
 
-    fireEvent.change(screen.getByLabelText('Резултати на страница'), {
+    fireEvent.change(screen.getByLabelText('На страница'), {
       target: { value: '25' },
     })
 

@@ -56,7 +56,9 @@ describe('manual-create layout rules', () => {
   })
 
   it('keeps Back first and the forward action last in one row', () => {
-    expect(rule('.manual-actions')).toContain('justify-content: space-between')
+    // One compact group, never pushed to opposite edges (UI guide, global action order).
+    expect(rule('.manual-actions')).toContain('justify-content: flex-start')
+    expect(rule('.manual-actions')).not.toContain('space-between')
   })
 
   it('never relies on colour alone for an unavailable choice', () => {

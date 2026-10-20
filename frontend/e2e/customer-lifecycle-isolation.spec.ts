@@ -1,6 +1,7 @@
+import { expectShown } from './support/pagination'
 import { randomUUID } from 'node:crypto'
 import { expect, test, type BrowserContext, type Page } from '@playwright/test'
-import { apiRequest, SERVICES_HEADING } from './support/browser'
+import { apiRequest, LANDING_HEADING } from './support/browser'
 import {
   CUSTOMERS_PATH,
   CUSTOMER_SUSPENDED_NOTICE,
@@ -71,14 +72,14 @@ test.beforeAll(async ({ browser }) => {
     finalState: 'ACTIVE',
   })
   slugA = a.slug
-  ownerA = await signInOwner(browser, a.ownerEmail, SERVICES_HEADING)
+  ownerA = await signInOwner(browser, a.ownerEmail, LANDING_HEADING)
   const b = await provisionOwnerBusiness(browser, adminContext, admin, {
     name: `Изолация Б ${TAG}`,
     slugBase: 'customers-isolation-b-e2e',
     businessType: 'BARBERSHOP',
     finalState: 'ACTIVE',
   })
-  ownerB = await signInOwner(browser, b.ownerEmail, SERVICES_HEADING)
+  ownerB = await signInOwner(browser, b.ownerEmail, LANDING_HEADING)
 })
 
 test.afterAll(async () => {
@@ -143,12 +144,12 @@ test.describe('Customer administration across the Business lifecycle', () => {
       await expect(page.getByRole('button', { name: 'Добави клиент' })).toHaveCount(0)
       await expect(customerRows(page)).toHaveCount(10)
 
-      await pagination(page).getByRole('button', { name: 'Следваща' }).click()
-      await expect(pagination(page).getByText(`Показани 11–${totalBefore} от ${totalBefore}`)).toBeVisible()
+      await pagination(page).getByRole('button', { name: 'Следваща страница' }).click()
+      await expectShown(pagination(page), 11, totalBefore)
       await searchBox(page).fill(`Спрян 07 ${TAG}`)
       await expect.poll(() => visibleNames(page)).toEqual([`Спрян 07 ${TAG}`])
       await searchBox(page).fill('')
-      await expect(pagination(page).getByText(`от ${totalBefore}`)).toBeVisible()
+      await expectShown(pagination(page), 1, totalBefore)
       await page.getByRole('columnheader', { name: 'Име', exact: true }).getByRole('button').click()
       await expect.poll(() => listRoute(page).params.get('direction')).toBe('desc')
       const everyone = (
@@ -223,7 +224,7 @@ test.describe('Version conflict', () => {
     const other = await ownerA.context.newPage()
     try {
       await other.goto('/')
-      await expect(other.getByRole('heading', SERVICES_HEADING)).toBeVisible()
+      await expect(other.getByRole('heading', LANDING_HEADING)).toBeVisible()
       const saved = await apiRequest(other, 'PUT', `${CUSTOMERS_PATH}/${seed.id}`, {
         displayName: `Свеж ${TAG}`,
         phone: seed.phone,

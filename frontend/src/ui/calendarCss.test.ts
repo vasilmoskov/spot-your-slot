@@ -45,4 +45,50 @@ describe('the calendar day-cell CSS prerequisites (not a rendered-size proof)', 
   it('keeps the Appointment status badge at its own width beside a long wrapping date heading (Phase 11 regression)', () => {
     expect(block('.appointment-detail .business-detail-header > p')).toMatch(/flex:\s*0 0 auto/)
   })
+
+  it('keeps the week in exactly one seven-column row at every width and scrolls only its own region (Phase 11 Part 1)', () => {
+    const week = block('.calendar-week')
+    expect(week).toMatch(/grid-template-columns:\s*repeat\(7,\s*minmax\(\s*[\d.]+rem,\s*1fr\)\)/)
+    // The week region owns the horizontal scrolling, never the document.
+    expect(week).toMatch(/overflow-x:\s*auto/)
+    expect(week).toMatch(/min-width:\s*0/)
+    // Visually hidden (absolutely positioned) card texts must be clipped by the region, not widen the document.
+    expect(week).toMatch(/position:\s*relative/)
+    expect(block('.calendar-page')).toMatch(/min-width:\s*0/)
+    expect(block('.calendar-results')).toMatch(/min-width:\s*0/)
+    // The columns stay readable: not narrower than 7 rem.
+    expect(Number(/minmax\(\s*([\d.]+)rem/.exec(week)?.[1])).toBeGreaterThanOrEqual(7)
+    // No breakpoint (or any other rule) may restyle the week into a stacked, wrapping, or auto-fitting layout.
+    expect(css.match(/\.calendar-week \{/g)).toHaveLength(1)
+    expect(css).not.toMatch(/\.calendar-week[^{]*\{[^}]*(auto-fit|auto-fill|flex-wrap|grid-template-columns:\s*1fr|grid-auto-flow:\s*row)/)
+    for (const media of css.matchAll(/@media[^{]*\{((?:[^{}]*\{[^}]*\})*)\}/g)) {
+      expect(media[1], 'a media query must not restyle the week').not.toMatch(/\.calendar-week(?!-day \.calendar-entry)[\s{,]/)
+    }
+    expect(css).not.toMatch(/\.calendar-week-day \{[^}]*(grid-column|grid-row|width:\s*100%|flex-basis)/)
+    expect(css).not.toMatch(/(^|\n)(html|body)[^{]*\{[^}]*overflow-x:\s*(auto|scroll)/)
+  })
+
+  it('stacks card content from the top and never spreads it with space-between', () => {
+    expect(block('.calendar-entry')).toMatch(/align-content:\s*start/)
+    expect(block('.calendar-entry')).not.toMatch(/space-between/)
+    expect(block('.calendar-block')).not.toMatch(/space-between/)
+  })
+
+  it('draws a cancelled card in the danger palette and keeps the dashed border and strike-through', () => {
+    const cancelled = /\.calendar-entry\.is-cancelled,\s*\.customer-history-entry\.is-cancelled \{([^}]*)\}/.exec(css)?.[1] ?? ''
+    expect(cancelled).toMatch(/border-style:\s*dashed/)
+    expect(cancelled).toMatch(/background:\s*var\(--color-danger-subtle\)/)
+    expect(cancelled).toMatch(/color:\s*var\(--color-danger-text\)/)
+    expect(css).toMatch(/\.calendar-entry\.is-cancelled \.calendar-entry-customer,[^}]*text-decoration:\s*line-through/)
+  })
+
+  it('lays the toolbar out as wrapping rows', () => {
+    expect(block('.calendar-toolbar-row')).toMatch(/flex-wrap:\s*wrap/)
+  })
+
+  it('lets a dated agenda title and a stacked card wrap, so a long label never widens the page (Phase 11 Part 1 regression)', () => {
+    // The month list showed "Понеделник, 19 октомври 2026 г., 10:45–11:30" on one non-wrapping line at 375 px.
+    expect(css).not.toMatch(/\n\.calendar-entry-time a \{[^}]*white-space:\s*nowrap/)
+    expect(css).toMatch(/\n\.calendar-week-day \.calendar-entry-time a \{\s*white-space:\s*nowrap/)
+  })
 })

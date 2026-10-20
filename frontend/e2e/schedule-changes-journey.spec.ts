@@ -1,6 +1,7 @@
+import { expectShown } from './support/pagination'
 import { devices, expect, test, type BrowserContext, type Page } from '@playwright/test'
 import {
-  SERVICES_HEADING,
+  LANDING_HEADING,
   apiRequest,
   expectBrowserStorageEmpty,
   expectNoHorizontalOverflow,
@@ -81,7 +82,7 @@ test.beforeAll(async ({ browser }) => {
   owner = await onboardOwner(browser, adminContext, business)
   ownerApi = await owner.context.newPage()
   await ownerApi.goto('/')
-  await expect(ownerApi.getByRole('heading', SERVICES_HEADING)).toBeVisible()
+  await expect(ownerApi.getByRole('heading', LANDING_HEADING)).toBeVisible()
   staffMemberId = await createStaffMember(ownerApi, STAFF_NAME)
 })
 
@@ -132,7 +133,7 @@ async function openList(page: Page, from: string, to: string, query = ''): Promi
   await page.goto(`/#/business/schedule/exceptions?${query || listQuery(from, to)}`)
   await expect(page.getByRole('heading', { name: 'Работно време', level: 1, exact: true }))
     .toBeVisible()
-  await expect(page.getByLabel('Резултати на страница').or(page.getByText('Няма промени за избрания период.')))
+  await expect(page.locator('table.exception-table').or(page.getByText('Няма промени за избрания период.')))
     .toBeVisible()
 }
 
@@ -212,22 +213,22 @@ test.describe('Schedule changes: navigation and list state', () => {
         // Canonical first page: exactly ten records, dates ascending.
         await expect(recordRows(page)).toHaveCount(10)
         await expect(column(page, 'Дати')).toHaveText(shownDates(range(1, 10)))
-        await expect(pagination(page)).toContainText('Показани 1–10 от 27')
-        await expect(pagination(page)).toContainText('Страница 1 от 3')
-        await expect(pagination(page).getByRole('button', { name: 'Предишна' })).toBeDisabled()
+        await expectShown(pagination(page), 1, 27)
+        await expect(pagination(page).getByLabel('Страница 1, текуща')).toBeVisible()
+        await expect(pagination(page).getByRole('button', { name: 'Предишна страница' })).toBeDisabled()
         await expect.poll(() => hashQuery(page)).toBe(listQuery(from, to))
 
-        await pagination(page).getByRole('button', { name: 'Следваща' }).click()
+        await pagination(page).getByRole('button', { name: 'Следваща страница' }).click()
         await expect(column(page, 'Дати')).toHaveText(shownDates(range(11, 20)))
-        await expect(pagination(page)).toContainText('Показани 11–20 от 27')
+        await expectShown(pagination(page), 11, 27)
         await expect.poll(() => hashQuery(page)).toBe(listQuery(from, to, { page: 1 }))
-        await pagination(page).getByRole('button', { name: 'Следваща' }).click()
+        await pagination(page).getByRole('button', { name: 'Следваща страница' }).click()
         await expect(recordRows(page)).toHaveCount(7)
-        await expect(pagination(page)).toContainText('Показани 21–27 от 27')
-        await expect(pagination(page).getByRole('button', { name: 'Следваща' })).toBeDisabled()
-        await pagination(page).getByRole('button', { name: 'Предишна' }).click()
+        await expectShown(pagination(page), 21, 27)
+        await expect(pagination(page).getByRole('button', { name: 'Следваща страница' })).toBeDisabled()
+        await pagination(page).getByRole('button', { name: 'Предишна страница' }).click()
         await expect(column(page, 'Дати')).toHaveText(shownDates(range(11, 20)))
-        await expect(pagination(page)).toContainText('Показани 11–20 от 27')
+        await expectShown(pagination(page), 11, 27)
 
         // Sorting by kind resets to the first page; descending puts absences first.
         await sortHeader(page, 'Вид').click()
@@ -242,13 +243,13 @@ test.describe('Schedule changes: navigation and list state', () => {
         await expect(column(page, 'Член на екипа').first()).toHaveText(STAFF_NAME)
 
         // Changing the page size resets the page and keeps the ordering.
-        await page.getByLabel('Резултати на страница').selectOption('25')
+        await page.locator('#exception-page-size').selectOption('25')
         await expect(recordRows(page)).toHaveCount(25)
-        await expect(pagination(page)).toContainText('Показани 1–25 от 27')
+        await expectShown(pagination(page), 1, 27)
         await expect.poll(() => hashQuery(page)).toBe(
           listQuery(from, to, { size: 25, sort: 'kind', direction: 'desc' }),
         )
-        await pagination(page).getByRole('button', { name: 'Следваща' }).click()
+        await pagination(page).getByRole('button', { name: 'Следваща страница' }).click()
         await expect(column(page, 'Дати')).toHaveText(shownDates([24, 25]))
 
         // Sorting by dates from the second page returns to the first page.
@@ -264,10 +265,10 @@ test.describe('Schedule changes: navigation and list state', () => {
         await page.getByRole('button', { name: 'Покажи' }).click()
         const restored = listQuery(day(1), to, { size: 25, direction: 'desc', page: 1 })
         await expect.poll(() => hashQuery(page)).toBe(listQuery(day(1), to, { size: 25, direction: 'desc' }))
-        await pagination(page).getByRole('button', { name: 'Следваща' }).click()
+        await pagination(page).getByRole('button', { name: 'Следваща страница' }).click()
         await expect.poll(() => hashQuery(page)).toBe(restored)
         await expect(column(page, 'Дати')).toHaveText(shownDates([2, 1]))
-        await expect(pagination(page)).toContainText('Показани 26–27 от 27')
+        await expectShown(pagination(page), 26, 27)
 
         // Detail and back restore the window, page, size, sort and direction.
         await recordRows(page).filter({ hasText: shown(day(1)) }).getByRole('link').click()
@@ -276,9 +277,9 @@ test.describe('Schedule changes: navigation and list state', () => {
         await expect.poll(() => hashQuery(page)).toBe(restored)
         await page.getByRole('button', { name: 'Обратно към графика' }).click()
         await expect(column(page, 'Дати')).toHaveText(shownDates([2, 1]))
-        await expect(pagination(page)).toContainText('Показани 26–27 от 27')
+        await expectShown(pagination(page), 26, 27)
         await expect(page.locator('#exception-window-from')).toHaveValue(day(1))
-        await expect(page.getByLabel('Резултати на страница')).toHaveValue('25')
+        await expect(page.locator('#exception-page-size')).toHaveValue('25')
         await expect.poll(() => hashQuery(page)).toBe(restored)
       })
     } finally {
@@ -776,7 +777,7 @@ test.describe('Schedule changes: mobile smoke', () => {
         page,
         business.ownerEmail,
         requiredEnvironment('E2E_OWNER_PASSWORD'),
-        SERVICES_HEADING,
+        LANDING_HEADING,
       )
       await page.goto('/#/business/schedule')
       await expect(page.getByRole('heading', { name: 'Работно време', level: 1, exact: true }))
@@ -787,7 +788,7 @@ test.describe('Schedule changes: mobile smoke', () => {
       await expectNoHorizontalOverflow(page)
 
       await tabs.getByRole('link', { name: 'Промени в графика' }).click()
-      await expect(pagination(page)).toContainText('Показани 1–10 от 12')
+      await expectShown(pagination(page), 1, 12)
       const cards = page.getByRole('link', { name: /^Отвори: Неработно време, / })
       await expect(cards).toHaveCount(10)
       await expect(column(page, 'Дати').first()).toHaveText(shown(day(1)))
@@ -806,10 +807,10 @@ test.describe('Schedule changes: mobile smoke', () => {
 
       await expect(pagination(page)).toBeVisible()
       await expectInsideViewport(page, pagination(page))
-      await pagination(page).getByRole('button', { name: 'Следваща' }).click()
-      await expect(pagination(page)).toContainText('Показани 11–12 от 12')
+      await pagination(page).getByRole('button', { name: 'Следваща страница' }).click()
+      await expectShown(pagination(page), 11, 12)
       await expect(cards).toHaveCount(2)
-      await pagination(page).getByRole('button', { name: 'Предишна' }).click()
+      await pagination(page).getByRole('button', { name: 'Предишна страница' }).click()
       await expect(cards).toHaveCount(10)
       await expectNoHorizontalOverflow(page)
 

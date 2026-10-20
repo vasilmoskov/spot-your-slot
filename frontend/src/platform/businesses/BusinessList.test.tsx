@@ -121,13 +121,8 @@ describe('BusinessList', () => {
     expect(screen.queryByText('business-a')).not.toBeInTheDocument()
     expect(screen.queryByText('3')).not.toBeInTheDocument()
     expect(screen.queryByText('01.08.2026')).not.toBeInTheDocument()
-    expect(screen.getByText('1–1 от 1 бизнеса')).toBeInTheDocument()
-    expect(screen.getByText('Страница 1 от 1')).toBeInTheDocument()
-    expect(
-      screen.getByRole('navigation', { name: 'Странициране на бизнесите' }),
-    ).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Предишна' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Следваща' })).toBeDisabled()
+    expect(screen.queryByText(/от 1 бизнеса/)).toBeNull()
+    expect(screen.queryByRole('navigation', { name: 'Странициране на бизнесите' })).toBeNull()
     const create = screen.getByRole('button', { name: 'Нов бизнес' })
     expect(create.parentElement).toHaveClass('business-page-actions')
     expect(create.parentElement).not.toHaveClass('business-page-actions-end')
@@ -172,10 +167,7 @@ describe('BusinessList', () => {
 
     expect(await screen.findByText('Все още няма създадени бизнеси.'))
       .toBeInTheDocument()
-    expect(screen.getByText('0–0 от 0 бизнеса')).toBeInTheDocument()
-    expect(screen.getByText('Страница 1 от 1')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Предишна' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Следваща' })).toBeDisabled()
+    expect(screen.queryByRole('navigation', { name: 'Странициране на бизнесите' })).toBeNull()
   })
 
   it('requests exact next and previous pages while clearing stale rows', async () => {
@@ -188,8 +180,8 @@ describe('BusinessList', () => {
 
     render(<StatefulBusinessList onAuthenticationRequired={vi.fn()} />)
 
-    const next = await screen.findByRole('button', { name: 'Следваща' })
-    const previous = screen.getByRole('button', { name: 'Предишна' })
+    const next = await screen.findByRole('button', { name: 'Следваща страница' })
+    const previous = screen.getByRole('button', { name: 'Предишна страница' })
     expect(previous).toBeDisabled()
     expect(next).toBeEnabled()
 
@@ -212,15 +204,15 @@ describe('BusinessList', () => {
       totalElements: 21,
     })
     expect(await screen.findByText('Студио Б')).toBeInTheDocument()
-    expect(screen.getByText('Страница 2 от 3')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Предишна' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Следваща' })).toBeEnabled()
+    expect(screen.getByLabelText('Страница 2, текуща')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Предишна страница' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Следваща страница' })).toBeEnabled()
 
     mockedListBusinesses.mockResolvedValueOnce({
       ...populatedPage,
       totalElements: 21,
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Предишна' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Предишна страница' }))
     expect(mockedListBusinesses).toHaveBeenLastCalledWith(
       0,
       10,
@@ -246,9 +238,9 @@ describe('BusinessList', () => {
       />,
     )
 
-    expect(await screen.findByText('Страница 3 от 3')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Предишна' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Следваща' })).toBeDisabled()
+    expect(await screen.findByLabelText('Страница 3, текуща')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Предишна страница' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Следваща страница' })).toBeDisabled()
   })
 
   it('recovers to the last valid page when the current page becomes empty after data shrinks', async () => {
@@ -344,7 +336,7 @@ describe('BusinessList', () => {
 
     render(<StatefulBusinessList onAuthenticationRequired={vi.fn()} />)
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Следваща' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Следваща страница' }))
     const retry = await screen.findByRole('button', { name: 'Опитай отново' })
     mockedListBusinesses.mockResolvedValueOnce({
       ...populatedPage,
@@ -362,7 +354,7 @@ describe('BusinessList', () => {
       expect.any(AbortSignal),
     )
     expect(await screen.findByText('Втора страница')).toBeInTheDocument()
-    expect(screen.getByText('Страница 2 от 2')).toBeInTheDocument()
+    expect(screen.getByLabelText('Страница 2, текуща')).toBeInTheDocument()
   })
 
   it('does not let an obsolete response replace newer list state', async () => {
@@ -583,18 +575,18 @@ describe('BusinessList', () => {
   })
 
   it('renders exactly one page-size selector, placed inside the pagination region', async () => {
-    mockedListBusinesses.mockResolvedValue(populatedPage)
+    mockedListBusinesses.mockResolvedValue({ ...populatedPage, totalElements: 30 })
     render(<StatefulBusinessList onAuthenticationRequired={vi.fn()} />)
     await screen.findByText('Студио А')
 
-    const selectors = screen.getAllByLabelText('Резултати на страница')
+    const selectors = screen.getAllByLabelText('На страница')
     expect(selectors).toHaveLength(1)
     const pagination = screen.getByRole('navigation', { name: 'Странициране на бизнесите' })
     expect(pagination).toContainElement(selectors[0]!)
   })
 
   it('changing the page size selector resets to page 0', async () => {
-    mockedListBusinesses.mockResolvedValue(populatedPage)
+    mockedListBusinesses.mockResolvedValue({ ...populatedPage, totalElements: 30 })
     render(
       <StatefulBusinessList
         onAuthenticationRequired={vi.fn()}
@@ -603,7 +595,7 @@ describe('BusinessList', () => {
     )
     await screen.findByText('Студио А')
 
-    fireEvent.change(screen.getByLabelText('Резултати на страница'), {
+    fireEvent.change(screen.getByLabelText('На страница'), {
       target: { value: '50' },
     })
 

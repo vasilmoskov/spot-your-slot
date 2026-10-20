@@ -277,10 +277,10 @@ export function ScheduleExceptionForm({
       )}
 
       <div className="action-group">
-        <Button type="button" variant="secondary" disabled={busy} onClick={requestCancel}>
+        <Button disabled={busy}>{busy ? 'Запазване…' : submitLabel}</Button>
+        <Button type="button" variant="destructive" disabled={busy} onClick={requestCancel}>
           Отказ
         </Button>
-        <Button disabled={busy}>{busy ? 'Запазване…' : submitLabel}</Button>
       </div>
     </form>
   )

@@ -168,7 +168,7 @@ export async function showBusiness(page: Page, name: string): Promise<void> {
   await page.getByRole('link', { name: 'Бизнеси', exact: true }).first().click()
   await expect(page.getByRole('heading', { name: 'Бизнеси', level: 1, exact: true })).toBeVisible()
   await businessCard(page, name).getByRole('button', { name: 'Покажи', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Услуги', level: 1, exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'График', level: 1, exact: true })).toBeVisible()
 }
 
 /**

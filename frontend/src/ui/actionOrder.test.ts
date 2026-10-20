@@ -2,10 +2,10 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-// The project-wide action-order standard (UI guide section 6): inside one action group the safe or
-// cancelling action comes before the confirming one (Cancel before Save or Create, the safe action
-// before a confirming or destructive one), and journey navigation puts Back before Next or Confirm.
-// The order is the DOM order, never a CSS reversal. This test reads every component source.
+// The project-wide action-order standard (UI guide section 6, as decided in the Phase 11 Part 1 review, which
+// supersedes the earlier "Cancel before Save" rule): inside one decision group the affirmative or primary action
+// is on the left and «Отказ» is the rightmost action in red; journey navigation still puts Назад before Напред.
+// The order is the DOM order (and so the keyboard order), never a CSS reversal. This test reads every source.
 
 const SOURCE_ROOT = join(__dirname, '..')
 
@@ -97,6 +97,7 @@ const CANCELLING = [
 ]
 
 const isCancelling = (item: string) => CANCELLING.some((pattern) => pattern.test(item))
+const isOtkaz = (item: string) => />\s*Отказ\s*</.test(item)
 
 describe('the action-order standard', () => {
   const files = sourceFiles(SOURCE_ROOT)
@@ -108,15 +109,49 @@ describe('the action-order standard', () => {
     expect(cancelGroups.length).toBeGreaterThanOrEqual(15)
   })
 
-  it('places the cancelling or safe action before every confirming action in a group', () => {
-    const violations: string[] = []
-    for (const file of files) {
-      for (const items of groupsOf(readFileSync(file, 'utf8'))) {
-        const cancelAt = items.findIndex(isCancelling)
-        if (cancelAt > 0) violations.push(file.replace(SOURCE_ROOT, 'src'))
+  // A decision group is a group of actions that contains an «Отказ» control.
+  const otkazGroups = () =>
+    files.flatMap((file) =>
+      groupsOf(readFileSync(file, 'utf8'))
+        .filter((items) => items.some(isOtkaz))
+        .map((items) => ({ file: file.replace(SOURCE_ROOT, 'src'), items })),
+    )
+
+  it('finds the decision groups it is supposed to check', () => {
+    expect(otkazGroups().length).toBeGreaterThanOrEqual(18)
+  })
+
+  it('makes «Отказ» the rightmost action of its decision group, after the affirmative action', () => {
+    const violations = otkazGroups()
+      .filter(({ items }) => items.findIndex(isOtkaz) !== items.length - 1)
+      .map(({ file }) => file)
+    expect(violations).toEqual([])
+  })
+
+  it('draws every «Отказ» button in the approved danger style', () => {
+    const offenders: string[] = []
+    for (const { file, items } of otkazGroups()) {
+      for (const item of items.filter(isOtkaz)) {
+        if (!/variant="destructive"/.test(item)) offenders.push(file)
       }
     }
-    expect(violations).toEqual([])
+    expect(offenders).toEqual([])
+  })
+
+  it('keeps an outlined «Отказ» beside a solid destructive affirmative action so the two stay distinguishable', () => {
+    const offenders: string[] = []
+    for (const { file, items } of otkazGroups()) {
+      const hasDestructiveAction = items.some((item) => !isOtkaz(item) && /variant="destructive"|danger/.test(item))
+      const cancel = items.find(isOtkaz)!
+      // A conditional destructive action (a ternary on `danger`) conditions the outline in the same way.
+      if (hasDestructiveAction !== /button--outline/.test(cancel)) offenders.push(file)
+    }
+    expect(offenders).toEqual([])
+  })
+
+  it('never uses a positive tabindex, so the keyboard order is the DOM order', () => {
+    const offenders = files.filter((file) => /tabIndex=\{[1-9]/.test(readFileSync(file, 'utf8')))
+    expect(offenders.map((file) => file.replace(SOURCE_ROOT, 'src'))).toEqual([])
   })
 
   it('puts Back before Next and Confirm in the booking journey', () => {
@@ -137,5 +172,17 @@ describe('the action-order standard', () => {
     const css = readFileSync(join(SOURCE_ROOT, 'styles.css'), 'utf8')
     expect(css).not.toMatch(/flex-direction:\s*(row|column)-reverse/)
     expect(css).not.toMatch(/\border:\s*-?\d/)
+  })
+
+  it('keeps the two actions of one decision together, never at opposite edges (global action grouping)', () => {
+    const css = readFileSync(join(SOURCE_ROOT, 'styles.css'), 'utf8')
+    const offenders: string[] = []
+    for (const match of css.matchAll(/(^|\n)([^{}@]*(?:actions|action-group)[^{}]*)\{([^}]*)\}/g)) {
+      const selector = match[2]!.trim()
+      // A page toolbar that separates unrelated actions is not a decision group (recorded exception).
+      if (selector === '.schedule-page-actions') continue
+      if (/justify-content:\s*space-between/.test(match[3]!)) offenders.push(selector)
+    }
+    expect(offenders).toEqual([])
   })
 })

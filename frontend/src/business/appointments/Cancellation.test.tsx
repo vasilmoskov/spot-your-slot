@@ -98,9 +98,15 @@ describe('Cancellation: the confirmation dialog', () => {
     expect(panel).toHaveTextContent('нов час се създава отделно')
     expect(panel).toHaveTextContent('Мария Тестова')
     const buttons = within(panel).getAllByRole('button')
-    expect(buttons.map((button) => button.textContent)).toEqual(['Отказ', 'Отмени часа'])
-    expect(buttons[0]).toHaveFocus()
-    expect(buttons[1]).not.toHaveFocus()
+    // Affirmative first, «Отказ» rightmost and red (outlined beside the solid destructive action); the safe
+    // action still receives the initial focus.
+    expect(buttons.map((button) => button.textContent)).toEqual(['Отмени часа', 'Отказ'])
+    expect(buttons[1]).toHaveFocus()
+    expect(buttons[0]).not.toHaveFocus()
+    expect(buttons[0]).toHaveClass('button--destructive')
+    expect(buttons[1]).toHaveClass('button--destructive')
+    expect(buttons[1]).toHaveClass('button--outline')
+    expect(buttons[0]).not.toHaveClass('button--outline')
     // No reason, actor, or other input exists.
     expect(within(panel).queryByRole('textbox')).toBeNull()
     expect(backend.posts()).toHaveLength(0)
@@ -431,7 +437,7 @@ describe('Cancellation: every documented result stays distinct', () => {
     await waitFor(() => expect(backend.reads().length).toBeGreaterThanOrEqual(2))
     expect(cancelButton()).toBeNull()
     if (scenario.name !== 'state conflict') {
-      expect(screen.queryByRole('button', { name: /Редактирай бележката|Добави бележка/ })).toBeNull()
+      expect(screen.queryByRole('button', { name: /Редактирай|Добави бележка/ })).toBeNull()
       expect(screen.queryByRole('button', { name: 'Промени часа' })).toBeNull()
     }
     expect(backend.posts()).toHaveLength(1)
@@ -443,14 +449,14 @@ describe('Cancellation: every documented result stays distinct', () => {
     expect(alert).toHaveTextContent(scenario.text)
     expect(cancelButton()).toBeNull()
     expect(screen.queryByRole('button', { name: 'Промени часа' })).toBeNull()
-    expect(screen.queryByRole('button', { name: /Редактирай бележката|Добави бележка/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Редактирай|Добави бележка/ })).toBeNull()
     expect(rereadButton()).toBeInTheDocument()
     // The message claims neither the success nor the failure.
     expect(alert.textContent).not.toMatch(/не беше отменен|е непроменен|Часът е отменен\./)
     // Nothing the owner can do sends another request.
     fireEvent.keyDown(document.body, { key: 'Enter' })
     fireEvent.click(rereadButton())
-    await screen.findByRole('region', { name: 'Час' })
+    await screen.findByRole('region', { name: 'Детайли' })
     expect(backend.posts()).toHaveLength(1)
   })
 
@@ -465,7 +471,7 @@ describe('Cancellation: every documented result stays distinct', () => {
     await cancelWith(() => backend.problem(404, 'APPOINTMENT_NOT_FOUND'))
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent('Часът не е намерен.')
-    expect(screen.queryByRole('region', { name: 'Час' })).toBeNull()
+    expect(screen.queryByRole('region', { name: 'Детайли' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Зареди отново' })).toBeNull()
   })
 })
@@ -559,7 +565,7 @@ describe('Cancellation: recovery and reconciliation', () => {
     expect(alert).toHaveTextContent('Актуалните данни не можаха да бъдат заредени.')
     expect(cancelButton()).toBeNull()
     fireEvent.click(rereadButton())
-    await screen.findByRole('region', { name: 'Час' })
+    await screen.findByRole('region', { name: 'Детайли' })
     expect(cancelButton()).toBeInTheDocument()
     expect(backend.posts()).toHaveLength(1)
   })
@@ -596,7 +602,7 @@ describe('Cancellation: the unresolved outcome and leaving', () => {
     await screen.findByRole('alert')
     // The cancellation had not committed: the re-read shows the Appointment unchanged.
     fireEvent.click(rereadButton())
-    await screen.findByRole('region', { name: 'Час' })
+    await screen.findByRole('region', { name: 'Детайли' })
     expect(screen.queryByRole('alert')).toBeNull()
     expect(cancelButton()).toBeInTheDocument()
     navigate()

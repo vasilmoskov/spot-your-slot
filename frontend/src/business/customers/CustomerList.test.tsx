@@ -229,16 +229,18 @@ describe('CustomerList sorting', () => {
 })
 
 describe('CustomerList pagination', () => {
-  it('uses the shared pagination region with the range, page summary and one size selector', async () => {
+  it('uses the shared pagination region with numbered pages and one size selector, and no range sentence', async () => {
     mockedList.mockResolvedValue(pageOf(three, { total: 27 }))
     renderList()
     await screen.findByText('Анна Тестова')
     const region = screen.getByRole('navigation', { name: 'Странициране на клиентите' })
-    expect(within(region).getByText('Показани 1–10 от 27')).toBeInTheDocument()
-    expect(within(region).getByText('Страница 1 от 3')).toBeInTheDocument()
+    expect(within(region).queryByText(/Показани/)).toBeNull()
+    expect(within(region).queryByText(/Страница 1 от/)).toBeNull()
+    expect(within(region).getByLabelText('Страница 1, текуща')).toBeInTheDocument()
     expect(within(region).getAllByRole('combobox')).toHaveLength(1)
-    expect(within(region).getByRole('button', { name: 'Предишна' })).toBeDisabled()
-    expect(screen.getAllByLabelText('Резултати на страница')).toHaveLength(1)
+    expect(within(region).getByRole('button', { name: 'Страница 3' })).toBeInTheDocument()
+    expect(within(region).getByRole('button', { name: 'Предишна страница' })).toBeDisabled()
+    expect(screen.getAllByLabelText('На страница')).toHaveLength(1)
     const sizes = Array.from(
       (within(region).getByRole('combobox') as HTMLSelectElement).options,
     ).map((option) => option.value)
@@ -249,7 +251,7 @@ describe('CustomerList pagination', () => {
     mockedList.mockResolvedValue(pageOf(three, { total: 27 }))
     const spies = renderList()
     await screen.findByText('Анна Тестова')
-    fireEvent.click(screen.getByRole('button', { name: 'Следваща' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Следваща страница' }))
     expect(spies.onListChange).toHaveBeenLastCalledWith(
       { page: 1, size: 10, sort: 'name', direction: 'asc' },
       undefined,
@@ -267,7 +269,7 @@ describe('CustomerList pagination', () => {
     mockedList.mockResolvedValue(pageOf(three, { page: 1, total: 27 }))
     const spies = renderList({ initialList: { page: 1, size: 10, sort: 'name', direction: 'asc' } })
     await screen.findByText('Анна Тестова')
-    fireEvent.change(screen.getByLabelText('Резултати на страница'), {
+    fireEvent.change(screen.getByLabelText('На страница'), {
       target: { value: String(size) },
     })
     expect(spies.onListChange).toHaveBeenLastCalledWith(
@@ -276,12 +278,13 @@ describe('CustomerList pagination', () => {
     )
   })
 
-  it('shows the partial last page range and disables Next there', async () => {
+  it('marks the last page current and disables Next there', async () => {
     mockedList.mockResolvedValue(pageOf(three, { page: 2, total: 23 }))
     renderList({ initialList: { page: 2, size: 10, sort: 'name', direction: 'asc' } })
     await screen.findByText('Анна Тестова')
-    expect(screen.getByText('Показани 21–23 от 23')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Следваща' })).toBeDisabled()
+    expect(screen.getByLabelText('Страница 3, текуща')).toBeInTheDocument()
+    expect(screen.queryByText(/Показани/)).toBeNull()
+    expect(screen.getByRole('button', { name: 'Следваща страница' })).toBeDisabled()
   })
 
   it('recovers from an out-of-range page by replacing history with the last valid page', async () => {
@@ -374,10 +377,11 @@ describe('CustomerList pagination', () => {
     expect(screen.queryByRole('table')).toBeNull()
   })
 
-  it('shows a one-page summary for a result that fits on one page', async () => {
+  it('shows no pagination at all for a result that fits the smallest page size', async () => {
     renderList()
     await screen.findByText('Анна Тестова')
-    expect(screen.getByText('Страница 1 от 1')).toBeInTheDocument()
+    expect(screen.queryByRole('navigation', { name: 'Странициране на клиентите' })).toBeNull()
+    expect(screen.queryByLabelText('На страница')).toBeNull()
   })
 })
 
@@ -520,7 +524,7 @@ describe('CustomerList live search', () => {
     const spies = await renderLoaded()
     typeSearch('Тест')
     await advance(DEBOUNCE)
-    fireEvent.click(screen.getByRole('button', { name: 'Следваща' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Следваща страница' }))
     await settle()
     expect(mockedList).toHaveBeenLastCalledWith(
       { page: 1, size: 10, sort: 'name', direction: 'asc' },
@@ -534,7 +538,7 @@ describe('CustomerList live search', () => {
       'Тест',
       expect.any(AbortSignal),
     )
-    fireEvent.change(screen.getByLabelText('Резултати на страница'), { target: { value: '25' } })
+    fireEvent.change(screen.getByLabelText('На страница'), { target: { value: '25' } })
     await settle()
     expect(mockedList).toHaveBeenLastCalledWith(
       { page: 0, size: 25, sort: 'phone', direction: 'asc' },

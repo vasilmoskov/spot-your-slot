@@ -1,9 +1,8 @@
 import { useLayoutEffect, useRef, type KeyboardEvent, type RefObject } from 'react'
 import { Button } from '../../ui/Button'
 import { FieldError, fieldControlProps } from '../../ui/formValidation'
-import { formatDateOnlyLong, formatTimeDistinct } from '../../public/booking/dates'
 import type { AppointmentDetails } from '../calendar/api'
-import { businessDateOf } from '../calendar/presentation'
+import { businessDateOf, formatDateHeading, formatTimeRange } from '../calendar/presentation'
 import { noteError } from './model'
 import type { AppointmentOperations, Notice } from './useAppointmentOperations'
 import type { Operation } from './lifecycleErrors'
@@ -156,19 +155,18 @@ export function CancelDialog({
       >
         <h4 id="cancel-dialog-title">Отмяна на часа</h4>
         <p id="cancel-dialog-summary" className="cancel-dialog-summary">
-          {formatDateOnlyLong(date)}, {formatTimeDistinct(appointment.start, appointment.timezone)}–
-          {formatTimeDistinct(appointment.end, appointment.timezone)} · {appointment.customer.displayName}
+          {formatDateHeading(date)}, {formatTimeRange(appointment.start, appointment.end, appointment.timezone)} · {appointment.customer.displayName}
         </p>
         <p id="cancel-dialog-consequence">
           Часът ще бъде отменен и времето му ще се освободи в графика. Отмяната не може да бъде върната; нов час се
           създава отделно.
         </p>
         <div className="action-group unsaved-changes-actions">
-          <Button ref={safeRef} type="button" variant="secondary" disabled={sending} onClick={operations.closeCancel}>
-            Отказ
-          </Button>
           <Button type="button" variant="destructive" disabled={sending} onClick={operations.confirmCancel}>
             Отмени часа
+          </Button>
+          <Button ref={safeRef} type="button" variant="destructive" className="button--outline" disabled={sending} onClick={operations.closeCancel}>
+            Отказ
           </Button>
         </div>
         {sending && (
@@ -242,15 +240,14 @@ export function InternalNote({
               readOnly={sending}
               onChange={(event) => operations.changeDraft(event.target.value)}
             />
-            <p className="manual-hint">Вижда се само от вас и не се показва на клиента.</p>
             <FieldError id="internal-note" error={problem} />
           </div>
           <div className="action-group">
-            <Button type="button" variant="secondary" disabled={sending} onClick={operations.cancelEdit}>
-              Отказ
-            </Button>
             <Button type="submit" disabled={sending}>
               Запази бележката
+            </Button>
+            <Button type="button" variant="destructive" disabled={sending} onClick={operations.cancelEdit}>
+              Отказ
             </Button>
           </div>
           {sending && (
@@ -282,7 +279,7 @@ export function InternalNote({
       {canEdit && (
         <div className="action-group">
           <Button ref={editRef} type="button" variant="secondary" onClick={operations.startEdit}>
-            {appointment.internalNote === null ? 'Добави бележка' : 'Редактирай бележката'}
+            {appointment.internalNote === null ? 'Добави бележка' : 'Редактирай'}
           </Button>
         </div>
       )}

@@ -73,11 +73,11 @@ const CALENDAR = `#/business/calendar?${ORIGIN}`
 async function openDetail(hash = DETAIL) {
   history.replaceState({}, '', `/${hash}`)
   render(<App />)
-  await screen.findByRole('region', { name: 'Час' })
+  await screen.findByRole('region', { name: 'Детайли' })
 }
 
 const cancelOpener = () => screen.queryByRole('button', { name: 'Отмени часа' })
-const noteEditor = () => screen.queryByRole('button', { name: /Редактирай бележката|Добави бележка/ })
+const noteEditor = () => screen.queryByRole('button', { name: /Редактирай|Добави бележка/ })
 
 describe('visibility by role, Business lifecycle, and Appointment state', () => {
   it('shows both operations to the owner of an ACTIVE Business', async () => {
@@ -223,7 +223,7 @@ describe('Business context', () => {
     }
     history.replaceState({}, '', `/${DETAIL}`)
     const { rerender } = render(<Harness value={session} />)
-    await screen.findByRole('region', { name: 'Час' })
+    await screen.findByRole('region', { name: 'Детайли' })
     fireEvent.click(cancelOpener()!)
     fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Отмени часа' }))
     await screen.findByRole('alert')
@@ -232,7 +232,7 @@ describe('Business context', () => {
     rerender(<Harness value={{ ...session, activeBusinessId: 'b' }} />)
     await waitFor(() => expect(window.location.hash).toBe('#/business/calendar?view=day'))
     expect(screen.queryByText(/Не е ясно дали часът е отменен/)).toBeNull()
-    expect(screen.queryByRole('region', { name: 'Час' })).toBeNull()
+    expect(screen.queryByRole('region', { name: 'Детайли' })).toBeNull()
     expect(backend.posts()).toHaveLength(1)
   })
 })

@@ -79,7 +79,7 @@ export function createdResponse(overrides: Partial<CreatedAppointment> = {}): Cr
 export class FakeBackend {
   calls: Call[] = []
   catalog = CATALOG
-  customers = CUSTOMERS
+  customers: Array<{ id: string; displayName: string; phone: string | null; email: string | null }> = CUSTOMERS
   staff = [
     { id: STAFF_A, displayName: 'Мила Работникова' },
     { id: STAFF_B, displayName: 'Георги Стилистов' },
@@ -101,6 +101,20 @@ export class FakeBackend {
       durationMinutes: minutes,
       slots: [slot(`${date}T09:00:00+02:00`, minutes), slot(`${date}T09:15:00+02:00`, minutes), slot(`${date}T10:00:00+02:00`, minutes)],
     }
+  }
+  /** The Customer create of the inline dialog: the default adds the Customer to the list the search reads. */
+  createCustomer: (body: { displayName: string; phone?: string; email?: string }) => unknown = (body) => {
+    const created = {
+      id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      displayName: body.displayName,
+      phone: body.phone ?? null,
+      email: body.email ?? null,
+      version: 0,
+      createdAt: '2026-10-02T08:00:00Z',
+      updatedAt: '2026-10-02T08:00:00Z',
+    }
+    this.customers = [...this.customers, created]
+    return created
   }
   create: (body: CreateAppointmentBody) => CreatedAppointment | Promise<CreatedAppointment> = () => createdResponse()
 
@@ -131,6 +145,7 @@ export class FakeBackend {
       const items = this.customers.filter((c) => c.displayName.toLowerCase().includes(term))
       return { items, page: 0, size: 10, total: items.length }
     }
+    if (url.pathname === '/api/business/customers' && method === 'POST') return this.createCustomer(body)
     if (url.pathname === '/api/business/customers') {
       return { items: this.customers, page: 0, size: 10, total: this.customers.length }
     }

@@ -1,5 +1,6 @@
 import { devices, expect, test, type BrowserContext, type Page } from '@playwright/test'
 import {
+  LANDING_HEADING,
   SERVICES_HEADING,
   expectNoHorizontalOverflow,
   signIn,
@@ -137,10 +138,11 @@ async function ownerPage(): Promise<Page> {
 test.describe('Services and Staff configuration journey', () => {
   test.describe.configure({ mode: 'serial' })
 
-  test('owner lands on Services for the sole Business without a manual selection', async () => {
+  test('owner lands on the calendar for the sole Business without a manual selection', async () => {
     const { page, context } = owner
-    await expect(page).toHaveURL(/#\/business\/services/)
-    await expect(page.getByRole('heading', SERVICES_HEADING)).toBeVisible()
+    await expect(page).toHaveURL(/#\/business\/calendar/)
+    await expect(page.getByRole('heading', LANDING_HEADING)).toBeVisible()
+    await openSection(page, 'Услуги')
     await expect(page.getByText('Все още няма създадени услуги.')).toBeVisible()
     await expect(page.getByLabel('Избери бизнес')).toHaveCount(0)
 
@@ -860,7 +862,8 @@ test.describe('Business isolation and browser-context separation', () => {
       role: 'BUSINESS_OWNER',
     })
     expect(session.body?.activeBusinessId).toBe(businessBId)
-    await expect(page.getByRole('heading', SERVICES_HEADING)).toBeVisible()
+    await expect(page.getByRole('heading', LANDING_HEADING)).toBeVisible()
+    await openSection(page, 'Услуги')
     await expect(page.getByText('Все още няма създадени услуги.')).toBeVisible()
     await expect(page.getByText(HAIRCUT_EDITED.name)).toHaveCount(0)
 
@@ -955,10 +958,10 @@ test.describe('Business isolation and browser-context separation', () => {
       'Бизнеси',
       'Профил',
       'График',
+      'Клиенти',
       'Услуги',
       'Екип',
       'Работно време',
-      'Клиенти',
     ])
     // The owner's "Бизнеси" is the Business selection, never the platform list.
     await expect(navigation.getByRole('link', { name: 'Бизнеси' }))
@@ -999,7 +1002,7 @@ test.describe('Business-owner mobile smoke', () => {
         page,
         businessA.ownerEmail,
         requiredEnvironment('E2E_OWNER_PASSWORD'),
-        SERVICES_HEADING,
+        LANDING_HEADING,
       )
       await expectNoHorizontalOverflow(page)
 
@@ -1016,6 +1019,12 @@ test.describe('Business-owner mobile smoke', () => {
       await expect(menu).toHaveAttribute('aria-expanded', 'false')
       await expect(menu).toBeFocused()
 
+      // The owner lands on the calendar: Services is reached through the menu.
+      await menu.press('Enter')
+      const servicesLink = navigation.getByRole('link', { name: 'Услуги' })
+      await servicesLink.focus()
+      await servicesLink.press('Enter')
+      await expect(page.getByRole('heading', { name: 'Услуги', level: 1, exact: true })).toBeVisible()
       await expect(page.getByRole('row').filter({ hasText: HAIRCUT_EDITED.name }))
         .toContainText('60 мин.')
       await expect(page.getByRole('row').filter({ hasText: HAIRCUT_EDITED.name }))

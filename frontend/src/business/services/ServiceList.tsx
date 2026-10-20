@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button } from '../../ui/Button'
 import { ApiError } from '../../identity/api'
-import { PageSizeSelect, ResponsiveSortSelect, SortableColumnHeader } from '../../ui/ListSortControls'
+import { ListPagination, ResponsiveSortSelect, SortableColumnHeader } from '../../ui/ListSortControls'
 import {
   SERVICES_SORT_FIELDS,
   BUSINESS_SERVICE_NEW_ROUTE,
@@ -276,43 +276,15 @@ type ServicePaginationProps = {
 }
 
 function ServicePagination({ page, onPageRequested, onSizeChange }: ServicePaginationProps) {
-  const previousDisabled = page.page === 0
-  const nextDisabled = (page.page + 1) * page.size >= page.totalElements
-  const totalPages = Math.max(1, Math.ceil(page.totalElements / page.size))
-  const from = page.totalElements === 0 ? 0 : page.page * page.size + 1
-  const to = Math.min((page.page + 1) * page.size, page.totalElements)
-
   return (
-    <nav className="business-pagination" aria-label="Странициране на услугите">
-      <div className="business-pagination-summary">
-        <span>
-          {from}–{to} от {page.totalElements} услуги
-        </span>
-        <span>
-          Страница {page.page + 1} от {totalPages}
-        </span>
-      </div>
-      <div className="business-pagination-controls">
-        <PageSizeSelect id="services-page-size" value={page.size as ListPageSize} onChange={onSizeChange} />
-        <div className="business-pagination-actions">
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={previousDisabled}
-            onClick={() => onPageRequested(page.page - 1)}
-          >
-            Предишна
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={nextDisabled}
-            onClick={() => onPageRequested(page.page + 1)}
-          >
-            Следваща
-          </Button>
-        </div>
-      </div>
-    </nav>
+    <ListPagination
+      label="Странициране на услугите"
+      idPrefix="services"
+      page={page.page}
+      size={page.size as ListPageSize}
+      totalElements={page.totalElements}
+      onPageChange={onPageRequested}
+      onSizeChange={onSizeChange}
+    />
   )
 }

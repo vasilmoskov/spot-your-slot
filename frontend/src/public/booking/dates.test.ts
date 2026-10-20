@@ -6,7 +6,14 @@ import {
   formatTimeInZone,
   isRepeatedLocalTime,
   isValidTimeZone,
-  offsetLabel,
+  CLOCK_RETURN_DAY_NOTE,
+  clockReturnPlace,
+  crossesClockReturn,
+  dayHasClockReturn,
+  formatVisitRange,
+  instantInZone,
+  repeatedOccurrence,
+  zoneOffsetMs,
   parseDateOnly,
   parseInstant,
 } from './dates'
@@ -50,12 +57,6 @@ describe('instants', () => {
     expect(isValidTimeZone('Nowhere/Land')).toBe(false)
     expect(isValidTimeZone('')).toBe(false)
   })
-
-  it('labels the offset the server attached', () => {
-    expect(offsetLabel('2026-10-25T03:30:00+02:00')).toBe('UTC+02:00')
-    expect(offsetLabel('2026-10-25T03:30:00-05:30')).toBe('UTC-05:30')
-    expect(offsetLabel('2026-10-25T03:30:00Z')).toBe('UTC')
-  })
 })
 
 describe('the repeated hour', () => {
@@ -75,9 +76,9 @@ describe('the repeated hour', () => {
     }
   })
 
-  it('appends the offset only to a repeated time', () => {
-    expect(formatTimeDistinct('2026-10-25T03:30:00+03:00', zone)).toBe('03:30 (UTC+03:00)')
-    expect(formatTimeDistinct('2026-10-25T03:30:00+02:00', zone)).toBe('03:30 (UTC+02:00)')
+  it('names the occurrence of a repeated time in words, never an offset', () => {
+    expect(formatTimeDistinct('2026-10-25T03:30:00+03:00', zone)).toBe('03:30 — първи път')
+    expect(formatTimeDistinct('2026-10-25T03:30:00+02:00', zone)).toBe('03:30 — втори път')
     expect(formatTimeDistinct('2026-10-25T05:30:00+02:00', zone)).toBe('05:30')
   })
 
@@ -85,5 +86,75 @@ describe('the repeated hour', () => {
     // 03:30 summer time to 03:15 winter time is 45 minutes, although the wall clock went back.
     expect(elapsedMinutes('2026-10-25T03:30:00+03:00', '2026-10-25T03:15:00+02:00')).toBe(45)
     expect(elapsedMinutes('2026-10-07T10:00:00+03:00', 'bad')).toBeNull()
+  })
+})
+
+describe('repeated hours derived from the zone transitions (never a fixed date or a fixed shift)', () => {
+  const zone = 'Europe/Sofia'
+  const ZONES = ['Pacific/Kiritimati', 'America/Los_Angeles', 'UTC', 'Pacific/Pago_Pago']
+
+  it('tells the first and the second occurrence of a repeated time apart, whatever the browser timezone', () => {
+    const original = process.env['TZ']
+    try {
+      for (const browser of ZONES) {
+        process.env['TZ'] = browser
+        expect(repeatedOccurrence('2026-10-25T03:30:00+03:00', zone)).toBe('first')
+        expect(repeatedOccurrence('2026-10-25T03:30:00+02:00', zone)).toBe('second')
+        expect(repeatedOccurrence('2026-10-25T02:30:00+03:00', zone)).toBeNull()
+        expect(repeatedOccurrence('2026-10-25T04:30:00+02:00', zone)).toBeNull()
+        expect(repeatedOccurrence('2026-07-01T03:30:00+03:00', zone)).toBeNull()
+      }
+    } finally {
+      if (original === undefined) delete process.env['TZ']
+      else process.env['TZ'] = original
+    }
+  })
+
+  it('finds the repeated hour of another zone and of the next year without any hard-coded date', () => {
+    // New York goes back on 2026-11-01 at 02:00 local: 01:30 occurs twice.
+    expect(repeatedOccurrence('2026-11-01T01:30:00-04:00', 'America/New_York')).toBe('first')
+    expect(repeatedOccurrence('2026-11-01T01:30:00-05:00', 'America/New_York')).toBe('second')
+    // Sofia, 2027: the last Sunday of October is the 31st.
+    expect(repeatedOccurrence('2027-10-31T03:30:00+03:00', zone)).toBe('first')
+    expect(repeatedOccurrence('2027-10-31T03:30:00+02:00', zone)).toBe('second')
+  })
+
+  it('has no repeated time in the spring gap or on a zone without daylight saving', () => {
+    expect(repeatedOccurrence('2027-03-28T04:30:00+03:00', zone)).toBeNull()
+    expect(repeatedOccurrence('2026-10-25T03:30:00+03:00', 'UTC')).toBeNull()
+  })
+
+  it('detects a visit that crosses the clock return and one that does not', () => {
+    expect(crossesClockReturn('2026-10-25T03:30:00+03:00', '2026-10-25T03:15:00+02:00', zone)).toBe(true)
+    expect(crossesClockReturn('2026-10-25T03:00:00+02:00', '2026-10-25T03:45:00+02:00', zone)).toBe(false)
+    expect(crossesClockReturn('2026-10-24T10:00:00+03:00', '2026-10-24T11:00:00+03:00', zone)).toBe(false)
+  })
+
+  it('writes places and ranges in words and never prints an offset or a timezone identifier', () => {
+    expect(clockReturnPlace('2026-10-25T03:30:00+03:00', zone)).toBe('преди връщането на часовника')
+    expect(clockReturnPlace('2026-10-25T03:30:00+02:00', zone)).toBe('след връщането на часовника')
+    expect(clockReturnPlace('2026-10-24T03:30:00+03:00', zone)).toBeNull()
+    const crossing = formatVisitRange('2026-10-25T03:30:00+03:00', '2026-10-25T03:15:00+02:00', zone)
+    expect(crossing).toBe('03:30 — първи път до 03:15 — втори път')
+    expect(formatVisitRange('2026-10-24T10:00:00+03:00', '2026-10-24T10:45:00+03:00', zone)).toBe('10:00 – 10:45')
+    expect(crossing).not.toMatch(/UTC|Europe|[+-]\d\d:\d\d/)
+  })
+
+  it('knows the day on which the clocks go back and no ordinary day', () => {
+    expect(dayHasClockReturn('2026-10-25T00:00:00+03:00', '2026-10-26T00:00:00+02:00', zone)).toBe(true)
+    expect(dayHasClockReturn('2026-10-24T00:00:00+03:00', '2026-10-25T00:00:00+03:00', zone)).toBe(false)
+    expect(dayHasClockReturn('2027-03-28T00:00:00+02:00', '2027-03-29T00:00:00+03:00', zone)).toBe(false)
+    expect(CLOCK_RETURN_DAY_NOTE).toMatch(/повтарят/)
+  })
+
+  it('builds the exact instant text of a clicked time from the instant, keeping both repeated times distinct', () => {
+    const first = Date.parse('2026-10-25T03:30:00+03:00')
+    const second = Date.parse('2026-10-25T03:30:00+02:00')
+    expect(instantInZone(first, zone)).toBe('2026-10-25T03:30:00+03:00')
+    expect(instantInZone(second, zone)).toBe('2026-10-25T03:30:00+02:00')
+    expect(Date.parse(instantInZone(first, zone))).toBe(first)
+    expect(Date.parse(instantInZone(second, zone))).toBe(second)
+    expect(zoneOffsetMs(first, zone)).toBe(3 * 3_600_000)
+    expect(zoneOffsetMs(second, zone)).toBe(2 * 3_600_000)
   })
 })

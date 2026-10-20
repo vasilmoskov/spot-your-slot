@@ -145,22 +145,22 @@ describe('selecting a Business', () => {
     fireEvent.click(within(card).getByRole('button', { name: 'Покажи' }))
   }
 
-  it('establishes the context, opens Услуги and shows the Business-scoped links under its name', async () => {
+  it('establishes the context, opens График and shows the Business-scoped links under its name', async () => {
     render(<App />)
     await manage('Студио Активно')
-    expect(await screen.findByRole('heading', { level: 1, name: 'Услуги' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: 'График' })).toBeInTheDocument()
     expect(mockedRequest).toHaveBeenCalledWith(
       '/api/auth/business',
       expect.objectContaining({ body: JSON.stringify({ businessId: 'active' }) }),
     )
-    expect(window.location.hash).toBe('#/business/services?page=0&size=10&sort=name&direction=asc')
+    expect(window.location.hash).toMatch(/^#\/business\/calendar\?view=day/)
     const group = screen.getByRole('group', { name: 'Студио Активно' })
     expect(within(group).getAllByRole('link').map((link) => link.textContent)).toEqual([
       'График',
+      'Клиенти',
       'Услуги',
       'Екип',
       'Работно време',
-      'Клиенти',
     ])
     expect(linkNames().slice(0, 2)).toEqual(['Бизнеси', 'Профил'])
     expect(document.querySelector('.sidebar-account')).toHaveTextContent('Иван Собственик')
@@ -170,7 +170,7 @@ describe('selecting a Business', () => {
   it('marks the selected Business on the selection page and opens its Услуги without a new request', async () => {
     render(<App />)
     await manage('Студио Активно')
-    await screen.findByRole('heading', { name: 'Услуги' })
+    await screen.findByRole('heading', { name: 'График' })
     fireEvent.click(screen.getByRole('link', { name: 'Бизнеси' }))
     const selected = await screen.findByRole('article', { name: 'Студио Активно' })
     expect(selected).toHaveAttribute('aria-current', 'true')
@@ -183,7 +183,7 @@ describe('selecting a Business', () => {
 
     mockedRequest.mockClear()
     fireEvent.click(within(selected).getByRole('button', { name: 'Покажи' }))
-    expect(await screen.findByRole('heading', { level: 1, name: 'Услуги' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: 'График' })).toBeInTheDocument()
     expect(mockedRequest).not.toHaveBeenCalledWith('/api/auth/business', expect.anything())
   })
 
@@ -194,7 +194,7 @@ describe('selecting a Business', () => {
   ])('can select %s and shows the matching lifecycle state', async (name, id, suspended) => {
     render(<App />)
     await manage(name)
-    await screen.findByRole('heading', { name: 'Услуги' })
+    await screen.findByRole('heading', { name: 'График' })
     expect(current.activeBusinessId).toBe(id)
     expect(screen.getByRole('group', { name })).toBeInTheDocument()
     expect(screen.queryAllByRole('status').some((node) => /спрян/i.test(node.textContent ?? ''))).toBe(
@@ -205,13 +205,13 @@ describe('selecting a Business', () => {
   it('never shows one Business\'s Customers in another after switching', async () => {
     render(<App />)
     await manage('Студио Активно')
-    await screen.findByRole('heading', { name: 'Услуги' })
+    await screen.findByRole('heading', { name: 'График' })
     fireEvent.click(screen.getByRole('link', { name: 'Клиенти' }))
     expect(await screen.findByText('Клиент на активния')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('link', { name: 'Бизнеси' }))
     await manage('Студио Спряно')
-    await screen.findByRole('heading', { name: 'Услуги' })
+    await screen.findByRole('heading', { name: 'График' })
     fireEvent.click(screen.getByRole('link', { name: 'Клиенти' }))
     expect(await screen.findByText('Клиент на спрения')).toBeInTheDocument()
     expect(screen.queryByText('Клиент на активния')).not.toBeInTheDocument()
@@ -220,7 +220,7 @@ describe('selecting a Business', () => {
 
     fireEvent.click(screen.getByRole('link', { name: 'Бизнеси' }))
     await manage('Студио Чернова')
-    await screen.findByRole('heading', { name: 'Услуги' })
+    await screen.findByRole('heading', { name: 'График' })
     fireEvent.click(screen.getByRole('link', { name: 'Клиенти' }))
     expect(await screen.findByText('Клиент на чернова')).toBeInTheDocument()
     expect(screen.queryByText('Клиент на спрения')).not.toBeInTheDocument()
@@ -242,15 +242,15 @@ describe('selecting a Business', () => {
     return release
   }
 
-  it('still opens Услуги when the page feedback is cleared while the selection is in flight', async () => {
+  it('still opens График when the page feedback is cleared while the selection is in flight', async () => {
     render(<App />)
     const release = holdSelection()
     await manage('Студио Активно')
     // A same-route navigation event clears the feedback, which supersedes the pending attempt.
     fireEvent(window, new PopStateEvent('popstate'))
     release()
-    expect(await screen.findByRole('heading', { level: 1, name: 'Услуги' })).toBeInTheDocument()
-    expect(window.location.hash).toBe('#/business/services?page=0&size=10&sort=name&direction=asc')
+    expect(await screen.findByRole('heading', { level: 1, name: 'График' })).toBeInTheDocument()
+    expect(window.location.hash).toMatch(/^#\/business\/calendar\?view=day/)
     expect(screen.getByRole('group', { name: 'Студио Активно' })).toBeInTheDocument()
   })
 
@@ -287,7 +287,7 @@ describe('refresh and unavailable Business', () => {
         name: 'Покажи',
       }),
     )
-    await screen.findByRole('heading', { name: 'Услуги' })
+    await screen.findByRole('heading', { name: 'График' })
     first.unmount()
 
     history.replaceState({}, '', '/#/business/customers')

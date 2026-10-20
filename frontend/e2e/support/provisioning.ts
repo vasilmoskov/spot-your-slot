@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { expect, type Browser, type BrowserContext, type Page } from '@playwright/test'
-import { SERVICES_HEADING, signIn } from './browser'
+import { LANDING_HEADING, signIn } from './browser'
 import { API_ORIGIN, requiredEnvironment } from './environment'
 import { invitationUrls, openInvitationWithoutHistoryToken, submitInvitation } from './mailbox'
 
@@ -111,7 +111,7 @@ export async function onboardOwner(
       page,
       fixture.ownerEmail,
       requiredEnvironment('E2E_OWNER_PASSWORD'),
-      SERVICES_HEADING,
+      LANDING_HEADING,
     )
     return { context, page }
   } catch (error) {

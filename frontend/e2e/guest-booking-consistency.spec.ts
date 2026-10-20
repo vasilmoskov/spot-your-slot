@@ -2,6 +2,7 @@ import { expect, test, type BrowserContext, type Page } from '@playwright/test'
 import { signInAsPlatformAdmin } from './support/provisioning'
 import {
   availableDates,
+  dateSurvivingFirstBooking,
   callsTo,
   changeService,
   closeOwner,
@@ -266,8 +267,13 @@ test.describe('E. Concurrency and replay', () => {
 
   test('a slot taken by another browser before confirming gives the approved recovery and leaves nothing behind', async ({ browser, request }) => {
     const serviceIds = ids(contention, ...selection)
-    const dates = await availableDates(request, contention.slug, serviceIds)
-    const slot = (await slotsOn(request, contention.slug, serviceIds, dates[0]!))[0]!
+    const staffId = contention.staffIds['Анна Георгиева']!
+    // The date and start come from the final selection and the StaffMember that both guests later submit, and
+    // from a date that still has a bookable start after the first one is taken (today may not, late in the day).
+    const dates = await availableDates(request, contention.slug, serviceIds, staffId)
+    const { date, slot } = await dateSurvivingFirstBooking(dates, (candidate) =>
+      slotsOn(request, contention.slug, serviceIds, candidate, staffId),
+    )
     const loserPhone = freshPhone()
     const winnerPhone = freshPhone()
     const owner = contention.owner!.page
@@ -277,13 +283,13 @@ test.describe('E. Concurrency and replay', () => {
     const loserPage = await loserContext.newPage()
     const loser = new Guest(loserPage)
     await loser.open(contention.slug)
-    await loser.toReviewFor({ services: selection, staff: 'Анна Георгиева', date: dates[0]!, slot: slot.start, details: { name: 'Закъснял Гост', phone: loserPhone } })
+    await loser.toReviewFor({ services: selection, staff: 'Анна Георгиева', date, slot: slot.start, details: { name: 'Закъснял Гост', phone: loserPhone } })
 
     const winnerContext = await browser.newContext()
     const winnerPage = await winnerContext.newPage()
     const winner = new Guest(winnerPage)
     await winner.open(contention.slug)
-    await winner.toReviewFor({ services: selection, staff: 'Анна Георгиева', date: dates[0]!, slot: slot.start, details: { name: 'Победител Гост', phone: winnerPhone } })
+    await winner.toReviewFor({ services: selection, staff: 'Анна Георгиева', date, slot: slot.start, details: { name: 'Победител Гост', phone: winnerPhone } })
     const won = nextBookingResponse(winnerPage)
     await winner.confirm()
     expect((await won).status()).toBe(201)
@@ -298,9 +304,9 @@ test.describe('E. Concurrency and replay', () => {
     await loser.button('Избор на друг час').click()
     await expect(loser.heading()).toHaveText('Дата и час')
     // The taken time is not offered any more, and the guest keeps the way on.
-    await loser.chooseDate(dates[0]!)
+    await loser.chooseDate(date)
     await expect(loser.slot(slot.start)).toHaveCount(0)
-    expect((await slotsOn(request, contention.slug, serviceIds, dates[0]!, contention.staffIds['Анна Георгиева']!)).map((s) => s.start)).not.toContain(slot.start)
+    expect((await slotsOn(request, contention.slug, serviceIds, date, staffId)).map((s) => s.start)).not.toContain(slot.start)
 
     // No partial visit and no Customer for the loser; exactly one for the winner.
     expect(await ownerCustomers(owner, loserPhone)).toEqual([])

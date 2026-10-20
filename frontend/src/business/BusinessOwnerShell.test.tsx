@@ -3,6 +3,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import {
   BUSINESSES_ROUTE,
+  BUSINESS_CALENDAR_ROUTE,
   BUSINESS_CUSTOMERS_ROUTE,
   BUSINESS_SERVICES_ROUTE,
   BUSINESS_STAFF_ROUTE,
@@ -12,7 +13,10 @@ import {
 } from '../navigation'
 import { BusinessOwnerShell } from './BusinessOwnerShell'
 
-function renderShell(status: string = 'ACTIVE', route: AuthenticatedRoute = BUSINESS_SERVICES_ROUTE) {
+function renderShell(
+  status: string = 'ACTIVE',
+  route: AuthenticatedRoute = BUSINESS_SERVICES_ROUTE,
+) {
   const onNavigate = vi.fn()
   const onLogout = vi.fn()
   const result = render(
@@ -39,10 +43,10 @@ describe('BusinessOwnerShell', () => {
       'Бизнеси',
       'Профил',
       'График',
+      'Клиенти',
       'Услуги',
       'Екип',
       'Работно време',
-      'Клиенти',
     ])
     const group = screen.getByRole('group', { name: 'Студио А' })
     expect(within(group).getAllByRole('link')).toHaveLength(5)
@@ -174,5 +178,18 @@ describe('BusinessOwnerShell', () => {
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Изход' })[0]!)
     expect(onLogout).toHaveBeenCalledOnce()
+  })
+
+  it('gives the calendar the same page header as the other Business screens', () => {
+    renderShell('ACTIVE', BUSINESS_CALENDAR_ROUTE)
+    const header = document.querySelector('.platform-page-header') as HTMLElement
+    expect(within(header).getByRole('heading', { level: 1, name: 'График' })).toBeInTheDocument()
+    expect(header.querySelector('button')).toBeNull()
+    expect(header.className).toBe('platform-page-header')
+  })
+
+  it('keeps the eyebrow on the other Business screens', () => {
+    renderShell()
+    expect(screen.getByText('УПРАВЛЕНИЕ НА БИЗНЕСА')).toBeInTheDocument()
   })
 })

@@ -715,34 +715,34 @@ describe('pagination', () => {
   it('renders 10 rows by default and 25 or 50 when selected', async () => {
     await renderMany(60)
     expect(rowCount()).toBe(10)
-    fireEvent.change(screen.getByLabelText('Резултати на страница'), { target: { value: '25' } })
+    fireEvent.change(screen.getByLabelText('На страница'), { target: { value: '25' } })
     expect(rowCount()).toBe(25)
-    fireEvent.change(screen.getByLabelText('Резултати на страница'), { target: { value: '50' } })
+    fireEvent.change(screen.getByLabelText('На страница'), { target: { value: '50' } })
     expect(rowCount()).toBe(50)
   })
 
   it('has exactly one page-size selector, inside the labelled pagination region', async () => {
     await renderMany(30)
-    const selectors = screen.getAllByLabelText('Резултати на страница')
+    const selectors = screen.getAllByLabelText('На страница')
     expect(selectors).toHaveLength(1)
     const region = screen.getByRole('navigation', { name: 'Странициране на промените в графика' })
     expect(region).toContainElement(selectors[0]!)
-    expect(within(region).getByRole('button', { name: 'Предишна' })).toBeInTheDocument()
-    expect(within(region).getByRole('button', { name: 'Следваща' })).toBeInTheDocument()
+    expect(within(region).getByRole('button', { name: 'Предишна страница' })).toBeInTheDocument()
+    expect(within(region).getByRole('button', { name: 'Следваща страница' })).toBeInTheDocument()
   })
 
   it('shows correct ranges and totals and toggles Previous/Next at the ends', async () => {
     await renderMany(37)
-    expect(screen.getByText('Показани 1–10 от 37')).toBeInTheDocument()
-    expect(screen.getByText('Страница 1 от 4')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Предишна' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Следваща' })).toBeEnabled()
+    expect(screen.getByLabelText('Страница 1, текуща')).toBeInTheDocument()
+    expect(screen.getByLabelText('Страница 1, текуща')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Предишна страница' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Следваща страница' })).toBeEnabled()
 
-    for (let step = 0; step < 3; step += 1) fireEvent.click(screen.getByRole('button', { name: 'Следваща' }))
-    expect(screen.getByText('Показани 31–37 от 37')).toBeInTheDocument()
+    for (let step = 0; step < 3; step += 1) fireEvent.click(screen.getByRole('button', { name: 'Следваща страница' }))
+    expect(screen.getByLabelText('Страница 4, текуща')).toBeInTheDocument()
     expect(rowCount()).toBe(7)
-    expect(screen.getByRole('button', { name: 'Следваща' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Предишна' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Следваща страница' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Предишна страница' })).toBeEnabled()
   })
 
   it('sorts the whole result before slicing the page', async () => {
@@ -758,20 +758,20 @@ describe('pagination', () => {
 
   it('pushes page, size, sort and filter changes, each returning to page 0 where required', async () => {
     const onChange = await renderMany(60)
-    fireEvent.click(screen.getByRole('button', { name: 'Следваща' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Следваща страница' }))
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, size: 10 }), 'push')
 
-    fireEvent.change(screen.getByLabelText('Резултати на страница'), { target: { value: '25' } })
+    fireEvent.change(screen.getByLabelText('На страница'), { target: { value: '25' } })
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ page: 0, size: 25 }), 'push')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Следваща' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Следваща страница' }))
     fireEvent.click(within(screen.getByRole('columnheader', { name: /Вид/ })).getByRole('button'))
     expect(onChange).toHaveBeenLastCalledWith(
       expect.objectContaining({ page: 0, size: 25, sort: 'kind', direction: 'asc' }),
       'push',
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Следваща' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Следваща страница' }))
     fireEvent.change(screen.getByLabelText('До'), { target: { value: '2026-10-20' } })
     fireEvent.click(screen.getByRole('button', { name: 'Покажи' }))
     expect(onChange).toHaveBeenLastCalledWith(
@@ -784,7 +784,7 @@ describe('pagination', () => {
     const onChange = await renderMany(37, { page: 9, size: 10, sort: 'kind', direction: 'desc' })
     // No empty or stale page is ever rendered.
     expect(rowCount()).toBe(7)
-    expect(screen.getByText('Показани 31–37 от 37')).toBeInTheDocument()
+    expect(screen.getByLabelText('Страница 4, текуща')).toBeInTheDocument()
     await waitFor(() =>
       expect(onChange).toHaveBeenCalledWith(
         { ...withListDefaults(explicit), page: 3, sort: 'kind', direction: 'desc' },
@@ -814,9 +814,9 @@ describe('pagination', () => {
 
   it('keeps focus inside the region when the last page disables Next', async () => {
     await renderMany(11)
-    const next = screen.getByRole('button', { name: 'Следваща' })
+    const next = screen.getByRole('button', { name: 'Следваща страница' })
     next.focus()
     fireEvent.click(next)
-    await waitFor(() => expect(screen.getByText('Показани 11–11 от 11')).toHaveFocus())
+    await waitFor(() => expect(screen.getByLabelText('Страница 2, текуща')).toHaveFocus())
   })
 })

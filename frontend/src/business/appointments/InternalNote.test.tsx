@@ -33,7 +33,7 @@ afterEach(() => {
 })
 
 const NOTE_PATH = `/api/business/appointments/${APPOINTMENT_ONE}/internal-note`
-const editButton = () => screen.queryByRole('button', { name: /Редактирай бележката|Добави бележка/ })
+const editButton = () => screen.queryByRole('button', { name: /Редактирай|Добави бележка/ })
 const valueOf = (label: string) => screen.getByText(label, { selector: 'dt' }).nextElementSibling
 const shownNote = () => valueOf('Вътрешна бележка')?.textContent
 const frozenNote = () => valueOf('Изпратена вътрешна бележка (непотвърдена)')?.textContent
@@ -49,7 +49,7 @@ describe('Internal note: where the editor exists', () => {
     backend.current = confirmed({ internalNote: 'Предпочита сутрин.' })
     renderDetail()
     await ready()
-    expect(screen.getByRole('button', { name: 'Редактирай бележката' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Редактирай' })).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Бележки' })).toHaveTextContent('Предпочита сутрин.')
   })
 
@@ -94,7 +94,7 @@ describe('Internal note: where the editor exists', () => {
 })
 
 describe('Internal note: editing', () => {
-  it('opens a labelled editor with the current note, focused, with Отказ before Запази бележката', async () => {
+  it('opens a labelled editor with the current note, focused, with Запази бележката before Отказ', async () => {
     backend.current = confirmed({ internalNote: 'Предпочита сутрин.' })
     renderDetail()
     await ready()
@@ -102,10 +102,12 @@ describe('Internal note: editing', () => {
     expect(noteInput()).toHaveValue('Предпочита сутрин.')
     await waitFor(() => expect(noteInput()).toHaveFocus())
     const actions = screen.getAllByRole('button').filter((button) => ['Отказ', 'Запази бележката'].includes(button.textContent ?? ''))
-    expect(actions.map((button) => button.textContent)).toEqual(['Отказ', 'Запази бележката'])
+    expect(actions.map((button) => button.textContent)).toEqual(['Запази бележката', 'Отказ'])
+    expect(actions[1]).toHaveClass('button--destructive')
     expect(editButton()).toBeNull()
     expect(screen.queryByText('Предпочита сутрин.', { selector: 'dd' })).toBeNull()
-    expect(screen.getByText('Вижда се само от вас и не се показва на клиента.')).toBeInTheDocument()
+    // The section already establishes that the note is private: no persistent explanation is rendered.
+    expect(screen.queryByText(/Вижда се само от вас/)).toBeNull()
   })
 
   it('sends the normalized note once with the current version and then reads the Appointment again', async () => {
@@ -590,7 +592,7 @@ describe('Internal note: every documented result stays distinct', () => {
   it('a missing Appointment replaces the page with the shared not-found state', async () => {
     await saveWith(() => backend.problem(404, 'APPOINTMENT_NOT_FOUND'))
     expect(await screen.findByRole('alert')).toHaveTextContent('Часът не е намерен.')
-    expect(screen.queryByRole('region', { name: 'Час' })).toBeNull()
+    expect(screen.queryByRole('region', { name: 'Детайли' })).toBeNull()
   })
 
   it('an unexpected state conflict re-reads the Appointment and closes the editor', async () => {

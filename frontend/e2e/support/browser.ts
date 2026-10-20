@@ -23,6 +23,8 @@ export type LandingHeading = {
 
 const PROFILE_HEADING: LandingHeading = { name: 'Профил', level: 1 }
 export const SERVICES_HEADING: LandingHeading = { name: 'Услуги', level: 1 }
+// An owner lands on the calendar, the first destination of the Business navigation.
+export const LANDING_HEADING: LandingHeading = { name: 'График', level: 1 }
 
 export async function signIn(
   page: Page,

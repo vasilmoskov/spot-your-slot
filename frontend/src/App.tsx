@@ -513,7 +513,7 @@ export function AuthenticatedApplication({
   const [route, setRoute] = useState<AuthenticatedRoute>(() => {
     const permitted = permittedRoute(initialRoute, session)
     if (permitted !== initialRoute) return permitted
-    if (smartLandingApplicable && owner) return BUSINESS_SERVICES_ROUTE
+    if (smartLandingApplicable && owner) return BUSINESS_CALENDAR_ROUTE
     // Several Businesses and none selected yet: the user chooses where to work.
     if (smartLandingApplicable && !session.platformAdmin && ownedBusinesses.length > 1) {
       return BUSINESSES_ROUTE
@@ -830,8 +830,8 @@ export function AuthenticatedApplication({
     if (landingResolved.current) return
     if (owner) {
       landingResolved.current = true
-      replaceRoute(BUSINESS_SERVICES_ROUTE)
-      setRoute(BUSINESS_SERVICES_ROUTE)
+      replaceRoute(BUSINESS_CALENDAR_ROUTE)
+      setRoute(BUSINESS_CALENDAR_ROUTE)
     }
   }, [owner, route.kind])
 
@@ -903,8 +903,8 @@ export function AuthenticatedApplication({
       // unless they have meanwhile navigated somewhere else, which must not be overridden.
       if (outcome === 'superseded' && routeHref(routeRef.current) !== startedAt) return
     }
-    pushRoute(BUSINESS_SERVICES_ROUTE)
-    setRoute(BUSINESS_SERVICES_ROUTE)
+    pushRoute(BUSINESS_CALENDAR_ROUTE)
+    setRoute(BUSINESS_CALENDAR_ROUTE)
     setFeedback(null)
   }
 
@@ -972,7 +972,6 @@ export function AuthenticatedApplication({
             key={businessKey}
             onAuthenticationRequired={authenticationRequired}
             onCancel={() => navigate({ kind: 'business-calendar', calendar: route.returnCalendar })}
-            onAddCustomer={() => navigate({ kind: 'business-customer-new', returnList: null })}
             onCreated={(appointmentId) => {
               // History is replaced: no resubmittable form stays behind, and Back returns to the
               // calendar the owner came from.
@@ -1414,16 +1413,16 @@ function Profile({ session, busy, feedback, setFeedback, action, guard }: Profil
                       </div>
                     </dl>
                     <div className="action-group">
+                      <Button disabled={busy}>
+                        Запази промените
+                      </Button>
                       <Button
                         type="button"
-                        variant="secondary"
+                        variant="destructive"
                         disabled={busy}
                         onClick={() => guard.guard(exitPersonalEditing)}
                       >
                         Отказ
-                      </Button>
-                      <Button disabled={busy}>
-                        Запази промените
                       </Button>
                     </div>
                   </form>

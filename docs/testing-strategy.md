@@ -33,6 +33,12 @@ diagnosed, and how verification is reported. `AGENTS.md` and `CLAUDE.md` only po
 
 ### Writing reliable tests
 
+- **Derive a date and a start from the final booking state (E2E).** A journey that confirms a booking obtains its
+  availability for exactly the final selection (Services, StaffMember) it later submits, and picks a date that still
+  offers a start after the contested start is taken (`dateSurvivingFirstBooking`). Today, late in the day, has few
+  starts, and one multi-Service visit blocks every overlapping start; a date taken from an earlier or broader answer
+  fails only at certain hours.
+
 - **Wait for the state being asserted.** An asynchronous UI test waits, with Testing Library's
   asynchronous queries or Playwright's web-first assertions, for the observable state it asserts
   next. An earlier success message, route change, or request does not prove that the destination
@@ -676,7 +682,7 @@ with random slug and email suffixes so a worker restart cannot collide with
 earlier data. The administrator, owner A, and owner B always use separate
 browser contexts.
 
-- **Desktop journey** — sole-Business selection and Services landing; Service
+- **Desktop journey** — sole-Business selection and calendar landing (the Services screens are opened from the sidebar); Service
   create, edit, deactivate, reactivate, EUR price and duration presentation, and
   reload persistence; StaffMember create, edit, deactivate, reactivate, with
   optional email and telephone validation; assignment add, remove, and restore,

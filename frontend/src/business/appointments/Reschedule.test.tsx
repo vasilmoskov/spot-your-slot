@@ -69,7 +69,8 @@ describe('the initial data', () => {
     expect(context).toHaveTextContent('Мила Работникова')
     expect(context).toHaveTextContent('10 ноември 2026')
     expect(context).toHaveTextContent('Потвърден')
-    expect(context).toHaveTextContent('Клиентът и услугите на часа не могат да се променят')
+    // The immutability rule lives in the documentation, not as persistent instructional copy in the form.
+    expect(document.body.textContent).not.toMatch(/не могат да се променят|създайте нов/)
     // Nothing in the context can be edited, the version and the technical zone never appear.
     expect(within(context).queryAllByRole('textbox')).toHaveLength(0)
     expect(within(context).queryAllByRole('button')).toHaveLength(0)
@@ -286,8 +287,8 @@ describe('date and time', () => {
 
     const labels = within(group).getAllByRole('radio').map((radio) => radio.closest('label')?.textContent ?? '')
     expect(labels).toHaveLength(3)
-    expect(labels[0]).toMatch(/03:30.*\+03:00/)
-    expect(labels[1]).toMatch(/03:30.*\+02:00/)
+    expect(labels[0]).toBe('03:30 — първи път')
+    expect(labels[1]).toBe('03:30 — втори път')
     expect(labels[2]).toBe('04:00')
     expect(new Set(labels).size).toBe(3)
     expect(document.body.textContent).not.toMatch(/Europe\/Sofia|часова зона/i)
@@ -544,11 +545,12 @@ describe('the review and the mutation', () => {
     expect(onRescheduled).not.toHaveBeenCalled()
   })
 
-  it('the action order is Back before the forward action, and Cancel before Next on the first step', async () => {
+  it('the action order is Back before the forward action; on the first step Next comes first and «Отказ» is rightmost and red', async () => {
     renderForm()
     await staffStep()
     let labels = within(document.querySelector('.manual-actions') as HTMLElement).getAllByRole('button').map((b) => b.textContent)
-    expect(labels).toEqual(['Отказ', 'Напред'])
+    expect(labels).toEqual(['Напред', 'Отказ'])
+    expect(screen.getByRole('button', { name: 'Отказ' })).toHaveClass('button--destructive')
     next()
     await screen.findByLabelText('Дата')
     labels = within(document.querySelector('.manual-actions') as HTMLElement).getAllByRole('button').map((b) => b.textContent)

@@ -415,13 +415,20 @@ describe('BusinessDetail', () => {
           'Бизнесът ще стане активен, ако има активен собственик.',
         )
       }
-      // The safe «Отказ» comes first in the DOM and receives the initial focus, never the confirming
-      // (for a suspension destructive) action; the tab order follows the DOM.
+      // The affirmative action is on the left and «Отказ» is rightmost and red; the safe «Отказ» still receives
+      // the initial focus (the DOM order is the visual and tab order).
       const buttons = Array.from(dialog.querySelectorAll('button'))
-      expect(buttons.map((button) => button.textContent)).toEqual(['Отказ', buttons[1]!.textContent])
-      expect(buttons[0]).toHaveFocus()
-      expect(buttons[1]).not.toHaveFocus()
-      if (status === 'ACTIVE') expect(buttons[1]).toHaveClass('button--destructive')
+      expect(buttons.map((button) => button.textContent)).toEqual([buttons[0]!.textContent, 'Отказ'])
+      expect(buttons[1]).toHaveFocus()
+      expect(buttons[0]).not.toHaveFocus()
+      expect(buttons[1]).toHaveClass('button--destructive')
+      if (status === 'ACTIVE') {
+        expect(buttons[0]).toHaveClass('button--destructive')
+        // Two danger buttons: the «Отказ» is outlined so the two stay distinguishable.
+        expect(buttons[1]).toHaveClass('button--outline')
+      } else {
+        expect(buttons[1]).not.toHaveClass('button--outline')
+      }
       fireEvent.click(screen.getByRole('button', { name: 'Отказ' }))
       expect(mockedChangeBusinessStatus).not.toHaveBeenCalled()
       // After the cancellation the focus returns to the control that opened the confirmation.

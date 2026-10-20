@@ -119,7 +119,7 @@ describe('the complete flow', () => {
   it('offers Back before the forward action on every step and the review', async () => {
     renderForm()
     const order = () => screen.getAllByRole('button').map((button) => button.textContent)
-    expect(order()).toEqual(['Обратно към графика', 'Добави клиент', 'Напред'])
+    expect(order()).toEqual(['Обратно към графика', 'Нов клиент', 'Напред'])
     await chooseCustomer()
     expect(order().slice(-2)).toEqual(['Назад', 'Напред'])
     await chooseServices('Маникюр')
@@ -140,7 +140,9 @@ describe('Customer', () => {
     expect(group).toHaveTextContent('boris@example.test')
     expect(group).not.toHaveTextContent('maria@example.test')
     fireEvent.click(screen.getByRole('radio', { name: /Борис/ }))
-    expect(screen.getByRole('status')).toHaveTextContent('Избран клиент: Борис Пробен')
+    // One selected card, and no separate «Избран клиент» banner.
+    expect(screen.getByRole('radio', { name: /Борис/ })).toBeChecked()
+    expect(screen.queryByText(/Избран клиент/)).toBeNull()
   })
 
   it('searches by containing, case-insensitive text through the POST body only, after the debounce', async () => {
@@ -215,14 +217,14 @@ describe('Customer', () => {
     expect(backend.calls.some((call) => call.method === 'POST' && call.path === '/api/business/customers')).toBe(false)
   })
 
-  it('requires a Customer, focuses the search field and treats Добави клиент as navigation away', async () => {
-    const handlers = renderForm()
+  it('requires a Customer, focuses the search field and offers Нов клиент as an in-place dialog', async () => {
+    renderForm()
     await screen.findByRole('radio', { name: /Мария/ })
     next()
     expect(screen.getByRole('alert')).toHaveTextContent('Изберете клиент.')
     expect(screen.getByLabelText('Търсене на клиент')).toHaveFocus()
-    fireEvent.click(screen.getByRole('button', { name: 'Добави клиент' }))
-    expect(handlers.onAddCustomer).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Нов клиент' }))
+    expect(screen.getByRole('dialog', { name: 'Нов клиент' })).toBeInTheDocument()
   })
 })
 
@@ -420,15 +422,15 @@ describe('daylight saving', () => {
       fireEvent.change(await screen.findByLabelText('Дата'), { target: { value: '2026-10-25' } })
       const group = await screen.findByRole('group', { name: 'Свободни часове' })
       expect(within(group).getAllByRole('radio').map((radio) => radio.closest('label')?.textContent)).toEqual([
-        '03:30 (UTC+03:00)',
-        '03:30 (UTC+02:00)',
+        '03:30 — първи път',
+        '03:30 — втори път',
         '04:15',
       ])
       fireEvent.click(within(group).getAllByRole('radio')[1]!)
       next()
       next()
       await screen.findByRole('button', { name: 'Създай час' })
-      expect(document.querySelector('dl')).toHaveTextContent('03:30 (UTC+02:00)')
+      expect(document.querySelector('dl')).toHaveTextContent('03:30–04:15 — втори път')
       confirm()
       await waitFor(() => expect(backend.posts()).toHaveLength(1))
       // The chosen instant is sent with its own offset: the second occurrence, not the first.

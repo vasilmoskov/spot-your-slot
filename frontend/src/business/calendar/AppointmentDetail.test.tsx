@@ -44,7 +44,7 @@ describe('Appointment detail', () => {
   it('renders the authoritative read model with ordered Services, totals and the Customer', async () => {
     renderDetail()
     expect(
-      await screen.findByRole('heading', { level: 2, name: /сряда, 14 октомври 2026 г., 10:00–11:15/ }),
+      await screen.findByRole('heading', { level: 2, name: /Сряда, 14 октомври 2026 г., 10:00–11:15/ }),
     ).toBeInTheDocument()
     expect(mockedRequest).toHaveBeenCalledWith(
       `/api/business/appointments/${APPOINTMENT_ONE}`,
@@ -57,14 +57,16 @@ describe('Appointment detail', () => {
       'Подстригване',
       'Боядисване',
     ])
-    expect(services[0]).toHaveTextContent('30 мин · 25.50 €')
-    expect(services[1]).toHaveTextContent('45 мин · 55.00 €')
-    const facts = screen.getByRole('region', { name: 'Час' })
+    // Price first, as everywhere: "25.50 € — 30 мин".
+    expect(services[0]).toHaveTextContent('25.50 € — 30 мин')
+    expect(services[1]).toHaveTextContent('55.00 € — 45 мин')
+    const facts = screen.getByRole('region', { name: 'Детайли' })
     expect(facts).toHaveTextContent('1 ч 15 мин')
     expect(facts).toHaveTextContent('80.50 €')
     expect(facts).toHaveTextContent('Мила Работникова')
     expect(facts).toHaveTextContent('SYS-2026-0001')
-    expect(facts).toHaveTextContent('Europe/Sofia')
+    // No technical timezone identifier is shown.
+    expect(document.body.textContent).not.toMatch(/Часова зона|Europe\/Sofia/)
     const customer = screen.getByRole('region', { name: 'Клиент' })
     expect(within(customer).getByRole('link', { name: 'Мария Тестова' })).toBeInTheDocument()
     expect(customer).toHaveTextContent('+359 895 555 777')
@@ -119,7 +121,7 @@ describe('Appointment detail', () => {
 
   it('offers no mutation control: only the way back and the Customer link', async () => {
     renderDetail()
-    await screen.findByRole('region', { name: 'Час' })
+    await screen.findByRole('region', { name: 'Детайли' })
     expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual(['Обратно към графика'])
     expect(screen.queryByRole('textbox')).toBeNull()
     expect(document.body.textContent).not.toMatch(/Отмени час|Пренасрочи|Смени|Запази|Редактирай/)
@@ -162,7 +164,7 @@ describe('Appointment detail failures', () => {
     expect(alert).toHaveTextContent('Възникна неочаквана грешка.')
     expect(alert).not.toHaveTextContent('stack trace')
     fireEvent.click(screen.getByRole('button', { name: 'Зареди отново' }))
-    expect(await screen.findByRole('region', { name: 'Час' })).toBeInTheDocument()
+    expect(await screen.findByRole('region', { name: 'Детайли' })).toBeInTheDocument()
   })
 
   it('reports a network failure and an expired login distinctly', async () => {
@@ -173,5 +175,47 @@ describe('Appointment detail failures', () => {
     mockedRequest.mockRejectedValue(new ApiError(401, 'AUTH_REQUIRED', 'Влезте отново.'))
     const handlers = renderDetail()
     await waitFor(() => expect(handlers.onAuthenticationRequired).toHaveBeenCalledWith('Влезте отново.'))
+  })
+})
+
+describe('Appointment detail terminology (Phase 11 Part 1)', () => {
+  it('names the inner section "Детайли", keeps the page title, and has no timezone field', async () => {
+    renderDetail()
+    expect(await screen.findByRole('region', { name: 'Детайли' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Час' })).toBeNull()
+    expect(screen.getByRole('heading', { level: 3, name: 'Детайли' })).toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/Часова зона|Europe\/Sofia/)
+  })
+
+  it('writes the source in plain words for both sources and never an enum value', async () => {
+    renderDetail()
+    const facts = await screen.findByRole('region', { name: 'Детайли' })
+    // The fixture is a guest booking.
+    expect(facts).toHaveTextContent('Източник')
+    expect(facts).toHaveTextContent('Онлайн резервация')
+    expect(facts).toHaveTextContent('Номер')
+    cleanup()
+    mockedRequest.mockResolvedValue(detailResponse({ source: 'MANUAL' }))
+    renderDetail()
+    const manual = await screen.findByRole('region', { name: 'Детайли' })
+    expect(manual).toHaveTextContent('Въведен от бизнеса')
+    expect(document.body.textContent).not.toMatch(/\bONLINE\b|\bMANUAL\b/)
+  })
+
+  it('numbers the Services in stored order with price first and a long name that wraps in its card', async () => {
+    mockedRequest.mockResolvedValue(
+      detailResponse({
+        services: [
+          { position: 2, name: 'Боядисване', durationMinutes: 90, price: 70.5 },
+          { position: 1, name: 'Дамско-подстригване-с-изключително-дълго-име-без-интервали-за-проверка', durationMinutes: 45, price: 30 },
+        ],
+      }),
+    )
+    renderDetail()
+    const list = (await screen.findByRole('region', { name: 'Услуги' })).querySelector('ol')!
+    expect(list.tagName).toBe('OL')
+    const items = within(list).getAllByRole('listitem')
+    expect(items[0]).toHaveTextContent('30.00 € — 45 мин')
+    expect(items[1]).toHaveTextContent('Боядисване70.50 € — 1 ч 30 мин')
   })
 })

@@ -122,7 +122,8 @@ describe('first load', () => {
   it('names the Business timezone and renders the Business-local day', async () => {
     renderCalendar()
     expect(await screen.findByRole('heading', { level: 2, name: /14 октомври 2026/ })).toBeInTheDocument()
-    expect(await screen.findByText('Часова зона: Europe/Sofia')).toBeInTheDocument()
+    // No technical timezone identifier is ever shown (UI guide rule).
+    expect(document.body.textContent).not.toMatch(/Часова зона|Europe\/Sofia/)
     expect(calendarRequests()).toEqual(['/api/business/calendar?from=2026-10-14&to=2026-10-14'])
   })
 
@@ -134,7 +135,7 @@ describe('first load', () => {
       return calendarResponse({ from: path.includes('2026-10-15') ? '2026-10-15' : '2026-10-14' })
     }
     const { spies } = renderCalendar({ ...BASE, date: null }, new Date('2026-10-14T23:30:00Z'))
-    await screen.findByText('Часова зона: Europe/Sofia')
+    await screen.findByRole('heading', { level: 2 })
     await waitFor(() =>
       expect(calendarRequests()).toEqual([
         '/api/business/calendar?from=2026-10-14&to=2026-10-14',
@@ -148,7 +149,7 @@ describe('first load', () => {
   it('does not refetch when the browser guess already equals the Business today', async () => {
     process.env['TZ'] = 'UTC'
     renderCalendar({ ...BASE, date: null })
-    await screen.findByText('Часова зона: Europe/Sofia')
+    await screen.findByRole('heading', { level: 2 })
     await waitFor(() => expect(screen.getByRole('button', { name: 'Днес' })).toBeDisabled())
     expect(calendarRequests()).toHaveLength(1)
   })
@@ -175,17 +176,17 @@ describe('the three views', () => {
     await waitFor(() =>
       expect(calendarRequests().at(-1)).toBe('/api/business/calendar?from=2026-10-12&to=2026-10-18'),
     )
-    await screen.findByRole('heading', { level: 3, name: 'Пн, 12 октомври 2026' })
+    await screen.findByRole('heading', { level: 3, name: 'Понеделник, 12 октомври 2026 г.' })
     expect(within(views).getByRole('link', { name: 'Седмица' })).toHaveAttribute('aria-current', 'page')
 
-    fireEvent.click(within(views).getByRole('link', { name: 'Списък' }))
+    fireEvent.click(within(views).getByRole('link', { name: 'Месец' }))
     await waitFor(() =>
       expect(calendarRequests().at(-1)).toBe(
         '/api/business/appointments?from=2026-10-01&to=2026-10-31&page=0&size=10',
       ),
     )
     await screen.findByText('Мария Тестова')
-    expect(within(views).getByRole('link', { name: 'Списък' })).toHaveAttribute('aria-current', 'page')
+    expect(within(views).getByRole('link', { name: 'Месец' })).toHaveAttribute('aria-current', 'page')
   })
 
   it('moves one period at a time in the order previous, today, next', async () => {
@@ -193,16 +194,17 @@ describe('the three views', () => {
     await screen.findByText('Мария Тестова')
     const group = screen.getByRole('group', { name: 'Навигация по период' })
     expect(within(group).getAllByRole('button').map((button) => button.textContent)).toEqual([
-      'Предишен',
+      '‹',
       'Днес',
-      'Следващ',
+      '›',
     ])
-    fireEvent.click(within(group).getByRole('button', { name: 'Следващ' }))
+    expect(within(group).getByRole('button', { name: 'Предишен ден' })).toBeInTheDocument()
+    fireEvent.click(within(group).getByRole('button', { name: 'Следващ ден' }))
     await waitFor(() =>
       expect(calendarRequests().at(-1)).toBe('/api/business/calendar?from=2026-10-15&to=2026-10-15'),
     )
-    fireEvent.click(within(group).getByRole('button', { name: 'Предишен' }))
-    fireEvent.click(within(group).getByRole('button', { name: 'Предишен' }))
+    fireEvent.click(within(group).getByRole('button', { name: 'Предишен ден' }))
+    fireEvent.click(within(group).getByRole('button', { name: 'Предишен ден' }))
     await waitFor(() =>
       expect(calendarRequests().at(-1)).toBe('/api/business/calendar?from=2026-10-13&to=2026-10-13'),
     )
@@ -233,7 +235,7 @@ describe('the three views', () => {
     expect(await screen.findByText('Няма часове за този ден.')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('link', { name: 'Седмица' }))
     expect(await screen.findByText('Няма часове през тази седмица.')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('link', { name: 'Списък' }))
+    fireEvent.click(screen.getByRole('link', { name: 'Месец' }))
     expect(await screen.findByText('Няма часове в този период.')).toBeInTheDocument()
   })
 })
@@ -261,7 +263,9 @@ describe('Appointment entries', () => {
     const entry = link.closest('article')!
     expect(within(entry).getByText('Потвърден')).toBeInTheDocument()
     expect(within(entry).getByText('Мария Тестова')).toBeInTheDocument()
-    expect(within(entry).getByText('Подстригване, Боядисване')).toBeInTheDocument()
+    // A card carries a compact Service summary; the full list is in the detail and for assistive technology.
+    expect(within(entry).getByText('2 услуги')).toBeInTheDocument()
+    expect(entry).toHaveTextContent('Услуги: Подстригване, Боядисване.')
     expect(entry).toHaveTextContent('1 ч 15 мин')
   })
 
@@ -325,22 +329,71 @@ describe('Appointment entries', () => {
     expect(Array.from(blocks).map((block) => block.style.width)).toEqual(['100%', '100%'])
   })
 
-  it('puts a cancelled and a confirmed entry of one StaffMember in separate lanes', async () => {
+  it('places a cancelled and a confirmed entry side by side, each at its own vertical position', async () => {
     handler = async (path) =>
       path.startsWith('/api/business/staff-members')
         ? staffCatalog
         : calendarResponse({
             appointments: [
-              appointment({ id: 'a1', status: 'CANCELLED' }),
-              appointment({ id: 'a2', customerDisplayName: 'Нов Клиент' }),
+              appointment({
+                id: 'a1',
+                status: 'CANCELLED',
+                start: '2026-10-14T14:30:00+03:00',
+                end: '2026-10-14T15:15:00+03:00',
+              }),
+              appointment({
+                id: 'a2',
+                customerDisplayName: 'Нов Клиент',
+                start: '2026-10-14T14:45:00+03:00',
+                end: '2026-10-14T15:15:00+03:00',
+              }),
             ],
           })
     renderCalendar()
     await screen.findByText('Нов Клиент')
-    const widths = Array.from(document.querySelectorAll<HTMLElement>('.calendar-block')).map(
-      (block) => block.style.width,
+    const blocks = Array.from(document.querySelectorAll<HTMLElement>('.calendar-block'))
+    expect(blocks).toHaveLength(2)
+    expect(blocks.map((block) => block.style.width)).toEqual(['50%', '50%'])
+    expect(blocks.map((block) => block.style.left)).toEqual(['0%', '50%'])
+    // Different starts, the same end: the tops differ and the bottoms coincide.
+    const [cancelled, confirmed] = blocks.map((block) => ({
+      top: parseFloat(block.style.top),
+      bottom: parseFloat(block.style.top) + parseFloat(block.style.height),
+    })) as [{ top: number; bottom: number }, { top: number; bottom: number }]
+    expect(cancelled.top).toBeLessThan(confirmed.top)
+    expect(cancelled.bottom).toBeCloseTo(confirmed.bottom, 5)
+    expect(blocks[0]).toHaveClass('is-cancelled')
+    expect(within(blocks[0]!).getByText('Отменен')).toBeInTheDocument()
+    expect(document.querySelector('.calendar-cancelled')).toBeNull()
+  })
+
+  it('keeps card widths usable in a dense group and lists every hidden Appointment under «Още N»', async () => {
+    const dense = ['d1', 'd2', 'd3', 'd4', 'd5'].map((id, index) =>
+      appointment({
+        id,
+        customerDisplayName: `Клиент ${index + 1}`,
+        start: '2026-10-14T10:00:00+03:00',
+        end: '2026-10-14T11:00:00+03:00',
+        status: index === 4 ? 'CANCELLED' : 'CONFIRMED',
+      }),
     )
-    expect(widths).toEqual(['50%', '50%'])
+    handler = async (path) =>
+      path.startsWith('/api/business/staff-members')
+        ? staffCatalog
+        : calendarResponse({ appointments: dense })
+    const { spies } = renderCalendar()
+    await screen.findByText('Клиент 1')
+    const widths = Array.from(document.querySelectorAll<HTMLElement>('.calendar-block')).map((block) => block.style.width)
+    expect(widths).toHaveLength(2)
+    expect(new Set(widths).size).toBe(1)
+    const more = document.querySelector('.calendar-more') as HTMLElement
+    expect(within(more).getByText('Още 3')).toBeInTheDocument()
+    const hidden = within(more).getAllByRole('article')
+    expect(hidden).toHaveLength(3)
+    const names = hidden.map((item) => item.textContent)
+    for (const name of ['Клиент 3', 'Клиент 4', 'Клиент 5']) expect(names.join(' ')).toContain(name)
+    fireEvent.click(within(hidden[0]!).getByRole('link'))
+    expect(spies.opened).toHaveLength(1)
   })
 
   it('opens the detail through the entry link and keeps the calendar state', async () => {
@@ -368,7 +421,8 @@ describe('Appointment entries', () => {
             ],
           })
     renderCalendar()
-    expect(await screen.findByText('Работно време: 09:00–13:00')).toBeInTheDocument()
+    expect(await screen.findByText('Работно време')).toBeInTheDocument()
+    expect(screen.getByText('09:00–13:00')).toBeInTheDocument()
     expect(screen.getByText('Отсъствие')).toBeInTheDocument()
   })
 })
@@ -387,20 +441,20 @@ describe('daylight-saving days', () => {
               appointment({
                 id: 'first',
                 start: '2026-10-25T03:30:00+03:00',
-                end: '2026-10-25T04:00:00+03:00',
+                end: '2026-10-25T03:45:00+03:00',
                 customerDisplayName: 'Първо Появяване',
               }),
               appointment({
                 id: 'second',
                 start: '2026-10-25T03:30:00+02:00',
-                end: '2026-10-25T04:00:00+02:00',
+                end: '2026-10-25T03:45:00+02:00',
                 customerDisplayName: 'Второ Появяване',
               }),
             ],
           })
     renderCalendar({ ...BASE, date: '2026-10-25' })
-    expect(await screen.findByRole('link', { name: /^03:30 \(UTC\+03:00\)–/ })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /^03:30 \(UTC\+02:00\)–/ })).toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: /^03:30–03:45 — първи път/ })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /^03:30–03:45 — втори път/ })).toBeInTheDocument()
   })
 
   it('shows a 23-hour spring day without an hour label inside the gap', async () => {
@@ -496,7 +550,7 @@ describe('stale and superseded requests', () => {
     }
     renderCalendar()
     expect(await screen.findByText('Зареждане на графика…')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Следващ' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Следващ ден' }))
     expect(await screen.findByText('Новият Ден')).toBeInTheDocument()
     expect(signals[0]!.aborted).toBe(true)
     await act(async () => {
@@ -517,7 +571,7 @@ describe('stale and superseded requests', () => {
     }
     renderCalendar()
     await screen.findByText('Мария Тестова')
-    fireEvent.click(screen.getByRole('button', { name: 'Следващ' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Следващ ден' }))
     await screen.findByRole('status')
     expect(screen.getByText('Мария Тестова')).toBeInTheDocument()
     expect(document.querySelector('.calendar-results')).toHaveAttribute('aria-busy', 'true')
@@ -562,7 +616,7 @@ describe('StaffMember filter', () => {
         `/api/business/calendar?from=2026-10-14&to=2026-10-14&staffMemberId=${STAFF_TWO}`,
       ),
     )
-    fireEvent.click(screen.getByRole('button', { name: 'Следващ' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Следващ ден' }))
     await waitFor(() =>
       expect(calendarRequests().at(-1)).toBe(
         `/api/business/calendar?from=2026-10-15&to=2026-10-15&staffMemberId=${STAFF_TWO}`,
@@ -614,15 +668,15 @@ describe('agenda', () => {
       'Клиент 2',
       'Клиент 3',
     ])
-    expect(screen.getByText('Показани 1–10 от 25')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Следваща' }))
+    expect(screen.getByLabelText('Страница 1, текуща')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Следваща страница' }))
     expect(spies.changes.at(-1)).toEqual({ state: { ...BASE, view: 'agenda', page: 1 }, mode: undefined })
     await waitFor(() =>
       expect(calendarRequests().at(-1)).toBe(
         '/api/business/appointments?from=2026-10-01&to=2026-10-31&page=1&size=10',
       ),
     )
-    fireEvent.change(screen.getByLabelText('Резултати на страница'), { target: { value: '25' } })
+    fireEvent.change(screen.getByLabelText('На страница'), { target: { value: '25' } })
     await waitFor(() =>
       expect(calendarRequests().at(-1)).toBe(
         '/api/business/appointments?from=2026-10-01&to=2026-10-31&page=0&size=25',
@@ -663,7 +717,7 @@ describe('narrow screens', () => {
   })
 })
 
-describe('the create entry', () => {
+describe('the create button and the day grid', () => {
   function renderWith(props: { canCreate?: boolean }) {
     const created: CalendarState[] = []
     render(
@@ -680,17 +734,51 @@ describe('the create entry', () => {
     return created
   }
 
-  it('offers Нов час only when creating is allowed, with the calendar state it returns to', async () => {
+  it('offers «Добави нов час» first, above the controls, with the calendar state it returns to', async () => {
     const created = renderWith({ canCreate: true })
     await screen.findByText('Мария Тестова')
-    fireEvent.click(screen.getByRole('button', { name: 'Нов час' }))
+    const button = screen.getByRole('button', { name: 'Добави нов час' })
+    expect(button.closest('.business-page-actions')).not.toBeNull()
+    expect(button.compareDocumentPosition(document.querySelector('.calendar-toolbar')!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+    fireEvent.click(button)
     expect(created).toEqual([BASE])
   })
 
   it('renders no create control at all, not even a disabled one, otherwise', async () => {
     renderWith({ canCreate: false })
     await screen.findByText('Мария Тестова')
-    expect(screen.queryByText('Нов час')).toBeNull()
+    expect(screen.queryByText('Добави нов час')).toBeNull()
+  })
+
+  it('has no creation from the grid: no click handler, no tab stop, no cursor, no plus', async () => {
+    const created = renderWith({ canCreate: true })
+    await screen.findByText('Мария Тестова')
+    const timeline = document.querySelector('.calendar-timeline') as HTMLElement
+    expect(timeline).not.toHaveAttribute('tabindex')
+    expect(timeline).not.toHaveAttribute('role')
+    expect(document.querySelector('.calendar-cursor')).toBeNull()
+    expect(timeline.textContent).not.toContain('+')
+    vi.spyOn(timeline, 'getBoundingClientRect').mockReturnValue({
+      top: 0, height: 1000, bottom: 1000, left: 0, right: 100, width: 100, x: 0, y: 0, toJSON: () => ({}),
+    })
+    fireEvent.click(timeline, { clientY: 400 })
+    fireEvent.keyDown(timeline, { key: 'Enter' })
+    expect(created).toHaveLength(0)
+  })
+
+  it('still opens the detail from an Appointment card', async () => {
+    const { spies } = renderCalendar()
+    fireEvent.click(await screen.findByRole('link', { name: '10:00–10:45' }))
+    expect(spies.opened).toHaveLength(1)
+  })
+
+  it('draws hour and half-hour lines behind the cards and no quarter-hour lines', async () => {
+    renderWith({})
+    await screen.findByText('Мария Тестова')
+    const hours = document.querySelectorAll('.calendar-hour-line').length
+    expect(hours).toBeGreaterThan(0)
+    expect(document.querySelectorAll('.calendar-half-line')).toHaveLength(hours)
+    expect(document.querySelector('.calendar-quarter-line')).toBeNull()
   })
 })
 
@@ -699,7 +787,7 @@ describe('read-only and privacy', () => {
     renderCalendar()
     await screen.findByText('Мария Тестова')
     const names = screen.getAllByRole('button').map((button) => button.textContent)
-    expect(names.sort()).toEqual(['Днес', 'Предишен', 'Следващ'].sort())
+    expect(names.sort()).toEqual(['Днес', '‹', '›'].sort())
     expect(screen.queryByRole('textbox')).toBeNull()
     expect(document.body.textContent).not.toMatch(/Добави|Нов час|Отмени|Пренасрочи|Смени|Запази|Редактирай/)
   })
@@ -711,7 +799,7 @@ describe('read-only and privacy', () => {
     const title = document.title
     renderCalendar()
     await screen.findByText('Мария Тестова')
-    fireEvent.click(screen.getByRole('link', { name: 'Списък' }))
+    fireEvent.click(screen.getByRole('link', { name: 'Месец' }))
     await screen.findByText('Мария Тестова')
     const haystack = [
       window.location.href,
@@ -772,3 +860,143 @@ function rule(css: string, selector: string): string {
   const match = css.match(new RegExp(`(?:^|\\n)${escaped} \\{[^}]*\\}`))
   return match?.[0] ?? ''
 }
+
+describe('compact toolbar, legend, working time and cards (Phase 11 Part 1)', () => {
+  const entry = (overrides: Parameters<typeof appointment>[0] = {}) => appointment(overrides)
+  const dayWith = (appointments: ReturnType<typeof appointment>[], staffOverrides = {}) => async (path: string) =>
+    path.startsWith('/api/business/staff-members')
+      ? staffCatalog
+      : calendarResponse({
+          appointments,
+          staffMembers: [
+            staff({
+              workingIntervals: [
+                { start: '2026-10-14T09:00:00+03:00', end: '2026-10-14T13:00:00+03:00' },
+                { start: '2026-10-14T14:00:00+03:00', end: '2026-10-14T18:00:00+03:00' },
+              ],
+              ...staffOverrides,
+            }),
+          ],
+        })
+
+  it('has two compact control rows before one period heading, with the labelled views Ден, Седмица, Месец', async () => {
+    renderCalendar()
+    const heading = await screen.findByRole('heading', { level: 2 })
+    const rows = document.querySelectorAll('.calendar-toolbar-row')
+    expect(rows).toHaveLength(2)
+    const views = within(rows[0] as HTMLElement).getByRole('navigation', { name: 'Изглед на графика' })
+    expect(within(views).getAllByRole('link').map((link) => link.textContent)).toEqual(['Ден', 'Седмица', 'Месец'])
+    const period = within(rows[0] as HTMLElement).getByRole('group', { name: 'Навигация по период' })
+    expect(within(period).getAllByRole('button').map((button) => button.textContent)).toEqual(['‹', 'Днес', '›'])
+    expect(within(rows[1] as HTMLElement).getByLabelText('Дата')).toBeInTheDocument()
+    expect(within(rows[1] as HTMLElement).getByLabelText('Член на екипа')).toBeInTheDocument()
+    // The heading follows the toolbar and is the only statement of the period.
+    expect(document.querySelector('.calendar-toolbar')!.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(document.querySelectorAll('.calendar-period')).toHaveLength(1)
+    expect(document.body.textContent).not.toMatch(/Часова зона|Europe\/Sofia/)
+  })
+
+  it('keeps the stable route value for the month tab', async () => {
+    renderCalendar()
+    await screen.findByText('Мария Тестова')
+    const link = within(screen.getByRole('navigation', { name: 'Изглед на графика' })).getByRole('link', { name: 'Месец' })
+    expect(link.getAttribute('href')).toContain('view=agenda')
+    expect(screen.queryByRole('link', { name: 'Списък' })).toBeNull()
+  })
+
+  it('puts the legend below the calendar, one explanation per line', async () => {
+    handler = dayWith([entry()])
+    renderCalendar()
+    await screen.findByText('Мария Тестова')
+    const legend = document.querySelector('ul.calendar-legend')!
+    expect(legend).not.toBeNull()
+    expect(within(legend as HTMLElement).getAllByRole('listitem').map((item) => item.textContent)).toEqual([
+      'Потвърден час — плътна рамка със зелена лента.',
+      'Отменен час — пунктирана червена рамка и зачертан текст.',
+      'Защриховано поле — извън работното време.',
+    ])
+    const grid = document.querySelector('.calendar-grid')!
+    expect(grid.compareDocumentPosition(legend) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(document.querySelectorAll('.calendar-legend')).toHaveLength(1)
+  })
+
+  it('shows each working interval on its own line, and one concise line when the StaffMember does not work', async () => {
+    handler = dayWith([entry()])
+    renderCalendar()
+    await screen.findByText('Мария Тестова')
+    const working = document.querySelector('.calendar-working-time')!
+    expect([...working.children].map((child) => child.textContent)).toEqual(['Работно време', '09:00–13:00', '14:00–18:00'])
+    cleanup()
+    handler = dayWith([], { workingIntervals: [] })
+    renderCalendar()
+    await screen.findByText('Не работи')
+    expect(document.querySelector('.calendar-working-time')!.children).toHaveLength(1)
+  })
+
+  it('stacks time, Customer and Service in that order and names a single Service when there is room', async () => {
+    handler = dayWith([entry({ id: 'one', start: '2026-10-14T10:00:00+03:00', end: '2026-10-14T10:45:00+03:00', services: [{ name: 'Дамско подстригване', durationMinutes: 45 }] })])
+    renderCalendar()
+    const link = await screen.findByRole('link', { name: '10:00–10:45' })
+    const card = link.closest('article')!
+    const order = [...card.querySelectorAll('.calendar-entry-time, .calendar-entry-customer, .calendar-entry-services')].map((element) => element.className)
+    expect(order).toEqual(['calendar-entry-time', 'calendar-entry-customer', 'calendar-entry-services'])
+    expect(card).toHaveTextContent('Дамско подстригване')
+  })
+
+  it('shows a compact "5 услуги" for a five-Service visit without printing the long names in the card', async () => {
+    const names = Array.from({ length: 5 }, (_, index) => `Изключително-дълго-наименование-на-услуга-${index}`)
+    handler = dayWith([
+      entry({ id: 'five', start: '2026-10-14T11:00:00+03:00', end: '2026-10-14T15:25:00+03:00', durationMinutes: 265, services: names.map((name) => ({ name, durationMinutes: 50 })) }),
+    ])
+    renderCalendar()
+    const card = (await screen.findByRole('link', { name: '11:00–15:25' })).closest('article')!
+    expect(within(card).getByText('5 услуги')).toBeInTheDocument()
+    expect(card.querySelector('.calendar-entry-services')!.textContent).toBe('5 услуги')
+    // The full list stays available to assistive technology.
+    const hidden = [...card.querySelectorAll('.visually-hidden')].map((element) => element.textContent).join(' ')
+    expect(hidden).toContain(names[4])
+  })
+
+  it('leaves a short block with only time and Customer, and a tall block without a gap rule between them', async () => {
+    handler = dayWith([entry({ id: 'short', start: '2026-10-14T10:00:00+03:00', end: '2026-10-14T10:30:00+03:00', durationMinutes: 30 })])
+    renderCalendar()
+    const card = (await screen.findByRole('link', { name: '10:00–10:30' })).closest('article')!
+    expect(card.querySelector('.calendar-entry-services')).toBeNull()
+    expect(card.querySelector('.calendar-entry-customer')).not.toBeNull()
+  })
+
+  it('marks a cancelled card by text, a class for the dashed red styling, and the struck-through Customer', async () => {
+    handler = dayWith([entry({ status: 'CANCELLED' })])
+    renderCalendar()
+    const card = (await screen.findByRole('link', { name: '10:00–10:45' })).closest('article')!
+    expect(card.classList.contains('is-cancelled')).toBe(true)
+    expect(within(card).getByText('Отменен')).toBeInTheDocument()
+  })
+
+  it('lays the week out as seven day headings from Monday to Sunday', async () => {
+    renderCalendar({ ...BASE, view: 'week' }, NOW)
+    handler = async (path) =>
+      path.startsWith('/api/business/staff-members')
+        ? staffCatalog
+        : calendarResponse({ from: '2026-10-12', to: '2026-10-18', days: ['12', '13', '14', '15', '16', '17', '18'].map((d) => day(`2026-10-${d}`)) })
+    cleanup()
+    renderCalendar({ ...BASE, view: 'week' }, NOW)
+    await screen.findByRole('heading', { level: 3, name: 'Понеделник, 12 октомври 2026 г.' })
+    // One keyboard-focusable, labelled scroll region holds all seven days in DOM order.
+    const region = screen.getByRole('region', { name: 'Седмичен график' })
+    expect(region).toHaveAttribute('tabindex', '0')
+    expect(region.querySelectorAll('.calendar-week-day')).toHaveLength(7)
+    const headings = [...document.querySelectorAll('.calendar-week-day h3')].map((heading) => heading.textContent)
+    // Three lines per heading (weekday, day and month, year), the full date as the accessible name.
+    expect(headings).toEqual([
+      'Понеделник12 октомври',
+      'Вторник13 октомври',
+      'Сряда14 октомври',
+      'Четвъртък15 октомври',
+      'Петък16 октомври',
+      'Събота17 октомври',
+      'Неделя18 октомври',
+    ])
+    expect(document.querySelectorAll('.calendar-week-day h3 > span')).toHaveLength(14)
+  })
+})

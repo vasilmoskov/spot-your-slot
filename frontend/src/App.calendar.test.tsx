@@ -241,7 +241,7 @@ describe('lifecycle states', () => {
     session = owner('SUSPENDED')
     history.replaceState({}, '', `/#/business/appointments/${APPOINTMENT_ONE}`)
     render(<App />)
-    await screen.findByRole('region', { name: 'Час' })
+    await screen.findByRole('region', { name: 'Детайли' })
     expect(document.querySelectorAll('.shell-banner')).toHaveLength(1)
     expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual([
       'Меню',

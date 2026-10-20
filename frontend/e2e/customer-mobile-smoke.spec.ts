@@ -103,7 +103,7 @@ async function showOnMobile(name: string): Promise<void> {
   await expect(page.getByRole('heading', { name: 'Бизнеси', level: 1, exact: true })).toBeVisible()
   await expectNoHorizontalOverflow(page)
   await businessCard(page, name).getByRole('button', { name: 'Покажи', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Услуги', level: 1, exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'График', level: 1, exact: true })).toBeVisible()
 }
 
 test.describe('Customer administration on Pixel 7', () => {
@@ -115,7 +115,7 @@ test.describe('Customer administration on Pixel 7', () => {
     await expect(page.locator('article.business-choice')).toHaveCount(2)
     await expectNoHorizontalOverflow(page)
     await businessCard(page, ACTIVE_NAME).getByRole('button', { name: 'Покажи', exact: true }).click()
-    await expect(page.getByRole('heading', { name: 'Услуги', level: 1, exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'График', level: 1, exact: true })).toBeVisible()
 
     await openMenu()
     const group = page.getByRole('navigation', { name: /навигация/i }).getByRole('group', { name: ACTIVE_NAME })
@@ -138,9 +138,9 @@ test.describe('Customer administration on Pixel 7', () => {
     )
     await expectNoHorizontalOverflow(page)
 
-    await pagination(page).getByRole('button', { name: 'Следваща' }).click()
-    await expect(pagination(page).getByText('Показани 11–13 от 13')).toBeVisible()
-    await expect(pagination(page).getByRole('button', { name: 'Следваща' })).toBeDisabled()
+    await pagination(page).getByRole('button', { name: 'Следваща страница' }).click()
+    await expect(pagination(page).locator('.pagination-compact')).toHaveText('2 / 2')
+    await expect(pagination(page).getByRole('button', { name: 'Следваща страница' })).toBeDisabled()
     await expectNoHorizontalOverflow(page)
 
     await searchBox(page).fill('Мобилен 07')
@@ -149,7 +149,8 @@ test.describe('Customer administration on Pixel 7', () => {
     await expect.poll(() => visibleNames(page)).toEqual([LONG_NAME])
     await expectNoHorizontalOverflow(page)
     await searchBox(page).fill('')
-    await expect(pagination(page).getByText('от 13')).toBeVisible()
+    // 13 results: the narrow region shows the compact `1 / 2` and the size selector.
+    await expect(pagination(page).locator('.pagination-compact')).toHaveText('1 / 2')
   })
 
   test('create and edit forms, long values, and the unsaved-changes dialog with focus return', async () => {

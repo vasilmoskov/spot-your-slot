@@ -93,8 +93,10 @@ describe('ServiceList', () => {
     expect(screen.getByText('10 мин.')).toBeInTheDocument()
     expect(screen.getByText('19.90 €')).toBeInTheDocument()
     expect(screen.getByText('Активна')).toBeInTheDocument()
-    expect(screen.getByText('1–1 от 1 услуги')).toBeInTheDocument()
-    expect(screen.getByText('Страница 1 от 1')).toBeInTheDocument()
+    // One page of at most the smallest size: no range sentence and no pagination region at all.
+    expect(screen.queryByText(/от 1 услуги/)).toBeNull()
+    expect(screen.queryByText(/Страница/)).toBeNull()
+    expect(screen.queryByRole('navigation', { name: 'Странициране на услугите' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Добави нова услуга' })).toBeInTheDocument()
   })
 
@@ -212,13 +214,13 @@ describe('ServiceList', () => {
   })
 
   it('changing the page size selector resets to page 0', async () => {
-    mockedListServices.mockResolvedValue(populatedPage)
+    mockedListServices.mockResolvedValue({ ...populatedPage, totalElements: 30 })
     const { onListChange } = renderServiceList({
       list: { page: 1, size: 10, sort: 'name', direction: 'asc' },
     })
     await screen.findByText('Подстригване')
 
-    fireEvent.change(screen.getByLabelText('Резултати на страница'), {
+    fireEvent.change(screen.getByLabelText('На страница'), {
       target: { value: '25' },
     })
 
@@ -231,11 +233,11 @@ describe('ServiceList', () => {
   })
 
   it('renders exactly one page-size selector, placed inside the pagination region', async () => {
-    mockedListServices.mockResolvedValue(populatedPage)
+    mockedListServices.mockResolvedValue({ ...populatedPage, totalElements: 30 })
     renderServiceList()
     await screen.findByText('Подстригване')
 
-    const selectors = screen.getAllByLabelText('Резултати на страница')
+    const selectors = screen.getAllByLabelText('На страница')
     expect(selectors).toHaveLength(1)
     const pagination = screen.getByRole('navigation', { name: 'Странициране на услугите' })
     expect(pagination).toContainElement(selectors[0]!)
@@ -272,7 +274,7 @@ describe('ServiceList', () => {
     })
     await screen.findByText('Подстригване')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Следваща' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Следваща страница' }))
     expect(onListChange).toHaveBeenCalledWith({
       page: 2,
       size: 10,
@@ -280,7 +282,7 @@ describe('ServiceList', () => {
       direction: 'desc',
     })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Предишна' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Предишна страница' }))
     expect(onListChange).toHaveBeenCalledWith({
       page: 0,
       size: 10,

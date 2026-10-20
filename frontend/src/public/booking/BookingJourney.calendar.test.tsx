@@ -139,9 +139,9 @@ describe('the calendar composition', () => {
     expect(document.querySelector('.booking-picker-summary')).toHaveAttribute('role', 'status')
 
     await pickDate('неделя, 25 октомври 2026 г.')
-    await pickSlot(/03:30 \(UTC\+03:00\)/)
+    await pickSlot(/03:30 — първи път/)
     expect(document.querySelector('.booking-picker-summary')).toHaveTextContent(
-      'Избрано: неделя, 25 октомври 2026 г., 03:30 (UTC+03:00) – 03:15 (UTC+02:00)',
+      'Избрано: неделя, 25 октомври 2026 г., 03:30 — първи път до 03:15 — втори път',
     )
   })
 

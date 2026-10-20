@@ -17,6 +17,7 @@
   --color-disabled-background: #e4e7ec;
   --color-danger-subtle: #fef3f2;
   --color-danger-text: #b42318;
+  --color-danger-border: #fda29b;
   --color-border: #e4e7ec;
   --color-focus: #3538cd;
   --space-1: 0.25rem;
@@ -109,6 +110,14 @@ textarea {
   --button-hover-border: var(--color-danger);
   --button-hover-text: var(--color-danger);
   --button-hover-background: var(--color-surface);
+}
+
+.button--outline {
+  /* A danger-coloured Отказ beside a solid destructive action: outlined, so the two stay distinguishable. */
+  --button-text: var(--color-danger);
+  --button-background: var(--color-surface);
+  --button-hover-text: var(--color-surface);
+  --button-hover-background: var(--color-danger);
 }
 
 .text-link {
@@ -890,35 +899,81 @@ label {
 
 .business-pagination {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-4);
-  padding: var(--space-4);
+  gap: var(--space-3) var(--space-4);
+  padding: var(--space-3) var(--space-4);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
   background: var(--color-surface);
 }
 
-.business-pagination-summary,
-.business-pagination-actions,
-.business-pagination-controls {
+.pagination-pages {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 
-.business-pagination-summary {
-  flex-wrap: wrap;
-  color: var(--color-text-secondary);
-}
-
-.business-pagination-summary p {
+.pagination-numbers {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
   margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.business-pagination-controls {
-  flex-wrap: wrap;
-  justify-content: flex-end;
+.pagination-number,
+.pagination-current,
+.pagination-gap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-control);
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.pagination-number {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.pagination-number:hover {
+  background: var(--color-page-background);
+  border-color: #d0d5dd;
+}
+
+.pagination-current {
+  border: 1px solid var(--color-action-primary);
+  background: var(--color-action-primary-subtle);
+  color: var(--color-action-primary-hover);
+  font-weight: 700;
+}
+
+.pagination-gap {
+  color: var(--color-text-secondary);
+  min-width: 1.5rem;
+}
+
+.pagination-step {
+  min-width: 2.75rem;
+  padding-inline: var(--space-2);
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.pagination-compact {
+  display: none;
+  min-width: 4rem;
+  text-align: center;
+  font-weight: 600;
 }
 
 .visually-hidden {
@@ -934,23 +989,16 @@ label {
 }
 
 @media (max-width: 47.999rem) {
+  .pagination-numbers {
+    display: none;
+  }
+
+  .pagination-compact {
+    display: inline-block;
+  }
+
   .business-pagination {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .business-pagination-summary {
-    justify-content: space-between;
-  }
-
-  .business-pagination-controls {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .business-pagination-actions {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-content: center;
   }
 
   .business-table-container {
@@ -2800,13 +2848,28 @@ label {
   min-width: 0;
 }
 
-.calendar-period-controls,
-.calendar-filters {
+/* At most two compact control rows before the period heading: views, period navigation and the primary
+   action; then the date and the StaffMember filter. Each row wraps by itself on a narrow screen. */
+.calendar-toolbar-row {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
-  gap: var(--space-3);
+  gap: var(--space-2) var(--space-4);
+  min-width: 0;
 }
+
+.calendar-toolbar-row .calendar-views {
+  flex: 0 1 auto;
+  margin: 0;
+}
+
+.calendar-period-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 
 .calendar-filters .form-field {
   min-width: 0;
@@ -2822,7 +2885,6 @@ label {
   overflow-wrap: anywhere;
 }
 
-.calendar-timezone,
 .calendar-working-time,
 .calendar-empty-note,
 .calendar-entry-meta {
@@ -2830,6 +2892,15 @@ label {
   color: var(--color-text-secondary);
   font-size: 0.875rem;
   overflow-wrap: anywhere;
+}
+
+.calendar-working-time {
+  display: grid;
+  gap: 0;
+}
+
+.calendar-working-label {
+  font-weight: 650;
 }
 
 .calendar-closure {
@@ -2863,6 +2934,8 @@ label {
 
 .calendar-entry {
   display: grid;
+  /* A compact top-aligned stack: time, Customer, Service; never spread over the height of a tall card. */
+  align-content: start;
   gap: var(--space-1);
   min-width: 0;
   padding: var(--space-2) var(--space-3);
@@ -2877,6 +2950,16 @@ label {
   margin: 0;
 }
 
+/* A status never splits; a time range does not split in the narrow week and grid columns (a dated agenda
+   title and a stacked list may wrap, so a long repeated-hour label never widens the page). */
+.calendar-entry .status-badge {
+  white-space: nowrap;
+}
+
+.calendar-week-day .calendar-entry-time a {
+  white-space: nowrap;
+}
+
 .calendar-entry-time {
   display: flex;
   flex-wrap: wrap;
@@ -2889,12 +2972,15 @@ label {
   font-weight: 650;
 }
 
-/* A cancelled entry differs by dashed border, struck-through text and its written status. */
+/* A cancelled entry: a restrained red (never a button look) plus the dashed border, the struck-through text,
+   and its written status, so the state is never carried by colour alone. */
 .calendar-entry.is-cancelled,
 .customer-history-entry.is-cancelled {
   border-style: dashed;
-  border-left-color: var(--color-text-secondary);
-  background: var(--color-page-background);
+  border-color: var(--color-danger-border);
+  border-left-color: var(--color-danger);
+  background: var(--color-danger-subtle);
+  color: var(--color-danger-text);
 }
 
 .calendar-entry.is-cancelled .calendar-entry-customer,
@@ -2902,10 +2988,31 @@ label {
   text-decoration: line-through;
 }
 
+.calendar-entry.is-cancelled a,
+.calendar-entry.is-cancelled .calendar-entry-meta {
+  color: var(--color-danger-text);
+}
+
+.calendar-entry.is-cancelled .status-badge {
+  color: var(--color-danger-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-danger-border);
+}
+
+/* The week is always Monday to Sunday in one row at every width. When the seven columns do not fit, this
+   region (and only this region) scrolls horizontally; the document never does, no day is stacked or omitted,
+   and the columns keep a readable minimum width. */
 .calendar-week {
   display: grid;
-  gap: var(--space-3);
+  /* The scroll region is the containing block of the visually hidden texts inside the cards: an absolutely
+     positioned child of an ancestor outside the region would escape its clipping and widen the document. */
+  position: relative;
   min-width: 0;
+  grid-template-columns: repeat(7, minmax(8rem, 1fr));
+  gap: var(--space-2);
+  align-items: start;
+  overflow-x: auto;
+  padding-bottom: var(--space-2);
 }
 
 .calendar-week-day {
@@ -2985,9 +3092,13 @@ label {
 }
 
 .calendar-legend {
-  margin: 0;
+  display: grid;
+  gap: var(--space-1);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
   color: var(--color-text-secondary);
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   overflow-wrap: anywhere;
 }
 
@@ -3045,9 +3156,19 @@ label {
   white-space: nowrap;
 }
 
-.calendar-block .calendar-entry-services,
+.calendar-block .calendar-entry-services {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-secondary);
+}
+
 .calendar-block .calendar-entry-meta {
   display: none;
+}
+
+.calendar-block.is-cancelled .calendar-entry-services {
+  color: var(--color-danger-text);
 }
 
 .customer-history-list {
@@ -3077,7 +3198,7 @@ label {
   list-style: decimal;
   gap: var(--space-2);
   margin: 0;
-  padding-left: var(--space-5);
+  padding-left: 1.5rem;
 }
 
 .appointment-services li {
@@ -3128,12 +3249,6 @@ label {
 
 .cancel-dialog {
   outline: none;
-}
-
-@media (min-width: 64rem) {
-  .calendar-week {
-    grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr));
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -3341,13 +3456,10 @@ label {
   grid-area: edit;
 }
 
-/* Back on the left, the forward action on the right; the DOM order is the visual order. */
+/* The two actions of one decision stay together in one compact group, the safe action first; the DOM order
+   is the visual order and the buttons are never pushed to opposite edges. */
 .manual-actions {
-  justify-content: space-between;
-}
-
-.manual-actions .button:only-child {
-  margin-left: auto;
+  justify-content: flex-start;
 }
 
 @media (max-width: 26rem) {
@@ -3406,4 +3518,274 @@ label {
 
 .reschedule-to {
   font-weight: 700;
+}
+
+/* ---- Business calendar header (Phase 11 review, third round) ---- */
+
+.button--neutral {
+  --button-border: #d0d5dd;
+  --button-text: var(--color-text-primary);
+  --button-background: var(--color-surface);
+  --button-hover-border: var(--color-text-secondary);
+  --button-hover-text: var(--color-text-primary);
+  --button-hover-background: var(--color-page-background);
+}
+
+.calendar-chevron {
+  min-width: 2.75rem;
+  padding-inline: var(--space-2);
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.calendar-toolbar-separator {
+  align-self: stretch;
+  width: 1px;
+  margin-inline: var(--space-2);
+  background: var(--color-border);
+}
+
+
+
+/* One subtle divider under the heading row of the calendar page. */
+
+
+.calendar-week-weekday,
+.calendar-week-date {
+  display: block;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.calendar-entry-note {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.calendar-clock-note,
+.booking-slots-note {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.875rem;
+}
+
+/* Cancelled Appointments of the day grid: outside the time grid, so they never narrow an active card. */
+
+
+
+/* Hour lines are solid and subtle, half-hour lines lighter and dashed; they sit behind the cards. */
+.calendar-hour-line,
+.calendar-half-line {
+  position: absolute;
+  right: 0;
+  left: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.calendar-hour-line {
+  border-top: 1px solid var(--color-border);
+}
+
+.calendar-half-line {
+  border-top: 1px dashed var(--color-border);
+  opacity: 0.6;
+}
+
+
+
+
+
+
+.new-customer-dialog .business-form {
+  display: grid;
+  gap: var(--space-3);
+}
+
+
+@media (max-width: 40rem) {
+  .calendar-toolbar-separator {
+    display: none;
+  }
+}
+
+.calendar-clock-note {
+  margin-bottom: var(--space-2);
+}
+
+/* ---- Shared select appearance (fourth review round) ----
+   One rule for every native select: the arrow sits 14 px inside the right border and the text reserves room for it, so
+   it can never overlap. Behaviour, keyboard use and mobile pickers stay native. */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 2.75rem;
+  text-overflow: ellipsis;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%23475467' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-size: 12px 8px;
+}
+
+select:disabled {
+  background-color: var(--color-disabled-background);
+  color: var(--color-disabled-text);
+}
+
+/* Forced colours drop background images: the native arrow comes back, and there is never a second one. */
+@media (forced-colors: active) {
+  select {
+    appearance: auto;
+    -webkit-appearance: auto;
+    background-image: none;
+    padding-right: 0.8rem;
+  }
+}
+
+/* Page-size selectors are compact, never a full-width field. */
+.page-size-select select,
+.responsive-sort-select select {
+  width: auto;
+  min-width: 5.5rem;
+}
+
+.page-size-select select {
+  min-width: 5rem;
+}
+
+/* ---- Business calendar layout (fourth review round) ----
+   Four groups under the title and the create button: (1) views and period controls, (2) date and StaffMember,
+   (3) the period heading, (4) the calendar. A subtle divider only between consecutive groups, 16 px on each side. */
+.calendar-page {
+  gap: 0;
+}
+
+.calendar-toolbar {
+  gap: 0;
+}
+
+.calendar-group {
+  min-width: 0;
+}
+
+.calendar-group + .calendar-group,
+.calendar-toolbar + .calendar-group {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid #d0d5dd;
+}
+
+.calendar-filters {
+  align-items: flex-end;
+  gap: var(--space-3) var(--space-4);
+}
+
+.calendar-filters .form-field {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.calendar-filters .form-field:first-child {
+  flex: 0 1 12rem;
+}
+
+/* The StaffMember filter: about 320–360 px where there is room, the row's width on a narrow screen. */
+.calendar-filters .form-field:last-child {
+  flex: 1 1 14rem;
+  max-width: 22rem;
+}
+
+.calendar-views-row {
+  align-items: center;
+}
+
+.calendar-heading-group .calendar-period {
+  margin: 0;
+}
+
+.calendar-content-group {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.calendar-content-group > * {
+  min-width: 0;
+}
+
+/* A modest gap between the StaffMember name and the working time, smaller than the gap between the groups. */
+.calendar-grid .calendar-staff-column {
+  row-gap: 0.625rem;
+}
+
+.calendar-grid {
+  grid-auto-columns: minmax(18rem, 1fr);
+}
+
+.calendar-block .calendar-entry-time {
+  flex-wrap: wrap;
+}
+
+.calendar-block .calendar-entry-time a {
+  white-space: nowrap;
+}
+
+/* «Още N»: the tile that holds the entries of a dense group without a lane of their own. */
+.calendar-more {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  font-size: 0.8125rem;
+}
+
+.calendar-more > summary {
+  cursor: pointer;
+  padding: 0.25rem var(--space-2);
+  font-weight: 700;
+  color: var(--color-action-primary-hover);
+}
+
+.calendar-more[open] {
+  z-index: 4;
+  overflow: visible;
+  height: auto !important;
+  min-width: 16rem;
+  right: 0;
+  left: auto !important;
+  box-shadow: 0 6px 20px rgb(16 24 40 / 18%);
+}
+
+.calendar-more-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-2);
+  list-style: none;
+}
+
+/* The inline Customer dialog: comfortable on a desktop, the screen width on a phone, scrolling inside when needed. */
+.unsaved-changes-overlay .new-customer-dialog {
+  width: min(100%, 44rem);
+  max-width: min(100%, 44rem);
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.new-customer-dialog .business-form {
+  width: 100%;
+  max-width: none;
+}
+
+/* In a narrow lane the time and the written status stack tightly, so the Customer line stays visible. */
+.calendar-block .calendar-entry-time {
+  row-gap: 0;
+}
+
+.calendar-block .status-badge {
+  line-height: 1.2;
 }

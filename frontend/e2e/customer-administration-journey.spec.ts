@@ -1,3 +1,4 @@
+import { expectShown } from './support/pagination'
 import { expect, test, type BrowserContext, type Page } from '@playwright/test'
 import { apiRequest } from './support/browser'
 import {
@@ -116,7 +117,8 @@ function idFromHash(target: Page): string {
 }
 
 async function summary(target: Page, text: string): Promise<void> {
-  await expect(pagination(target).getByText(text)).toBeVisible()
+  const [, from, , total] = /Показани (\d+)–(\d+) от (\d+)/.exec(text)!.map(Number) as [number, number, number, number]
+  await expectShown(pagination(target), from, total)
 }
 
 test.describe('Navigation and Business context', () => {
@@ -127,10 +129,10 @@ test.describe('Navigation and Business context', () => {
     await expect(page.locator('article.business-choice')).toHaveCount(3)
 
     await businessCard(page, FORMS_NAME).getByRole('button', { name: 'Покажи', exact: true }).click()
-    await expect(page.getByRole('heading', { name: 'Услуги', level: 1, exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'График', level: 1, exact: true })).toBeVisible()
 
     const group = nav(page).getByRole('group', { name: FORMS_NAME })
-    await expect(group.getByRole('link')).toHaveText(['График', 'Услуги', 'Екип', 'Работно време', 'Клиенти'])
+    await expect(group.getByRole('link')).toHaveText(['График', 'Клиенти', 'Услуги', 'Екип', 'Работно време'])
     const headingBox = await group.locator('.navigation-context-heading').boundingBox()
     const firstLinkBox = await group.getByRole('link').first().boundingBox()
     expect(headingBox!.y).toBeLessThan(firstLinkBox!.y)
@@ -245,7 +247,7 @@ test.describe('Live search', () => {
     await summary(page, 'Показани 1–10 от 54')
 
     // A changed search resets the page.
-    await pagination(page).getByRole('button', { name: 'Следваща' }).click()
+    await pagination(page).getByRole('button', { name: 'Следваща страница' }).click()
     await expect.poll(() => listRoute(page).params.get('page')).toBe('1')
     await searchBox(page).fill('Пробен')
     await expect.poll(() => listRoute(page).params.get('page')).toBe('0')
@@ -282,25 +284,25 @@ test.describe('Sorting, pagination, detail and stale pages', () => {
     await expect.poll(() => Object.fromEntries(listRoute(page).params)).toEqual({
       page: '0', size: '10', sort: 'name', direction: 'asc',
     })
-    const sizeSelect = pagination(page).getByLabel('Резултати на страница')
+    const sizeSelect = pagination(page).getByRole('combobox')
     await expect(sizeSelect.locator('option')).toHaveText(['10', '25', '50'])
     await expect(sizeSelect).toHaveValue('10')
     const ordered = expectedOrder(catalog, 'name', 'asc')
     await expect.poll(() => visibleNames(page)).toEqual(ordered.slice(0, 10).map((c) => c.displayName))
     await summary(page, 'Показани 1–10 от 54')
-    await expect(pagination(page).getByRole('button', { name: 'Предишна' })).toBeDisabled()
+    await expect(pagination(page).getByRole('button', { name: 'Предишна страница' })).toBeDisabled()
 
-    await pagination(page).getByRole('button', { name: 'Следваща' }).click()
+    await pagination(page).getByRole('button', { name: 'Следваща страница' }).click()
     await summary(page, 'Показани 11–20 от 54')
     await expect.poll(() => visibleNames(page)).toEqual(ordered.slice(10, 20).map((c) => c.displayName))
     expect(listRoute(page).params.get('page')).toBe('1')
     for (let step = 0; step < 4; step += 1) {
-      await pagination(page).getByRole('button', { name: 'Следваща' }).click()
+      await pagination(page).getByRole('button', { name: 'Следваща страница' }).click()
     }
     await summary(page, 'Показани 51–54 от 54')
-    await expect(pagination(page).getByRole('button', { name: 'Следваща' })).toBeDisabled()
+    await expect(pagination(page).getByRole('button', { name: 'Следваща страница' })).toBeDisabled()
     await expect.poll(() => visibleNames(page)).toEqual(ordered.slice(50).map((c) => c.displayName))
-    await pagination(page).getByRole('button', { name: 'Предишна' }).click()
+    await pagination(page).getByRole('button', { name: 'Предишна страница' }).click()
     await summary(page, 'Показани 41–50 от 54')
 
     await sizeSelect.selectOption('25')
@@ -310,7 +312,7 @@ test.describe('Sorting, pagination, detail and stale pages', () => {
     await expect.poll(() => visibleNames(page)).toEqual(ordered.slice(0, 25).map((c) => c.displayName))
     await sizeSelect.selectOption('50')
     await summary(page, 'Показани 1–50 от 54')
-    await pagination(page).getByRole('button', { name: 'Следваща' }).click()
+    await pagination(page).getByRole('button', { name: 'Следваща страница' }).click()
     await summary(page, 'Показани 51–54 от 54')
   })
 
@@ -321,7 +323,7 @@ test.describe('Sorting, pagination, detail and stale pages', () => {
     await sortHeader(page, 'Телефон').click()
     await expect.poll(() => listRoute(page).params.get('page')).toBe('0')
 
-    const sizeSelect = pagination(page).getByLabel('Резултати на страница')
+    const sizeSelect = pagination(page).getByRole('combobox')
     await sizeSelect.selectOption('50')
     await summary(page, 'Показани 1–50 от 54')
 
@@ -362,7 +364,7 @@ test.describe('Sorting, pagination, detail and stale pages', () => {
     await openCustomers(page, 'page=0&size=25&sort=email&direction=desc')
     await searchBox(page).fill('Пробен')
     await summary(page, 'Показани 1–25 от 50')
-    await pagination(page).getByRole('button', { name: 'Следваща' }).click()
+    await pagination(page).getByRole('button', { name: 'Следваща страница' }).click()
     await summary(page, 'Показани 26–50 от 50')
     const expected = expectedOrder(
       catalog.filter((c) => c.displayName.startsWith('Пробен')),
@@ -405,7 +407,7 @@ test.describe('Sorting, pagination, detail and stale pages', () => {
       })
       expect(renamed.status, renamed.code ?? 'rename').toBe(200)
     }
-    await pagination(page).getByRole('button', { name: 'Следваща' }).click()
+    await pagination(page).getByRole('button', { name: 'Следваща страница' }).click()
     await expect.poll(() => listRoute(page).params.get('page')).toBe('0')
     await summary(page, 'Показани 1–10 от 10')
     await expect(customerRows(page)).toHaveCount(10)
@@ -615,7 +617,7 @@ test.describe('Unsaved changes', () => {
     await dialog.getByRole('button', { name: 'Напусни' }).click()
     await expect(page.getByRole('heading', { name: 'Бизнеси', level: 1, exact: true })).toBeVisible()
     await businessCard(page, EMPTY_NAME).getByRole('button', { name: 'Покажи', exact: true }).click()
-    await expect(page.getByRole('heading', { name: 'Услуги', level: 1, exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'График', level: 1, exact: true })).toBeVisible()
     await expect(nav(page).getByRole('group', { name: EMPTY_NAME })).toBeVisible()
   })
 

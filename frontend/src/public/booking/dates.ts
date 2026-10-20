@@ -88,13 +88,8 @@ export function formatInstantDate(instant: string, timeZone: string): string {
   }).format(new Date(at))
 }
 
-/** The offset the server attached to the instant, as "UTC+03:00". */
-export function offsetLabel(instant: string): string {
-  const match = INSTANT.exec(instant)
-  if (!match) return ''
-  if (match[1] === undefined || match[2] === undefined) return 'UTC'
-  return `UTC${match[1]}:${match[2]}`
-}
+const HOUR_MS = 3_600_000
+const FOUR_HOURS_MS = 4 * HOUR_MS
 
 function wallClock(at: number, timeZone: string): string {
   return new Intl.DateTimeFormat('en-CA', {
@@ -108,27 +103,109 @@ function wallClock(at: number, timeZone: string): string {
   }).format(new Date(at))
 }
 
-const HOUR_MS = 3_600_000
-
-/**
- * True when the same local date and clock time also occurs at another instant, which happens only in
- * the repeated hour when clocks go back. Checked by formatting the neighbouring hours in the Business
- * timezone, so no timezone database is duplicated here.
- */
-export function isRepeatedLocalTime(instant: string, timeZone: string): boolean {
-  const at = parseInstant(instant)
-  if (at === null) return false
-  const own = wallClock(at, timeZone)
-  return wallClock(at - HOUR_MS, timeZone) === own || wallClock(at + HOUR_MS, timeZone) === own
+/** The zone's offset from UTC at an instant, in milliseconds, derived from the zone's own wall clock. */
+export function zoneOffsetMs(at: number, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+    timeZone,
+  }).formatToParts(new Date(at))
+  const value = (type: string) => Number(parts.find((part) => part.type === type)?.value)
+  const wall = Date.UTC(value('year'), value('month') - 1, value('day'), value('hour'), value('minute'), value('second'))
+  return wall - Math.floor(at / 1000) * 1000
 }
 
 /**
- * The clock time of an instant, with its offset appended only when the local time is repeated, so two
- * slots that read the same stay distinguishable: "03:30 (UTC+03:00)".
+ * Which occurrence of its local clock time an instant is, when the local time occurs twice because the clocks
+ * went back: "first" (before the change) or "second" (after it); null for every ordinary time. Derived from the
+ * actual offsets of the zone around the instant, not from a fixed date or a fixed one-hour shift.
+ */
+export function repeatedOccurrence(instant: string, timeZone: string): 'first' | 'second' | null {
+  const at = parseInstant(instant)
+  if (at === null) return null
+  const own = zoneOffsetMs(at, timeZone)
+  const later = zoneOffsetMs(at + FOUR_HOURS_MS, timeZone)
+  const earlier = zoneOffsetMs(at - FOUR_HOURS_MS, timeZone)
+  if (later < own) {
+    // Clocks go back after this instant: the same wall time recurs `own - later` later.
+    const other = at + (own - later)
+    if (zoneOffsetMs(other, timeZone) === later && wallClock(other, timeZone) === wallClock(at, timeZone)) return 'first'
+  }
+  if (earlier > own) {
+    const other = at - (earlier - own)
+    if (zoneOffsetMs(other, timeZone) === earlier && wallClock(other, timeZone) === wallClock(at, timeZone)) return 'second'
+  }
+  return null
+}
+
+/** True when the same local date and clock time also occurs at another instant (the clocks went back). */
+export function isRepeatedLocalTime(instant: string, timeZone: string): boolean {
+  return repeatedOccurrence(instant, timeZone) !== null
+}
+
+/** True when the clocks went back between the two instants, so a compact "start–end" would mislead. */
+export function crossesClockReturn(start: string, end: string, timeZone: string): boolean {
+  const from = parseInstant(start)
+  const to = parseInstant(end)
+  if (from === null || to === null) return false
+  return zoneOffsetMs(to, timeZone) < zoneOffsetMs(from, timeZone)
+}
+
+export const FIRST_TIME_LABEL = 'първи път'
+export const SECOND_TIME_LABEL = 'втори път'
+export const BEFORE_CLOCK_RETURN = 'преди връщането на часовника'
+export const AFTER_CLOCK_RETURN = 'след връщането на часовника'
+
+/**
+ * The clock time of an instant. A local time that occurs twice is told apart in words, never by a timezone
+ * identifier or a numeric UTC offset: "03:30 — първи път" and "03:30 — втори път".
  */
 export function formatTimeDistinct(instant: string, timeZone: string): string {
   const time = formatTimeInZone(instant, timeZone)
-  return isRepeatedLocalTime(instant, timeZone) ? `${time} (${offsetLabel(instant)})` : time
+  const occurrence = repeatedOccurrence(instant, timeZone)
+  if (occurrence === null) return time
+  return `${time} — ${occurrence === 'first' ? FIRST_TIME_LABEL : SECOND_TIME_LABEL}`
+}
+
+/** The place of a repeated time relative to the clock return, for a card or a detail line; null otherwise. */
+export function clockReturnPlace(instant: string, timeZone: string): string | null {
+  const occurrence = repeatedOccurrence(instant, timeZone)
+  if (occurrence === null) return null
+  return occurrence === 'first' ? BEFORE_CLOCK_RETURN : AFTER_CLOCK_RETURN
+}
+
+/**
+ * The offset-bearing ISO text of an instant in the Business timezone (for example "2026-10-25T03:30:00+03:00"),
+ * kept exact for a repeated hour because it is built from the instant, never from an ambiguous local string.
+ */
+export function instantInZone(at: number, timeZone: string): string {
+  const offset = zoneOffsetMs(at, timeZone)
+  const local = new Date(Math.floor(at / 1000) * 1000 + offset).toISOString().slice(0, 19)
+  const minutes = Math.round(offset / 60_000)
+  const sign = minutes < 0 ? '-' : '+'
+  const abs = Math.abs(minutes)
+  return `${local}${sign}${String(Math.floor(abs / 60)).padStart(2, '0')}:${String(abs % 60).padStart(2, '0')}`
+}
+
+export const CLOCK_RETURN_DAY_NOTE = 'На тази дата часовникът се връща назад и някои часове се повтарят.'
+
+/** True when the clocks go back during the Business-local day that starts at `dayStart` and ends at `dayEnd`. */
+export function dayHasClockReturn(dayStart: string, dayEnd: string, timeZone: string): boolean {
+  const from = parseInstant(dayStart)
+  const to = parseInstant(dayEnd)
+  if (from === null || to === null) return false
+  return zoneOffsetMs(to - 1000, timeZone) < zoneOffsetMs(from, timeZone)
+}
+
+/** A visit as the public journey states it; a visit across the backward clock change names both occurrences. */
+export function formatVisitRange(start: string, end: string, timeZone: string): string {
+  const separator = crossesClockReturn(start, end, timeZone) ? ' до ' : ' – '
+  return `${formatTimeDistinct(start, timeZone)}${separator}${formatTimeDistinct(end, timeZone)}`
 }
 
 /** The elapsed time between two instants in whole minutes (not the difference of wall-clock times). */

@@ -125,7 +125,6 @@ describe('manual create under React StrictMode: genuine staleness is still ignor
             now={() => NOW}
             onCancel={vi.fn()}
             onCreated={onCreated}
-            onAddCustomer={vi.fn()}
             onAuthenticationRequired={vi.fn()}
           />
         </UnsavedChangesGuardProvider>

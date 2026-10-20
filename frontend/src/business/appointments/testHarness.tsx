@@ -21,7 +21,6 @@ export function renderForm(options: { strict?: boolean } = {}) {
   const handlers = {
     onCancel: vi.fn(),
     onCreated: vi.fn(),
-    onAddCustomer: vi.fn(),
     onAuthenticationRequired: vi.fn(),
   }
   const form = (

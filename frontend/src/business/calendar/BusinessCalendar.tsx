@@ -6,6 +6,7 @@ import {
   SCHEDULE_MIN_DATE,
   isCanonicalDate,
   type CalendarState,
+  type CalendarView,
   type ListNavigationMode,
   type ListPageSize,
 } from '../../navigation'
@@ -26,8 +27,9 @@ import {
   isStaffMemberMissing,
 } from './errors'
 import {
-  formatDateOnlyLong,
+  formatDateHeading,
   formatMonthHeading,
+  formatWeekRange,
   VIEW_LABELS,
 } from './presentation'
 import { AgendaList, DayView, WeekView } from './CalendarViews'
@@ -41,6 +43,8 @@ type BusinessCalendarProps = {
   onOpenAppointment: (appointmentId: string, calendar: CalendarState) => void
   // Only an ACTIVE Business may create: otherwise no control exists at all (not a disabled one).
   canCreate?: boolean
+  // A free place in the day grid was chosen: a proposal for the manual-create journey, never a creation.
+  // The primary action of the page, under the title; offered only where the caller allows creating.
   onCreate?: (calendar: CalendarState) => void
   onAuthenticationRequired: (detail: string) => void
 }
@@ -61,11 +65,18 @@ type StaffOption = { id: string; label: string }
 
 const defaultNow = () => new Date()
 
+// The accessible names of the icon-only period controls, appropriate to the selected view.
+const STEP_LABELS: Record<CalendarView, readonly [string, string]> = {
+  day: ['Предишен ден', 'Следващ ден'],
+  week: ['Предишна седмица', 'Следваща седмица'],
+  agenda: ['Предишен месец', 'Следващ месец'],
+}
+
 function periodHeading(state: CalendarState, date: string): string {
   const range = rangeFor(state.view, date)
-  if (state.view === 'day') return formatDateOnlyLong(date)
+  if (state.view === 'day') return formatDateHeading(date)
   if (state.view === 'agenda') return formatMonthHeading(date)
-  return `${formatDateOnlyLong(range.from)} – ${formatDateOnlyLong(range.to)}`
+  return formatWeekRange(range.from, range.to)
 }
 
 export function BusinessCalendar({
@@ -218,50 +229,68 @@ export function BusinessCalendar({
     <div className="platform-content calendar-page">
       {canCreate && onCreate && (
         <div className="business-page-actions">
-          <Button type="button" onClick={() => onCreate({ ...state, date })}>
-            Нов час
+          <Button type="button" onClick={() => onCreate(state)}>
+            Добави нов час
           </Button>
         </div>
       )}
       <div className="calendar-toolbar">
-        <nav className="schedule-tabs calendar-views" aria-label="Изглед на графика">
-          {CALENDAR_VIEWS.map((option) => (
-            <a
-              key={option}
-              className="schedule-tab"
-              href={routeHref({
-                kind: 'business-calendar',
-                calendar: { ...state, view: option, date, page: 0 },
-              })}
-              aria-current={view === option ? 'page' : undefined}
-              onClick={(event) => {
-                event.preventDefault()
-                if (view !== option) go({ view: option, page: 0 })
-              }}
-            >
-              {VIEW_LABELS[option]}
-            </a>
-          ))}
-        </nav>
+        <div className="calendar-toolbar-row calendar-group calendar-views-row">
+          <nav className="schedule-tabs calendar-views" aria-label="Изглед на графика">
+            {CALENDAR_VIEWS.map((option) => (
+              <a
+                key={option}
+                className="schedule-tab"
+                href={routeHref({
+                  kind: 'business-calendar',
+                  calendar: { ...state, view: option, date, page: 0 },
+                })}
+                aria-current={view === option ? 'page' : undefined}
+                onClick={(event) => {
+                  event.preventDefault()
+                  if (view !== option) go({ view: option, page: 0 })
+                }}
+              >
+                {VIEW_LABELS[option]}
+              </a>
+            ))}
+          </nav>
 
-        <div className="calendar-period-controls" role="group" aria-label="Навигация по период">
-          <Button type="button" variant="secondary" disabled={!canStep(-1)} onClick={() => step(-1)}>
-            Предишен
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={date === businessToday}
-            onClick={() => go({ date: businessToday, page: 0 })}
-          >
-            Днес
-          </Button>
-          <Button type="button" variant="secondary" disabled={!canStep(1)} onClick={() => step(1)}>
-            Следващ
-          </Button>
+          <span className="calendar-toolbar-separator" aria-hidden="true" />
+
+          <div className="calendar-period-controls" role="group" aria-label="Навигация по период">
+            <Button
+              type="button"
+              variant="neutral"
+              className="calendar-chevron"
+              aria-label={STEP_LABELS[view as CalendarView][0]}
+              disabled={!canStep(-1)}
+              onClick={() => step(-1)}
+            >
+              <span aria-hidden="true">‹</span>
+            </Button>
+            <Button
+              type="button"
+              variant="neutral"
+              disabled={date === businessToday}
+              onClick={() => go({ date: businessToday, page: 0 })}
+            >
+              Днес
+            </Button>
+            <Button
+              type="button"
+              variant="neutral"
+              className="calendar-chevron"
+              aria-label={STEP_LABELS[view as CalendarView][1]}
+              disabled={!canStep(1)}
+              onClick={() => step(1)}
+            >
+              <span aria-hidden="true">›</span>
+            </Button>
+          </div>
         </div>
 
-        <div className="calendar-filters">
+        <div className="calendar-toolbar-row calendar-filters calendar-group">
           <div className="form-field">
             <label htmlFor={dateInputId}>Дата</label>
             <input
@@ -298,10 +327,12 @@ export function BusinessCalendar({
         </div>
       </div>
 
-      <h2 id={headingId} className="calendar-period" aria-live="polite">
-        {periodHeading(state, date)}
-      </h2>
-      {timezone && <p className="calendar-timezone">Часова зона: {timezone}</p>}
+      <div className="calendar-group calendar-heading-group">
+        <h2 id={headingId} className="calendar-period" aria-live="polite">
+          {periodHeading(state, date)}
+        </h2>
+      </div>
+      <div className="calendar-group calendar-content-group">
 
       {staffGone && (
         <p className="status-message status-info" role="status">
@@ -352,6 +383,7 @@ export function BusinessCalendar({
           />
         </section>
       )}
+      </div>
     </div>
   )
 }

@@ -1,6 +1,11 @@
 import type { CSSProperties } from 'react'
 import { routeHref, type CalendarState } from '../../navigation'
-import { formatTimeDistinct, parseInstant } from '../../public/booking/dates'
+import {
+  CLOCK_RETURN_DAY_NOTE,
+  dayHasClockReturn,
+  formatTimeDistinct,
+  parseInstant,
+} from '../../public/booking/dates'
 import type {
   AgendaResponse,
   CalendarAppointment,
@@ -10,6 +15,7 @@ import type {
 import { dateRange } from './dates'
 import {
   businessDateOf,
+  clockReturnNote,
   closureLabel,
   formatDateAndRange,
   formatDayHeading,
@@ -18,7 +24,9 @@ import {
   layoutLanes,
   percentOfDay,
   serviceNames,
+  serviceSummary,
   statusLabel,
+  weekColumnLines,
 } from './presentation'
 
 type OpenAppointment = (appointmentId: string) => void
@@ -55,6 +63,8 @@ type EntryProps = {
   withDate?: boolean
   // Staff is implied by the surrounding column.
   hideStaff?: boolean
+  // A short grid block has no room for the Service line; the full names stay available to assistive technology.
+  compactServices?: boolean
   style?: CSSProperties
   className?: string
 }
@@ -70,6 +80,7 @@ export function AppointmentEntry({
   onOpen,
   withDate,
   hideStaff,
+  compactServices,
   style,
   className,
 }: EntryProps) {
@@ -99,7 +110,13 @@ export function AppointmentEntry({
         <StatusBadge status={appointment.status} quiet={className === 'calendar-block'} />
       </p>
       <p className="calendar-entry-customer">{appointment.customerDisplayName}</p>
-      <p className="calendar-entry-services">{serviceNames(appointment)}</p>
+      {!compactServices && <p className="calendar-entry-services">{serviceSummary(appointment)}</p>}
+      {clockReturnNote(appointment.start, appointment.end, timezone) && (
+        <p className="calendar-entry-note">{clockReturnNote(appointment.start, appointment.end, timezone)}</p>
+      )}
+      {appointment.services.length > 1 && (
+        <span className="visually-hidden">Услуги: {serviceNames(appointment)}.</span>
+      )}
       <p className="calendar-entry-meta">
         {hideStaff ? '' : `${appointment.staffDisplayName} · `}
         {formatTotalDuration(appointment.durationMinutes)}
@@ -210,14 +227,11 @@ export function DayView({ response, date, calendar, wide, onOpen }: DayViewProps
       {closures.business && (
         <p className="calendar-closure">{closureLabel('BUSINESS_CLOSURE')} за целия ден.</p>
       )}
+      {dayHasClockReturn(day.start, day.end, timezone) && (
+        <p className="calendar-clock-note">{CLOCK_RETURN_DAY_NOTE}</p>
+      )}
       {columns.length === 0 && (
         <p className="business-list-state">Няма членове на екипа за показване.</p>
-      )}
-      {wide && columns.length > 0 && (
-        <p className="calendar-legend">
-          Потвърден час: плътна рамка със зелена лента. Отменен час: пунктирана рамка и зачертан
-          текст. Защрихованата част е извън работното време.
-        </p>
       )}
       <div className={wide ? 'calendar-grid' : 'calendar-staff-list'}>
         {wide && columns.length > 0 && (
@@ -248,15 +262,20 @@ export function DayView({ response, date, calendar, wide, onOpen }: DayViewProps
                 {staff.displayName}
                 {!staff.active && <span className="calendar-inactive"> (неактивен)</span>}
               </h3>
-              <p className="calendar-working-time">
-                {dayClosure
-                  ? closureLabel(dayClosure.kind)
-                  : intervals.length === 0
-                    ? 'Не работи'
-                    : `Работно време: ${intervals
-                        .map((interval) => formatTimeRange(interval.start, interval.end, timezone))
-                        .join(', ')}`}
-              </p>
+              <div className="calendar-working-time">
+                {dayClosure ? (
+                  <span>{closureLabel(dayClosure.kind)}</span>
+                ) : intervals.length === 0 ? (
+                  <span>Не работи</span>
+                ) : (
+                  <>
+                    <span className="calendar-working-label">Работно време</span>
+                    {intervals.map((interval) => (
+                      <span key={interval.start}>{formatTimeRange(interval.start, interval.end, timezone)}</span>
+                    ))}
+                  </>
+                )}
+              </div>
               {wide ? (
                 <TimelineColumn
                   window={windowInstants}
@@ -265,6 +284,7 @@ export function DayView({ response, date, calendar, wide, onOpen }: DayViewProps
                   timezone={timezone}
                   calendar={calendar}
                   onOpen={onOpen}
+                  staff={staff}
                 />
               ) : staffAppointments.length === 0 ? (
                 <p className="calendar-empty-note">Няма часове.</p>
@@ -286,6 +306,13 @@ export function DayView({ response, date, calendar, wide, onOpen }: DayViewProps
           )
         })}
       </div>
+      {wide && columns.length > 0 && (
+        <ul className="calendar-legend" aria-label="Означения в графика">
+          <li>Потвърден час — плътна рамка със зелена лента.</li>
+          <li>Отменен час — пунктирана червена рамка и зачертан текст.</li>
+          <li>Защриховано поле — извън работното време.</li>
+        </ul>
+      )}
     </div>
   )
 }
@@ -297,6 +324,7 @@ function TimelineColumn({
   timezone,
   calendar,
   onOpen,
+  staff,
 }: {
   window: DayWindow
   intervals: ReadonlyArray<{ start: string; end: string }>
@@ -304,17 +332,23 @@ function TimelineColumn({
   timezone: string
   calendar: CalendarState
   onOpen: OpenAppointment
+  staff: CalendarStaffMember
 }) {
   const place = (start: string, end: string) => {
     const top = percentOfDay(start, visible.start, visible.end)
     const bottom = percentOfDay(end, visible.start, visible.end)
     return { top, height: Math.max(0, bottom - top) }
   }
+  const placed = layoutLanes(appointments)
+  // The entries that did not get a lane of their own, per cluster of overlapping entries.
+  const hiddenByCluster = new Map<number, typeof placed>()
+  for (const entry of placed) {
+    if (!entry.hidden) continue
+    hiddenByCluster.set(entry.cluster, [...(hiddenByCluster.get(entry.cluster) ?? []), entry])
+  }
+
   return (
-    <div
-      className="calendar-timeline"
-      style={{ '--calendar-hours': visible.hours } as CSSProperties}
-    >
+    <div className="calendar-timeline" style={{ '--calendar-hours': visible.hours } as CSSProperties}>
       {intervals.map((interval) => {
         const { top, height } = place(interval.start, interval.end)
         return (
@@ -326,27 +360,98 @@ function TimelineColumn({
           />
         )
       })}
-      {layoutLanes(appointments).map(({ item, lane, lanes }) => {
-        const { top, height } = place(item.start, item.end)
+      {Array.from({ length: visible.hours }, (_, index) => (
+        <div key={`h${index}`} aria-hidden="true">
+          <div className="calendar-hour-line" style={{ top: `${(index / visible.hours) * 100}%` }} />
+          <div className="calendar-half-line" style={{ top: `${((index + 0.5) / visible.hours) * 100}%` }} />
+        </div>
+      ))}
+      {placed
+        .filter((entry) => !entry.hidden)
+        .map(({ item, lane, lanes }) => {
+          const { top, height } = place(item.start, item.end)
+          // A block is as tall as its time range (6 rem per hour): under 40 minutes it only holds time and name.
+          const visibleMinutes = (height / 100) * visible.hours * 60
+          return (
+            <AppointmentEntry
+              key={item.id}
+              appointment={item}
+              timezone={timezone}
+              calendar={calendar}
+              onOpen={onOpen}
+              hideStaff
+              compactServices={visibleMinutes < 40 || lanes > 1}
+              className="calendar-block"
+              style={{
+                top: `${top}%`,
+                height: `${height}%`,
+                left: `${(lane / lanes) * 100}%`,
+                width: `${100 / lanes}%`,
+              }}
+            />
+          )
+        })}
+      {[...hiddenByCluster.entries()].map(([cluster, entries]) => {
+        const from = Math.min(...entries.map((entry) => place(entry.item.start, entry.item.end).top))
+        const to = Math.max(...entries.map((entry) => place(entry.item.start, entry.item.end).top + place(entry.item.start, entry.item.end).height))
         return (
-          <AppointmentEntry
-            key={item.id}
-            appointment={item}
+          <MoreEntries
+            key={`more-${cluster}`}
+            entries={entries.map((entry) => entry.item)}
+            staffName={staff.displayName}
             timezone={timezone}
             calendar={calendar}
             onOpen={onOpen}
-            hideStaff
-            className="calendar-block"
             style={{
-              top: `${top}%`,
-              height: `${height}%`,
-              left: `${(lane / lanes) * 100}%`,
-              width: `${100 / lanes}%`,
+              top: `${from}%`,
+              height: `${to - from}%`,
+              left: `${((entries[0]!.lanes - 1) / entries[0]!.lanes) * 100}%`,
+              width: `${100 / entries[0]!.lanes}%`,
             }}
           />
         )
       })}
     </div>
+  )
+}
+
+/**
+ * «Още N»: the entries of a dense group that have no lane of their own. A native disclosure, so it opens with a click,
+ * Enter or Space; every hidden Appointment is listed with its time, Customer and written status and opens its detail.
+ */
+function MoreEntries({
+  entries,
+  staffName,
+  timezone,
+  calendar,
+  onOpen,
+  style,
+}: {
+  entries: CalendarAppointment[]
+  staffName: string
+  timezone: string
+  calendar: CalendarState
+  onOpen: OpenAppointment
+  style: CSSProperties
+}) {
+  return (
+    <details className="calendar-more" style={style}>
+      <summary aria-label={`Още ${entries.length} часа при ${staffName}`}>Още {entries.length}</summary>
+      <ul className="calendar-more-list">
+        {entries.map((appointment) => (
+          <li key={appointment.id}>
+            <AppointmentEntry
+              appointment={appointment}
+              timezone={timezone}
+              calendar={calendar}
+              onOpen={onOpen}
+              hideStaff
+              compactServices
+            />
+          </li>
+        ))}
+      </ul>
+    </details>
   )
 }
 
@@ -362,13 +467,16 @@ export function WeekView({ response, calendar, onOpen }: WeekViewProps) {
   const timezone = response.timezone
   const dates = dateRange(response.from, response.to)
   return (
-    <div className="calendar-week">
+    <div className="calendar-week" role="region" aria-label="Седмичен график" tabIndex={0}>
       {dates.map((date) => {
         const entries = appointmentsOn(response, date)
         const closures = closuresOn(date, response.staffMembers)
         return (
           <section key={date} className="calendar-week-day" aria-labelledby={`calendar-day-${date}`}>
-            <h3 id={`calendar-day-${date}`}>{formatDayHeading(date)}</h3>
+            <h3 id={`calendar-day-${date}`} aria-label={formatDayHeading(date)}>
+              <span className="calendar-week-weekday">{weekColumnLines(date).weekday}</span>
+              <span className="calendar-week-date">{weekColumnLines(date).dayMonth}</span>
+            </h3>
             {closures.business && <p className="calendar-closure">{closureLabel('BUSINESS_CLOSURE')}</p>}
             {closures.timeOff.length > 0 && (
               <p className="calendar-closure">

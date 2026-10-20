@@ -53,7 +53,6 @@ type ManualCreateProps = {
   now?: () => Date
   onCancel: () => void
   onCreated: (appointmentId: string) => void
-  onAddCustomer: () => void
   onAuthenticationRequired: (detail: string) => void
 }
 
@@ -92,7 +91,6 @@ export function ManualCreate({
   now = defaultNow,
   onCancel,
   onCreated,
-  onAddCustomer,
   onAuthenticationRequired,
 }: ManualCreateProps) {
   const [state, dispatch] = useReducer(reduce, INITIAL_STATE)
@@ -440,7 +438,6 @@ export function ManualCreate({
             setErrors({})
             dispatch({ type: 'customer', customer })
           }}
-          onAddCustomer={onAddCustomer}
           onAuthenticationRequired={onAuthenticationRequired}
         />
       )

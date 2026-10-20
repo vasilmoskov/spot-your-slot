@@ -547,6 +547,41 @@ export async function availableDates(
   return probe.availableDates
 }
 
+/**
+ * The first date, with its first offered start, that is still bookable for the SAME final selection and
+ * StaffMember after that first start was taken by another guest. A visit blocks every overlapping start, so on a
+ * date with only a few starts left (today, late in the day) taking the first start can leave nothing: such a date
+ * is skipped. `slotsFor` must answer for exactly the selection and StaffMember that the journey later submits.
+ */
+export async function dateSurvivingFirstBooking(
+  dates: readonly string[],
+  slotsFor: (date: string) => Promise<readonly { start: string, end: string }[]>,
+): Promise<{ date: string, slot: { start: string, end: string } }> {
+  for (const date of dates) {
+    const slots = await slotsFor(date)
+    const first = slots[0]
+    if (!first) continue
+    const taken = { from: Date.parse(first.start), to: Date.parse(first.end) }
+    const remains = slots.some((slot) => {
+      const from = Date.parse(slot.start)
+      const to = Date.parse(slot.end)
+      return slot !== first && !(from < taken.to && to > taken.from)
+    })
+    if (remains) return { date, slot: first }
+  }
+  throw new Error('No date keeps a bookable start after its first start is taken')
+}
+
+/**
+ * The first date offered for both selections of a journey that changes its selection (for example a longer visit
+ * replacing a shorter one). A date taken from the first answer alone can have no start for the longer visit.
+ */
+export function firstCommonDate(first: readonly string[], second: readonly string[]): string {
+  const date = first.find((candidate) => second.includes(candidate))
+  if (date === undefined) throw new Error('No date is bookable for both selections')
+  return date
+}
+
 export async function slotsOn(
   request: APIRequestContext,
   slug: string,

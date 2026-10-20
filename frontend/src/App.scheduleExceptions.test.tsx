@@ -1009,9 +1009,9 @@ describe('list pagination through the router', () => {
     await start(LIST_AT(0))
     const push = vi.spyOn(history, 'pushState')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Следваща' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Следваща страница' }))
     expect(window.location.hash).toBe(LIST_AT(1))
-    fireEvent.change(screen.getByLabelText('Резултати на страница'), { target: { value: '25' } })
+    fireEvent.change(screen.getByLabelText('На страница'), { target: { value: '25' } })
     expect(window.location.hash).toBe(LIST_AT(0, 25))
     fireEvent.click(within(screen.getByRole('columnheader', { name: /Вид/ })).getByRole('button'))
     expect(window.location.hash).toBe(LIST_AT(0, 25, 'kind', 'asc'))
@@ -1048,7 +1048,7 @@ describe('list pagination through the router', () => {
   it('reload: a URL with the complete state renders that page', async () => {
     await start(LIST_AT(2, 10, 'kind', 'desc'))
     expect(rows()).toBe(3)
-    expect(screen.getByText('Показани 21–23 от 23')).toBeInTheDocument()
+    expect(screen.getByLabelText('Страница 3, текуща')).toBeInTheDocument()
   })
 
   it.each([
@@ -1076,7 +1076,7 @@ describe('list pagination through the router', () => {
     await act1()
     await screen.findByRole('table')
     expect(window.location.hash).toBe(LIST_AT(1, 10, 'kind', 'desc'))
-    expect(screen.getByText('Показани 11–20 от 23')).toBeInTheDocument()
+    expect(screen.getByLabelText('Страница 2, текуща')).toBeInTheDocument()
   })
 
   it('successful create keeps the complete state on the detail and on the way back', async () => {
@@ -1131,7 +1131,7 @@ describe('list pagination through the router', () => {
     await screen.findByRole('table')
     await waitFor(() => expect(window.location.hash).toBe(LIST_AT(0)))
     expect(rows()).toBe(10)
-    expect(screen.getByText('Показани 1–10 от 10')).toBeInTheDocument()
+    expect(screen.queryByRole('navigation', { name: /Странициране/ })).toBeNull()
     // Returning to the list is one push; the invalid page is replaced, never pushed.
     expect(push).toHaveBeenCalledTimes(1)
     expect(String(push.mock.calls[0]![2])).toContain('page=1')

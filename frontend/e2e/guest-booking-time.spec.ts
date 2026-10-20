@@ -77,16 +77,16 @@ test.describe('G. The repeated hour of the clock change', () => {
     await guest.chooseStaff(null)
     await guest.toDate()
     await guest.chooseDate(target)
-    // Both occurrences are listed with their offsets, and nothing else carries a technical zone name.
-    await expect(guest.slot(repeated[0]!.start)).toContainText('03:30 (UTC+03:00)')
-    await expect(guest.slot(second.start)).toContainText('03:30 (UTC+02:00)')
+    // Both occurrences are told apart in words, and nothing else carries a technical zone name.
+    await expect(guest.slot(repeated[0]!.start)).toContainText('03:30 — първи път')
+    await expect(guest.slot(second.start)).toContainText('03:30 — втори път')
     seen.push(await page.locator('main').innerText())
     await guest.chooseSlot(second.start)
-    await expect(page.locator('.booking-picker-summary')).toContainText('03:30 (UTC+02:00)')
+    await expect(page.locator('.booking-picker-summary')).toContainText('03:30 — втори път')
     await guest.toDetails()
     await guest.fillDetails({ name: 'Втори Час', phone: freshPhone() })
     await guest.toReview()
-    await expect(guest.summary()).toContainText('03:30 (UTC+02:00) – 04:00')
+    await expect(guest.summary()).toContainText('03:30 — втори път – 04:00')
     seen.push(await page.locator('main').innerText())
 
     const created = page.waitForResponse((response) =>
@@ -98,7 +98,7 @@ test.describe('G. The repeated hour of the clock change', () => {
     expect(body.start).toBe(second.start)
     expect(body.start.endsWith('+02:00')).toBe(true)
     await expect(guest.heading()).toHaveText('Резервацията е потвърдена')
-    await expect(page.locator('main')).toContainText('03:30 (UTC+02:00) – 04:00')
+    await expect(page.locator('main')).toContainText('03:30 — втори път – 04:00')
     seen.push(await page.locator('main').innerText())
 
     const calls = await audit.stop()

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { Button } from '../../ui/Button'
 import { FieldError, fieldControlProps } from '../../ui/formValidation'
 import { formatDateOnlyLong, formatTimeDistinct } from '../../public/booking/dates'
@@ -20,6 +20,7 @@ import {
   type ChosenCustomer,
 } from './model'
 import { dataFor, type KeyedLoad } from './useKeyedLoad'
+import { NewCustomerDialog } from './NewCustomerDialog'
 
 // The six steps of the manual-create flow. Every step is a presentational component: the state, the
 // loads, the validation, and the single POST belong to ManualCreate.
@@ -61,7 +62,6 @@ type CustomerStepProps = {
   error: string | undefined
   focusRef: Focusable
   onChoose: (customer: ChosenCustomer) => void
-  onAddCustomer: () => void
   onAuthenticationRequired: (detail: string) => void
 }
 
@@ -69,6 +69,12 @@ type CustomerResults =
   | { kind: 'loading' }
   | { kind: 'loaded'; page: CustomerPage; term: string }
   | { kind: 'error'; error: unknown }
+
+/** The chosen Customer stays visible as one selected card even when the current search does not list them. */
+function withSelected(items: CustomerSummary[], customer: ChosenCustomer | null): CustomerSummary[] {
+  if (!customer || items.some((item) => item.id === customer.id)) return items
+  return [{ id: customer.id, displayName: customer.name, phone: null, email: null } as CustomerSummary, ...items]
+}
 
 function contactLine(customer: CustomerSummary): string | null {
   if (customer.phone) return formatCustomerPhone(customer.phone)
@@ -84,9 +90,16 @@ export function CustomerStep({
   error,
   focusRef,
   onChoose,
-  onAddCustomer,
   onAuthenticationRequired,
 }: CustomerStepProps) {
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const openerRef = useRef<HTMLButtonElement>(null)
+  const wasOpen = useRef(false)
+  // Focus returns to the control that opened the dialog once the dialog is gone.
+  useLayoutEffect(() => {
+    if (wasOpen.current && !dialogOpen) openerRef.current?.focus()
+    wasOpen.current = dialogOpen
+  }, [dialogOpen])
   const [draft, setDraft] = useState('')
   const [term, setTerm] = useState('')
   const [reload, setReload] = useState(0)
@@ -152,12 +165,6 @@ export function CustomerStep({
         </div>
       </form>
 
-      {customer && (
-        <p className="manual-chosen" role="status">
-          Избран клиент: <strong>{customer.name}</strong>
-        </p>
-      )}
-
       {results.kind === 'loading' && (
         <p className="business-list-state" aria-live="polite" aria-busy="true">
           Зареждане на клиентите…
@@ -167,7 +174,7 @@ export function CustomerStep({
         <LoadError error={results.error} fallback={CUSTOMER_LOAD_ERROR} onRetry={() => setReload((token) => token + 1)} />
       )}
       {results.kind === 'loaded' &&
-        (results.page.items.length === 0 ? (
+        (results.page.items.length === 0 && !customer ? (
           <p className="business-list-state" aria-live="polite">
             {results.term !== ''
               ? 'Не са намерени клиенти по това търсене.'
@@ -176,7 +183,7 @@ export function CustomerStep({
         ) : (
           <fieldset className="manual-choices" aria-describedby={error ? 'manual-customer-error' : undefined}>
             <legend className="visually-hidden">Клиенти</legend>
-            {results.page.items.map((item) => {
+            {withSelected(results.page.items, customer).map((item) => {
               const contact = contactLine(item)
               return (
                 <label key={item.id} className="manual-choice">
@@ -209,10 +216,26 @@ export function CustomerStep({
       )}
 
       <div className="manual-side-action">
-        <Button type="button" variant="secondary" onClick={onAddCustomer}>
-          Добави клиент
+        <Button ref={openerRef} type="button" variant="secondary" onClick={() => setDialogOpen(true)}>
+          Нов клиент
         </Button>
       </div>
+      {dialogOpen && (
+        <NewCustomerDialog
+          onAuthenticationRequired={onAuthenticationRequired}
+          onClose={() => {
+            setDialogOpen(false)
+          }}
+          onCreated={(created) => {
+            setDialogOpen(false)
+            // The search is cleared so the refreshed list shows the new Customer, who is selected.
+            setDraft('')
+            setTerm('')
+            setReload((token) => token + 1)
+            onChoose({ id: created.id, name: created.displayName })
+          }}
+        />
+      )}
     </div>
   )
 }

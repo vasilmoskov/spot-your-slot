@@ -44,6 +44,11 @@ const SCOPED_LINKS: ReadonlyArray<{
     ],
   },
   {
+    label: 'Клиенти',
+    route: BUSINESS_CUSTOMERS_ROUTE,
+    kinds: ['business-customers', 'business-customer-new', 'business-customer-detail'],
+  },
+  {
     label: 'Услуги',
     route: BUSINESS_SERVICES_ROUTE,
     kinds: ['business-services', 'business-service-new', 'business-service-detail'],
@@ -62,11 +67,6 @@ const SCOPED_LINKS: ReadonlyArray<{
       'business-schedule-exception-new',
       'business-schedule-exception-detail',
     ],
-  },
-  {
-    label: 'Клиенти',
-    route: BUSINESS_CUSTOMERS_ROUTE,
-    kinds: ['business-customers', 'business-customer-new', 'business-customer-detail'],
   },
 ]
 

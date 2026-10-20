@@ -1,5 +1,6 @@
 import { devices, expect, test, type Browser, type BrowserContext, type Page, type Route } from '@playwright/test'
 import {
+  LANDING_HEADING,
   SERVICES_HEADING,
   apiRequest,
   expectBrowserStorageEmpty,
@@ -554,7 +555,7 @@ test.describe('Public Business profile: lifecycle and isolation', () => {
     const adminContext = await browser.newContext()
     try {
       const ownerPage = await ownerContext.newPage()
-      await signIn(ownerPage, other.ownerEmail, requiredEnvironment('E2E_OWNER_PASSWORD'), SERVICES_HEADING)
+      await signIn(ownerPage, other.ownerEmail, requiredEnvironment('E2E_OWNER_PASSWORD'), LANDING_HEADING)
       const adminPage = await adminContext.newPage()
       await signInAsPlatformAdmin(adminPage)
       for (const slug of [full.slug, other.slug, draft.slug]) {
@@ -608,7 +609,8 @@ test.describe('Public Business profile: owner and administrator changes', () => 
       await expect(publicPage.getByText('Първоначално описание преди промяната.')).toHaveCount(0)
 
       // The owner edits an active Service through the owner UI.
-      await owner.reload()
+      // The owner lands on the calendar, so the Services screen is opened by its route.
+      await owner.goto('/#/business/services')
       await owner
         .getByRole('row')
         .filter({ hasText: 'Първа услуга' })
@@ -1073,7 +1075,7 @@ test.describe('Administration regression boundary', () => {
       await expect(admin.getByText(/публичната страница/)).toHaveCount(0)
 
       const owner = await ownerContext.newPage()
-      await signIn(owner, full.ownerEmail, requiredEnvironment('E2E_OWNER_PASSWORD'), SERVICES_HEADING)
+      await signIn(owner, full.ownerEmail, requiredEnvironment('E2E_OWNER_PASSWORD'), LANDING_HEADING)
       const navigation = owner.getByRole('navigation', { name: 'Навигация на бизнеса' })
       for (const name of ['Услуги', 'Екип', 'Работно време', 'Профил']) {
         await expect(navigation.getByRole('link', { name })).toBeVisible()

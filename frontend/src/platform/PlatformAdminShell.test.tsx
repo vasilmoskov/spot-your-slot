@@ -72,18 +72,18 @@ describe('PlatformAdminShell navigation', () => {
       'Бизнеси',
       'Профил',
       'График',
+      'Клиенти',
       'Услуги',
       'Екип',
       'Работно време',
-      'Клиенти',
     ])
     const group = screen.getByRole('group', { name: 'Студио Активно' })
     expect(within(group).getAllByRole('link').map((link) => link.textContent)).toEqual([
       'График',
+      'Клиенти',
       'Услуги',
       'Екип',
       'Работно време',
-      'Клиенти',
     ])
     // Global links are outside the Business group.
     expect(within(group).queryByRole('link', { name: 'Профил' })).toBeNull()
@@ -148,10 +148,10 @@ describe('PlatformAdminShell navigation', () => {
       'Моите бизнеси',
       'Профил',
       'График',
+      'Клиенти',
       'Услуги',
       'Екип',
       'Работно време',
-      'Клиенти',
     ])
     fireEvent.click(screen.getByRole('link', { name: 'Бизнеси' }))
     expect(onNavigate).toHaveBeenLastCalledWith(PLATFORM_BUSINESSES_ROUTE)

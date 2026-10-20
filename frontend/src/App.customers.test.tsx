@@ -197,7 +197,7 @@ describe('customer navigation and routes', () => {
     mockedList.mockImplementation((query) =>
       Promise.resolve(pageOf([], { page: query.page, total: 0 })),
     )
-    fireEvent.click(screen.getByRole('button', { name: 'Следваща' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Следваща страница' }))
     expect(await screen.findByText('Не са намерени клиенти по това търсене.')).toBeInTheDocument()
     expect(window.location.hash).toBe('#/business/customers?page=0&size=10&sort=name&direction=asc')
     // One pushed entry (the user's click), no second one for the recovery.

@@ -3,7 +3,7 @@ import { Button } from '../../ui/Button'
 import { formatDateOnlyLong } from '../../public/booking/dates'
 import { formatCents, priceToCents } from '../../public/booking/money'
 import type { AppointmentDetails } from '../calendar/api'
-import { businessDateOf, formatTimeRange, formatTotalDuration, statusLabel } from '../calendar/presentation'
+import { businessDateOf, formatDateHeading, formatTimeRange, formatTotalDuration, statusLabel } from '../calendar/presentation'
 import { LoadError } from './steps'
 import type { RescheduleOptions } from './rescheduleApi'
 import { dataFor, type KeyedLoad } from './useKeyedLoad'
@@ -54,7 +54,7 @@ export function AppointmentContext({ appointment }: { appointment: AppointmentDe
         <div className="manual-review-row">
           <dt>Дата и час</dt>
           <dd>
-            {formatDateOnlyLong(businessDateOf(appointment.start, timezone))},{' '}
+            {formatDateHeading(businessDateOf(appointment.start, timezone))},{' '}
             {formatTimeRange(appointment.start, appointment.end, timezone)}
           </dd>
         </div>
@@ -63,9 +63,6 @@ export function AppointmentContext({ appointment }: { appointment: AppointmentDe
           <dd>{statusLabel(appointment.status)}</dd>
         </div>
       </dl>
-      <p className="manual-hint">
-        Клиентът и услугите на часа не могат да се променят. При грешка отменете часа и създайте нов.
-      </p>
     </section>
   )
 }

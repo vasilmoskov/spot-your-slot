@@ -14,7 +14,10 @@ import {
 } from './errors'
 import {
   businessDateOf,
+  formatDateHeading,
   formatPrice,
+  formatTimeRange,
+  crossingBounds,
   formatTotalDuration,
   sourceLabel,
   statusLabel,
@@ -278,8 +281,7 @@ export function AppointmentDetail({
 
         <header className="business-detail-header">
           <h2 ref={headingRef} tabIndex={-1}>
-            {formatDateOnlyLong(date)}, {formatTimeDistinct(appointment.start, timezone)}–
-            {formatTimeDistinct(appointment.end, timezone)}
+            {formatDateHeading(date)}, {formatTimeRange(appointment.start, appointment.end, timezone)}
           </h2>
           <p>
             <span
@@ -302,12 +304,24 @@ export function AppointmentDetail({
         )}
 
         <section className="business-section" aria-labelledby="appointment-facts">
-          <h3 id="appointment-facts">Час</h3>
+          <h3 id="appointment-facts">Детайли</h3>
           <dl className="business-details-list">
             <div>
               <dt>Член на екипа</dt>
               <dd>{appointment.staffDisplayName}</dd>
             </div>
+            {crossingBounds(appointment.start, appointment.end, timezone) && (
+              <>
+                <div>
+                  <dt>Начало</dt>
+                  <dd>{crossingBounds(appointment.start, appointment.end, timezone)!.start}</dd>
+                </div>
+                <div>
+                  <dt>Край</dt>
+                  <dd>{crossingBounds(appointment.start, appointment.end, timezone)!.end}</dd>
+                </div>
+              </>
+            )}
             <div>
               <dt>Обща продължителност</dt>
               <dd>{formatTotalDuration(appointment.durationMinutes)}</dd>
@@ -324,10 +338,6 @@ export function AppointmentDetail({
               <dt>Номер</dt>
               <dd>{appointment.reference}</dd>
             </div>
-            <div>
-              <dt>Часова зона</dt>
-              <dd>{timezone}</dd>
-            </div>
           </dl>
         </section>
 
@@ -340,7 +350,7 @@ export function AppointmentDetail({
                 <li key={service.position}>
                   <span className="appointment-service-name">{service.name}</span>
                   <span>
-                    {formatTotalDuration(service.durationMinutes)} · {formatPrice(service.price)}
+                    {formatPrice(service.price)} — {formatTotalDuration(service.durationMinutes)}
                   </span>
                 </li>
               ))}

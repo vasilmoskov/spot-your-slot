@@ -87,3 +87,12 @@ describe('the multi-Service selection text contrast (WCAG AA)', () => {
     expect(css).toMatch(/\.booking-choice-reason \{[^}]*font-weight: 600;/)
   })
 })
+
+describe('cancelled calendar card colours (WCAG AA)', () => {
+  it('reads the danger text on the light red card, its badge, and the border against the page', () => {
+    expect(contrast(token('color-danger-text'), token('color-danger-subtle'))).toBeGreaterThanOrEqual(4.5)
+    expect(contrast(token('color-danger-text'), token('color-surface'))).toBeGreaterThanOrEqual(4.5)
+    // The dashed border and the left bar are non-text UI components: at least 3:1 against the surface for the bar.
+    expect(contrast(token('color-danger'), token('color-surface'))).toBeGreaterThanOrEqual(3)
+  })
+})

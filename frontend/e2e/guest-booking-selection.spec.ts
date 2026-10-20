@@ -2,6 +2,7 @@ import { expect, test, type Browser, type BrowserContext, type Page } from '@pla
 import { signInAsPlatformAdmin } from './support/provisioning'
 import {
   availableDates,
+  firstCommonDate,
   callsTo,
   closeOwner,
   freshPhone,
@@ -149,9 +150,15 @@ test.describe('C. Invalidation and unnecessary reads', () => {
     const { context, page, guest } = await openJourney(browser, salon.slug)
     const first = ['Дамско подстригване', 'Маникюр']
     const ids = first.map((name) => salon.serviceIds[name]!)
-    const dates = await availableDates(request, salon.slug, ids)
-    const date = dates[0]!
-    const slot = (await slotsOn(request, salon.slug, ids, date))[0]!
+    const second = ids.slice(0, 1).concat(salon.serviceIds['Педикюр']!)
+    const staffId = salon.staffIds['Анна Георгиева']!
+    // The journey books the first selection with Анна, then changes to the second selection and picks a time on the
+    // same date. The date must therefore be bookable for BOTH final selections (a longer visit leaves today with no
+    // start late in the day), each answered for the StaffMember it is used with.
+    const firstDates = await availableDates(request, salon.slug, ids, staffId)
+    const secondDates = await availableDates(request, salon.slug, second)
+    const date = firstCommonDate(firstDates, secondDates)
+    const slot = (await slotsOn(request, salon.slug, ids, date, staffId))[0]!
     const phone = freshPhone()
     await guest.select(...first)
     await guest.toStaff()
@@ -178,7 +185,6 @@ test.describe('C. Invalidation and unnecessary reads', () => {
     await expect(guest.button('Напред')).toBeDisabled()
     // The details survive the change.
     await guest.chooseDate(date)
-    const second = ids.slice(0, 1).concat(salon.serviceIds['Педикюр']!)
     const nextSlot = (await slotsOn(request, salon.slug, second, date))[0]!
     await guest.chooseSlot(nextSlot.start)
     // The details are still valid, so the designed shortcut returns directly to the review.

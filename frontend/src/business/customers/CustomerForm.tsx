@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useLayoutEffect, useRef, useState, type FormEvent } from 'react'
 import { Button } from '../../ui/Button'
 import {
   FieldError,
@@ -6,7 +6,7 @@ import {
   useFieldValidation,
   type SubmitOutcome,
 } from '../../ui/formValidation'
-import { useGuardedFormState } from '../../ui/UnsavedChangesGuard'
+import { useUnsavedChangesGuard } from '../../ui/UnsavedChangesGuard'
 import { canonicalOptional } from '../text'
 import type { CustomerDetails, CustomerInput, UpdateCustomerInput } from './api'
 import {
@@ -22,6 +22,11 @@ type CustomerFormProps = {
   customer?: CustomerDetails
   busy: boolean
   submitLabel: string
+  // False inside another guarded flow (the manual Appointment form): this form then neither registers nor clears the
+  // shared unsaved-changes state, and its cancel action runs directly.
+  guarded?: boolean
+  // True after a result that cannot be ruled out: nothing can be submitted again from this form.
+  frozen?: boolean
   onChange?: () => void
   onCancel?: () => void
   onSubmit: (input: CustomerInput | UpdateCustomerInput) => Promise<SubmitOutcome<CustomerField>> | void
@@ -47,6 +52,8 @@ function CustomerFormBody({
   customer,
   busy,
   submitLabel,
+  guarded = true,
+  frozen = false,
   onCancel,
   onChange,
   onSubmit,
@@ -75,11 +82,24 @@ function CustomerFormBody({
   const isDirty =
     displayName !== initialDisplayName || phone !== initialPhone || email !== initialEmail
 
-  const guard = useGuardedFormState(isDirty, onDiscard)
+  const guard = useUnsavedChangesGuard()
+  const { registerDirty, unregisterDirty } = guard
+  const discardRef = useRef(onDiscard)
+  discardRef.current = onDiscard
+  // The same registration as useGuardedFormState, skipped when the surrounding flow owns the guard.
+  useLayoutEffect(() => {
+    if (guarded) registerDirty(isDirty, () => discardRef.current())
+  }, [guarded, isDirty, registerDirty])
+  useLayoutEffect(
+    () => () => {
+      if (guarded) unregisterDirty()
+    },
+    [guarded, unregisterDirty],
+  )
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (busy) return
+    if (busy || frozen) return
     if (!validateAll()) return
 
     const rawPhone = phone.trim()
@@ -180,17 +200,17 @@ function CustomerFormBody({
         )}
       </fieldset>
       <div className="action-group">
+        <Button disabled={busy || frozen}>{busy ? 'Запазване…' : submitLabel}</Button>
         {onCancel && (
           <Button
             type="button"
-            variant="secondary"
+            variant="destructive"
             disabled={busy}
-            onClick={() => guard.guard(() => onCancel())}
+            onClick={() => (guarded ? guard.guard(() => onCancel()) : onCancel())}
           >
             Отказ
           </Button>
         )}
-        <Button disabled={busy}>{busy ? 'Запазване…' : submitLabel}</Button>
       </div>
     </form>
   )

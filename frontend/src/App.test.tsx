@@ -29,6 +29,10 @@ import {
 } from './business/staff/api'
 import { getWorkingSchedule, type WorkingSchedule } from './business/schedule/api'
 
+// The calendar is the landing page of a Business owner but is not what these identity tests exercise (App.calendar.test.tsx
+// covers it): a stand-in keeps its reads out of the request mock that these tests script and count.
+vi.mock('./business/calendar/BusinessCalendar', () => ({ BusinessCalendar: () => <p>График на бизнеса</p> }))
+
 vi.mock('./identity/api', async (importOriginal) => {
   const original = await importOriginal<typeof import('./identity/api')>()
   return { ...original, request: vi.fn() }
@@ -134,8 +138,15 @@ const session: Session = {
   activeBusinessId: 'a',
 }
 
-async function landOnProfile() {
+// An owner lands on the calendar: the Services screen is opened from the sidebar.
+async function openServices() {
+  await screen.findByRole('heading', { name: 'График' })
+  fireEvent.click(screen.getByRole('link', { name: 'Услуги' }))
   await screen.findByRole('heading', { name: 'Услуги' })
+}
+
+async function landOnProfile() {
+  await screen.findByRole('heading', { name: 'График' })
   fireEvent.click(screen.getByRole('link', { name: 'Профил' }))
   await screen.findByRole('heading', { name: 'Профил' })
 }
@@ -205,7 +216,7 @@ describe('identity application', () => {
     fireEvent.keyDown(screen.getByLabelText('Парола'), { key: 'Enter', code: 'Enter' })
     fireEvent.submit(screen.getByRole('button', { name: 'Вход' }).closest('form')!)
     expect(screen.getByRole('button', { name: 'Вход' })).toBeDisabled()
-    expect(await screen.findByRole('heading', { name: 'Услуги' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'График' })).toBeInTheDocument()
     expect(browserStorageWrite).not.toHaveBeenCalled()
     expect(indexedDatabaseOpen).not.toHaveBeenCalled()
   })
@@ -1010,7 +1021,7 @@ describe('identity application', () => {
       ),
     )
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Услуги' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'График' })).toBeInTheDocument()
     })
     expect(screen.getByRole('link', { name: 'Услуги' })).toBeInTheDocument()
   })
@@ -1048,7 +1059,7 @@ describe('identity application', () => {
       ),
     )
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Услуги' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'График' })).toBeInTheDocument()
     })
     expect(await screen.findByRole('link', { name: 'Услуги' })).toBeInTheDocument()
   })
@@ -1106,17 +1117,14 @@ describe('identity application', () => {
     expect(screen.queryByRole('link', { name: 'Услуги' })).not.toBeInTheDocument()
   })
 
-  it('lands an owner directly on Services and shows Business-owner configuration navigation', async () => {
+  it('lands an owner directly on the calendar and shows Business-owner configuration navigation', async () => {
     mockedRequest.mockResolvedValue(session)
     render(<App />)
 
-    expect(await screen.findByRole('heading', { name: 'Услуги' })).toBeInTheDocument()
-    expect(window.location.hash).toBe(
-      '#/business/services?page=0&size=10&sort=name&direction=asc',
-    )
+    expect(await screen.findByRole('heading', { name: 'График' })).toBeInTheDocument()
+    expect(window.location.hash).toMatch(/^#\/business\/calendar\?view=day/)
     expect(screen.getByRole('link', { name: 'Услуги' })).toBeInTheDocument()
     expect(screen.getAllByText('Бизнес А').length).toBeGreaterThan(0)
-    expect(await screen.findByText('Все още няма създадени услуги.')).toBeInTheDocument()
     expect(screen.getByRole('group', { name: 'Бизнес А' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Бизнеси' })).toHaveAttribute('href', '/#/businesses')
   })
@@ -1140,7 +1148,7 @@ describe('identity application', () => {
     mockedRequest.mockResolvedValue({ ...session, platformAdmin: true })
     render(<App />)
 
-    await screen.findByRole('heading', { name: 'Услуги' })
+    await screen.findByRole('heading', { name: 'График' })
     fireEvent.click(screen.getByRole('link', { name: 'Профил' }))
     await screen.findByRole('heading', { name: 'Профил' })
     expect(screen.getAllByRole('link').map((link) => link.textContent)).toEqual([
@@ -1148,10 +1156,10 @@ describe('identity application', () => {
       'Моите бизнеси',
       'Профил',
       'График',
+      'Клиенти',
       'Услуги',
       'Екип',
       'Работно време',
-      'Клиенти',
     ])
   })
 
@@ -1406,7 +1414,7 @@ describe('table sort/pagination URL state', () => {
     })
     render(<App />)
 
-    await screen.findByRole('heading', { name: 'Услуги' })
+    await openServices()
     await screen.findByText('Подстригване')
     expect(window.location.hash).toBe(
       '#/business/services?page=0&size=10&sort=name&direction=asc',
@@ -1618,7 +1626,7 @@ describe('shared unsaved-changes guard', () => {
       totalElements: 1,
     })
     render(<App />)
-    await screen.findByRole('heading', { name: 'Услуги' })
+    await openServices()
     fireEvent.click(await screen.findByRole('link', { name: 'Отвори Подстригване' }))
     await screen.findByRole('heading', { name: 'Услуга' })
     fireEvent.click(screen.getByRole('button', { name: 'Редактирай' }))

@@ -83,14 +83,14 @@ describe('Customer Appointment history', () => {
     mockedRequest.mockResolvedValue(historyPage([historyEntry()], { total: 30 }))
     renderHistory()
     await screen.findByRole('list')
-    fireEvent.click(screen.getByRole('button', { name: 'Следваща' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Следваща страница' }))
     await waitFor(() =>
       expect(mockedRequest).toHaveBeenLastCalledWith(
         `/api/business/customers/${CUSTOMER_ONE}/appointments?page=1&size=10`,
         expect.anything(),
       ),
     )
-    fireEvent.change(screen.getByLabelText('Резултати на страница'), { target: { value: '50' } })
+    fireEvent.change(screen.getByLabelText('На страница'), { target: { value: '50' } })
     await waitFor(() =>
       expect(mockedRequest).toHaveBeenLastCalledWith(
         `/api/business/customers/${CUSTOMER_ONE}/appointments?page=0&size=50`,
@@ -107,7 +107,7 @@ describe('Customer Appointment history', () => {
     )
     renderHistory()
     await screen.findByRole('list')
-    fireEvent.click(screen.getByRole('button', { name: 'Следваща' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Следваща страница' }))
     await waitFor(() => expect(screen.getByRole('list')).toBeInTheDocument())
   })
 

@@ -7,7 +7,7 @@ import { dialableNumber } from '../presentation'
 import type { BookingDetails, Submission } from './attempt'
 import { retryDelayMs } from './attempt'
 import type { Slot, SubmissionRejection } from './api'
-import { formatDateOnlyLong, formatTimeDistinct } from './dates'
+import { formatDateOnlyLong, formatVisitRange } from './dates'
 import { useWaiting } from './hooks'
 import { formatCents } from './money'
 import { selectionTotals } from './selection'
@@ -155,8 +155,7 @@ export function ReviewStep({
   const note = trimApproved(details.note)
   const phone = trimApproved(details.phone)
   const email = trimApproved(details.email)
-  const startText = formatTimeDistinct(slot.start, timezone)
-  const endText = formatTimeDistinct(slot.end, timezone)
+  const rangeText = formatVisitRange(slot.start, slot.end, timezone)
 
   let message: string | null = null
   if (notice) {
@@ -216,7 +215,7 @@ export function ReviewStep({
         <Row term="Дата и час" editLabel="Промени датата и часа" disabled={frozen} onEdit={() => onEdit(3)}>
           <span className="booking-summary-strong">{formatDateOnlyLong(date)}</span>
           <span>
-            {startText} – {endText}
+            {rangeText}
           </span>
         </Row>
         <Row term="Вашите данни" editLabel="Промени данните" disabled={frozen} onEdit={() => onEdit(4)}>

@@ -52,7 +52,7 @@ export function renderDetail(options: RenderOptions = {}) {
 }
 
 export async function ready() {
-  await screen.findByRole('region', { name: 'Час' })
+  await screen.findByRole('region', { name: 'Детайли' })
 }
 
 export const navigate = () => fireEvent.click(screen.getByRole('button', { name: 'Навигация' }))
@@ -60,7 +60,7 @@ export const openCancel = () => fireEvent.click(screen.getByRole('button', { nam
 export const dialog = () => screen.getByRole('alertdialog')
 export const confirmCancel = () => fireEvent.click(within(dialog()).getByRole('button', { name: 'Отмени часа' }))
 export const keepAppointment = () => fireEvent.click(within(dialog()).getByRole('button', { name: 'Отказ' }))
-export const editNote = (name: string | RegExp = /Редактирай бележката|Добави бележка/) =>
+export const editNote = (name: string | RegExp = /Редактирай|Добави бележка/) =>
   fireEvent.click(screen.getByRole('button', { name }))
 export const noteInput = () => screen.getByRole('textbox', { name: 'Вътрешна бележка' }) as HTMLTextAreaElement
 export const typeNote = (value: string) => fireEvent.change(noteInput(), { target: { value } })

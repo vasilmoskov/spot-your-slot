@@ -690,13 +690,9 @@ function RescheduleForm({
 
         {!unresolved && (
           <div className="manual-actions action-group">
-            {stepIndex > 0 ? (
+            {stepIndex > 0 && (
               <Button type="button" variant="secondary" disabled={submitting} onClick={back}>
                 Назад
-              </Button>
-            ) : (
-              <Button type="button" variant="secondary" disabled={submitting} onClick={onBackToDetail}>
-                Отказ
               </Button>
             )}
             {isReview ? (
@@ -706,6 +702,11 @@ function RescheduleForm({
             ) : (
               <Button type="button" disabled={blocked} onClick={next}>
                 Напред
+              </Button>
+            )}
+            {stepIndex === 0 && (
+              <Button type="button" variant="destructive" disabled={submitting} onClick={onBackToDetail}>
+                Отказ
               </Button>
             )}
           </div>
