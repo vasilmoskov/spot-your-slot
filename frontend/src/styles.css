@@ -2358,9 +2358,6 @@ label {
   font-weight: 600;
 }
 
-.booking-slot-face--wide {
-  min-width: 9rem;
-}
 
 .booking-slot input:checked + .booking-slot-face {
   /* A thicker border and heavier text, so the selection is not conveyed by color alone. */
@@ -2957,7 +2954,7 @@ label {
 }
 
 .calendar-week-day .calendar-entry-time a {
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .calendar-entry-time {
@@ -3070,17 +3067,20 @@ label {
 }
 
 .calendar-axis {
-  display: grid;
+  position: relative;
   grid-row: 3;
-  grid-auto-rows: var(--calendar-hour-height);
+  height: calc(var(--calendar-hours) * var(--calendar-hour-height));
 }
 
+/* Labels sit on their lines: the exact start, every whole hour, and the exact end of the grid. */
 .calendar-axis-label {
-  margin-top: -0.5em;
+  position: absolute;
+  left: 0;
+  transform: translateY(-50%);
   color: var(--color-text-secondary);
   font-size: 0.75rem;
   line-height: 1.1;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
 }
 
 .calendar-grid .calendar-staff-column {
@@ -3156,11 +3156,31 @@ label {
   white-space: nowrap;
 }
 
+.calendar-entry-services {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+/* In a grid block each Service name is one line cut with an ellipsis, and the list may never push the block taller:
+   it takes only the room that is left under the time and the Customer. */
+.calendar-block {
+  display: flex;
+  flex-direction: column;
+}
+
 .calendar-block .calendar-entry-services {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.calendar-block .calendar-entry-services li {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--color-text-secondary);
 }
 
 .calendar-block .calendar-entry-meta {
@@ -3193,18 +3213,32 @@ label {
   margin: 0;
 }
 
+/* A real ordered list with visible "1." markers: a list item must stay display: list-item (a grid or flex item has no
+   marker), so the name and the price line are blocks inside it. */
 .appointment-services {
-  display: grid;
-  list-style: decimal;
-  gap: var(--space-2);
+  display: block;
+  list-style: decimal outside;
   margin: 0;
-  padding-left: 1.5rem;
+  padding-left: 2rem;
 }
 
 .appointment-services li {
-  display: grid;
-  gap: var(--space-1);
+  display: list-item;
+  margin: 0 0 var(--space-3);
+  padding-left: var(--space-1);
   overflow-wrap: anywhere;
+}
+
+.appointment-services li:last-child {
+  margin-bottom: 0;
+}
+
+.appointment-services li > span {
+  display: block;
+}
+
+.appointment-services li > span + span {
+  margin-top: var(--space-1);
 }
 
 .appointment-service-name {
@@ -3558,19 +3592,7 @@ label {
   color: var(--color-text-primary);
 }
 
-.calendar-entry-note {
-  margin: 0;
-  color: var(--color-text-secondary);
-  font-size: 0.75rem;
-  overflow-wrap: anywhere;
-}
 
-.calendar-clock-note,
-.booking-slots-note {
-  margin: 0;
-  color: var(--color-text-secondary);
-  font-size: 0.875rem;
-}
 
 /* Cancelled Appointments of the day grid: outside the time grid, so they never narrow an active card. */
 
@@ -3612,9 +3634,6 @@ label {
   }
 }
 
-.calendar-clock-note {
-  margin-bottom: var(--space-2);
-}
 
 /* ---- Shared select appearance (fourth review round) ----
    One rule for every native select: the arrow sits 14 px inside the right border and the text reserves room for it, so
@@ -3728,8 +3747,16 @@ select:disabled {
   flex-wrap: wrap;
 }
 
-.calendar-block .calendar-entry-time a {
-  white-space: nowrap;
+/* A time may break at a space or a dash, never inside the digits, and never run out of its card. */
+.calendar-entry-time a {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.calendar-entry {
+  overflow-wrap: anywhere;
 }
 
 /* «Още N»: the tile that holds the entries of a dense group without a lane of their own. */
@@ -3788,4 +3815,16 @@ select:disabled {
 
 .calendar-block .status-badge {
   line-height: 1.2;
+}
+
+/* Each fact of a flowing card (week, month) is its own line: the StaffMember, then the duration. */
+.calendar-entry-meta .calendar-entry-staff,
+.calendar-entry-meta .calendar-entry-duration {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+/* Room under the grid for the terminal time label and before the legend. */
+.calendar-grid {
+  padding-bottom: 1rem;
 }

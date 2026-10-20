@@ -17,7 +17,7 @@ export function installBackend(mocked: Mock): FakeBackend {
   return backend
 }
 
-export function renderForm(options: { strict?: boolean } = {}) {
+export function renderForm(options: { strict?: boolean; initialDate?: string | null; now?: Date } = {}) {
   const handlers = {
     onCancel: vi.fn(),
     onCreated: vi.fn(),
@@ -25,7 +25,7 @@ export function renderForm(options: { strict?: boolean } = {}) {
   }
   const form = (
     <UnsavedChangesGuardProvider>
-      <ManualCreate now={() => NOW} {...handlers} />
+      <ManualCreate now={() => options.now ?? NOW} initialDate={options.initialDate ?? null} {...handlers} />
     </UnsavedChangesGuardProvider>
   )
   const view = render(options.strict ? <StrictMode>{form}</StrictMode> : form)

@@ -69,11 +69,66 @@ export async function expectNoSessionCookie(context: BrowserContext): Promise<vo
   expect(await hasSessionCookie(context)).toBe(false)
 }
 
-export async function expectNoHorizontalOverflow(page: Page): Promise<void> {
-  const fitsViewport = await page.evaluate(() =>
-    document.documentElement.scrollWidth <= document.documentElement.clientWidth,
-  )
-  expect(fitsViewport).toBe(true)
+export type OverflowReport = {
+  checkpoint: string
+  route: string
+  viewport: number
+  scroll: number
+  fits: boolean
+  offenders: { element: string, side: 'left' | 'right', left: number, right: number }[]
+}
+
+/**
+ * What overflows the viewport, as numbers and structure only: the checkpoint's name, the route WITHOUT its query,
+ * the viewport and document widths, and for the widest offenders their tag, class names (never text, values, links or
+ * HTML), the side they cross and their left and right edges. An element inside an intentionally scrolling region
+ * (an `overflow-x` ancestor that itself fits the viewport, such as the week row) is not an offender: that region
+ * scrolls, the document does not.
+ */
+export async function overflowReport(page: Page, checkpoint: string): Promise<OverflowReport> {
+  return page.evaluate((name) => {
+    const viewport = document.documentElement.clientWidth
+    const scrolls = (element: Element): boolean => {
+      for (let parent = element.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
+        if (!['auto', 'scroll', 'hidden', 'clip'].includes(getComputedStyle(parent).overflowX)) continue
+        const box = parent.getBoundingClientRect()
+        if (box.left >= -0.5 && box.right <= viewport + 0.5) return true
+      }
+      return false
+    }
+    const offenders: OverflowReport['offenders'] = []
+    document.querySelectorAll('body *').forEach((element) => {
+      const box = element.getBoundingClientRect()
+      if (box.width <= 1 || box.height <= 0) return
+      const side = box.right > viewport + 0.5 ? 'right' : box.left < -0.5 ? 'left' : null
+      if (side === null || scrolls(element)) return
+      offenders.push({
+        element: `${element.tagName.toLowerCase()}${String(element.getAttribute('class') ?? '').split(/\s+/).filter(Boolean).slice(0, 3).map((token) => `.${token}`).join('')}`.slice(0, 80),
+        side,
+        left: Math.round(box.left),
+        right: Math.round(box.right),
+      })
+    })
+    offenders.sort((a, b) => Math.max(b.right - viewport, -b.left) - Math.max(a.right - viewport, -a.left))
+    return {
+      checkpoint: name,
+      route: location.hash.split('?')[0]!.slice(0, 60),
+      viewport,
+      scroll: document.documentElement.scrollWidth,
+      fits: document.documentElement.scrollWidth <= viewport,
+      offenders: offenders.slice(0, 5),
+    }
+  }, checkpoint)
+}
+
+/**
+ * The document fits the viewport (scrollWidth <= clientWidth); approved internal scroll regions may scroll. The answer
+ * is a single read taken after the caller's readiness wait, never a retry. A failure carries the `overflowReport`, so a
+ * red CI run names the checkpoint, the route and the offending elements instead of `expected true, received false`.
+ */
+export async function expectNoHorizontalOverflow(page: Page, checkpoint = 'unnamed'): Promise<void> {
+  const report = await overflowReport(page, checkpoint)
+  expect(report.fits, `horizontal overflow ${JSON.stringify(report)}`).toBe(true)
 }
 
 export async function expectBrowserStorageEmpty(page: Page): Promise<void> {

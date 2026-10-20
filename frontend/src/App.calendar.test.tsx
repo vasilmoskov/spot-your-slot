@@ -327,3 +327,51 @@ describe('privacy', () => {
     expect(document.title).toBe(title)
   })
 })
+
+describe('working time on the day Calendar after a schedule change', () => {
+  const MONDAY = '2026-10-26'
+  const staffAt = (end: string) => ({
+    ...calendarResponse().staffMembers[0]!,
+    workingIntervals: [{ start: `${MONDAY}T09:00:00+02:00`, end: `${MONDAY}T${end}:00+02:00` }],
+  })
+  const responseFor = (end: string) => ({
+    ...calendarResponse(),
+    from: MONDAY,
+    to: MONDAY,
+    days: [{ date: MONDAY, start: `${MONDAY}T00:00:00+02:00`, end: '2026-10-27T00:00:00+02:00' }],
+    staffMembers: [staffAt(end)],
+    appointments: [],
+  })
+
+  it('shows the saved period and the grid again when the owner returns, without a browser reload', async () => {
+    let end = '18:00'
+    businessAnswer = (path) => (path.startsWith('/api/business/calendar') ? responseFor(end) : defaultAnswer(path))
+    history.replaceState({}, '', `/#/business/calendar?view=day&date=${MONDAY}`)
+    render(<App />)
+    expect(await screen.findByText('09:00–18:00')).toBeInTheDocument()
+    const labels = () => Array.from(document.querySelectorAll('.calendar-axis-label')).map((label) => label.textContent)
+    expect(labels().at(-1)).toBe('18:00')
+
+    // The owner leaves for the schedule, saves 09:00–19:00 there, and comes back through the sidebar.
+    fireEvent.click(screen.getByRole('link', { name: 'Екип' }))
+    await screen.findByRole('heading', { level: 1, name: 'Екип' })
+    end = '19:00'
+    // Back returns to the same date (the sidebar link opens today); the Calendar mounts again and reads again.
+    act(() => history.back())
+    expect(await screen.findByText('09:00–19:00')).toBeInTheDocument()
+    expect(screen.queryByText('09:00–18:00')).toBeNull()
+    expect(labels().at(-1)).toBe('19:00')
+    expect(businessRequests('/api/business/calendar').length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('keeps a date-specific exception over the weekly period: a closure shows no working time', async () => {
+    businessAnswer = (path) =>
+      path.startsWith('/api/business/calendar')
+        ? { ...responseFor('19:00'), staffMembers: [{ ...staffAt('19:00'), workingIntervals: [], closures: [{ date: MONDAY, kind: 'STAFF_TIME_OFF' }] }] }
+        : defaultAnswer(path)
+    history.replaceState({}, '', `/#/business/calendar?view=day&date=${MONDAY}`)
+    render(<App />)
+    expect(await screen.findByText('Отсъствие')).toBeInTheDocument()
+    expect(screen.queryByText('09:00–19:00')).toBeNull()
+  })
+})

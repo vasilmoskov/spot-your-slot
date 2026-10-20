@@ -12,7 +12,7 @@ import {
   type Slot,
 } from './api'
 import { BookingCalendar } from './BookingCalendar'
-import { CLOCK_RETURN_DAY_NOTE, formatDateOnlyLong, formatTimeDistinct, formatVisitRange, isRepeatedLocalTime } from './dates'
+import { formatDateOnlyLong, formatTimeDistinct, formatVisitRange } from './dates'
 import { useWaiting, type ReadView } from './hooks'
 import {
   LIMIT_COUNT_REASON,
@@ -488,13 +488,8 @@ export function DateTimeStep({
               ) : slots.length === 0 ? (
                 <p className="public-empty">Няма свободни часове за тази дата.</p>
               ) : (
-                <>
-                {slots.some((candidate) => isRepeatedLocalTime(candidate.start, timezone)) && (
-                  <p className="booking-slots-note">{CLOCK_RETURN_DAY_NOTE}</p>
-                )}
                 <div className="booking-slot-list">
                   {slots.map((candidate) => {
-                    const repeated = isRepeatedLocalTime(candidate.start, timezone)
                     return (
                       <label key={candidate.start} className="booking-slot">
                         <input
@@ -504,18 +499,11 @@ export function DateTimeStep({
                           checked={slot?.start === candidate.start}
                           onChange={() => onSelectSlot(candidate)}
                         />
-                        <span
-                          className={
-                            repeated ? 'booking-slot-face booking-slot-face--wide' : 'booking-slot-face'
-                          }
-                        >
-                          {formatTimeDistinct(candidate.start, timezone)}
-                        </span>
+                        <span className="booking-slot-face">{formatTimeDistinct(candidate.start, timezone)}</span>
                       </label>
                     )
                   })}
                 </div>
-                </>
               )}
             </fieldset>
           )}

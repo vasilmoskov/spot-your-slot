@@ -6,10 +6,7 @@ import {
   formatTimeInZone,
   isRepeatedLocalTime,
   isValidTimeZone,
-  CLOCK_RETURN_DAY_NOTE,
-  clockReturnPlace,
   crossesClockReturn,
-  dayHasClockReturn,
   formatVisitRange,
   instantInZone,
   repeatedOccurrence,
@@ -76,9 +73,9 @@ describe('the repeated hour', () => {
     }
   })
 
-  it('names the occurrence of a repeated time in words, never an offset', () => {
-    expect(formatTimeDistinct('2026-10-25T03:30:00+03:00', zone)).toBe('03:30 — първи път')
-    expect(formatTimeDistinct('2026-10-25T03:30:00+02:00', zone)).toBe('03:30 — втори път')
+  it('shows a repeated time plainly: no occurrence wording, no offset', () => {
+    expect(formatTimeDistinct('2026-10-25T03:30:00+03:00', zone)).toBe('03:30')
+    expect(formatTimeDistinct('2026-10-25T03:30:00+02:00', zone)).toBe('03:30')
     expect(formatTimeDistinct('2026-10-25T05:30:00+02:00', zone)).toBe('05:30')
   })
 
@@ -130,21 +127,12 @@ describe('repeated hours derived from the zone transitions (never a fixed date o
     expect(crossesClockReturn('2026-10-24T10:00:00+03:00', '2026-10-24T11:00:00+03:00', zone)).toBe(false)
   })
 
-  it('writes places and ranges in words and never prints an offset or a timezone identifier', () => {
-    expect(clockReturnPlace('2026-10-25T03:30:00+03:00', zone)).toBe('преди връщането на часовника')
-    expect(clockReturnPlace('2026-10-25T03:30:00+02:00', zone)).toBe('след връщането на часовника')
-    expect(clockReturnPlace('2026-10-24T03:30:00+03:00', zone)).toBeNull()
+  it('writes an ordinary range plainly and a crossing visit as its start and the elapsed time', () => {
     const crossing = formatVisitRange('2026-10-25T03:30:00+03:00', '2026-10-25T03:15:00+02:00', zone)
-    expect(crossing).toBe('03:30 — първи път до 03:15 — втори път')
+    expect(crossing).toBe('03:30 — 45\u00a0мин.')
     expect(formatVisitRange('2026-10-24T10:00:00+03:00', '2026-10-24T10:45:00+03:00', zone)).toBe('10:00 – 10:45')
-    expect(crossing).not.toMatch(/UTC|Europe|[+-]\d\d:\d\d/)
-  })
-
-  it('knows the day on which the clocks go back and no ordinary day', () => {
-    expect(dayHasClockReturn('2026-10-25T00:00:00+03:00', '2026-10-26T00:00:00+02:00', zone)).toBe(true)
-    expect(dayHasClockReturn('2026-10-24T00:00:00+03:00', '2026-10-25T00:00:00+03:00', zone)).toBe(false)
-    expect(dayHasClockReturn('2027-03-28T00:00:00+02:00', '2027-03-29T00:00:00+03:00', zone)).toBe(false)
-    expect(CLOCK_RETURN_DAY_NOTE).toMatch(/повтарят/)
+    expect(formatVisitRange('2026-10-25T03:30:00+02:00', '2026-10-25T04:15:00+02:00', zone)).toBe('03:30 – 04:15')
+    expect(crossing).not.toMatch(/UTC|Europe|[+-]\d\d:\d\d|път|часовника/)
   })
 
   it('builds the exact instant text of a clicked time from the instant, keeping both repeated times distinct', () => {

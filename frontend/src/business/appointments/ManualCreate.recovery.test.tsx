@@ -67,8 +67,9 @@ describe('upstream choices clear every invalid dependent choice', () => {
     expect((await staffRadios()).every((radio) => !(radio as HTMLInputElement).checked)).toBe(true)
     await chooseStaff()
     expect(heading()).toHaveTextContent('Дата и час')
-    expect(screen.getByLabelText('Дата')).toHaveValue('')
-    expect(screen.queryByRole('group', { name: 'Свободни часове' })).toBeNull()
+    // The invalidated date is proposed again (the Business today), but no start is chosen.
+    expect(screen.getByLabelText('Дата')).toHaveValue('2026-10-02')
+    expect(screen.queryByRole('radio', { checked: true })).toBeNull()
     await chooseTime()
     // The note step is complete: the edit continues straight to the review, note intact.
     const review = await screen.findByRole('button', { name: 'Създай час' })
@@ -120,8 +121,8 @@ describe('upstream choices clear every invalid dependent choice', () => {
     next()
     expect(heading()).toHaveTextContent('Преглед и потвърждение')
     expect(document.querySelector('dl')).toHaveTextContent('Борис Пробен')
-    // The Customer change reloaded nothing about availability.
-    expect(backend.count('/api/business/appointment-options/availability')).toBe(1)
+    // The Customer change reloaded nothing about availability: the proposed date and the chosen one, nothing more.
+    expect(backend.count('/api/business/appointment-options/availability')).toBe(2)
   })
 
   it('drops a StaffMember that the refreshed options no longer offer and asks again', async () => {
@@ -350,7 +351,7 @@ describe('every documented result of the create', () => {
     expect(heading()).toHaveTextContent('Дата и час')
     expect(screen.getByLabelText('Дата')).toHaveValue(DAY)
     await screen.findByRole('group', { name: 'Свободни часове' })
-    expect(backend.count('/api/business/appointment-options/availability')).toBe(2)
+    expect(backend.count('/api/business/appointment-options/availability')).toBe(3)
     expect(backend.posts()).toHaveLength(1)
     expect(handlers.onCreated).not.toHaveBeenCalled()
     // The Customer, the Services and the StaffMember are kept: the review shows them again.
@@ -627,9 +628,11 @@ describe('validation and focus', () => {
     await chooseCustomer()
     await chooseServices('Маникюр')
     await chooseStaff()
-    await screen.findByLabelText('Дата')
+    // The date is proposed; an owner who empties it gets the validation, and it is not filled in again.
+    fireEvent.change(await screen.findByLabelText('Дата'), { target: { value: '' } })
     next()
     expect(screen.getByText('Изберете дата.')).toBeInTheDocument()
+    expect(screen.getByLabelText('Дата')).toHaveValue('')
     expect(screen.getByLabelText('Дата')).toHaveFocus()
     expect(screen.getByLabelText('Дата')).toHaveAttribute('aria-invalid', 'true')
   })

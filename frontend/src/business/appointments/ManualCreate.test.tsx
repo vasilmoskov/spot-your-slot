@@ -370,8 +370,10 @@ describe('StaffMember and availability', () => {
     await chooseStaff('Георги')
     await chooseTime()
     const calls = backend.calls.filter((call) => call.path.startsWith('/api/business/appointment-options/availability'))
-    expect(calls).toHaveLength(1)
-    const params = new URL(calls[0]!.path, 'http://x').searchParams
+    // One read for the proposed date (the Business today) and one for the chosen date.
+    expect(calls).toHaveLength(2)
+    expect(new URL(calls[0]!.path, 'http://x').searchParams.get('date')).toBe('2026-10-02')
+    const params = new URL(calls[1]!.path, 'http://x').searchParams
     expect(params.getAll('serviceId')).toEqual([S_NAILS.id, S_CUT.id])
     expect(params.get('staffMemberId')).toBe(STAFF_B)
     expect(params.get('date')).toBe(DAY)
@@ -422,15 +424,22 @@ describe('daylight saving', () => {
       fireEvent.change(await screen.findByLabelText('Дата'), { target: { value: '2026-10-25' } })
       const group = await screen.findByRole('group', { name: 'Свободни часове' })
       expect(within(group).getAllByRole('radio').map((radio) => radio.closest('label')?.textContent)).toEqual([
-        '03:30 — първи път',
-        '03:30 — втори път',
+        '03:30',
+        '03:30',
         '04:15',
       ])
+      // Identical labels, two distinct exact values and keys: the second choice is the one that is submitted.
+      expect(within(group).getAllByRole('radio').map((radio) => (radio as HTMLInputElement).value)).toEqual([
+        '2026-10-25T03:30:00+03:00',
+        '2026-10-25T03:30:00+02:00',
+        '2026-10-25T04:15:00+02:00',
+      ])
       fireEvent.click(within(group).getAllByRole('radio')[1]!)
+      expect(within(group).getAllByRole('radio').map((radio) => (radio as HTMLInputElement).checked)).toEqual([false, true, false])
       next()
       next()
       await screen.findByRole('button', { name: 'Създай час' })
-      expect(document.querySelector('dl')).toHaveTextContent('03:30–04:15 — втори път')
+      expect(document.querySelector('dl')).toHaveTextContent('03:30–04:15')
       confirm()
       await waitFor(() => expect(backend.posts()).toHaveLength(1))
       // The chosen instant is sent with its own offset: the second occurrence, not the first.

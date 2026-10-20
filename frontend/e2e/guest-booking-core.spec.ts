@@ -4,6 +4,7 @@ import { signInAsPlatformAdmin } from './support/provisioning'
 import {
   availableDates,
   callsTo,
+  dateWithSlots,
   canonicalOrder,
   closeOwner,
   expectJourneyStateClean,
@@ -77,8 +78,9 @@ test.describe('A. One Service through the new request shape', () => {
     const phone = freshPhone()
     const cutId = id('Дамско подстригване')
     const dates = await availableDates(request, salon.slug, [cutId])
-    const date = dates[0]!
-    const slot = (await slotsOn(request, salon.slug, [cutId], date))[1]!
+    // The second start of the first date that has two (today, late in the day, may offer only one).
+    const { date, slots: cutSlots } = await dateWithSlots(dates, (candidate) => slotsOn(request, salon.slug, [cutId], candidate), 2)
+    const slot = cutSlots[1]!
     const customersBefore = await ownerCustomerTotal(salon.owner!.page)
 
     await guest.open(salon.slug)
@@ -180,8 +182,7 @@ test.describe('B. Three Services as one visit', () => {
     const canonical = canonicalOrder(ids)
     const clickOrder = [...canonical].reverse().map((serviceId) => names[ids.indexOf(serviceId)]!)
     const dates = await availableDates(request, salon.slug, ids)
-    const date = dates[1] ?? dates[0]!
-    const slots = await slotsOn(request, salon.slug, ids, date)
+    const { date, slots } = await dateWithSlots([...dates.slice(1), ...dates.slice(0, 1)], (candidate) => slotsOn(request, salon.slug, ids, candidate), 3)
     const slot = slots[2]!
     // One continuous slot covers the summed duration (195 minutes).
     expect((Date.parse(slot.end) - Date.parse(slot.start)) / 60_000).toBe(195)
@@ -273,8 +274,8 @@ test.describe('F. Customer matching', () => {
     const audit = recordTraffic(page)
     const brows = id('Оформяне на вежди')
     const dates = await availableDates(request, salon.slug, [brows])
-    const date = dates[2] ?? dates[0]!
-    const slot = (await slotsOn(request, salon.slug, [brows], date))[index]!
+    const { date, slots } = await dateWithSlots([...dates.slice(2), ...dates.slice(0, 2)], (candidate) => slotsOn(request, salon.slug, [brows], candidate), index + 1)
+    const slot = slots[index]!
     await guest.open(salon.slug)
     await guest.toReviewFor({ services: ['Оформяне на вежди'], staff: null, date, slot: slot.start, details })
     return { context, page, guest, audit }

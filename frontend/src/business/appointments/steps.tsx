@@ -485,6 +485,7 @@ export function DateTimeStep({
               <input
                 type="radio"
                 name="manual-start"
+                value={slot.start}
                 data-first-slot={index === 0 ? '' : undefined}
                 checked={start === slot.start}
                 onChange={() => onStart(slot)}

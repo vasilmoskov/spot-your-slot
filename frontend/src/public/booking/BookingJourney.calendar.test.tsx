@@ -129,7 +129,7 @@ describe('the calendar composition', () => {
     expect(screen.getAllByRole('gridcell').filter((c) => c.getAttribute('aria-selected') === 'false')).toHaveLength(0)
   })
 
-  it('summarizes the selected date and time, with offsets only for the repeated hour', async () => {
+  it('summarizes the selected date and time; a visit across the clock change is its start and the elapsed time', async () => {
     await openDateStep()
     expect(document.querySelector('.booking-picker-summary')).toBeEmptyDOMElement()
     await pickSlot('10:00')
@@ -139,9 +139,9 @@ describe('the calendar composition', () => {
     expect(document.querySelector('.booking-picker-summary')).toHaveAttribute('role', 'status')
 
     await pickDate('неделя, 25 октомври 2026 г.')
-    await pickSlot(/03:30 — първи път/)
+    fireEvent.click(screen.getAllByRole('radio', { name: '03:30' })[0]!)
     expect(document.querySelector('.booking-picker-summary')).toHaveTextContent(
-      'Избрано: неделя, 25 октомври 2026 г., 03:30 — първи път до 03:15 — втори път',
+      'Избрано: неделя, 25 октомври 2026 г., 03:30 — 45 мин.',
     )
   })
 

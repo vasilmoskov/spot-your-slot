@@ -99,6 +99,22 @@ describe('the entry', () => {
     expect(button.closest('.calendar-toolbar')).toBeNull()
   })
 
+  it('proposes the Calendar date as the date of the new draft, and still returns to the Calendar state', async () => {
+    // A far-future date keeps the test independent of the real clock.
+    const FUTURE = '#/business/calendar?view=week&date=2090-05-04'
+    await openForm(FUTURE)
+    fireEvent.click(await screen.findByRole('radio', { name: /Мария/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Напред' }))
+    fireEvent.click(await screen.findByRole('checkbox', { name: /Дамско подстригване/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Напред' }))
+    fireEvent.click(await screen.findByRole('radio', { name: /Мила/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Напред' }))
+    await waitFor(() => expect(screen.getByLabelText('Дата')).toHaveValue('2090-05-04'))
+    fireEvent.click(screen.getByRole('button', { name: 'Обратно към графика' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Напусни' }))
+    await waitFor(() => expect(window.location.hash).toBe(FUTURE))
+  })
+
   it('a click on the day grid creates nothing and opens nothing', async () => {
     history.replaceState({}, '', '/#/business/calendar?view=day&date=2026-10-14')
     render(<App />)

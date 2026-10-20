@@ -11,7 +11,7 @@ import {
   percentOfDay,
   serviceSummary,
 } from './presentation'
-import { visibleWindow } from './CalendarViews'
+import { axisLabels, gridMarks, visibleWindow } from './CalendarViews'
 import { day } from './testFixtures'
 
 const ORIGINAL_TZ = process.env['TZ']
@@ -39,16 +39,20 @@ describe('Business-timezone presentation', () => {
     }
   })
 
-  it('keeps both occurrences of a repeated local time distinguishable', () => {
+  it('writes a repeated local time plainly, the same for both occurrences', () => {
     for (const zone of BROWSER_ZONES) {
       process.env['TZ'] = zone
       // 2026-10-25: clocks go back from 04:00 EEST to 03:00 EET.
       expect(
         formatTimeRange('2026-10-25T03:30:00+03:00', '2026-10-25T03:45:00+03:00', 'Europe/Sofia'),
-      ).toBe('03:30–03:45 — първи път')
+      ).toBe('03:30–03:45')
       expect(
         formatTimeRange('2026-10-25T03:30:00+02:00', '2026-10-25T03:45:00+02:00', 'Europe/Sofia'),
-      ).toBe('03:30–03:45 — втори път')
+      ).toBe('03:30–03:45')
+      // A visit across the backward change would read 03:30–03:15: it is the start and the elapsed time.
+      expect(
+        formatTimeRange('2026-10-25T03:30:00+03:00', '2026-10-25T03:15:00+02:00', 'Europe/Sofia'),
+      ).toBe('03:30 — 45\u00a0мин.')
     }
   })
 
@@ -81,14 +85,15 @@ describe('Business-timezone presentation', () => {
 })
 
 describe('visible day window', () => {
-  it('covers work and bookings in whole hours and defaults to the day hours when empty', () => {
+  it('covers work and bookings exactly and defaults to the day hours when empty', () => {
     const wednesday = day('2026-10-14')
     expect(visibleWindow(wednesday, []).hours).toBe(10)
     const window = visibleWindow(wednesday, [
       { start: '2026-10-14T09:15:00+03:00', end: '2026-10-14T12:00:00+03:00' },
     ])
-    expect(window.hours).toBe(3)
-    expect(Date.parse(window.start)).toBe(Date.parse('2026-10-14T09:00:00+03:00'))
+    expect(window.hours).toBe(2.75)
+    expect(Date.parse(window.start)).toBe(Date.parse('2026-10-14T09:15:00+03:00'))
+    expect(Date.parse(window.end)).toBe(Date.parse('2026-10-14T12:00:00+03:00'))
   })
 
   it('keeps a 25-hour day within its real bounds', () => {
@@ -179,12 +184,10 @@ describe('Bulgarian written dates (Phase 11 Part 1)', () => {
 })
 
 describe('no technical timezone text (Phase 11 Part 1)', () => {
-  it('names the occurrence of a repeated hour in words and never prints an IANA identifier or an offset', () => {
+  it('adds no clock-change wording and never prints an IANA identifier or an offset', () => {
     const first = formatTimeRange('2026-10-25T03:30:00+03:00', '2026-10-25T03:45:00+03:00', 'Europe/Sofia')
     const second = formatTimeRange('2026-10-25T03:30:00+02:00', '2026-10-25T03:45:00+02:00', 'Europe/Sofia')
-    expect(first).toContain('първи път')
-    expect(second).toContain('втори път')
-    expect(first + second).not.toMatch(/Europe|Sofia|Часова зона/)
+    expect(first + second).not.toMatch(/Europe|Sofia|Часова зона|път|часовника|UTC/)
   })
 
   it('summarizes Services compactly', () => {
@@ -192,5 +195,63 @@ describe('no technical timezone text (Phase 11 Part 1)', () => {
     expect(
       serviceSummary({ services: Array.from({ length: 5 }, (_, i) => ({ name: `Дълго име ${i}`, durationMinutes: 30 })) }),
     ).toBe('5 услуги')
+  })
+})
+
+describe('the shared range of the day grid', () => {
+  const wednesday = day('2026-10-14')
+  const period = (from: string, to: string) => ({ start: `2026-10-14T${from}:00+03:00`, end: `2026-10-14T${to}:00+03:00` })
+  const zone = 'Europe/Sofia'
+  const clock = (instant: string) => formatTimeRange(instant, instant, zone).split('–')[0]
+  const text = (instants: Array<{ instant: string }>) => instants.map((label) => clock(label.instant))
+
+  it('runs from the earliest start to the latest end across every StaffMember, however many columns there are', () => {
+    // Staff A 08:00-17:00, Staff B 09:00-19:00, a sixth column (off-screen on a desktop) ending last at 20:00.
+    const window = visibleWindow(wednesday, [period('08:00', '17:00'), period('09:00', '19:00'), period('10:00', '14:00'), period('15:00', '20:00')])
+    expect(window.start).toBe(new Date('2026-10-14T08:00:00+03:00').toISOString())
+    expect(window.end).toBe(new Date('2026-10-14T20:00:00+03:00').toISOString())
+    expect(window.hours).toBe(12)
+  })
+
+  it('keeps non-whole-hour boundaries exact', () => {
+    const window = visibleWindow(wednesday, [period('08:15', '19:30')])
+    expect(window.hours).toBe(11.25)
+    expect(text(axisLabels(window, zone))).toEqual(['08:15', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '19:30'])
+  })
+
+  it('always labels the terminal boundary: 18:00, 19:00 and 19:30, with no extra empty hour', () => {
+    for (const [end, hours] of [['18:00', 9], ['19:00', 10], ['19:30', 10.5]] as const) {
+      const window = visibleWindow(wednesday, [period('09:00', end)])
+      const labels = text(axisLabels(window, zone))
+      expect(labels.at(-1)).toBe(end)
+      expect(labels[0]).toBe('09:00')
+      expect(window.hours).toBe(hours)
+    }
+  })
+
+  it('leaves out an hour label that would touch a boundary label', () => {
+    const window = visibleWindow(wednesday, [period('08:50', '12:05')])
+    expect(text(axisLabels(window, zone))).toEqual(['08:50', '10:00', '11:00', '12:05'])
+  })
+
+  it('stretches over an Appointment outside every working period, cancelled ones included', () => {
+    const window = visibleWindow(wednesday, [period('09:00', '13:00'), period('19:15', '20:00')])
+    expect(window.end).toBe(new Date('2026-10-14T20:00:00+03:00').toISOString())
+    const early = visibleWindow(wednesday, [period('09:00', '13:00'), period('07:30', '08:15')])
+    expect(early.start).toBe(new Date('2026-10-14T07:30:00+03:00').toISOString())
+  })
+
+  it('places hour and half-hour lines on the local clock, strictly inside the window', () => {
+    const window = visibleWindow(wednesday, [period('08:15', '10:30')])
+    const marks = gridMarks(window, zone).map((mark) => [clock(new Date(mark.at).toISOString()), mark.hour])
+    expect(marks).toEqual([['08:30', false], ['09:00', true], ['09:30', false], ['10:00', true]])
+  })
+
+  it('keeps the lines and the terminal label right on a 25-hour day', () => {
+    const repeated = day('2026-10-25', '+03:00', '+02:00')
+    const window = visibleWindow(repeated, [{ start: '2026-10-25T02:00:00+03:00', end: '2026-10-25T05:00:00+02:00' }])
+    // 02:00 EEST to 05:00 EET: lines at 03:00 (EEST), 03:00 (EET) and 04:00 (EET).
+    expect(gridMarks(window, zone).filter((mark) => mark.hour)).toHaveLength(3)
+    expect(axisLabels(window, zone).at(-1)!.instant).toBe(new Date('2026-10-25T05:00:00+02:00').toISOString())
   })
 })

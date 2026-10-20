@@ -89,6 +89,9 @@ describe('the calendar day-cell CSS prerequisites (not a rendered-size proof)', 
   it('lets a dated agenda title and a stacked card wrap, so a long label never widens the page (Phase 11 Part 1 regression)', () => {
     // The month list showed "Понеделник, 19 октомври 2026 г., 10:45–11:30" on one non-wrapping line at 375 px.
     expect(css).not.toMatch(/\n\.calendar-entry-time a \{[^}]*white-space:\s*nowrap/)
-    expect(css).toMatch(/\n\.calendar-week-day \.calendar-entry-time a \{\s*white-space:\s*nowrap/)
+    // A week card's time may break at a space or a dash (a nowrap time overflowed Sunday's card, fifth review round),
+    // but never inside the digits.
+    expect(css).toMatch(/\n\.calendar-week-day \.calendar-entry-time a \{\s*white-space:\s*normal/)
+    expect(css).toMatch(/\n\.calendar-entry-time a \{[^}]*overflow-wrap:\s*normal/)
   })
 })

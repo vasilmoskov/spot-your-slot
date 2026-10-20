@@ -51,6 +51,9 @@ import { dataFor, useKeyedLoad } from './useKeyedLoad'
 type ManualCreateProps = {
   // Injected clock, only used to name the Business "today" (the earliest date offered).
   now?: () => Date
+  // The date selected in the Calendar the owner came from (a canonical date), or null; it only proposes the date of a
+  // new draft and is independent of the Calendar state the form returns to.
+  initialDate?: string | null
   onCancel: () => void
   onCreated: (appointmentId: string) => void
   onAuthenticationRequired: (detail: string) => void
@@ -89,6 +92,7 @@ const defaultNow = () => new Date()
  */
 export function ManualCreate({
   now = defaultNow,
+  initialDate = null,
   onCancel,
   onCreated,
   onAuthenticationRequired,
@@ -109,6 +113,8 @@ export function ManualCreate({
   const [slotsReload, setSlotsReload] = useState(0)
   const [focusTick, setFocusTick] = useState(0)
 
+  // True once the owner has set the date field to nothing: the empty date is then theirs, not an unset default.
+  const dateClearedByOwner = useRef(false)
   const submitting_ = useRef(false)
   const closed = useRef(false)
   const pendingCatalog = useRef<((catalog: ServiceSummary[]) => void) | null>(null)
@@ -212,6 +218,19 @@ export function ManualCreate({
     }
     // Only fresh options may trigger this.
   }, [optionsData])
+
+  // The date of a new draft: the Calendar's date when it is today or later in the Business timezone, otherwise today
+  // there. It is set once the authoritative timezone is known (never from the browser's), only while the date is
+  // empty and the owner has not emptied it, so a later choice is never overwritten.
+  const businessTimezone = optionsData?.timezone
+  useEffect(() => {
+    if (!businessTimezone || state.date !== '' || dateClearedByOwner.current || unresolvedRef.current) return
+    const today = localDateIn(now(), businessTimezone)
+    if (!today) return
+    const proposed =
+      initialDate !== null && isCanonicalDate(initialDate) && initialDate >= today ? initialDate : today
+    if (proposed >= SCHEDULE_MIN_DATE && proposed <= SCHEDULE_MAX_DATE) dispatch({ type: 'date', date: proposed })
+  }, [businessTimezone, state.date])
 
   // An offered start the server no longer lists is not kept.
   useEffect(() => {
@@ -493,11 +512,9 @@ export function ManualCreate({
           focusRef={focusRef}
           onDate={(value) => {
             setErrors({})
-            dispatch({
-              type: 'date',
-              date:
-                isCanonicalDate(value) && value >= SCHEDULE_MIN_DATE && value <= SCHEDULE_MAX_DATE ? value : '',
-            })
+            const valid = isCanonicalDate(value) && value >= SCHEDULE_MIN_DATE && value <= SCHEDULE_MAX_DATE
+            dateClearedByOwner.current = !valid
+            dispatch({ type: 'date', date: valid ? value : '' })
           }}
           onStart={(start) => {
             setErrors({})

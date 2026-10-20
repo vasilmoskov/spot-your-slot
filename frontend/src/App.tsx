@@ -970,6 +970,7 @@ export function AuthenticatedApplication({
         ) : route.kind === 'business-appointment-new' ? (
           <ManualCreate
             key={businessKey}
+            initialDate={route.returnCalendar.date}
             onAuthenticationRequired={authenticationRequired}
             onCancel={() => navigate({ kind: 'business-calendar', calendar: route.returnCalendar })}
             onCreated={(appointmentId) => {

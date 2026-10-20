@@ -263,9 +263,10 @@ describe('Appointment entries', () => {
     const entry = link.closest('article')!
     expect(within(entry).getByText('Потвърден')).toBeInTheDocument()
     expect(within(entry).getByText('Мария Тестова')).toBeInTheDocument()
-    // A card carries a compact Service summary; the full list is in the detail and for assistive technology.
-    expect(within(entry).getByText('2 услуги')).toBeInTheDocument()
-    expect(entry).toHaveTextContent('Услуги: Подстригване, Боядисване.')
+    // The Service names, in stored order, one per line; never a count.
+    const lines = [...entry.querySelectorAll('.calendar-entry-services li')].map((item) => item.textContent)
+    expect(lines).toEqual(['Подстригване', 'Боядисване'])
+    expect(entry).not.toHaveTextContent('2 услуги')
     expect(entry).toHaveTextContent('1 ч 15 мин')
   })
 
@@ -453,8 +454,14 @@ describe('daylight-saving days', () => {
             ],
           })
     renderCalendar({ ...BASE, date: '2026-10-25' })
-    expect(await screen.findByRole('link', { name: /^03:30–03:45 — първи път/ })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /^03:30–03:45 — втори път/ })).toBeInTheDocument()
+    // Both occurrences read the same and stay two separate cards, each with its own detail link.
+    const links = await screen.findAllByRole('link', { name: '03:30–03:45' })
+    expect(links).toHaveLength(2)
+    expect(links.map((link) => link.getAttribute('href'))).toEqual([
+      '/#/business/appointments/first?view=day&date=2026-10-25',
+      '/#/business/appointments/second?view=day&date=2026-10-25',
+    ])
+    expect(document.body.textContent).not.toMatch(/първи път|втори път|часовника/)
   })
 
   it('shows a 23-hour spring day without an hour label inside the gap', async () => {
@@ -479,7 +486,8 @@ describe('daylight-saving days', () => {
     const labels = Array.from(document.querySelectorAll('.calendar-axis-label')).map(
       (label) => label.textContent,
     )
-    expect(labels).toEqual(['02:00', '04:00'])
+    // No label inside the skipped hour; the exact end of the grid is labelled.
+    expect(labels).toEqual(['02:00', '04:00', '05:00'])
   })
 })
 
@@ -777,7 +785,10 @@ describe('the create button and the day grid', () => {
     await screen.findByText('Мария Тестова')
     const hours = document.querySelectorAll('.calendar-hour-line').length
     expect(hours).toBeGreaterThan(0)
-    expect(document.querySelectorAll('.calendar-half-line')).toHaveLength(hours)
+    // Whole hours strictly inside the grid and the half hours between and around them.
+    const halves = document.querySelectorAll('.calendar-half-line').length
+    expect(halves).toBeGreaterThanOrEqual(hours - 1)
+    expect(halves).toBeLessThanOrEqual(hours + 1)
     expect(document.querySelector('.calendar-quarter-line')).toBeNull()
   })
 })
@@ -943,18 +954,29 @@ describe('compact toolbar, legend, working time and cards (Phase 11 Part 1)', ()
     expect(card).toHaveTextContent('Дамско подстригване')
   })
 
-  it('shows a compact "5 услуги" for a five-Service visit without printing the long names in the card', async () => {
+  it('shows the names of a five-Service visit instead of a count and keeps the full list available when a short card cuts it', async () => {
     const names = Array.from({ length: 5 }, (_, index) => `Изключително-дълго-наименование-на-услуга-${index}`)
     handler = dayWith([
       entry({ id: 'five', start: '2026-10-14T11:00:00+03:00', end: '2026-10-14T15:25:00+03:00', durationMinutes: 265, services: names.map((name) => ({ name, durationMinutes: 50 })) }),
     ])
     renderCalendar()
     const card = (await screen.findByRole('link', { name: '11:00–15:25' })).closest('article')!
-    expect(within(card).getByText('5 услуги')).toBeInTheDocument()
-    expect(card.querySelector('.calendar-entry-services')!.textContent).toBe('5 услуги')
+    const lines = [...card.querySelectorAll('.calendar-entry-services li')].map((item) => item.textContent)
+    expect(lines).toEqual(names)
+    expect(card).not.toHaveTextContent('5 услуги')
+  })
+
+  it('cuts the Service names to the room under the time and the Customer, ending the last visible line with an ellipsis', async () => {
+    const names = ['Първа', 'Втора', 'Трета', 'Четвърта', 'Пета']
+    handler = dayWith([
+      entry({ id: 'cut', start: '2026-10-14T11:00:00+03:00', end: '2026-10-14T12:00:00+03:00', durationMinutes: 60, services: names.map((name) => ({ name, durationMinutes: 12 })) }),
+    ])
+    renderCalendar()
+    const card = (await screen.findByRole('link', { name: '11:00–12:00' })).closest('article')!
+    const lines = [...card.querySelectorAll('.calendar-entry-services li')].map((item) => item.textContent)
+    expect(lines).toEqual(['Първа', 'Втора', 'Трета…'])
     // The full list stays available to assistive technology.
-    const hidden = [...card.querySelectorAll('.visually-hidden')].map((element) => element.textContent).join(' ')
-    expect(hidden).toContain(names[4])
+    expect(card).toHaveTextContent('Услуги: Първа, Втора, Трета, Четвърта, Пета.')
   })
 
   it('leaves a short block with only time and Customer, and a tall block without a gap rule between them', async () => {
@@ -998,5 +1020,26 @@ describe('compact toolbar, legend, working time and cards (Phase 11 Part 1)', ()
       'Неделя18 октомври',
     ])
     expect(document.querySelectorAll('.calendar-week-day h3 > span')).toHaveLength(14)
+  })
+})
+
+describe('week cards: one line per fact', () => {
+  it('puts the StaffMember and the duration on separate lines, without the middle-dot separator', async () => {
+    handler = async (path) =>
+      path.startsWith('/api/business/staff-members')
+        ? staffCatalog
+        : calendarResponse({
+            from: '2026-10-12',
+            to: '2026-10-18',
+            days: ['12', '13', '14', '15', '16', '17', '18'].map((d) => day(`2026-10-${d}`)),
+            appointments: [appointment({ staffDisplayName: 'Александра-Константинова-Йорданова-Преславска-Пенчева-Тодорова' })],
+          })
+    renderCalendar({ ...BASE, view: 'week' }, NOW)
+    const card = (await screen.findByRole('link', { name: '10:00–10:45' })).closest('article')!
+    const meta = card.querySelector('.calendar-entry-meta')!
+    const lines = [...meta.querySelectorAll('span')].map((line) => line.textContent)
+    expect(lines).toEqual(['Александра-Константинова-Йорданова-Преславска-Пенчева-Тодорова', '45 мин'])
+    expect(card.textContent).not.toContain('·')
+    expect([...card.querySelectorAll('.calendar-entry-services li')].map((item) => item.textContent)).toEqual(['Дамско подстригване'])
   })
 })

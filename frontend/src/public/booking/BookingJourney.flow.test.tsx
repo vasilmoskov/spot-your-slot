@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest'
-import { cleanup, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   ATTEMPT_ONE,
@@ -344,7 +344,7 @@ describe('dates, timezone and the repeated daylight-saving hour', () => {
     expect(screen.getByRole('gridcell', { name: /^неделя, 25 октомври 2026 г\./ })).toBeInTheDocument()
   })
 
-  it('tells the two 03:30 slots of the repeated hour apart, in the list, the review and the result', async () => {
+  it('keeps the two identical 03:30 choices of the repeated hour distinct by their exact values, and submits the chosen one', async () => {
     server.on((request) =>
       request.method === 'POST'
         ? json(201, {
@@ -363,17 +363,21 @@ describe('dates, timezone and the repeated daylight-saving hour', () => {
     const labels = within(group)
       .getAllByRole('radio')
       .map((radio) => radio.closest('label')?.textContent)
-    expect(labels).toEqual(['03:30 — първи път', '03:30 — втори път'])
-
-    await pickSlot('03:30 — втори път')
+    // The labels are identical on purpose; the exact instants are the values.
+    expect(labels).toEqual(['03:30', '03:30'])
+    const radios = within(group).getAllByRole('radio') as HTMLInputElement[]
+    expect(radios.map((radio) => radio.value)).toEqual(['2026-10-25T03:30:00+03:00', '2026-10-25T03:30:00+02:00'])
+    fireEvent.click(radios[1]!)
+    expect(radios.map((radio) => radio.checked)).toEqual([false, true])
     await next()
     await fillDetails()
     await next()
     // The elapsed time of the first slot crosses the change, and each end keeps its own offset.
-    expect(document.querySelector('.booking-summary')).toHaveTextContent('03:30 — втори път – 04:15')
+    expect(document.querySelector('.booking-summary')).toHaveTextContent('03:30 – 04:15')
     await submit()
     expect(parsedBody(server.posts[0])).toMatchObject({ start: '2026-10-25T03:30:00+02:00' })
-    expect(document.querySelector('.booking-facts')).toHaveTextContent('03:30 — втори път – 04:15')
+    expect(document.querySelector('.booking-facts')).toHaveTextContent('03:30 – 04:15')
+    expect(document.body.textContent).not.toMatch(/първи път|втори път|часовника/)
   })
 
   it('formats the confirmation in the returned timezone, whatever the browser uses', async () => {

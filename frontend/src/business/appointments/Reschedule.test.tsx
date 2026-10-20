@@ -287,10 +287,9 @@ describe('date and time', () => {
 
     const labels = within(group).getAllByRole('radio').map((radio) => radio.closest('label')?.textContent ?? '')
     expect(labels).toHaveLength(3)
-    expect(labels[0]).toBe('03:30 — първи път')
-    expect(labels[1]).toBe('03:30 — втори път')
-    expect(labels[2]).toBe('04:00')
-    expect(new Set(labels).size).toBe(3)
+    expect(labels).toEqual(['03:30', '03:30', '04:00'])
+    const values = within(group).getAllByRole('radio').map((radio) => (radio as HTMLInputElement).value)
+    expect(new Set(values).size).toBe(3)
     expect(document.body.textContent).not.toMatch(/Europe\/Sofia|часова зона/i)
 
     // The spring gap is never synthesized: the screen lists exactly what the server offered.

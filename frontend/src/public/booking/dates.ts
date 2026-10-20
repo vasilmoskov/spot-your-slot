@@ -156,27 +156,21 @@ export function crossesClockReturn(start: string, end: string, timeZone: string)
   return zoneOffsetMs(to, timeZone) < zoneOffsetMs(from, timeZone)
 }
 
-export const FIRST_TIME_LABEL = 'първи път'
-export const SECOND_TIME_LABEL = 'втори път'
-export const BEFORE_CLOCK_RETURN = 'преди връщането на часовника'
-export const AFTER_CLOCK_RETURN = 'след връщането на часовника'
-
 /**
- * The clock time of an instant. A local time that occurs twice is told apart in words, never by a timezone
- * identifier or a numeric UTC offset: "03:30 — първи път" and "03:30 — втори път".
+ * The clock time of an instant in the Business timezone, plain "03:30". A local time that occurs twice (the clocks
+ * went back) is deliberately not annotated: the choices stay distinct by their exact instants, never by the label.
  */
 export function formatTimeDistinct(instant: string, timeZone: string): string {
-  const time = formatTimeInZone(instant, timeZone)
-  const occurrence = repeatedOccurrence(instant, timeZone)
-  if (occurrence === null) return time
-  return `${time} — ${occurrence === 'first' ? FIRST_TIME_LABEL : SECOND_TIME_LABEL}`
+  return formatTimeInZone(instant, timeZone)
 }
 
-/** The place of a repeated time relative to the clock return, for a card or a detail line; null otherwise. */
-export function clockReturnPlace(instant: string, timeZone: string): string | null {
-  const occurrence = repeatedOccurrence(instant, timeZone)
-  if (occurrence === null) return null
-  return occurrence === 'first' ? BEFORE_CLOCK_RETURN : AFTER_CLOCK_RETURN
+/** "45 мин." for a short elapsed time, "1 ч 30 мин." and "2 ч." otherwise: the duration of a visit across the clock change. */
+export function formatElapsed(minutes: number): string {
+  const hours = Math.floor(minutes / 60)
+  const rest = minutes % 60
+  // Non-breaking spaces keep a number with its unit when a narrow card wraps the line after the dash.
+  if (hours === 0) return `${rest}\u00a0мин.`
+  return rest === 0 ? `${hours}\u00a0ч.` : `${hours}\u00a0ч ${rest}\u00a0мин.`
 }
 
 /**
@@ -192,20 +186,18 @@ export function instantInZone(at: number, timeZone: string): string {
   return `${local}${sign}${String(Math.floor(abs / 60)).padStart(2, '0')}:${String(abs % 60).padStart(2, '0')}`
 }
 
-export const CLOCK_RETURN_DAY_NOTE = 'На тази дата часовникът се връща назад и някои часове се повтарят.'
-
-/** True when the clocks go back during the Business-local day that starts at `dayStart` and ends at `dayEnd`. */
-export function dayHasClockReturn(dayStart: string, dayEnd: string, timeZone: string): boolean {
-  const from = parseInstant(dayStart)
-  const to = parseInstant(dayEnd)
-  if (from === null || to === null) return false
-  return zoneOffsetMs(to - 1000, timeZone) < zoneOffsetMs(from, timeZone)
-}
-
-/** A visit as the public journey states it; a visit across the backward clock change names both occurrences. */
+/**
+ * A visit as the public journey states it: "03:30 – 04:15". A visit across the backward clock change would read
+ * "03:30 – 03:15", so it is the start and the actual elapsed time: "03:30 — 45 мин.".
+ */
 export function formatVisitRange(start: string, end: string, timeZone: string): string {
-  const separator = crossesClockReturn(start, end, timeZone) ? ' до ' : ' – '
-  return `${formatTimeDistinct(start, timeZone)}${separator}${formatTimeDistinct(end, timeZone)}`
+  if (crossesClockReturn(start, end, timeZone)) {
+    const from = parseInstant(start)
+    const to = parseInstant(end)
+    const minutes = from === null || to === null ? 0 : Math.round((to - from) / 60_000)
+    return `${formatTimeDistinct(start, timeZone)} — ${formatElapsed(minutes)}`
+  }
+  return `${formatTimeDistinct(start, timeZone)} – ${formatTimeDistinct(end, timeZone)}`
 }
 
 /** The elapsed time between two instants in whole minutes (not the difference of wall-clock times). */

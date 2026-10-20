@@ -1,15 +1,10 @@
 import { formatServicePrice } from '../services/presentation'
 import {
-  AFTER_CLOCK_RETURN,
-  BEFORE_CLOCK_RETURN,
-  FIRST_TIME_LABEL,
-  SECOND_TIME_LABEL,
-  clockReturnPlace,
   crossesClockReturn,
   elapsedMinutes,
+  formatElapsed,
   formatDateOnlyLong,
   formatTimeInZone,
-  repeatedOccurrence,
   MONTH_NAMES,
   parseInstant,
   WEEKDAY_LONG,
@@ -106,36 +101,14 @@ export function formatWeekdayLong(date: string): string {
 export { formatDateOnlyLong }
 
 /**
- * The time span of an Appointment in the Business timezone, never with a timezone identifier or a UTC offset.
- * A visit that crosses the backward clock change would read "03:30–03:15", so it is written as the start and the
- * duration ("03:30 — 45 мин"); a visit that starts in a repeated hour says which occurrence it is
- * ("03:00–03:45 — втори път"); every other span is the plain "10:00–11:15".
+ * The time span of an Appointment in the Business timezone, never with a timezone identifier, a UTC offset or any
+ * clock-change annotation: "10:00–11:15". A visit that crosses the backward clock change would read "03:30–03:15", so
+ * it is the start and the actual elapsed time: "03:30 — 45 мин.".
  */
 export function formatTimeRange(start: string, end: string, timeZone: string): string {
   const from = formatTimeInZone(start, timeZone)
-  const to = formatTimeInZone(end, timeZone)
-  if (crossesClockReturn(start, end, timeZone)) {
-    return `${from} — ${formatTotalDuration(elapsedMinutes(start, end) ?? 0)}`
-  }
-  const occurrence = repeatedOccurrence(start, timeZone)
-  if (occurrence === null) return `${from}–${to}`
-  return `${from}–${to} — ${occurrence === 'first' ? FIRST_TIME_LABEL : SECOND_TIME_LABEL}`
-}
-
-/** "Преди връщането на часовника" for a card or a detail whose visit starts in a repeated hour or crosses the change. */
-export function clockReturnNote(start: string, end: string, timeZone: string): string | null {
-  const place = clockReturnPlace(start, timeZone) ?? (crossesClockReturn(start, end, timeZone) ? BEFORE_CLOCK_RETURN : null)
-  if (place === null) return null
-  return place.charAt(0).toLocaleUpperCase('bg-BG') + place.slice(1)
-}
-
-/** Start and end as two lines for the detail of a visit that crosses the backward clock change; otherwise null. */
-export function crossingBounds(start: string, end: string, timeZone: string): { start: string; end: string } | null {
-  if (!crossesClockReturn(start, end, timeZone)) return null
-  return {
-    start: `${formatTimeInZone(start, timeZone)} — ${BEFORE_CLOCK_RETURN}`,
-    end: `${formatTimeInZone(end, timeZone)} — ${AFTER_CLOCK_RETURN}`,
-  }
+  if (crossesClockReturn(start, end, timeZone)) return `${from} — ${formatElapsed(elapsedMinutes(start, end) ?? 0)}`
+  return `${from}–${formatTimeInZone(end, timeZone)}`
 }
 
 /** The Business-local date of an instant as `yyyy-MM-dd`; falls back to the text when unparsable. */

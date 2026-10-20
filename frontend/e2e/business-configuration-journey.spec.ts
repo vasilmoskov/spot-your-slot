@@ -1004,7 +1004,9 @@ test.describe('Business-owner mobile smoke', () => {
         requiredEnvironment('E2E_OWNER_PASSWORD'),
         LANDING_HEADING,
       )
-      await expectNoHorizontalOverflow(page)
+      // Ready means the Calendar has its answer (the loaded results region), not only its heading.
+      await expect(page.locator('.calendar-results')).toBeVisible()
+      await expectNoHorizontalOverflow(page, 'landing calendar (loaded)')
 
       const menu = page.getByRole('button', { name: /навигацията/ })
       const navigation = page.getByRole('navigation', { name: 'Навигация на бизнеса' })
@@ -1029,7 +1031,7 @@ test.describe('Business-owner mobile smoke', () => {
         .toContainText('60 мин.')
       await expect(page.getByRole('row').filter({ hasText: HAIRCUT_EDITED.name }))
         .toContainText('42.00 €')
-      await expectNoHorizontalOverflow(page)
+      await expectNoHorizontalOverflow(page, 'services list')
 
       await menu.press('Enter')
       const staffLink = navigation.getByRole('link', { name: 'Екип' })
@@ -1040,7 +1042,7 @@ test.describe('Business-owner mobile smoke', () => {
       const staffRow = page.getByRole('row').filter({ hasText: STAFF_EDITED_NAME })
       await expect(staffRow).toContainText(STAFF_EDITED_EMAIL)
       await expect(staffRow).toContainText(STAFF_PHONE)
-      await expectNoHorizontalOverflow(page)
+      await expectNoHorizontalOverflow(page, 'staff list')
 
       await menu.press('Enter')
       const scheduleLink = navigation.getByRole('link', { name: 'Работно време' })
@@ -1052,7 +1054,7 @@ test.describe('Business-owner mobile smoke', () => {
       await expect(
         scheduleDay(page, 'monday').getByText('15:00–19:00'),
       ).toBeInViewport()
-      await expectNoHorizontalOverflow(page)
+      await expectNoHorizontalOverflow(page, 'schedule')
 
       try {
         await openAdminBusiness()
@@ -1065,7 +1067,7 @@ test.describe('Business-owner mobile smoke', () => {
         await expectSuspendedBanner(page, true)
         await expect(page.getByRole('button', { name: 'Редактирай графика' })).toHaveCount(0)
         await expectSchedule(page, EDITED_SCHEDULE)
-        await expectNoHorizontalOverflow(page)
+        await expectNoHorizontalOverflow(page, 'suspended schedule after reload')
       } finally {
         await admin.getByRole('button', { name: 'Активирай отново' }).click()
         await admin.getByRole('button', { name: 'Потвърди активирането' }).click()

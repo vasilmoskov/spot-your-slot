@@ -17,7 +17,6 @@ import {
   formatDateHeading,
   formatPrice,
   formatTimeRange,
-  crossingBounds,
   formatTotalDuration,
   sourceLabel,
   statusLabel,
@@ -310,18 +309,6 @@ export function AppointmentDetail({
               <dt>Член на екипа</dt>
               <dd>{appointment.staffDisplayName}</dd>
             </div>
-            {crossingBounds(appointment.start, appointment.end, timezone) && (
-              <>
-                <div>
-                  <dt>Начало</dt>
-                  <dd>{crossingBounds(appointment.start, appointment.end, timezone)!.start}</dd>
-                </div>
-                <div>
-                  <dt>Край</dt>
-                  <dd>{crossingBounds(appointment.start, appointment.end, timezone)!.end}</dd>
-                </div>
-              </>
-            )}
             <div>
               <dt>Обща продължителност</dt>
               <dd>{formatTotalDuration(appointment.durationMinutes)}</dd>

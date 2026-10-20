@@ -573,6 +573,24 @@ export async function dateSurvivingFirstBooking(
 }
 
 /**
+ * The first date, from `dates` in the order given, whose offered starts number at least `minimum`, with those starts.
+ * A journey that needs the Nth start of a date cannot take the first offered date blindly: today, late in the day,
+ * offers only the few starts that remain (the dependence on the wall clock found when `guest-booking-core` ran after
+ * 16:00 Business time). `slotsFor` must answer for exactly the selection and StaffMember the journey submits.
+ */
+export async function dateWithSlots(
+  dates: readonly string[],
+  slotsFor: (date: string) => Promise<readonly { start: string, end: string }[]>,
+  minimum: number,
+): Promise<{ date: string, slots: readonly { start: string, end: string }[] }> {
+  for (const date of dates) {
+    const slots = await slotsFor(date)
+    if (slots.length >= minimum) return { date, slots }
+  }
+  throw new Error(`No offered date has ${minimum} starts`)
+}
+
+/**
  * The first date offered for both selections of a journey that changes its selection (for example a longer visit
  * replacing a shorter one). A date taken from the first answer alone can have no start for the longer visit.
  */
