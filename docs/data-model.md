@@ -5,56 +5,67 @@
 - PostgreSQL is authoritative and Flyway owns every schema change.
 - Primary keys are UUIDs. Tenant-owned rows contain non-null `business_id`, and
   composite constraints prevent cross-Business references.
-- Mutable records use audit fields; security/business events are append-only.
+- Mutable records carry `created_at`/`updated_at` (and a `version` where optimistic concurrency applies). A separate append-only audit/event trail is planned, not implemented.
 - Appointment instants use UTC `timestamptz`; recurring schedules use local
   date/time interpreted in the Business IANA timezone.
 - EUR money uses Java `BigDecimal` and PostgreSQL `numeric(12,2)`; the one exception is the Appointment visit total (`appointment.price_eur`), which is `numeric(13,2)` since `V13` (ADR-0027).
 - Appointments are retained and status-transitioned, not physically deleted.
 
+## Migrations
+
+Flyway migrations are immutable and forward-only ([ADR-0004](decisions/ADR-0004-use-immutable-forward-only-flyway-migrations.md)). The current schema is `V1` to `V15`:
+
+| Migration | Adds |
+|---|---|
+| `V1` | identity and tenancy: users, Businesses, Memberships, platform roles, invitations, password resets, sessions |
+| `V2` | single active invitation or reset token per subject |
+| `V3`, `V4` | Business profile fields and the structured Bulgarian address |
+| `V5` | Services |
+| `V6` | StaffMembers and Service assignments |
+| `V7` | recurring weekly working schedules (and the `btree_gist` extension) |
+| `V8` | canonical StaffMember contact phone |
+| `V9` | schedule exceptions (closures, time off, working-day overrides, additional periods) |
+| `V10` | Customers |
+| `V11` | Appointments and the database overlap exclusion |
+| `V12` | the per-Business schedule revision |
+| `V13` | per-Service Appointment lines (multi-Service visits) |
+| `V14` | cancellation attribution and the internal note |
+| `V15` | the two read indexes of the Business calendar and Customer history |
+
+The sections below describe the implemented tables first and the planned ones last.
+
 ## Identity and tenancy
 
-- **app_user:** normalized unique email, password hash, active/locked state,
-  password-change time, audit fields; no tenant role directly.
-- **business:** globally unique slug, `BusinessType`, generic profile/contact
-  fields, one optional structured Bulgarian address, timezone,
-  booking/notice/cancellation settings, status, currency, audit fields.
-- **membership:** `user_id`, `business_id`, role (`BUSINESS_OWNER`, `MANAGER`,
-  `STAFF`), active state; unique per user/Business.
-- **platform_role:** platform-level `PLATFORM_ADMIN`, avoiding a fake tenant.
-- **invitation:** `business_id`, email, intended role, token hash, expiry,
-  consumed/revoked timestamps, inviter, audit fields.
-- **password_reset** and **user_session:** hash/reference and lifecycle metadata;
-  raw secrets are never stored or logged.
+Tables created by `V1__identity_and_tenancy.sql` (extended by `V2`–`V4`):
 
-Flyway migration `V1__identity_and_tenancy.sql` creates these seven Phase 2
-tables. Sessions store a SHA-256 token hash, credential version, selected
-authorized Business, activity/absolute expiry, and revocation time. Invitation
-and reset tokens also persist only SHA-256 hashes. The database restricts
-Membership roles to `BUSINESS_OWNER`, `MANAGER`, and `STAFF`.
+- **app_user:** `normalized_email` (unique, lowercase), `display_name`, `password_hash`, `active`, `locked`,
+  `credential_version`, `password_changed_at`, timestamps. It carries no tenant role.
+- **business:** unique `slug` (lowercase, hyphen-separated), `display_name`, `business_type`, `status`, `timezone`
+  (default `Europe/Sofia`), `version`, timestamps; from `V3` the optional `description` (2,000 characters), `phone` (50)
+  and `contact_email` (320, lowercase); from `V4` the optional structured Bulgarian address `city`, `postal_code`,
+  `street`, `street_number` and `address_details` (the former `address`, renamed). The database stores no currency,
+  booking window, notice or cancellation setting: EUR, the 15-minute grid, the two-hour notice and the 30-date horizon are
+  fixed application policy today, and configurable values are planned work.
+- **membership:** `id`, `business_id`, `user_id`, `role` (`BUSINESS_OWNER`, `MANAGER`, `STAFF`), `active`; unique per
+  `(user_id, business_id)`.
+- **platform_role:** `(user_id, role)` with the single role `PLATFORM_ADMIN`, so platform authority needs no fake tenant.
+- **owner_invitation:** `business_id`, `normalized_email`, `token_hash`, `created_by`, `created_at`, `expires_at`,
+  `consumed_at`, `invalidated_at`. An invitation always grants the owner role, so it stores no intended-role column.
+  `V2` adds a unique partial index allowing one active (unconsumed, uninvalidated) invitation per Business and email.
+- **password_reset:** `user_id`, `token_hash`, `created_at`, `expires_at`, `consumed_at`, `invalidated_at`; `V2` allows one
+  active reset per user.
+- **user_session:** `token_hash` (SHA-256), `user_id`, `active_business_id` (the selected Business), `credential_version`,
+  `created_at`, `last_activity_at`, `absolute_expires_at`, `revoked_at`.
 
-Flyway `V2__enforce_single_active_identity_tokens.sql` enforces single active
-invitation/reset issuance. Flyway `V3__add_business_profile_fields.sql` adds
-nullable `description` (2,000 characters), `address` (500), `phone` (50), and
-`contact_email` (320). PostgreSQL rejects non-null whitespace-only values and
-requires persisted contact email to be lowercase; application validation also
-normalizes and validates supplied contact email.
+Raw tokens and passwords are never stored or logged: sessions, invitations and resets persist only SHA-256 hashes
+(passwords use Argon2id). `V3` adds database checks rejecting whitespace-only profile values and requiring a lowercase
+contact email; application validation also normalizes it. `V4` adds the same non-blank checks and keeps the renamed
+column's 500-character limit; the country is fixed to Bulgaria in the product and not stored.
 
-Flyway `V4__structure_business_address.sql` renames the existing `address`
-column to `address_details`, preserving every prior value, and adds nullable
-`city` (100 characters), `postal_code` (20), `street` (200), and
-`street_number` (50). The renamed details column retains its 500-character and
-nonblank constraints; each new field also rejects non-null whitespace-only
-values. Country is currently fixed to Bulgaria in the product/UI and is not a
-stored selectable field. V1, V2, and V3 were not rewritten.
-
-Platform-created Businesses always persist as `DRAFT` with version 0. Profile
-and lifecycle mutations compare the supplied expected version atomically and
-increment `version` exactly once. Lists are bounded to 100 rows and ordered by
-`created_at DESC, id DESC` with a separate total count.
-
-Business status is `DRAFT`, `ACTIVE`, or `SUSPENDED`. BusinessType is
-`HAIR_SALON`, `BARBERSHOP`, `NAIL_STUDIO`, `MASSAGE_STUDIO`, `MAKEUP_STUDIO`,
-`BEAUTY_STUDIO`, or `OTHER` and has no behavioral branching.
+Business `status` is `DRAFT`, `ACTIVE` or `SUSPENDED`, created as `DRAFT` at version 0; profile and lifecycle mutations
+compare the expected `version` atomically and increment it once. `business_type` is `HAIR_SALON`, `BARBERSHOP`,
+`NAIL_STUDIO`, `MASSAGE_STUDIO`, `MAKEUP_STUDIO`, `BEAUTY_STUDIO` or `OTHER` and has no behavioural branching. How the
+platform list is sorted and paginated is an API contract: see [api.md](api.md).
 
 ## Catalog and workforce
 
@@ -171,7 +182,7 @@ date_range)`.
 
 ## Customers and Appointments
 
-- **customer** (ADR-0019, issue #20; implemented by `V10__add_customers.sql`): UUID `id`, immutable `business_id` (restrictive foreign key to
+- **customer** ([ADR-0019](decisions/ADR-0019-model-business-scoped-customers-with-canonical-contact-identifiers-and-no-lifecycle.md); `V10__add_customers.sql`): UUID `id`, immutable `business_id` (restrictive foreign key to
   `business`), required `display_name` (`varchar(200)`, canonical NFKC/whitespace form), a
   generated stored `normalized_display_name` (sorting and search only), optional canonical
   E.164 `phone` (`varchar(16)`), optional canonical lowercase `email` (`varchar(320)`),
@@ -179,8 +190,8 @@ date_range)`.
   identifier; no original text, staff note, status, account or Membership link, or
   Appointment-derived column exists. Checks require at least one of phone and email.
   `UNIQUE (business_id, phone)` and `UNIQUE (business_id, email)` (NULLs are distinct) make
-  each identifier unique within one Business only; `UNIQUE (business_id, id)` prepares the
-  future composite foreign key from Appointments. An index on `(business_id,
+  each identifier unique within one Business only; `UNIQUE (business_id, id)` supports the
+  composite foreign key from Appointments. An index on `(business_id,
   normalized_display_name, id)` serves the default sort. Customers have no lifecycle and are
   never hard-deleted in the MVP; retention, export, anonymization, merge, and legal deletion
   are deferred. Updates are versioned and increment `version` once per accepted update.
@@ -192,10 +203,9 @@ date_range)`.
   `customer_timestamps_finite_ordered` (finite timestamps, `updated_at >= created_at`),
   `customer_business_phone_unique`, `customer_business_email_unique`,
   `customer_business_id_id_unique`; index `customer_business_normalized_display_name_id_idx`.
-  History metrics derive from Appointments in later issues.
-- **appointment** (issue #18 Phase 2, ADR-0022; **implemented by `V11__add_appointments.sql`**, the
-  table and its overlap exclusion in one migration; no booking, public contract, or idempotency computation
-  exists yet). `business_id`; `customer_id`, `service_id`, and
+  Customer history is read from Appointments (the Business calendar's history read); no history column is stored on the Customer.
+- **appointment** ([ADR-0022](decisions/ADR-0022-model-appointments-with-snapshots-two-statuses-and-a-database-overlap-exclusion.md); `V11__add_appointments.sql` creates the
+  table and its overlap exclusion in one migration). `business_id`; `customer_id`, `service_id`, and
   `staff_member_id` each with a composite same-Business restrictive foreign key (and no foreign key to the
   Service assignment); UTC `start_at`, `end_at`, and `occupied_until` (equal in the MVP, zero buffers); snapshots
   `timezone`, `duration_minutes`, `price_eur`, `service_name`, and `staff_display_name`; `source`
@@ -218,20 +228,20 @@ date_range)`.
   `appointment_timestamps_finite_ordered`, `appointment_business_id_id_unique`,
   `appointment_business_public_reference_unique`, `appointment_business_attempt_hash_unique`, and the exclusion
   `appointment_staff_no_overlap`. **No Customer name, phone, or email is copied** (D2). The private
-  note and the cancellation attribution are decided in [ADR-0028](decisions/ADR-0028-administer-appointments-through-a-private-owner-only-api-with-immutable-visit-identity-and-business-cancellation.md) and **implemented by `V14__add_appointment_administration.sql` (issue #19 Phase 2)**: three nullable columns without defaults, `cancelled_at timestamptz`, `cancelled_by varchar(16)`, and `internal_note varchar(500)` (the `customer_note` rule, `appointment_internal_note_plain_text`), added after `service_count`. `appointment_cancellation_consistent` (written with `IS NOT DISTINCT FROM`, because a `CHECK` accepts `NULL`) requires: a `CONFIRMED` row has neither a time nor an actor; a Business cancellation has `BUSINESS` and a non-null time; a row cancelled before `V14` is `UNKNOWN` with a null time. `appointment_cancelled_at_valid` requires a finite `cancelled_at` that is not before `created_at`. The internal note is independent of the status and may be present on `CONFIRMED` and `CANCELLED` rows alike. The backfill sets `UNKNOWN` on the pre-existing `CANCELLED` rows only (a physical update of those tuples; `version`, `updated_at`, and every other column are untouched). `late_cancellation` and the `CUSTOMER` actor belong to Customer cancellation (#35). **Read indexes (`V15__add_appointment_read_indexes.sql`, issue #21 Phase 3), justified by `EXPLAIN (ANALYZE, BUFFERS)` evidence recorded in task 09a:** `appointment_business_start_idx (business_id, start_at, id)` serves the calendar and agenda window reads (ordered by `(start_at, id)`, bounded by the window), and `appointment_business_customer_start_idx (business_id, customer_id, start_at DESC, id DESC)` serves the Customer history (newest first). A third candidate, `(business_id, staff_member_id, start_at, id)`, was measured and rejected. The lines read, the Customer names, and the StaffMember and exception reads use existing indexes.
-  **Cancellation and internal-note edit (issue #21 Phase 6; no schema change; `V1` to `V15` are byte-identical).** The Business cancellation is one conditional `UPDATE` of one row (`AppointmentStore.cancel`) that writes
+  note and the cancellation attribution are decided in [ADR-0028](decisions/ADR-0028-administer-appointments-through-a-private-owner-only-api-with-immutable-visit-identity-and-business-cancellation.md) and added by `V14__add_appointment_administration.sql`: three nullable columns without defaults, `cancelled_at timestamptz`, `cancelled_by varchar(16)`, and `internal_note varchar(500)` (the `customer_note` rule, `appointment_internal_note_plain_text`), added after `service_count`. `appointment_cancellation_consistent` (written with `IS NOT DISTINCT FROM`, because a `CHECK` accepts `NULL`) requires: a `CONFIRMED` row has neither a time nor an actor; a Business cancellation has `BUSINESS` and a non-null time; a row cancelled before `V14` is `UNKNOWN` with a null time. `appointment_cancelled_at_valid` requires a finite `cancelled_at` that is not before `created_at`. The internal note is independent of the status and may be present on `CONFIRMED` and `CANCELLED` rows alike. The backfill sets `UNKNOWN` on the pre-existing `CANCELLED` rows only (a physical update of those tuples; `version`, `updated_at`, and every other column are untouched). `late_cancellation` and the `CUSTOMER` actor belong to Customer cancellation (#35). **Read indexes (`V15__add_appointment_read_indexes.sql`, issue #21 Phase 3), justified by `EXPLAIN (ANALYZE, BUFFERS)` evidence recorded in task 09a:** `appointment_business_start_idx (business_id, start_at, id)` serves the calendar and agenda window reads (ordered by `(start_at, id)`, bounded by the window), and `appointment_business_customer_start_idx (business_id, customer_id, start_at DESC, id DESC)` serves the Customer history (newest first). A third candidate, `(business_id, staff_member_id, start_at, id)`, was measured and rejected. The lines read, the Customer names, and the StaffMember and exception reads use existing indexes.
+  **Cancellation and internal-note edit (no schema change beyond `V14`).** The Business cancellation is one conditional `UPDATE` of one row (`AppointmentStore.cancel`) that writes
   only `status = 'CANCELLED'`, `cancelled_at` and `updated_at` (the attempt's clock instant at microsecond precision), `cancelled_by = 'BUSINESS'`, and `version` (plus one), and matches only a `CONFIRMED` row of the Business
   at the expected version that starts after that instant; `UNKNOWN` is never written. The internal-note edit is one conditional `UPDATE` (`AppointmentStore.updateInternalNote`) that writes only `internal_note`, `version`
   (plus one), and `updated_at` and matches by Business, identifier, and expected version only (every status, past or future); a note equal to the stored one after normalization issues no `UPDATE` at all. Neither operation
   changes the Customer, the Service lines, the duration, the price, a snapshot, the `source`, the public reference, the guest note or idempotency columns, the period, or the StaffMember. A cancelled Appointment stops
   blocking through the existing `WHERE status = 'CONFIRMED'` predicate of the exclusion constraint, so its time is offered and bookable again; it is never deleted and has no restore.
 
-  **Reschedule and reassignment (issue #19 Phase 5; no schema change).** The owner's form-based move and StaffMember change is one conditional `UPDATE` of one row (`AppointmentStore.reschedule`)
+  **Reschedule and reassignment (no schema change beyond `V14`).** The owner's form-based move and StaffMember change is one conditional `UPDATE` of one row (`AppointmentStore.reschedule`)
   that writes only `start_at`, `end_at`, `occupied_until`, `staff_member_id`, `staff_display_name` (refreshed from the locked target only for a real reassignment), `version` (plus one), and `updated_at`,
   and matches only the row the caller read (same Business, version, `CONFIRMED`, StaffMember, and start). The Customer, the Service lines, the duration, the price, the `source`, the public reference, both
   notes, and the creation time never change; the `appointment_staff_no_overlap` exclusion judges the new tuple against every other live tuple and not against the row's own old interval. A request that
   changes nothing writes nothing and does not advance `version`.
-- **business_schedule_revision** (issue #18 Phase 3, ADR-0025; implemented in `V12`, owned by the `business`
+- **business_schedule_revision** ([ADR-0025](decisions/ADR-0025-coordinate-schedule-changes-with-booking-through-a-business-level-schedule-revision-guard.md); `V12`, owned by the `business`
   module): one row per Business with `business_id` (primary key, `business_schedule_revision_pkey`; foreign key
   `business_schedule_revision_business_fk` to `business(id)`, `ON DELETE RESTRICT`), `revision bigint NOT NULL
   DEFAULT 0` (`business_schedule_revision_nonnegative`, `revision >= 0`), and `updated_at timestamptz NOT NULL`.
@@ -239,30 +249,23 @@ date_range)`.
   stamped with their `created_at`; the trigger `business_create_schedule_revision` (`AFTER INSERT ON business`,
   `FOR EACH ROW`) gives every new Business its row in the same statement. Every accepted weekly-schedule
   replacement and every schedule-exception create, replace, and delete advances it by exactly one in its own
-  transaction (`UPDATE ... SET revision = revision + 1`); every guest booking attempt locks it `FOR SHARE` (Phase 4, `booking.application.BookingAttemptProcedure`). Only the
+  transaction (`UPDATE ... SET revision = revision + 1`); every guest booking attempt locks it `FOR SHARE` (`booking.application.BookingAttemptProcedure`). Only the
   `business` module reads or writes it, through the published `ScheduleRevisionBump` and `ScheduleRevisionGuard`.
   Lifecycle, timezone, Service, StaffMember, and assignment changes do not advance it: each already updates the
   Business, Service, or StaffMember row that booking locks (ADR-0025 audit).
-- **appointment_service** (multi-Service extension, [ADR-0027](decisions/ADR-0027-book-several-services-as-one-atomic-visit-with-service-lines-a-versioned-set-fingerprint-and-an-explicit-review-consistency-check.md); **implemented by `V13__add_appointment_services.sql` (phase M1) and used by phases M2 to M5 (all committed): the migration, the Appointment domain's lines and visit rules, the store's writing and reading of lines, and the booking flow that creates one to five lines per visit; the rendered review (M6) was explicitly approved and the browser E2E (M7) is complete; issue #18 is closed**; before V13 an Appointment was exactly one Service,
-  which the statements about the `appointment` columns above describe): the immutable per-Service snapshot lines of a visit: `appointment_id`, `position` (1 to 5, primary key `(appointment_id, position)`),
+- **appointment_service** (multi-Service extension, [ADR-0027](decisions/ADR-0027-book-several-services-as-one-atomic-visit-with-service-lines-a-versioned-set-fingerprint-and-an-explicit-review-consistency-check.md); created by `V13__add_appointment_services.sql`; the booking flow and the owner-created visit write one to five lines per visit; before `V13` an Appointment was exactly one Service, which the statements about the `appointment` columns above describe): the immutable per-Service snapshot lines of a visit: `appointment_id`, `position` (1 to 5, primary key `(appointment_id, position)`),
   `business_id`, `service_id`, `service_name`, `duration_minutes` (1 to 480), `price_eur` (at least 0), composite same-Business foreign keys to `appointment` and `service` (both restrictive), a unique `(appointment_id, service_id)`
   (distinct Services), the same canonical-name check as `appointment`. `appointment` gains `service_count` (1 to 5, default 1). From V13 `appointment.price_eur` is widened to `numeric(13,2)` (a visit of five Services of the largest valid price, `9 999 999 999.99` each, totals `49 999 999 999.95` and would not fit `numeric(12,2)`; existing values are unchanged and the lines and `service.price` stay `numeric(12,2)`), and the Appointment's `duration_minutes` and `price_eur` are the **visit totals**
   (`end_at` and `occupied_until` cover the whole visit, so the existing overlap exclusion protects the whole visit and needs no change), and `service_id` and `service_name` are the headline copy of line 1 (the first Service in
   the public-profile order). V13 backfills one line per existing Appointment from its own snapshot, verifies it, and then creates a deferred constraint trigger (line count, positions `1..n`, sums equal to the totals, headline
   equal to line 1) and a trigger that rejects every update and delete of a line. Lines are never changed or deleted; cancelling a visit is one status change on the `appointment` row. The idempotency columns are unchanged;
   `fingerprint_encoding_version` 2 identifies the multi-Service encoding and 1 stays valid for every stored attempt.
-- **appointment_event:** `business_id`, Appointment, type, actor, timestamp,
-  non-sensitive summary/correlation ID. Deferred (ADR-0028): the calendar shows no "changed" state and `version` is never history.
-- **cancellation_token:** `business_id`, Appointment, token hash and lifecycle.
-
-All referenced rows must share the Business. Amended by ADR-0022 (the earlier text listed
-`CONFIRMED`, `CANCELLED_BY_CUSTOMER`, `CANCELLED_BY_BUSINESS`, `COMPLETED`, and `NO_SHOW`, and source
-`ONLINE`/`STAFF`): statuses are `CONFIRMED` and `CANCELLED`, and the source is `ONLINE` or `MANUAL`.
+All referenced rows must share the Business. Statuses are `CONFIRMED` and `CANCELLED`, and the source is `ONLINE` or `MANUAL` (ADR-0022 replaced the broader early design).
 Every successful online/manual Appointment is `CONFIRMED`; no MVP
-confirmation-mode field or `PENDING` status exists. Cancellation attribution is implemented by `V14` (ADR-0028, issue #19 Phase 2); `COMPLETED`/`NO_SHOW` are
-deferred and arrive by forward migrations.
+confirmation-mode field or `PENDING` status exists. Cancellation attribution is stored by `V14` (ADR-0028); `COMPLETED`/`NO_SHOW` are
+deferred and would arrive by forward migrations.
 
-Only `CONFIRMED` blocks time (implemented in `V11`, the same migration as the table):
+Only `CONFIRMED` blocks time (`V11`, the same migration as the table):
 
 ```sql
 EXCLUDE USING gist (
@@ -277,40 +280,24 @@ and, publicly, HTTP 409. Cancelled rows remain in history. The deferred `COMPLET
 or after start) applies when those statuses are introduced. The `appointment` table never has a foreign key
 to the Service assignment because assignment history is not stored.
 
-## Notifications, audit, and relationships
-
-- **outbox_event:** aggregate/event, necessary payload, availability/status,
-  attempts, unique idempotency key, timestamps.
-- **email_delivery:** optional `business_id`, event, template/recipient/provider,
-  status/attempts, provider reference, redacted error.
-- **reminder:** `business_id`, Appointment, target/type/status/idempotency key.
-- **audit_event:** optional `business_id`, actor/action/target/time/outcome,
-  correlation ID, minimal metadata—never credentials, tokens, or note contents.
+## Implemented relationships
 
 ```text
 app_user ──< membership >── business ──< service
-                  │            ├────< staff_member ──< schedules/time off
-                  │            ├────< customer
-                  │            └────< appointment >── staff_member/service/customer
-                  └──────────── optional StaffMember login link
-appointment ──< event / reminder / cancellation_token
-business transaction ──< outbox_event ──< email_delivery
+                                ├────< staff_member ──< service assignments, weekly schedule
+                                ├────< schedule_exception
+                                ├────< customer
+                                └────< appointment ──< appointment_service (lines)
+                                         (staff_member, customer, service references)
+business ── business_schedule_revision (one row)
 ```
 
-## Index and privacy plan
+## Planned tables (not implemented)
 
-Use a global unique normalized Business slug; unique Membership
-`(user_id,business_id)`; tenant-prefixed lookup/foreign keys; Appointment indexes
-on `(business_id,start_at)`, `(staff_member_id,start_at)`, and
-`(customer_id,start_at desc)` plus GiST; schedule indexes by
-Business/StaffMember/day; token and outbox indexes; checks for ranges/statuses;
-and restrictive delete behavior. Issue #18 created only the exclusion index and the unique indexes it needs
-(public reference and attempt hash); the calendar and Customer-history indexes are added with the issue that
-queries them (#21). The tenant-scoped candidates were `(business_id, start_at, id)`,
-`(business_id, staff_member_id, start_at, id)`, and `(business_id, customer_id, start_at DESC, id DESC)`; `V15` (issue #21 Phase 3)
-creates the first and the third because `EXPLAIN ANALYZE` on representative synthetic data justified them, and the second was
-measured and rejected (task 09a, Phase 3 record); the earlier list above names the intent, not the final shapes.
+These tables appear in the design but no migration creates them: `appointment_event` (a business-event trail; the calendar deliberately shows no "changed" state and `version` is never history, ADR-0028), `cancellation_token` (Customer self-service cancellation), `outbox_event`, `email_delivery`, and `reminder` (transactional outbox and notification delivery), `audit_event` (append-only security and business events, never credentials, tokens or note contents), and an optional same-Business StaffMember-to-user link. They arrive by forward migrations with the capability that needs them.
 
-No health or special-category data is solicited. Export and reviewed
-deletion/anonymization remain future work. Retention and lawful bases require
-human/legal approval; technical design does not claim complete GDPR compliance.
+## Indexes and privacy
+
+Implemented indexes: the unique Business slug; unique Membership `(user_id, business_id)`; tenant-prefixed lookup keys and composite foreign keys; the Appointment overlap exclusion, the unique public reference and attempt hash; the schedule and exception exclusion and lookup indexes listed above; and the two calendar read indexes of `V15`, `(business_id, start_at, id)` and `(business_id, customer_id, start_at DESC, id DESC)`. They were added because `EXPLAIN ANALYZE` on representative synthetic data justified them; a `(business_id, staff_member_id, start_at, id)` index was measured and rejected (see the Phase 3 record in [task 09a](tasks/09a-business-calendar-and-appointment-management.md)). Further indexes are added with the query that needs them.
+
+No health or special-category data is solicited. Export and reviewed deletion or anonymization remain future work. Retention and lawful bases need human and legal approval; the technical design does not claim complete GDPR compliance.

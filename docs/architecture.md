@@ -1,469 +1,220 @@
 # SpotYourSlot architecture
 
+This document describes the system as it is implemented. Reasoning behind individual decisions is in the
+[ADRs](decisions/README.md); the history of how each capability was built is in the [task records](tasks/). Items that
+are designed but not built are collected in [Planned and not implemented](#planned-and-not-implemented).
+
 ## Architectural style
 
-SpotYourSlot is a monorepo and deployable modular monolith: one Spring Boot REST
-API, one React SPA, and one shared PostgreSQL database. It is one generic system
-for every approved BusinessType, not separate applications, schemas, engines,
-branches, or deployments by profession.
+SpotYourSlot is a monorepo and a deployable **modular monolith**: one Spring Boot REST API, one React single-page
+application, and one shared PostgreSQL database. One generic booking engine serves every `BusinessType`; the type is
+descriptive and has no behavioural branching ([ADR-0001](decisions/ADR-0001-use-a-modular-monolith.md)).
 
-```text
-Browser: public Business booking | Business administration | platform administration
-                 │ HTTPS/JSON and secure session cookie
-                 ▼
-Spring Boot REST API (bg.spotyourslot)
- identity | platform | business | catalog | workforce | scheduling
- booking | customer | notification | audit
-                 │ JPA/Flyway + transactional outbox
-                 ▼
-PostgreSQL ── asynchronous dispatcher ── EmailService
+```mermaid
+flowchart LR
+    Browser["Browser<br/>public booking · Business administration · platform administration"]
+    subgraph API["Spring Boot API (bg.spotyourslot)"]
+        direction TB
+        Adapters["HTTP adapters<br/>platform · catalog · workforce · scheduling<br/>customer · calendar · publicprofile · publicbooking · identity"]
+        Domain["Domain modules<br/>identity · business · catalog · workforce<br/>scheduling · customer · booking"]
+        Adapters --> Domain
+    end
+    DB[("PostgreSQL<br/>Flyway-managed schema")]
+    Browser -- "HTTPS, JSON, session cookie + CSRF token" --> Adapters
+    Domain -- "JPA/JDBC" --> DB
 ```
 
-The future backend uses Java 25 LTS. Exact Spring Boot and Maven versions are
-chosen during bootstrap after official Java 25 compatibility verification. The
-frontend uses compatible stable React, TypeScript, and Vite releases on the
-latest suitable Node.js LTS available then.
+Spring Modulith verifies the module boundaries in the test suite. Email delivery, a transactional outbox and audit
+events are designed but not built (see below); nothing in the diagram is planned-only.
 
-## Module boundaries
+## Backend modules
 
-All backend packages live below `bg.spotyourslot`.
+All packages live below `bg.spotyourslot`. A module exposes a small published contract in its root package and keeps
+entities, repositories and persistence records internal. Modules reference each other by stable identifiers and
+published interfaces, never by another module's tables or repositories, and there are no dependency cycles.
 
 | Module | Responsibility |
 |---|---|
-| `identity` | users, credentials, sessions, invitations, password reset, Memberships, roles |
-| `platform` | PLATFORM_ADMIN operations and Business lifecycle |
-| `business` | Business profile, BusinessType, slug, settings, status, tenant context; owns the Business schedule revision row and publishes `ScheduleRevisionBump` and `ScheduleRevisionGuard` (issue #18 Phase 3, ADR-0025) |
-| `catalog` | Business-owned Services, prices, durations, lifecycle, and versioned administration |
-| `workforce` | StaffMembers, Service qualifications, recurring weekly hours |
-| `scheduling` | timezone-aware availability, Business closures, StaffMember time off, working-day overrides, additional working periods, and deterministic assignment (ADR-0013) |
-| `publicprofile` | read-only unauthenticated public Business profile (`GET /api/public/businesses/{slug}`) orchestrated over the published `business.PublicBusinessProfileAccess` and `catalog.PublicServiceAccess` contracts (ADR-0017; backend contract, public React page and browser E2E verification implemented in issue #17; booking is not part of it) |
-| `booking` | transactional Appointment lifecycle and conflicts; issue #18 (ADR-0022 to ADR-0026). **Implemented:** the Appointment domain records, the internal `AppointmentStore` (V11), and the real `BusyIntervalSource` (`BookingBusyIntervalSource`) (Phase 2); the guest booking orchestration `GuestBooking` (one repeatable-read transaction per attempt, ordered locks, bounded whole-transaction retry, idempotent attempts with a versioned HMAC fingerprint, proven-rollback versus uncertain outcomes) over the narrow `business`, `catalog`, `workforce`, `scheduling`, and `customer` contracts (Phase 4); and the process-local, bounded public abuse limiter `PublicBookingRateLimiter` (Phase 5). It depends on `business`, `catalog`, `workforce`, `scheduling`, `customer`, the three narrow `identity` context types, and the `shared.contact` canonicalization policy. It has no controller; only the two HTTP adapters (`publicbooking` and `calendar`) depend on it, and `scheduling` never does. **ADR-0027, task 08b:** phase M1 (persistence) is implemented: `V13` (the `appointment_service` line table, `service_count`, the widened visit-total price), the Appointment domain's Service lines and visit rules, and the store writing and reading the lines; phase M2 (availability and eligibility) is implemented: `AvailabilityQuery.calculate(businessId, serviceIds, staffMemberIdOrNull)` over bulk Catalog and Workforce reads (the intersection of assignments, the summed duration up to 480 minutes, one engine call) and the internal selection booking-options read model, without HTTP; phase M3 is implemented behind the internal `GuestBooking` contract: the set fingerprint (encoding v2, v1 kept for historical replays), ordered set-based Service and StaffMember locks, the explicit review-consistency check, and the atomic whole-visit insert; phase M4 exposes it through the public HTTP contract (the selection reads, the second request shape, the visit response, and the two new codes); phase M5 (the frontend journey) lets a guest book one to five Services in one visit; the rendered human review (M6) was explicitly approved and the real-browser journeys (M7) are complete; issue #18 is closed as completed. **Issues #19 and #21 (decided in [ADR-0028](decisions/ADR-0028-administer-appointments-through-a-private-owner-only-api-with-immutable-visit-identity-and-business-cancellation.md) and [ADR-0029](decisions/ADR-0029-calculate-business-availability-with-a-separate-policy-and-serialize-appointment-mutations-with-ordered-locks-optimistic-versions-and-bounded-retry.md)):** the persistence and availability foundation is implemented (Phase 2: `V14`, the pure transitions, the conditional store updates, the Business availability entry, the ignore-self seam) and the **read side is implemented (Phase 3)**: the published, owner-only `AppointmentCalendar` contract (calendar, agenda, Appointment detail, Customer history; each one read-only `REPEATABLE READ` transaction with a bounded statement count) over the internal `AppointmentReadStore`, the narrow published reads `customer.CustomerDirectory`, `workforce.StaffCalendarAccess`, and `scheduling.WorkingTimeOverview`, and a narrow dependency on the published `identity` context types (`V15` adds the two read indexes). **Implemented (issue #19 Phases 4 and 5):** the `AppointmentAdministration` create and reschedule/reassign, over one separate, non-transactional Business runner (`BusinessAppointmentAdministrationService`: the entry guard, one new `REPEATABLE READ` transaction per attempt, at most three attempts, classification by Spring's completion report only, and one verification read outside the transaction) with one attempt body per operation (`BusinessAppointmentCreationProcedure`, `BusinessAppointmentRescheduleProcedure`); the reschedule body takes a new narrow `workforce.StaffBookingAccess.lockActiveForBooking` (a sanitized `FOR SHARE` lock of one active StaffMember with no assignment check). Not implemented: cancel and the internal-note edit |
-| `publicbooking` | the unauthenticated, session-independent HTTP adapter of guest booking (issue #18, Phase 5, ADR-0026): `GET …/services/{serviceId}/booking-options`, `GET …/services/{serviceId}/availability`, the two selection reads, and `POST …/bookings` under `/api/public/businesses/{slug}`, the strict body parser, the per-address limiter interceptor, and the sanitized error mapping. It depends only on the published contracts of `booking` (`GuestBooking`, `PublicBookingRateLimiter`), `business` (`PublicBusinessProfileAccess`), `scheduling` (`AvailabilityQuery`), and `workforce` (`PublicStaffAccess`), never on `identity`, `customer`, or `catalog`; nothing depends on it. **Multi-Service (ADR-0027, phase M4, implemented):** `GET …/{slug}/booking-options` and `GET …/{slug}/availability` take a repeated `serviceId` query parameter (one to five distinct canonical identifiers; the order has no meaning), the booking POST accepts a second request shape with the reviewed per-Service duration and price (the legacy shape is unchanged), and a new-shape request is answered with `services`, `totalDurationMinutes`, and `totalPrice`, and the codes `BOOKING_REVIEW_CHANGED` and `BOOKING_SELECTION_TOO_LONG` |
-| `calendar` | **Implemented (issue #21 Phase 3; read-only).** The private, owner-only HTTP adapter of the Business calendar and the Customer Appointment history: exactly four `GET` routes, `/api/business/calendar`, `/api/business/appointments`, `/api/business/appointments/{appointmentId}`, and `/api/business/customers/{customerId}/appointments`, and (issue #19 Phases 4 and 5) `POST /api/business/appointments`, which creates an owner-created multi-Service Appointment, and `POST /api/business/appointments/{appointmentId}/reschedule`, which moves and/or reassigns one, both through the published `booking.AppointmentAdministration`. It depends only on the published root types of `booking` and the published `identity` context types, owns no transaction, store, SQL, or log, and nothing depends on it. The other mutation routes of Appointment administration (cancel, internal note) are later phases |
-| `customer` | Business-scoped Customers, conservative find-or-create matching, and private owner-only Customer administration (decisions in ADR-0019 to ADR-0021, issue #20). Complete (issue #20 closed): the domain model and internal persistence (V10), conservative matching published as `CustomerIdentification` and `CustomerReferenceAccess` (with the sanitized `CustomerConcurrentConflict` and `CustomerOperationFailure`) from its root package, and the private owner-only administration API (`web` controller and advice, internal `application` service and validator) and the Business-owner interface (frontend `business/customers`: list with live body-based search, create, detail, and version-guarded edit; Phase 5), with Playwright journeys for it (Phase 6); a SUSPENDED Business may view and update existing Customers but not create new ones. Depends on `shared` (`contact`), `identity` (owner access and the authenticated context), and `business` (lifecycle access); never on `workforce`, `catalog`, `scheduling`, `publicprofile`, or `booking`, and only `booking` depends on it, through the published identification contract |
-| `notification` | outbox, delivery attempts, reminders, `EmailService` |
-| `audit` | immutable security/business audit events |
-| `shared` | small cross-cutting primitives, errors, clocks, configuration, and the small contact text, phone, and email canonicalization policy (`ContactTextCanonicalizer`, `ContactPhoneNumbers`, `ContactEmailPolicy`) in the `shared.contact` package, declared the `shared::contact` named interface and the only part of `shared` other modules may use; `workforce` and `customer` both use it (ADR-0019) |
+| `identity` | users, credentials, sessions, invitations, password reset, Memberships, roles, the authenticated Business context |
+| `platform` | `PLATFORM_ADMIN` operations and the Business lifecycle (`DRAFT → ACTIVE ⇄ SUSPENDED`) |
+| `business` | Business profile, slug, timezone, lifecycle and the per-Business schedule revision guard |
+| `catalog` | Business-owned Services: price, duration, activity, versioned administration |
+| `workforce` | StaffMembers, Service assignments, recurring weekly working schedules |
+| `scheduling` | timezone-aware availability, schedule exceptions, deterministic StaffMember assignment |
+| `customer` | Business-scoped Customer records, conservative contact matching, owner administration |
+| `booking` | the Appointment domain, conflict-safe creation, rescheduling, reassignment, cancellation, internal note, calendar and history reads |
+| `publicprofile` | the unauthenticated, allowlisted public Business profile |
+| `publicbooking` | HTTP adapter of guest booking and its abuse limiter wiring |
+| `calendar` | HTTP adapter of the owner's calendar, Appointment administration and Customer history |
+| `shared` | small primitives, including the contact-text, phone and email canonicalization policy |
 
-Controllers call application use cases; authorization and transactions are not
-controller concerns. Entities/repositories remain module-internal. Modules use
-stable IDs and published interfaces/events, and `shared` is not a business-code
-dumping ground.
+Controllers call application use cases; authorization and transactions are not controller concerns. `publicbooking`
+and `calendar` are thin adapters over the published `booking` contracts, and nothing depends on them. `booking`
+depends on `business`, `catalog`, `workforce`, `scheduling`, `customer` and a few narrow `identity` types; `scheduling`
+never depends on `booking`, it consumes busy time through its own `BusyIntervalSource` seam that `booking` implements.
+The module-by-module lock and transaction rules are summarised below and decided in the ADRs.
 
-## Multi-tenant strategy
+## Multi-tenancy and authorization
 
-All tenant-owned tables contain non-null `business_id`. Tenant-scoped unique
-keys and foreign keys include `business_id` unless globally unique, such as the
-Business slug. Authenticated Business context comes from server-side Membership;
-public context comes from `{businessSlug}`. Every repository operation is scoped,
-and mutations prove referenced records share the Business.
+Every tenant-owned table has a non-null `business_id`, and tenant-scoped unique keys and foreign keys include it, so
+the database rejects cross-Business references (defence in depth). For authenticated Business operations the
+Business comes from the server-side session's Membership, not from a request field; platform administration addresses
+Businesses explicitly in its routes, and public context comes from the `{businessSlug}` path.
+Row-level security is deferred: pooled-connection context adds complexity and would not replace the application
+checks ([ADR-0003](decisions/ADR-0003-use-business-scoped-memberships-for-multi-tenancy.md)). Private Business APIs
+require an active `BUSINESS_OWNER` Membership; `MANAGER`, `STAFF` and `PLATFORM_ADMIN` alone are denied. A resource of
+another Business is indistinguishable from a missing one. Details are in [security.md](security.md).
 
-Application authorization is primary; PostgreSQL composite constraints and
-tests provide defense in depth. RLS is deferred because pooled connection
-context adds complexity and would not replace application checks.
+## Time and availability
 
-## APIs, time, and availability
+Appointments persist `[start_at, occupied_until)` as UTC `timestamptz`. Weekly schedules and exceptions use local
+weekday and clock values interpreted in the Business IANA timezone (default `Europe/Sofia`), and the availability
+engine handles daylight-saving gaps and repeated hours ([ADR-0013](decisions/ADR-0013-define-availability-interval-precedence-grid-and-dst-semantics.md)).
+Availability intersects working intervals and overrides, subtracts time off and blocking Appointments, and applies
+qualification, notice and horizon rules with an injected clock. The current MVP fixes a 15-minute grid, a two-hour
+notice and a 30 Business-local-date horizon for guests, with zero buffers and no breaks. The owner's Business-side
+policy ([ADR-0029](decisions/ADR-0029-calculate-business-availability-with-a-separate-policy-and-serialize-appointment-mutations-with-ordered-locks-optimistic-versions-and-bounded-retry.md))
+uses no notice and no horizon, a start never in the past, and ignores only the Appointment being moved. Its duration
+is the sum of the *current* Service durations when an Appointment is created, but the Appointment's *stored* duration
+when it is rescheduled, so a later Service change does not alter an existing visit. A displayed availability result
+reserves nothing: creation and every change of start time or StaffMember re-validate availability inside their own
+transaction (cancellation and note edits depend on no availability).
 
-APIs expose generic Business, StaffMember, Service, Customer, Appointment, and
-Schedule terminology. DTOs use validation and pagination where needed. Current
-RFC 7807 responses contain the standard status/title/detail fields as applicable
-and a stable `code`, plus an optional `fieldErrors` map naming a correctable body
-field where an API defines one; they do not add timestamps, paths, or
-correlation IDs. OpenAPI is development-only.
-
-Appointments persist `[start_at, occupied_until)` as UTC `timestamptz` values;
-the latter captures Service duration plus buffer. Weekly schedules use local
-weekday/time and the Business IANA timezone. Availability intersects working
-intervals/overrides, subtracts breaks/time off/blocking Appointments, and applies
-qualification, notice, window, and DST rules with an injected clock.
-Service buffers belong to future availability work and are not persisted or
-configurable by the current Service backend; breaks are not implemented.
-The intended product direction is a Business-configurable booking window
-(default 30 days) and minimum notice (default two hours). The current MVP
-implementation fixes them, per ADR-0013 and ADR-0016, at 30 Business-local dates
-(today through today + 29) and an inclusive two-hour notice on a 15-minute grid
-with zero buffers; configuration is a recorded follow-up. Daily and weekly
-administrative calendars are query/presentation views over Appointments; they do
-not constrain that horizon.
-`StaffMember` remains the internal English term, while generic Bulgarian
-administration uses “Екип” and “Член на екипа” and public booking may use
-contextual wording instead of a fixed performer label.
-
-## Customer boundary
-
-Issue #20 (complete and closed) precedes issues #18 and #21, which are consumers, not prerequisites. The
-`customer` module owns the Customer table, conservative matching, and private
-administration. `booking` calls the published `CustomerIdentification.findOrCreate`
-inside its own caller-owned transaction and receive only an existing or created Customer ID,
-an invalid-identity outcome, or an identity-conflict outcome (ADR-0020). A PostgreSQL
-serialization failure, deadlock, or unrecoverable race is not an outcome: it raises the
-sanitized typed `CustomerConcurrentConflict`, which marks the caller's transaction for
-rollback; the caller retries the whole outer transaction after rollback (finalized by issue #18 in
-ADR-0023: at most three attempts, each a completely new transaction). Any other persistence failure raises the equally sanitized `CustomerOperationFailure`;
-no persistence type crosses the boundary. Both operations are `MANDATORY` (a missing transaction
-fails before any work), `findOrCreate` runs at most three Customer statements (lookup, one
-`INSERT ... ON CONFLICT DO NOTHING`, one re-read), and `READ_COMMITTED` is the tested baseline. `CustomerReferenceAccess.find` supplies a same-Business reference; the
-Appointment `(business_id, customer_id)` foreign key is the persistence guarantee. Decided by issue #18
-(ADR-0022): an Appointment does **not** snapshot submitted contact data. Customer appointment
-history will be a Booking-owned query added by issue #21 (not delivered by #20; manual-appointment Customer selection is likewise #21); no Customer-to-Booking dependency
-exists. `publicprofile` and every other existing module must not depend on `customer`.
-
-## Customer records and Customer accounts
-
-A Customer record is Business-owned data, not a SpotYourSlot login or account. In the public guest booking flow (issue #18)
-the Booking capability finds or creates the Business-scoped record through the published `CustomerIdentification`
-from the supplied phone and email; a booking never creates an authenticated Customer account. Owners create
-records manually for telephone, walk-in, imported, and other externally received bookings. The same person has
-separate records in different Businesses, and records never cross tenants. An authenticated Customer account and
-its safe linkage to Business-owned records is a separate capability that needs explicit approval.
-
-A SUSPENDED Business keeps its Customer records correctable: `CustomerAdministrationService.update` is the only
-mutation whose lifecycle check allows a suspended Business (same locks, authorization, version check, validation, and
-uniqueness); `create` and every other module's mutations still reject it.
-
-## Authenticated shell navigation
-
-The authenticated React shells render one shared navigation (`ui/ShellNavigation`): global destinations
-(`Бизнеси`, `Профил`) and, only while a Business the user manages is selected, a separate group headed by that
-Business's name with `Услуги`, `Екип`, `Работно време`, and `Клиенти`. Business selection is a page (`#/businesses`),
-not a Profile setting; it uses the existing server-side session selection, which also supplies the refresh-safe
-selected Business. A selected Business the session no longer carries sends the user back to the selection. Every Business-scoped API
-module sends its requests through `identity/businessRequest`, which announces the backend's single
-`403 ACTIVE_BUSINESS_REQUIRED` signal; the application then refreshes the session once and replaces the route with
-`#/businesses` when no valid owner Business remains (a dirty form is protected by the shared guard). Missing records,
-suspension, authentication, and network failures are separate outcomes and never clear the context.
-
-Planned (issue #21, ADR-0028; a durable rule only after the rendered human review): the Business group gains `График` for the Appointment calendar. The second tab of `Работно време` (a tab, not a sidebar link) stays `Промени в графика` unless the rendered human review proves the two labels confusing.
+`scheduling.AvailabilityQuery` assembles the pure engine's inputs from narrow published contracts (Business schedule
+context, Service identity and duration, StaffMembers with their weekly periods) in a bounded number of statements,
+independent of team size. Errors use RFC 7807 problem bodies with a stable `code`.
 
 ## Conflict-safe booking
 
-PostgreSQL is the final arbiter. A Flyway-created GiST exclusion constraint
-uses `staff_member_id WITH =` and
-`tstzrange(start_at, occupied_until, '[)') WITH &&` for status `CONFIRMED`; issue
-#18 creates it in the same migration as the `appointment` table (`V11`, ADR-0022), so no schema without
-overlap protection exists. `btree_gist` supplies scalar equality and half-open ranges permit adjacency.
-**Implemented in issue #18 Phase 2:** `V11`, the `booking.domain` records, the `booking.infrastructure`
-`AppointmentStore` (which classifies PostgreSQL errors structurally into sanitized typed outcomes such as the
-overlap conflict), and `BookingBusyIntervalSource`, which replaced the placeholder (one bulk statement over
-`CONFIRMED` rows, `MANDATORY` transaction participation).
+PostgreSQL is the final arbiter. A GiST exclusion constraint on `staff_member_id WITH =` and
+`tstzrange(start_at, occupied_until, '[)') WITH &&`, restricted to `CONFIRMED` rows, makes two overlapping confirmed
+Appointments of one StaffMember impossible, allows adjacency, and ignores cancelled rows
+([ADR-0022](decisions/ADR-0022-model-appointments-with-snapshots-two-statuses-and-a-database-overlap-exclusion.md)).
+The application adds ordered locking and retry around it so that losing requests get a clean, typed conflict:
 
-**Decided by issue #18** (ADR-0022 to ADR-0026). The busy-source bullet and the Business schedule revision
-(`business_schedule_revision`, the `ScheduleRevisionBump` and `ScheduleRevisionGuard` contracts, and the
-participation of the weekly-schedule and schedule-exception mutations; Phase 3) are implemented as stated; the first
-bullet describes the Phase 4 transaction, which is implemented (`booking.application`; refinements in the ADR-0023 Phase 4 note: every qualifying StaffMember and the revision guard are locked before availability is calculated):
+- **One transaction per attempt** at `REPEATABLE READ`, started by the operation itself; a caller transaction is
+  rejected. A retry (at most three attempts) is always a completely new transaction, and a transaction that threw is
+  never continued ([ADR-0023](decisions/ADR-0023-book-appointments-in-one-repeatable-read-transaction-with-ordered-locks-and-bounded-whole-transaction-retry.md)).
+- **A documented lock order** for the booking paths (guest booking, and the owner's create and reschedule): Business lifecycle row, Membership row, StaffMember row, Business schedule
+  revision row, Service row, then Customer, Appointment and aggregate rows
+  ([ADR-0025](decisions/ADR-0025-coordinate-schedule-changes-with-booking-through-a-business-level-schedule-revision-guard.md)).
+  The revision row is advanced by every weekly-schedule and schedule-exception mutation and locked shared by the booking
+  paths, so a booking that read older schedule data fails and retries instead of committing against stale availability.
+  Other operations take only the prefix they need (cancellation and note edit lock just the Business lifecycle, owner
+  Membership and Appointment rows). Ordered locking reduces deadlock risk; it
+  is not a deadlock-freedom proof: a deadlock between two overlapping writers on the exclusion index remains a documented,
+  retried risk.
+- **Optimistic versions.** Owner mutations (reschedule, reassign, cancel, internal note) carry `expectedVersion` and
+  write through one conditional `UPDATE`; a stale version is reported as a conflict instead of overwriting
+  ([ADR-0007](decisions/ADR-0007-use-optimistic-concurrency-for-business-mutations.md), ADR-0028).
+- **Idempotent guest booking.** An attempt identifier plus a versioned HMAC request fingerprint identify a repeated request
+  (a replay, or a mismatch if the content differs). Separately, the outcome classification distinguishes a proven rollback
+  from an uncertain commit, and an uncertain outcome is reported as uncertain rather than as a failure
+  ([ADR-0024](decisions/ADR-0024-make-booking-attempts-idempotent-with-a-versioned-hmac-request-fingerprint-and-distinguish-uncertain-outcomes.md)).
+- **Multi-Service visits** (one to five Services, one StaffMember) are one atomic Appointment with immutable per-Service
+  lines and a whole-visit overlap guarantee ([ADR-0027](decisions/ADR-0027-book-several-services-as-one-atomic-visit-with-service-lines-a-versioned-set-fingerprint-and-an-explicit-review-consistency-check.md)).
+- The owner's mutations run in a separate, non-transactional runner that classifies the outcome from Spring's
+  completion report and verifies with one read outside the transaction; cancellation and note edit use a single
+  `READ COMMITTED` transaction with no retry (ADR-0029).
 
-- One repeatable-read, read-write transaction per attempt (ADR-0023). The orchestration is invoked with no
-  active transaction and rejects an active caller transaction before any work, so every attempt is a separate
-  transaction. A replay holds only the initial Business lock. An attempt locks the Business `FOR SHARE`, looks
-  up a replay by attempt, revalidates through `AvailabilityQuery`, chooses the StaffMember (the requested one,
-  or the deterministic assignment among those the slot lists as free), locks the StaffMember, the Business
-  schedule revision, and the Service `FOR SHARE`, finds or creates the Customer, and inserts the Appointment.
-  Everything rolls back together, so a failed booking leaves no partial Customer or Appointment. A retry is
-  always a completely new transaction (at most three attempts), and a transaction that threw is never
-  continued.
-- Total lock order for every path: Business lifecycle row, Membership row, StaffMember row, Business schedule
-  revision row, Service row, then Customer, Appointment, and aggregate rows (ADR-0025). **Implemented (Phase 3)
-  on the mutation side:** weekly-schedule replacement and every schedule-exception create, replace, and delete
-  take Business, Membership, the StaffMember (where scoped), and then advance the revision row in their own
-  transaction immediately before the aggregate statement; a rejected or rolled-back mutation leaves the revision
-  unchanged, and schedule writers of one Business serialize on that row. **Implemented (Phase 4):** a booking that
-  validated against older schedule data fails the guard (`ScheduleRevisionGuard.lockShared`, which requires a
-  repeatable-read or serializable caller transaction) with `40001` and retries, or the mutation waits for the
-  booking. The other availability-affecting mutations already conflict with the booking's row locks through real
-  row updates (audit in ADR-0025, enforced by `AvailabilityMutationInventoryTests`).
-- Idempotency and replay by an attempt ID and a versioned HMAC request fingerprint, and the distinction between
-  a proven rollback and an uncertain commit outcome (ADR-0024).
-- The real `BusyIntervalSource` in `booking` returns `CONFIRMED` windows in one bulk query joined to the
-  caller's transaction and replaced `NoBookingBusyIntervalSource` in Phase 2 (ADR-0016; implemented).
-- Narrow public booking routes under `/api/public/businesses/{slug}` that never depend on a session
-  (ADR-0026; implemented in Phase 5 as the `publicbooking` module). One class, `PublicBookingRoutes`, defines the exact
-  matchers that authorize them, bypass the session filter, and exempt only `POST …/bookings` from CSRF. The
-  Booking-owned limiter charges before any database work. The overlap violation becomes a typed outcome and, publicly,
-  HTTP 409.
+## Transactions and locking by slice
 
-Manual creation, rescheduling, reassignment, and Business-side cancellation (issues #19 and #21; decided in ADR-0028 and ADR-0029; the persistence and availability foundation is implemented in issue #19 Phase 2: `V14`, the pure transitions, the conditional store updates, and the Business availability entry; the read side is implemented in issue #21 Phase 3; the creation orchestration, its separate Business runner and its HTTP are implemented in issue #19 Phase 4, the owner Membership and Business schedule-context locks being translated to sanitized published conflicts by their owning modules; the reschedule and reassignment orchestration and HTTP are implemented in issue #19 Phase 5 on the same runner, reading the Appointment, locking the target StaffMember and the revision, and writing through the conditional update; the cancellation and the internal-note edit are implemented in issue #21 Phase 6 as a separate non-transactional `BusinessAppointmentLifecycleService` behind the published `AppointmentLifecycleAdministration`: one service-owned `READ COMMITTED` transaction that locks only the Business lifecycle, the owner Membership, and the Appointment, with completion-status classification, a post-completion verification read, and no retry (ADR-0029 Phase 6 note); the HTTP adapter is the `calendar` module, `POST …/cancel` and `PUT …/internal-note`) follow the same store and constraint, with a separate Business availability policy (no notice, no 30-date horizon, a new start never in the past, the stored duration for a move, only the moved Appointment ignored), ordered shared locks that add the Membership level before the StaffMember, an expected-version conditional `UPDATE` for the single row that changes, and a bounded whole-transaction retry in a separate runner. The lock-order argument is not a proof of deadlock freedom: the exclusion-index deadlock between two overlapping writers remains a documented, retried risk. Cancellation attribution (`cancelled_at`, `cancelled_by`) and the internal note, with their domain and persistence foundation, are implemented by `V14` in issue #19 Phase 2; their Business orchestration and HTTP/UI consumers remain for later phases; `COMPLETED`/`NO_SHOW` (with the rule that they require the current time at or after `start_at`) stay deferred.
+The same pattern repeats across the owner-administered slices, so the rules are stated once here (details in the ADRs
+listed in [Backend modules](#backend-modules) and in [security.md](security.md)):
 
-## Authentication, notifications, and deployment
+- **Reads** run in read-only transactions with non-locking Business and Membership authorization checks. Reads that
+  must be consistent across several statements (assignment listing, a StaffMember's weekly schedule, the schedule
+  exception list, availability, the calendar and history reads) use one `REPEATABLE READ` snapshot with a bounded,
+  size-independent statement count.
+- **Mutations** run in one transaction that takes shared locks in the fixed order Business lifecycle row, exact user
+  Membership row, then (where scoped) the StaffMember row, and finally the aggregate through a conditional
+  `UPDATE ... WHERE version = :expected`. The version predicate is never replaced by a pessimistic aggregate lock, and
+  an accepted mutation that writes increments the version exactly once, including an identical complete replacement
+  of a Service assignment set or weekly schedule. The exceptions are requests that change nothing: an Appointment
+  reschedule that changes neither start nor StaffMember, and an internal-note edit equal to the stored note, issue no
+  `UPDATE` and do not advance the version.
+  A `SUSPENDED` Business remains readable and rejects mutations (Customer updates excepted).
+- **Services and assignments:** Catalog locks only the Service rows being added, `FOR SHARE` in deterministic UUID
+  order, before Workforce reconciles the relationships; the version guard and the reconciliation share one transaction.
+  A StaffMember's profile, lifecycle and assignment replacement share one aggregate version; the weekly working
+  schedule has its own independent version, and a database exclusion constraint rejects overlapping periods per
+  weekday while allowing adjacency.
+- **Schedule exceptions** are versioned aggregates with their periods. PostgreSQL exclusion constraints, not a
+  pre-check, decide overlap. Replace and delete are conditional on Business, identifier and expected version, and an
+  empty conditional result is treated as a concurrent change rather than distinguishing missing from stale.
+- **Platform Business lifecycle:** activation is one read-write transaction whose identity query locks one qualifying
+  active owner Membership (`ORDER BY id LIMIT 1 FOR SHARE`), so a concurrent deactivation waits for the transition.
+- **Availability** (`AvailabilityQuery`) writes nothing and takes no locks. Called inside an existing transaction it
+  joins it and fails before any read unless that transaction is `REPEATABLE READ` or `SERIALIZABLE`.
+- **Public profile:** one read-only `REPEATABLE READ` transaction with at most two statements, independent of the
+  number of Services; a malformed or reserved slug issues none.
 
-Administrators use server-managed Secure/HttpOnly/SameSite sessions with CSRF
-protection. Invitations, resets, and cancellation links are high-entropy tokens
-stored only as hashes. Detailed rules are in `security.md`.
+## Customers
 
-Phase 2 implements `identity`, `business`, and `shared` as Spring Modulith-
-verified package boundaries. Phase 3A adds `platform` orchestration. Platform
-code depends on the published Business administration API and the published
-identity active-owner query; it does not access either module's infrastructure.
-Business owns validation, persistence, lifecycle rules, and atomic transitions.
-Identity owns Membership persistence and the active-owner query. There are no
-reverse dependencies or cycles.
+A Customer record is Business-owned data, not a login. Guest booking finds or creates the record through the published
+`CustomerIdentification` contract inside the booking transaction, with conservative matching on canonical phone and
+email ([ADR-0020](decisions/ADR-0020-match-customers-conservatively-and-publish-narrow-customer-contracts.md)); the same
+person has separate records in different Businesses. A persistence race raises a sanitized typed conflict that marks the
+caller's transaction for rollback. An Appointment does not copy the contact data; the owner sees it through the
+Customer reference. A `SUSPENDED` Business keeps its existing Customers correctable but cannot create new ones.
 
-The implemented `catalog` module owns the Business-scoped Service model,
-canonicalization, validation, persistence, application orchestration, and HTTP
-adapter. It depends only on the published Business lifecycle contract and the
-published identity contracts for authenticated context and active-owner access;
-it does not use another module's repositories or persistence records. Service
-responses omit Business identity because tenant selection remains server-side.
+## Frontend
 
-Service reads run in read-only transactions and use non-locking Business and
-Membership checks. Each mutation runs in one transaction and acquires shared
-locks in the order Business lifecycle row, exact user Membership row, then the
-tenant-scoped optimistic Service mutation. The final Service statement retains
-the expected-version predicate; no pessimistic Service-row lock replaces it.
-The authenticated API exposes list, detail, create, update, deactivate, and
-reactivate operations under `/api/business/services`.
+The React SPA (TypeScript, Vite) serves the public booking journey at `/{businessSlug}` and the authenticated
+Business-owner and platform-administrator interfaces, all in Bulgarian. Routing is application-owned and hash-based
+for the authenticated shells, without a routing dependency. The authenticated navigation is shared: global destinations (`Бизнеси`, `Профил`) and, while a Business is selected, `График`, `Услуги`, `Екип`, `Работно време` and `Клиенти`. Business-scoped feature code lives under
+`frontend/src/business/` (`calendar`, `appointments`, `customers`, `services`, `staff`, `schedule`) and the platform and
+public code under `platform/` and `public/`. Every Business API call goes through one request helper that announces the
+single `ACTIVE_BUSINESS_REQUIRED` signal, on which the shell refreshes the session and returns to Business selection.
+Server versions are kept in memory and sent back as `expectedVersion`; they are not displayed. No authentication token or
+private value is stored in browser storage or the URL by design. Forms use a shared unsaved-changes guard, and owner operations
+use single-flight requests with explicit handling of uncertain outcomes (an uncertain mutation is not repeated automatically).
+The UI rules are in [ui-design-guidelines.md](ui-design-guidelines.md).
 
-The implemented `workforce` module owns the Business-scoped StaffMember model,
-canonicalization, validation, persistence, application orchestration, Service
-assignments, and HTTP adapter. Its published `StaffMemberAdministration`
-contract accepts the server-derived authenticated Business context and exposes
-no repository or persistence record. Workforce depends on the published
-Business lifecycle and identity owner-access contracts and on Catalog's narrow
-published `ServiceReferenceAccess`; Catalog has no reverse dependency on
-Workforce.
+## Authentication and sessions
 
-Workforce reads use non-locking Business and Membership authorization.
-Assignment listing runs at repeatable-read isolation and resolves the
-StaffMember aggregate, relationship IDs, and ordered Catalog summaries as one
-consistent snapshot. Assignment replacement acquires shared locks on the
-Business lifecycle row and exact user Membership row, then executes the
-conditional StaffMember `UPDATE` that performs the expected-version guard and
-takes PostgreSQL's row-level write lock. Catalog next locks only added Service
-rows using `FOR SHARE` in deterministic UUID order before Workforce reconciles
-the relationships. The version guard and relationship reconciliation run in one
-transaction, so validation or persistence failure rolls both back.
+Administrators and owners use server-managed sessions (opaque cookie, `HttpOnly`, `SameSite=Lax`, `Secure` in
+production) with CSRF protection; invitation, reset and session tokens are stored only as hashes, and passwords use
+Argon2id ([ADR-0005](decisions/ADR-0005-use-server-managed-cookie-authentication.md),
+[ADR-0006](decisions/ADR-0006-protect-security-tokens-with-hash-only-persistence-and-database-backed-lifecycle-guarantees.md)).
+Authentication and public-booking abuse limiters are bounded and process-local (ADR-0008, ADR-0026), so a multi-instance
+deployment needs a shared or edge limiter. See [security.md](security.md).
 
-Profile update, deactivation, reactivation, and complete desired-set assignment
-replacement share one StaffMember aggregate version. Every successful mutation,
-including same-set replacement, increments that version once. StaffMember
-activity is not an authorization or version predicate: active and inactive
-StaffMembers remain administratively configurable. Only added Services must be
-active; retained or removed existing assignments are permitted regardless of
-current Service activity. Endpoint deactivation preserves assignments.
+## Planned and not implemented
 
-The authenticated Workforce API exposes list, detail, create, update,
-deactivate, reactivate, assignment listing, and complete assignment replacement
-under `/api/business/staff-members`. HTTP requests and responses omit Business,
-user, Membership, credential, role, session, normalized, and persistence state.
-StaffMember account linkage, availability, and booking remain outside the
-implemented Workforce slice.
-
-The implemented recurring StaffMember working-schedule slice adds one
-independent `staff_working_schedule` aggregate per StaffMember under the same
-Business, with zero or more child `staff_working_period` rows. `V7` backfills
-an empty version-0 schedule for every existing StaffMember, and StaffMember
-creation inserts the new empty schedule inside the same transaction. The
-schedule version is independent of the StaffMember aggregate version; every
-accepted complete replacement, including an identical one, increments it
-exactly once. Periods use ISO weekday and local `HH:mm` clock values with
-one-minute precision from `00:00` through `23:59`; PostgreSQL's special
-`24:00:00` value is rejected, and a generated `int4range` plus a `btree_gist`
-multicolumn exclusion constraint reject overlaps scoped to Business,
-StaffMember, and weekday while permitting half-open adjacency.
-
-Schedule reads use a repeatable-read transaction so aggregate metadata and
-ordered periods come from one consistent snapshot; non-locking Business and
-Membership checks authorize an active `BUSINESS_OWNER` Membership. Complete
-replacement locks, in order, the Business lifecycle row, the exact owner
-Membership row, then the StaffMember row to stabilize its active state, before
-the conditional expected-version schedule update and complete child-period
-replacement in the same transaction. Only an active StaffMember may receive a
-mutation; deactivation and Business suspension preserve all schedule data. The
-authenticated API exposes `GET`/`PUT`
-`/api/business/staff-members/{staffMemberId}/working-schedule`; the PUT request
-carries only `expectedVersion` and the complete desired period list, and the
-response carries StaffMember ID, live Business timezone, ordered periods,
-independent schedule version, and timestamps. Exceptions, time off, breaks,
-overrides, and availability remain outside this slice.
-
-The `scheduling` module also owns internal persistence of schedule exceptions
-(Issue #16 Phase 2, [ADR-0014](decisions/ADR-0014-store-schedule-exceptions-as-versioned-aggregates-with-same-kind-date-exclusion.md)).
-`ScheduleExceptionStore` in `scheduling.infrastructure` inserts, finds by
-Business and id, lists by inclusive date window (optionally with StaffMember
-filtering that always includes Business closures), conditionally replaces, and
-conditionally hard-deletes a versioned `schedule_exception` aggregate with its
-composed periods, in one joined read for aggregate plus periods. Stored
-aggregates are immutable `scheduling.domain` records, separate from engine
-inputs; `ScheduleExceptionInputs` translates them purely. Replace and delete are
-conditional on Business, id, and expected version; an empty result or `false`
-means only that no such row matched, so the store does not distinguish missing,
-stale, or concurrently deleted. The future application service reads first and
-treats a later failed mutation as a concurrent change. The store takes no
-Business, Membership, or StaffMember locks and applies no authorization or
-lifecycle rules; the administration service of Phase 3 owns those. Concurrent
-conflicting inserts are serialized by PostgreSQL exclusion constraints.
-
-Issue #16 Phase 3 ([ADR-0015](decisions/ADR-0015-administer-schedule-exceptions-through-a-versioned-business-owner-api.md))
-adds the private Business-owner administration of schedule exceptions. The
-published `scheduling.ScheduleExceptionAdministration` contract accepts the
-server-derived authenticated Business context and is implemented by an
-application service that depends only on the published Business schedule-context
-and identity owner-access contracts and on Workforce's narrow published
-`StaffMemberReferenceAccess`, which exposes only a StaffMember's ID and active
-state and locks its row `FOR SHARE` inside the caller's transaction; Workforce has
-no reverse dependency. Reads run at repeatable-read isolation with non-locking
-checks. Each mutation runs in one transaction that locks, in order, the Business
-lifecycle row, the exact owner Membership row, the StaffMember row for
-StaffMember-scoped kinds, and finally the aggregate through the store's
-conditional statement. Replace and delete first read the aggregate in that
-transaction, report not-found only when the read is empty, and treat a failed
-conditional mutation afterwards, or a deadlock or serialization victim, as a
-concurrent update. Overlap is decided only by the PostgreSQL exclusion
-constraints; there is no pre-check. The authenticated API under
-`/api/business/schedule-exceptions` exposes list by inclusive date window, get,
-create, atomic replace (which retains the stored kind and StaffMember), and hard
-delete, both mutating variants carrying `expectedVersion`; responses omit
-Business identity. Validation bounds, the unpaginated list, and the inactive
-StaffMember trade-off are recorded in the ADR. A frontend remains outside this
-slice.
-
-Issue #16 Phase 4 ([ADR-0016](decisions/ADR-0016-orchestrate-availability-through-published-contracts-and-a-scheduling-owned-busy-interval-seam.md))
-adds the internal published `scheduling.AvailabilityQuery`, which assembles the
-pure engine's inputs from narrow published contracts: the existing Business
-schedule context, `catalog.ServiceAvailabilityAccess` (identity and duration of
-an active Service), and `workforce.StaffAvailabilityAccess` (active StaffMembers
-assigned to the Service with their recurring periods, one joined statement).
-The result is deeply immutable published records; the internal engine records
-stay private. A standalone call creates a read-only repeatable-read transaction; a call
-inside an existing transaction joins it and fails before any read unless that
-transaction is already repeatable-read or serializable. The method itself
-performs no writes or explicit locks, though a joined outer transaction may be
-read-write, and PostgreSQL's first-statement snapshot then covers every
-committed database read; the result is a current view that reserves nothing and booking
-must revalidate. The Scheduling-owned `BusyIntervalSource` is the seam for
-occupied time. Its real implementation, `booking.infrastructure.BookingBusyIntervalSource`
-(issue #18 Phase 2), joins the caller's transaction (`MANDATORY`) and answers all requested
-StaffMembers with one bulk statement over `CONFIRMED` Appointments; the temporary
-`NoBookingBusyIntervalSource` placeholder and its tests were deleted in the same change, and the
-source remains a required ordinary bean, so zero or two implementations make startup fail. The
-orchestration issues four application SQL statements regardless of team size, plus the busy-interval
-statement. (Phase 5 later published the availability view as `GET …/availability`; see ADR-0026.)
-
-Issue #17 adds the `publicprofile` module (the backend public read contract, the
-public React page and its browser E2E verification are implemented; booking, availability
-selection and Appointments are not and belong to later issues) ([ADR-0017](decisions/ADR-0017-expose-public-business-profile-through-an-allowlisted-read-only-contract.md),
-[ADR-0018](decisions/ADR-0018-serve-public-business-pages-at-a-top-level-path-with-reserved-roots-and-stable-slugs.md),
-[task 06a](tasks/06a-public-business-profile.md)). It depends only on a
-narrow published `business.PublicBusinessProfileAccess` (ACTIVE Business by slug,
-explicit public columns, slug validation and reserved roots) and a
-`catalog.PublicServiceAccess` (every active Service in `normalized_name, id` order,
-no cap), never on their stores or private records, and no module depends on it.
-`business` cannot own the page because `catalog` already depends on `business`. One
-read-only repeatable-read transaction, whose isolation is verified before any read,
-runs two statements for an ACTIVE Business, one for any other well-formed slug, and
-none for a malformed or reserved slug, independent of the number of Services. The public page will be a top-level
-`/{businessSlug}` route in the React application, chosen before the
-administration application; the backend stays JSON-only. Reliable per-Business
-link previews and server-level SEO require later server-side, pre- or edge
-rendering.
-
-The platform Business API provides bounded deterministic listing, retrieval,
-DRAFT creation, profile update, initial activation, suspension, and
-reactivation. Mutations carry `expectedVersion`; PostgreSQL compare-and-update
-predicates increment the version once and prevent lost updates. Initial
-activation is one read-write platform transaction. Its identity query locks one
-qualifying active `BUSINESS_OWNER` Membership using deterministic
-`ORDER BY id LIMIT 1 FOR SHARE`, so concurrent deactivation waits until the
-Business transition commits or rolls back.
-
-The React platform-admin client uses application-owned hash routes for the
-Business list, creation, and detail views without adding a routing dependency.
-It keeps backend-returned Business versions in memory and returns the current
-`expectedVersion` for profile and lifecycle mutations. Concurrent-update
-responses require an explicit reload instead of an automatic overwrite;
-versions remain technical state and are not displayed. Creation omits timezone
-so the backend applies `Europe/Sofia`, while updates preserve the stored value
-without exposing timezone in the current UI. Detail starts read-only and uses
-explicit edit/save/cancel inside accessible collapsible profile, invitation,
-and activation sections with operation-local feedback. Owner invitation input
-is separate from Business contact data; invitation requests use the identity
-API and never persist invitation credentials in frontend-managed browser
-storage. The shared request helper accepts successful empty responses,
-including the invitation endpoint's HTTP 202 response, without attempting JSON
-decoding.
-
-Business transactions atomically add outbox records. A worker claims/retries
-with bounded backoff; idempotency keys prevent duplicate reminders. Development
-and tests never send real email.
-
-Local development will use PostgreSQL through Docker Compose and database name
-`spotyourslot`. Production proposals (Cloudflare Pages, paid Render service and
-PostgreSQL, Resend) remain unconfigured. The example domain is not registered,
-and availability has not been legally verified.
+Designed but not built: transactional outbox and email delivery, reminders, Customer self-service cancellation and
+rescheduling, audit events, Manager and Staff access (needs a Membership-to-StaffMember link), drag-and-drop
+rescheduling, configurable booking window, notice and buffers, breaks, and production hosting. The production proposals
+(Cloudflare Pages, a paid Render service and PostgreSQL, Resend) are unconfigured, and the example domain
+`spotyourslot.bg` is not registered and has not been legally cleared. The planned `notification` and `audit` modules do
+not exist in the code.
 
 ## Version and evolution policy
 
-Bootstrap verifies versions in official primary documentation; records exact
-versions and compatibility reasoning; pins direct dependencies, tools, and
-Docker image tags; commits generated lockfiles; and avoids pre-release or
-experimental dependencies without separate approval. PostgreSQL is the latest
-stable major supported by both local Docker and the approved host. Upgrades are
-controlled and reviewable.
+Versions are verified against official primary documentation, direct dependencies, tools and Docker image tags are
+pinned, lockfiles are committed, and pre-release or experimental dependencies need separate approval. Flyway owns
+schema evolution. Scaling would begin with measurement, indexes, stateless replicas and pool tuning; speculative
+industry abstractions, Redis, Kafka, microservices and Kubernetes are excluded.
 
 ### Verified bootstrap versions
 
-Verified on **2026-08-13** using official primary documentation and package
-metadata:
+Verified on 2026-08-13 from official documentation and package metadata. The manifests are authoritative
+(`backend/pom.xml`, `frontend/package.json`, `compose.yaml`, `.github/workflows/ci.yml`).
 
 | Technology | Selected version | Compatibility basis |
 |---|---:|---|
-| Java | Temurin 25.0.4 LTS | Required project LTS; Spring Boot 4.1 supports Java 17–26 |
-| Spring Boot | 4.1.0 GA | Current stable GA; official system requirements include Java 25 and Maven 3.6.3+ |
-| Maven / Wrapper | 3.9.16 / 3.3.4 | Installed stable Maven satisfies Boot; wrapper pins the same distribution |
-| Node.js / npm | 24.19.0 LTS / 11.17.0 | Node 24 is the current suitable LTS and satisfies Vite/Vitest/jsdom engines |
-| React / React DOM | 19.2.8 | Latest stable React release resolved during bootstrap |
-| TypeScript | 6.0.3 | Latest stable release compatible with stable `typescript-eslint` 8.67.0 (`<6.1`) |
-| Vite / React plugin | 8.2.1 / 6.0.5 | Stable releases; Vite supports Node 24 and plugin supports Vite 8 |
-| Vitest / jsdom | 4.1.10 / 30.0.1 | Stable releases with Node 24 support |
-| PostgreSQL | 18.4 (`postgres:18.4-bookworm`) | Current stable major/minor; PostgreSQL recommends current minor and Render supports major 18 |
-| Testcontainers | 2.0.5 | Stable release managed by Spring Boot 4.1; uses the official 2.x prefixed module coordinates |
-| Bouncy Castle | 1.84 | Stable provider required by Spring Security Argon2 |
-| Spring Modulith | 2.1.0 | Stable test-only module verification for the Spring Boot 4.1 line |
+| Java | Temurin 25 LTS | required project LTS; Spring Boot 4.1 supports Java 17–26 |
+| Spring Boot | 4.1.0 | stable GA; supports Java 25 and Maven 3.6.3+ |
+| Maven / Wrapper | 3.9.16 / 3.3.4 | the wrapper pins the distribution |
+| Node.js / npm | 24 LTS (CI 24.19.0) / 11.17.0 | `engines`: Node `>=24.15.0 <25`, npm `>=11 <12` |
+| React / React DOM | 19.2.8 | stable release resolved at bootstrap |
+| TypeScript | 6.0.3 | compatible with `typescript-eslint` 8.67.0 |
+| Vite / React plugin | 8.2.1 / 6.0.5 | stable; support Node 24 |
+| Vitest / jsdom | 4.1.10 / 30.0.1 | stable; support Node 24 |
+| PostgreSQL | 18.4 (`postgres:18.4-bookworm`) | current stable major |
+| Testcontainers | managed by Spring Boot 4.1 | real-PostgreSQL integration tests |
+| Spring Modulith | 2.1.0 | module verification in tests |
+| Playwright | 1.63.0 | pinned Chromium for browser E2E |
 
-Primary sources: [Spring Boot system requirements](https://docs.spring.io/spring-boot/system-requirements.html),
-[Node release status](https://nodejs.org/en/about/previous-releases),
-[React versions](https://react.dev/versions),
-[TypeScript download/version guidance](https://www.typescriptlang.org/download/),
-[Vite releases](https://vite.dev/releases),
-[Vite Node requirements](https://vite.dev/guide/),
-[PostgreSQL version policy](https://www.postgresql.org/support/versioning/),
-[Render PostgreSQL support](https://render.com/docs/postgresql-upgrading), and
-[Testcontainers PostgreSQL module](https://java.testcontainers.org/modules/databases/postgres/).
-
-Direct npm dependencies are exact-pinned and the lockfile fixes the complete
-graph. Spring Boot dependency management fixes the supported backend graph;
-explicit build plugins and Maven distribution are pinned. Docker images use
-full non-floating tags. Upgrades require the same official compatibility review,
-lockfile regeneration, full checks, and a focused reviewed change.
-GitHub Actions are pinned to reviewed major release lines (`checkout@v6`,
-`setup-java@v5`, and `setup-node@v6`); Dependabot or a focused maintenance
-change may advance them only after release-note review and green CI. Immutable
-commit SHAs may replace major pins if the repository later adopts that stricter
-supply-chain policy.
-
-Flyway owns schema evolution. Structured redacted logs, correlation IDs,
-health checks, and audit/delivery records support operations. BusinessType is
-descriptive only. Scaling begins with measurement, indexes, stateless replicas,
-pool tuning, and worker coordination; speculative industry abstractions, Redis,
-Kafka, microservices, and Kubernetes are excluded.
-
-### Business calendar frontend (issue #21 Phase 7; read-only)
-
-`frontend/src/business/calendar/` owns the read-only calendar: `api.ts` (the four read routes through `businessRequest`), `dates.ts` (Business-local date arithmetic on `yyyy-MM-dd` text, at most 31 dates), `presentation.ts` and `CalendarViews.tsx` (the day grid, the week cards, the agenda, overlap lanes), `BusinessCalendar.tsx` (one abortable request per view, date, StaffMember, and page; the previous answer stays visible while a refresh is pending; the Business timezone adopted from the first answer), `AppointmentDetail.tsx`, and `CustomerAppointmentHistory.tsx` (a section of the Customer detail). The routes (`business-calendar`, `business-appointment-detail`) live in `navigation.ts` and carry only the view, a Business-local date, an opaque StaffMember identifier, and the agenda page and size. The screens are keyed by the active Business, and a Business switch resets the calendar route. No mutation exists in the frontend yet (Phases 8 to 10).
-
-### Manual-create read routes (issue #21, discovered Phase 8 prerequisite; backend only)
-
-`booking` publishes `AppointmentCreationOptions` (with its records and typed exceptions) and implements it in `AppointmentCreationOptionsService`: two owner-only, read-only operations, each one read-only `REPEATABLE READ` transaction that takes no lock, reads the clock once, and issues a bounded number of statements (options 4, availability 8). It uses the plain-read `ServiceAvailabilityAccess` and `PublicStaffAccess` contracts and the Business-side `AvailabilityQuery.calculateForBusiness` (zero notice, the summed current duration, the explicit StaffMember, no ignored Appointment), so it offers exactly the starts the creation accepts. The `calendar` adapter module exposes them as `GET /api/business/appointment-options` and `GET /api/business/appointment-options/availability`, depending only on published root types of `booking` and `identity`. No frontend consumes them yet (Phase 8).
-
-`booking` also publishes `AppointmentRescheduleOptions` (with its records and typed exceptions), implemented in `AppointmentRescheduleOptionsService`: the owner-only, read-only choices behind the reschedule and reassignment form. Each of its two operations is one read-only `REPEATABLE READ` transaction that takes no lock, writes nothing, reads the clock once, and issues a bounded number of statements (options 6, availability 8 for the current StaffMember and 9 for a replacement). It reads the stored Appointment through `AppointmentStore.find`, the replacement intersection through `PublicStaffAccess`, the current StaffMember's activity through `StaffAvailabilityAccess`, and the Business-side `AvailabilityQuery.calculateForBusiness` with the **stored** duration, zero notice, and exactly the route Appointment ignored; it reads no Service, takes no StaffMember lock, and never touches the schedule-revision guard. The `calendar` adapter exposes it as `GET /api/business/appointments/{appointmentId}/reschedule-options` and `…/availability`, again depending only on published root types of `booking` and `identity`. The Phase 9 frontend that consumes it is not started.
-
-### Manual-create frontend (issue #21 Phase 8)
-
-`frontend/src/business/appointments/` owns the owner-only create flow: `api.ts` (the options, availability, and create requests through `businessRequest`, plus the paged read of the active Services), `model.ts` (the pure state machine, the invalidation rules, integer-cent totals, canonical claims, the note policy, and the exact request body), `errors.ts` (the frontend-owned wording and classification of every create result), `useKeyedLoad.ts` (one abortable read per key that ignores late answers), `steps.tsx` (the six presentational steps), and `ManualCreate.tsx` (the component that holds the whole form in memory, runs the reads, guards the single POST, and recovers from each result). The route `business-appointment-new` carries only the calendar state to return to; `permittedRoute` redirects a non-`ACTIVE` Business to the calendar, and the calendar renders `Нов час` only for an `ACTIVE` Business. The flow is not coupled to the public booking journey (it shares only the pure money and date utilities). Nothing changes in the backend.
-
-### Reschedule and reassignment frontend (issue #21 Phase 9)
-
-`frontend/src/business/appointments/` also owns the owner-only reschedule flow, beside the create flow and sharing only its `useKeyedLoad`, the date and slot step, and the load-error component: `rescheduleApi.ts` (the two Appointment-scoped option reads and the one POST through `businessRequest`), `rescheduleModel.ts` (the pure proposal: the starting proposal, the invalidation of the start by a changed StaffMember or date, the effective-change rule, and the exact body), `rescheduleErrors.ts` (the frontend-owned wording and classification of every result, with the unresolved kinds), `rescheduleSteps.tsx` (the read-only context, the StaffMember step, and the review), and `Reschedule.tsx` (an outer component that reads the Appointment and the options, owns the epoch that discards a form after a concurrent update, and shows the terminal states, and an inner form that holds the proposal in memory, guards the single POST, and recovers from each result). The route `business-appointment-reschedule` carries the Appointment identifier and the safe origin; `permittedRoute` redirects a non-`ACTIVE` Business to the detail, the Business-switch effect replaces the route with the calendar, and `AppointmentDetail` renders `Промени часа` only for an eligible Appointment of an `ACTIVE` Business. Nothing changes in the backend.
-
-### Cancellation and internal-note frontend (issue #21 Phase 10)
-
-The two Phase 6 operations live in the private Appointment detail; no route was added. `frontend/src/business/appointments/` owns `lifecycleApi.ts` (the `POST …/cancel` and `PUT …/internal-note` calls through `businessRequest`), `lifecycleErrors.ts` (the frontend-owned wording and the classification, with the unresolved kinds), `lifecycleModel.ts` (the canonical note, the dirty rule, the readable-success checks), `useAppointmentOperations.ts` (all state of both operations: one synchronous in-flight flag shared by both, the sticky freeze, the blocking refusals, a generation counter that invalidates requests in flight, the guard registration, and the focus requests), and `OperationViews.tsx` (the cancel section and dialog, the note editor, and the one alert of each operation). `AppointmentDetail` keeps the authoritative Appointment, offers the silent re-read that the operations use, and renders the pieces; a mutation response is accepted as a success only when it is a strictly validated acknowledgement of the request that was sent (same Appointment, expected state, a safe-integer version beyond the submitted one, exactly the canonical submitted note), it is never used as the displayed state, and fresh facts are shown only from the authoritative re-read (if that fails, success is stated from the acknowledgement and no Appointment fact is shown). Nothing changes in the backend, the routes, or the contracts.
+Direct npm dependencies are exact-pinned and the lockfile fixes the graph; Docker images use full tags. GitHub Actions
+are pinned to reviewed major lines (`checkout@v6`, `setup-java@v5`, `setup-node@v6`).

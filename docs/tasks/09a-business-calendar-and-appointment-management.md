@@ -12,7 +12,7 @@ Give the Business owner a reliable operational calendar of the Appointments the 
 
 ## Current status (2026-10-23)
 
-All technical work of #19 and #21 is implemented, verified locally and prepared for one consolidated code review and the product owner's browser validation. The authoritative current state is the section **"Consolidated delivery, Phase 12 and the acceptance matrix (2026-10-23)"** at the end of this record. The earlier dated phase records, including the "Phase 11" and "Phase 12" wording of the plan below, are kept as history: where they differ from that section (for example the Phase 12 precondition that Phase 11 approval be recorded first), the final section applies. **Human visual approval of the whole delivery has not been given and is not recorded**; the product owner approved only the previously reviewed behaviour listed there. Nothing is committed; the issues and the Project board are untouched.
+**Implementation and automated verification are complete, and the product owner has accepted the manual validation of the delivered functionality within the scope recorded in the final section.** The whole delivery is committed as `0350960` (`feat: finalize Business appointment management and Customer history (#19, #21)`, pushed, equal to `origin/main` when this was written). There is no remaining implementation phase for the approved #19 and #21 scope. Phase 11 is **accepted by the product owner for the reviewed scope** (see "Human review outcome and closure status" at the end). The residual verification limitations listed there are accepted as non-blocking, and CI stays advisory. The authoritative current state is the last section of this record; the earlier dated phase records, including the "Phase 11" and "Phase 12" wording of the plan below, are kept as history and, where they differ (for example that Phase 12 waits for Phase 11 approval, or that Phase 11 is open), the final section applies. The issues and the Project board are untouched by this work; the product owner performs the closures.
 
 ## Relationship of #19 and #21 (approved)
 
@@ -1443,7 +1443,7 @@ Focused suites while developing; then `npx tsc -b` (clean), `npm run lint` (clea
 
 Phase 10 stops here for review and a separate commit. **All Business Appointment forms (create, reschedule and reassign, cancellation, and the internal note) are now available for optional browser inspection; this is a notification, not a gate: formal human visual approval remains Phase 11.** Phases 11 and 12 need their own approval.
 
-## Phase 11 record (2026-10-19; developer-rendered evidence prepared; **OPEN: human visual approval NOT given and NOT recorded**)
+## Phase 11 record (2026-10-19; developer-rendered evidence prepared; **status as of 2026-10-23: ACCEPTED by the product owner for the reviewed scope, see the final section; the text below is the history of the open review**)
 
 Base `HEAD` `772e940` (Phase 10, committed). CI of that commit was `in_progress` at the start (advisory). Phase 12 is not started. This record holds **developer-rendered evidence only**; the product owner's explicit visual approval is still required and is not recorded.
 
@@ -1574,7 +1574,7 @@ The agreed delivery workflow is now recorded in `AGENTS.md` and `CLAUDE.md` ("Is
 
 Approved (the product owner's statement, recorded without extension): the previously reviewed Calendar layout and behaviour (header, views and navigation, day, week and agenda presentation, cancelled lanes, Customer dialog, shared pagination, Service names, numbered Services, week-card layout, temporal badges, the reschedule review, the cancellation dialog and notice), apart from the corrections listed next. The reschedule eligibility rules (an active current StaffMember for a time-only move; a later Service deactivation or removed assignment does not block it; an inactive current StaffMember does not prevent opening the form to choose an eligible replacement) are unchanged and verified.
 
-**Still requires the product owner's validation** (new or changed since the last review): the Customer-history `Дата` field (empty at first and without a format placeholder; typed and pasted `22102026` and `22.10.2026`; malformed text kept and refused; the calendar button and its fallback); the `От най-ранна дата` / `От най-късна дата` order labels; the `Часове` heading and label hierarchy; the layout fix for the Pixel 7 overflow on the list pages (Services, Staff, Customers, Businesses, schedule changes) at narrow widths; and the whole delivery as a whole. Human validation of keyboard use, 200% zoom, other browsers and the native calendar popup stays with the product owner.
+*Superseded 2026-10-23:* the items that were listed here as still requiring validation were validated and accepted by the product owner; see the final section for the accepted items and the limitations that remain.
 
 ### Acceptance matrix
 
@@ -1610,16 +1610,61 @@ Legend: **V** implemented and verified (evidence named), **R** remaining, **S** 
 
 ### CI incident and the investigation
 
-See the eighth-round record above for the cause and the fix of the Pixel 7 overflow (a select's intrinsic width in a wider font, reproduced locally and fixed with `minmax(0, 1fr)` grid columns and shrinkable selects, with the `letter-spacing` regression check). The latest completed CI run at the end of this delivery is [39443685396](https://github.com/vasilmoskov/spot-your-slot/actions/runs/39443685396) on `44e3f21`, which does not contain the fix; the run of a commit that contains it does not exist yet, so the incident is **fixed and locally verified, not confirmed by CI**; the confirmation is pending evidence, reported separately from the local results, and does not gate review, a user-authorized commit or closure. No other failure was found in the runs since the last green commit `b1105c5`. The older red runs before it (`772e940`, `7caaca2`, `8c80b79`, `72a7547`, `2002a01`, `6ea345f`, `82edadd`) predate the green `b1105c5` and were handled in their own phases.
+See the eighth-round record above for the cause and the fix of the Pixel 7 overflow (a select's intrinsic width in a wider font, reproduced locally and fixed with `minmax(0, 1fr)` grid columns and shrinkable selects, with the `letter-spacing` regression check). The latest completed CI run at the end of this delivery is [39443685396](https://github.com/vasilmoskov/spot-your-slot/actions/runs/39443685396) on `44e3f21`, which does not contain the fix; the run of a commit that contains it does not exist yet, so the incident is **fixed and locally verified, not confirmed by CI** *(Status at the time; CI has since confirmed it, see "CI confirmation of the overflow fix" at the end.)*; the confirmation is pending evidence, reported separately from the local results, and does not gate review, a user-authorized commit or closure. No other failure was found in the runs since the last green commit `b1105c5`. The older red runs before it (`772e940`, `7caaca2`, `8c80b79`, `72a7547`, `2002a01`, `6ea345f`, `82edadd`) predate the green `b1105c5` and were handled in their own phases.
 
 ### Date field corrections of the final review
 
 The `Дата` field of the Customer history has no format placeholder. Malformed text is no longer truncated or cleaned up: a ninth digit (`22.10.20267`), a letter, other separators, pasted prose and a digit inserted in the middle of a complete date stay exactly as entered, are shown as invalid and apply nothing. A dot typed where the field has already put one changes nothing. The calendar button calls the browser's `showPicker()`; without it, or when it throws, the native date input is shown and focused. A native or fallback value goes through the same canonical-date and supported-range validation as typed text (a year below or above the range applies nothing and shows the error); the native input is uncontrolled, so a half-typed date is never overwritten, and an empty value with bad input (segments mid-edit) neither clears the applied filter nor changes the text. Erasing every segment fires no event, so that intentional clear is noticed on key release or blur and removes the filter. Real-browser evidence (Chromium through Playwright, real keyboard input in the native control with the picker API removed): a valid date applied, an erased year segment kept the filter and the text, years below and above the range showed the error and sent nothing, a valid replacement applied, and erasing all segments cleared the filter; separately, the picker call succeeded and a date chosen in the native control was shown and applied. The popup itself cannot be observed in headless Chromium.
 
-### Verification (local; `HEAD` `44e3f21` plus the working tree)
+### Verification (local; base `HEAD` `44e3f21` plus the working tree, since committed as `0350960`)
 
-Backend `./mvnw --batch-mode clean verify`: BUILD SUCCESS, 4555 tests, 0 failures. Frontend: `tsc`, lint, Vitest (107 files, 2528 tests) and the production build passed. The complete isolated E2E suite passed (138 tests, including the 13 new `business-calendar-journey` tests and the extended history and Pixel checks). `git diff --check` is clean, and the migrations `V1` to `V15` are byte-identical to `HEAD`. CI verification of the committed change is separate and pending.
+Backend `./mvnw --batch-mode clean verify`: BUILD SUCCESS, 4555 tests, 0 failures. Frontend: `tsc`, lint, Vitest (107 files, 2528 tests) and the production build passed. The complete isolated E2E suite passed (138 tests, including the 13 new `business-calendar-journey` tests and the extended history and Pixel checks). `git diff --check` is clean, and the migrations `V1` to `V15` are byte-identical to `HEAD`. CI verification of the committed change is separate and pending evidence. *(Status at the time; CI has since confirmed it, see "CI confirmation of the overflow fix" at the end.)*
 
-### Proposed GitHub text (not applied; the product owner applies it)
+### Proposed GitHub text
 
-Proposed replacement for the outdated parts of the issue descriptions, and the closing comments, are in the handoff of this delivery and are not published.
+See the closing comments in the final section. They are not published.
+
+## Human review outcome and closure status (2026-10-23)
+
+### Accepted by the product owner
+
+The product owner completed and accepted the manual validation of the delivered functionality. The approvals recorded in the earlier rounds stand (the Calendar and Appointment-management flows: header, views and navigation, day, week and agenda presentation, cancelled lanes, the Customer dialog, shared pagination, Service names and numbering, week-card layout, temporal badges, the reschedule review and eligibility, the cancellation dialog and notice, the history order). The latest explicit approvals are:
+
+- the Customer-history calendar popup and date selection;
+- date typing and pasting, invalid-date handling, and clearing;
+- ascending and descending ordering and pagination behaviour;
+- list-page containment at 412 px and 375 px.
+
+**Phase 11 is accepted by the product owner for the reviewed scope.** This is not a claim that every browser or accessibility scenario was manually tested.
+
+### Residual verification limitations (accepted as non-blocking)
+
+- The native date fallback (the visible native input when `showPicker()` is missing or refused) was tested automatically with real keyboard input in Chromium, not manually by the product owner.
+- Real 200% browser zoom has not been checked.
+- Firefox and Safari have not been checked.
+- No complete screen-reader audit and no final keyboard-only audit was performed.
+- CI confirmation of the Pixel 7 overflow fix was pending when the owner accepted these limitations; it has since been obtained (see "CI confirmation of the overflow fix" below). CI remains advisory: it gates no review, commit or closure.
+
+### Status of the work
+
+Implementation: complete, committed as `0350960`. Automated verification (local, on the final code): backend `clean verify` 4555 tests, frontend 2528 Vitest tests, `tsc`, lint, production build, the complete isolated E2E suite (138 tests; real backend and PostgreSQL, one scenario labelled PROXY, scripted answers only in the frontend unit tests), `git diff --check`, and migrations `V1` to `V15` byte-identical to `HEAD`. CI: the latest completed run when this was written is [39443685396](https://github.com/vasilmoskov/spot-your-slot/actions/runs/39443685396) on `44e3f21`, which predates the fix and failed on the Pixel 7 overflow described in the eighth-round record; the run [39937640658](https://github.com/vasilmoskov/spot-your-slot/actions/runs/39937640658) on `0350960`, which contains the fix, was still in progress and was not waited for. No other failure was found. There is no remaining implementation phase for the approved #19 and #21 scope. The issues are not closed by this record; the product owner performs every closure and board change.
+
+### Proposed closing comments (not published)
+
+**#19, Prevent double booking and handle booking conflicts**
+
+> Closing: the Business-side conflict protection is complete (commit `0350960`). One StaffMember cannot hold two overlapping confirmed Appointments, also through time and StaffMember changes: the `V11` exclusion and the `V14` `UPDATE` proofs, a Business availability policy with the stored duration and an ignore-self seam, and one atomic create/reschedule/reassign per request with a stable lock order. Evidence on real PostgreSQL: overlap and update concurrency tests, rollback and failure-translation tests, and browser journeys covering a start taken by an online guest, three simultaneous creates (exactly one commits), a refused move that leaves the Appointment unchanged, and recoverable, non-leaking conflict feedback. Backend `clean verify` 4555 tests; complete E2E 138 tests.
+> Approved scope amendments: no preparation or recovery buffers (zero, unmodelled); an Appointment's Services and Customer are immutable, so a correction is cancel and create anew; one visit may hold one to five Services (this supersedes "multiple Services out of scope").
+> Not part of this issue: temporary slot holds, waiting lists, overrides, resource calendars, notifications.
+> Verification limits: Firefox, Safari, real 200% zoom and a full screen-reader/keyboard audit were not run. CI on the commit containing the Pixel 7 overflow fix passed (run 39937640658); CI is advisory.
+
+**#21, Build Business calendar and appointment management**
+
+> Closing: the owner's calendar and Appointment management are complete (commit `0350960`): day, week and agenda views with working and non-working time and the Business timezone; Appointment detail; manual creation of a one-to-five-Service visit with an inline new Customer; form rescheduling and reassignment with a Преди/След review; cancellation with confirmation (history kept, time released); internal-note editing; the Customer history (earlier first by default, optional Business-local date filter, server pagination); `SUSPENDED` Businesses read-only; tenant, authorization and lifecycle isolation. Evidence: backend `clean verify` 4555 tests, frontend 2528 tests, complete E2E 138 tests against the real backend, and the product owner's manual validation (Phase 11 accepted for the reviewed scope).
+> Approved scope amendments: the owner is the only role (Manager and Staff access, and a StaffMember seeing their own schedule, need a separate Membership-to-StaffMember capability); no change of Service or Customer on an existing Appointment (cancel and create anew); the Customer history is earlier-first with an optional date (it supersedes "newest first").
+> Deferred: drag-and-drop rescheduling (a separate issue; the form is the accessible flow), Customer self-service cancellation coordination (#35), Customer rescheduling (#36), notifications (#22), printing/export, real-time push, recurring and group appointments, resource calendars.
+> Verification limits: the native date fallback was tested automatically, not manually; real 200% zoom, Firefox, Safari and a full screen-reader/keyboard audit remain unchecked; CI on the commit containing the Pixel 7 overflow fix passed (run 39937640658). These are accepted as non-blocking, and CI is advisory.
+
+### CI confirmation of the overflow fix
+
+The run [39937640658](https://github.com/vasilmoskov/spot-your-slot/actions/runs/39937640658) on `0350960`, the first commit that contains the fix, completed successfully (`backend`, `frontend` and `e2e` all passed, including the Pixel 7 journey with the wide-text overflow check). This is CI evidence for that commit, reported separately from the local verification above; the earlier red runs (`fb9874c`, `44e3f21`) predate the fix.

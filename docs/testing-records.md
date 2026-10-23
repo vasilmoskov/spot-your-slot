@@ -1,0 +1,886 @@
+# Verification records by capability
+
+These are the dated verification records written while each capability was built (backend, frontend and browser
+verification, with the commands and evidence of the time). They are **historical**: statements such as "planned" or "not
+executed" describe the state when the section was written, and test counts are not maintained. The current testing
+approach, suites and conventions are in [testing-strategy.md](testing-strategy.md); the final status of each
+capability is in its [task record](tasks/).
+
+## Business Services backend verification
+
+Issue #11 uses the pinned PostgreSQL Testcontainer across all persistence and
+concurrency boundaries. Schema tests migrate V1 through V5 from empty and verify
+the exact Service columns, constraints, generated normalized-name expression,
+Unicode behavior, inactive-name reservation, restrictive Business ownership,
+and approved index inventory. Domain and persistence tests compare Java
+canonicalization with PostgreSQL, preserve exact accepted prices, enforce
+tenant-scoped deterministic pagination, classify only the approved name
+constraint, and coordinate version and normalized-name races without sleeps.
+
+Application tests exercise the published Business lifecycle and identity
+contracts through the Service administration entry point. They cover active
+owner access, every nonqualifying role or Membership state, platform
+administrator with and without a qualifying owner Membership, Business A/B
+isolation, DRAFT/ACTIVE/SUSPENDED behavior, authoritative row mapping, fixed
+Clock values, safe exceptions, and the Business-then-Membership shared-lock
+order. Separate-transaction tests prove one winner for same-version updates and
+prove suspension and Membership deactivation cannot be authorized from stale
+state.
+
+Controller and PostgreSQL-backed MockMvc tests cover all six authenticated
+Service routes, exact request/result mapping, canonical-first validation,
+pagination, CSRF for every mutation style, real session-selection behavior,
+role and tenant boundaries, lifecycle conflicts, stale versions, stable
+Bulgarian RFC 7807 responses, and generic sanitization of unexpected failures.
+They also verify that client payloads and responses cannot supply or expose
+Business identity. There is no Business-owner Services frontend component or
+browser E2E coverage at the time of issue #11; issue #14 added the component
+tests and issue #15 the browser journey (see "Browser E2E for the Business
+configuration journey").
+
+## StaffMember and Service-assignment backend verification
+
+Issue #12 extends the pinned PostgreSQL 18.4 Testcontainer schema through V6.
+Schema and persistence tests verify canonical StaffMember fields, generated
+ordering values, duplicate display names and contacts, default activity and
+version, deterministic tenant pagination, composite ownership, restrictive
+foreign keys, assignment uniqueness, exact indexes, and the absence of account
+linkage or later schedule tables. V1 through V5 remain unchanged.
+
+Application tests exercise the published Workforce administration boundary
+against the Business lifecycle, identity owner-access, and Catalog Service-
+reference contracts. They cover active and inactive StaffMember profile and
+assignment administration, complete desired-set replacement, same-set version
+increments, preservation across endpoint deactivation, active-Service checks
+only for additions, retained and removed inactive Services, missing and foreign
+references, DRAFT/ACTIVE mutations, SUSPENDED reads, and owner-only tenant
+authorization.
+
+Coordinated PostgreSQL tests use independent transactions and no sleeps to
+prove the Business → Membership → StaffMember version guard → added-Service
+lock order. Catalog locks additions with `FOR SHARE` in deterministic UUID
+order. The tests cover competing StaffMember mutations, Service deactivation
+against assignment addition, same-version assignment races, and rollback of the
+version and relationships after validation or persistence failure. Assignment
+listing runs at repeatable-read isolation and is tested as a consistent
+aggregate snapshot with authoritative version and timestamps.
+
+Controller, exception-handler, and PostgreSQL-backed MockMvc tests cover all
+eight authenticated StaffMember routes, session-derived context, pagination,
+request/response mapping, CSRF on every POST and PUT, role and tenant isolation,
+lifecycle and optimistic conflicts, exact Bulgarian RFC 7807 errors, privacy,
+and sanitized generic 500 behavior. Requests and responses cannot supply or
+expose Business, user, Membership, credential, role, session, normalized, SQL,
+or persistence data. Issue #12 adds no frontend or browser E2E coverage; the
+Business-owner interface (issue #14) and browser journey (issue #15) were added
+later.
+
+Phase 3 frontend component tests cover typed hash navigation, platform-only
+navigation visibility, responsive Business listing and pagination, request
+cancellation, structured-address creation and profile-edit payloads,
+authoritative internal version updates, safe conflict recovery, read-only/edit
+transitions, status-specific confirmed lifecycle actions, and the separate
+owner-invitation flow. Identity tests cover new and existing User acceptance,
+replacement-token invalidation, and single use. API-client tests verify exact
+credentialed request paths and bodies through the shared CSRF-aware request
+helper, including successful empty HTTP 202 responses. These
+checks complement the rendered-browser verification below and do not replace
+explicit human visual review.
+
+## Recurring StaffMember working-schedule backend verification
+
+Issue #13 extends the pinned PostgreSQL 18.4 Testcontainer schema through V7.
+`WorkingScheduleSchemaIntegrationTests` migrates V1 through V7 from empty,
+proves a schema held at V6 upgrades through V7 with all StaffMembers
+backfilled at version 0 using StaffMember-derived timestamps, verifies split
+and multiple-weekday periods persist in deterministic query order, and asserts
+exact generated minute bounds, the latest representable `23:59` boundary,
+rejection of `24:00` in any boundary position, adjacency, duplicates, partial
+overlap, containment, equality, overnight periods, sub-minute values, invalid
+weekdays, composite ownership, restrictive deletion, the installed
+`btree_gist` extension and operator classes, and the approved column,
+constraint, and index inventory. It confirms V7 introduces only the two new
+recurring-schedule tables.
+
+Domain and persistence tests (`StaffWorkingScheduleInputValidatorTests`,
+`StaffWorkingScheduleServiceIntegrationTests`,
+`StaffWorkingScheduleStoreIntegrationTests`) cover canonical-time and
+one-minute-precision validation, duplicate/overlap/range/100-period-cap
+rejection, atomic complete replacement, and independent schedule-version
+increments including identical replacements.
+
+Application tests (`StaffWorkingScheduleAdministrationServiceTests`,
+`StaffWorkingScheduleAdministrationServiceIntegrationTests`) exercise the
+published Workforce schedule-administration boundary against the Business
+lifecycle and identity owner-access contracts: active owner access, every
+nonqualifying role or Membership state, Business A/B isolation,
+DRAFT/ACTIVE/SUSPENDED behavior, active and inactive StaffMember read/mutation
+behavior, and safe exception mapping.
+
+`StaffWorkingScheduleLockingIntegrationTests` coordinates independent
+PostgreSQL transactions without sleeps to prove the Business → Membership →
+StaffMember lock order, that same-version replacement races produce exactly
+one winner and never a mixed period set, and that a schedule replacement and a
+StaffMember deactivation race safely in either interleaving while preserving
+data.
+
+Controller and PostgreSQL-backed MockMvc tests
+(`BusinessStaffWorkingScheduleControllerTests`,
+`BusinessStaffWorkingScheduleApiIntegrationTests`) cover the GET and PUT
+routes, session-derived context, canonical `HH:mm` request/response mapping
+including rejection of the lenient `24:00` lexical wraparound, CSRF on PUT,
+role and tenant isolation, lifecycle and optimistic conflicts, exact Bulgarian
+RFC 7807 errors, and sanitized generic failures. Requests and responses cannot
+supply or expose Business, user, Membership, role, session, or persistence
+data. `ModuleBoundaryTests` continues to verify the complete module graph,
+including `workforce`, remains acyclic. Issue #13 adds no frontend or browser
+E2E coverage; exceptions, time off, breaks, overrides, and availability remain
+future work.
+
+## Schedule-exception persistence verification
+
+Issue #16 Phase 2 tests run against PostgreSQL 18.4 through Testcontainers.
+`ScheduleExceptionSchemaIntegrationTests` cover V1 through V9 migration order,
+V1–V8 byte integrity, a V8-to-V9 upgrade with existing data, the exact
+constraint and index set, immutable generated ranges, all four kinds, scope and
+composite tenant foreign keys, full-day and partial shapes, minute precision,
+rejected `24:00`, reversed, duplicate, and overlapping periods, allowed
+adjacency, and the complete cross-aggregate overlap matrix.
+`ScheduleExceptionStoreIntegrationTests` cover create/read/list, inclusive
+window edges, deterministic ordering, atomic replace and delete, stale versions,
+rollback preservation, timestamps and versions, cross-Business parity, and safe
+persistence failures. `ScheduleExceptionStoreConcurrencyIntegrationTests` prove
+conflicting inserts (first commits and first rolls back), same-version replace,
+replace/delete, and a concurrent date-conflicting replacement using latches and
+`pg_stat_activity` lock-wait observation, and a real opposite-order deadlock
+reported as a retryable write conflict. `ScheduleExceptionContentTests` and
+`ScheduleExceptionInputsTests` cover domain invariants and the translation to
+engine inputs, including a precedence round trip through `AvailabilityEngine`.
+No sleeps are used as concurrency proof.
+
+## Schedule-exception administration backend verification
+
+Issue #16 Phase 3 tests the private Business-owner API against PostgreSQL 18.4
+through Testcontainers. `ScheduleExceptionInputValidatorTests` cover every
+validation rule, including the exact accepted limit and first rejected value for
+the date bounds, the 366-date span, the 24-period cap, and the 93-date list
+window. `ScheduleExceptionAdministrationServiceTests` (mocked collaborators)
+cover authentication, the read and mutation authorization paths, the
+SUSPENDED and inactive-StaffMember rules, kind-specific StaffMember locking,
+stored kind and StaffMember retention on replace, not-found versus concurrent
+update, and persistence-failure translation.
+`ScheduleExceptionAdministrationServiceIntegrationTests` exercise the published
+contract against real PostgreSQL: all four kinds, deterministic list order and
+inclusive edges, atomic period replacement, empty overrides, the cross-kind,
+cross-StaffMember, adjacency, and duplicate-date overlap matrix, stale and
+deleted aggregates, Business A/B isolation, the role matrix, and lifecycle rules.
+`StaffMemberReferenceAccessIntegrationTests` cover the published Workforce
+contract, including the mandatory caller transaction.
+
+`ScheduleExceptionLockingIntegrationTests` prove the Business, Membership,
+StaffMember, aggregate lock order with observing wrappers recording one backend
+connection, that reads acquire no such lock, and, using latches and
+`pg_stat_activity` lock-wait observation without sleeps, same-version replace
+races, conflicting concurrent creates (first commits and first rolls back),
+replace versus delete in both orders, Business suspension racing a mutation in
+both orders, StaffMember deactivation racing a StaffMember-scoped mutation in
+both orders, and an opposite-order deadlock whose victim maps to the retryable
+conflict.
+
+`BusinessScheduleExceptionControllerTests` and
+`BusinessScheduleExceptionExceptionHandlerTests` cover status codes, `Location`,
+request and response mapping, absence of `kind` and StaffMember from the replace
+contract, strict date and time rejection, the exception-to-HTTP matrix, named
+`fieldErrors`, and sanitized 500 responses.
+`BusinessScheduleExceptionApiIntegrationTests` cover the full stack: all five
+routes, session-derived context, unauthenticated and missing-selection outcomes,
+the role and Membership matrix with `PLATFORM_ADMIN` alone, lifecycle,
+cross-Business identifiers, ignored client Business identity, validation
+boundaries, strict JSON, CSRF on POST, PUT, and DELETE, and privacy of
+responses. `AuthenticationApiIntegrationTests` add the credentialed `DELETE`
+CORS preflight while keeping the exact-origin, header, and method policy.
+`ModuleBoundaryTests` verify the added `scheduling` edges remain acyclic. Phase 3
+adds no frontend or browser E2E coverage.
+
+## Availability orchestration verification
+
+Issue #16 Phase 4 tests the internal orchestration
+([ADR-0016](decisions/ADR-0016-orchestrate-availability-through-published-contracts-and-a-scheduling-owned-busy-interval-seam.md)).
+`AvailabilityQueryServiceTests` use mocked published contracts and the real
+`ScheduleExceptionInputs` and engine. They cover ACTIVE-only Business with the
+missing, DRAFT, and SUSPENDED collapse; active-only Service; corrupt duration;
+specific versus any StaffMember and the inactive, foreign, and unassigned
+collapse; empty eligible set and empty schedule; overrides, additional periods,
+closures, and time off; busy windows and every invalid busy-source output; the
+single clock read; determinism; sanitized failures; and deep immutability.
+`AvailabilityQueryServiceTimeTests` cover the exact notice boundary, the last
+included and first excluded horizon dates, Business-local midnight, zone-rule
+busy windows, a spring gap, and an autumn overlap with distinct instants and
+offsets, deriving every transition from `ZoneRules`.
+`AvailabilityQueryServiceIntegrationTests` assemble real PostgreSQL Business,
+Service, assignment, StaffMember, recurring-schedule, and V9 exception data with
+tenant isolation, inactive and removed-assignment cases, and one and ten
+StaffMembers. `AvailabilityQueryStatementCountIntegrationTests` count application
+SQL through a test-scoped `DataSource` proxy: four statements for one and for ten
+StaffMembers, three when nobody is eligible. The same class covers the
+transaction boundary with explicit `TransactionTemplate` cases: a standalone call
+uses repeatable-read, a read-committed or default-isolation outer transaction
+fails with a sanitized failure before any availability SQL, and repeatable-read
+and serializable outer transactions are joined and succeed. `ServiceAvailabilityAccessIntegrationTests`
+and `StaffAvailabilityAccessIntegrationTests` cover the published provider
+contracts, including the mandatory caller transaction.
+`BusyIntervalSourceFailFastTests` and `BusyIntervalSourceWiringIntegrationTests`
+prove the placeholder is the single implementation and that a second one fails
+startup. `AvailabilityModuleBoundaryTests` and `ModuleBoundaryTests` verify no
+`scheduling` dependency on `booking` and no reverse edges.
+
+## Schedule-changes interface verification
+
+Issue #16 Phase 5 added only frontend Vitest/Testing Library coverage for
+"Промени в графика" (no backend or browser-automation change).
+`navigation.test.ts` covers the four routes, canonical hrefs, and the normalization
+of every unusable window. `presentation.test.ts` and `api.test.ts` cover labels,
+dates, the Business-timezone date, window and period validation, and the exact
+request shapes. `ScheduleExceptionList.test.tsx` covers the provisional-window
+bootstrap (replace, one refetch, no loop), manual filtering (push), populated,
+empty and failing lists, full StaffMember pagination, and stale-response discard.
+`ScheduleExceptionCreate.test.tsx` covers the progressive fields of all four
+kinds, the period dialog, inline validation policy, backend field errors,
+duplicate-submit protection, and the unsaved-changes guard.
+`ScheduleExceptionDetail.test.tsx` covers reading, editing with `expectedVersion`,
+conflicts with guarded reload, the delete confirmation, and SUSPENDED and
+inactive-StaffMember read-only behavior. `App.scheduleExceptions.test.tsx` covers
+routing, tabs, role access, history, guarded sidebar/Back/logout, Business
+switching, and the absence of browser-storage writes. A rendered-browser review
+against a disposable database was a separate checkpoint; it received explicit
+human visual approval. Browser automation for the same journey was added in
+Phase 6 (see "Browser E2E for the Business schedule-changes journey").
+
+## Browser E2E for Business onboarding and lifecycle
+
+Issue #7 adds a Playwright layer above the existing MockMvc/PostgreSQL and
+Vitest/jsdom layers. MockMvc integration tests verify HTTP, security, persistence,
+and concurrency without a real browser. Vitest/jsdom tests verify React component
+behavior and accessible DOM structure without running Spring Boot. Playwright
+verifies the implemented journey through rendered React, the real Spring Boot
+HTTP boundary, and PostgreSQL migrated from empty by Flyway.
+
+The desktop journey signs in as the bootstrapped `PLATFORM_ADMIN`, creates and
+inspects a deterministic fictional DRAFT Business, proves activation is blocked
+before owner acceptance, sends and replaces the initial owner invitation, and
+retrieves the replacement only through the protected development mailbox. A
+separate signed-out browser context proves the replaced invitation is rejected.
+Another isolated context accepts the replacement, signs in as the owner, renders
+the owner Profile, and verifies the exact `BUSINESS_OWNER` association through
+that context's authenticated session response. The original administrator
+context then activates, suspends, and reactivates the Business, verifies each
+rendered status and feedback message, and finishes at ACTIVE. A fourth signed-out
+context proves the consumed invitation cannot be replayed.
+
+After that lifecycle, a Pixel 7 Chromium context performs a focused mobile smoke
+check. It verifies keyboard-operated responsive navigation, reaches the created
+Business through the list, observes its final ACTIVE state, confirms the critical
+lifecycle action remains usable, and checks for horizontal viewport overflow. It
+does not repeat or depend on a separately ordered lifecycle project.
+
+The runner uses the fixed Compose project `spotyourslot-e2e` and dedicated ports
+`55432`, `18080`, and `15173`. Each run removes any prior disposable E2E project,
+creates a fresh PostgreSQL volume, starts Spring Boot with the current Flyway
+migrations and a generated local administrator credential, starts Vite against
+that backend, runs serially, and removes the project and volume on exit. The data,
+recipient addresses, and Business values are deterministic and fictional; raw
+passwords and invitation URLs/tokens remain only in process memory.
+
+Playwright screenshots, traces, videos, HTML/blob reports, and copied error
+context are disabled. The reporter redacts generated credentials, invitation
+tokens, and cookie values from failure text. Tests remove invitation query strings
+from browser history after React consumes them, assert browser storage remains
+empty, never inspect cookie values, and do not attach mailbox payloads. Generated
+output paths are ignored and CI uploads no browser artifacts.
+
+Locally, install Chromium once from `frontend` with
+`./node_modules/.bin/playwright install chromium`, then run
+`./scripts/run-e2e.sh` from the repository root. CI waits for the backend and
+frontend verification jobs, installs locked npm dependencies plus pinned
+Playwright Chromium and Linux dependencies, runs the same script, and always
+performs validated cleanup of only the disposable E2E Compose project.
+
+## Browser E2E for the Business configuration journey
+
+Issue #15 extends the Playwright layer above with
+`frontend/e2e/business-configuration-journey.spec.ts` and the shared
+`frontend/e2e/support/` helpers, using the same isolated runner, Flyway
+all current Flyway migrations (V1–V10) from an empty database, and redaction, artifact, and cleanup
+policy described above. It covers the journey delivered by issues #11–#14; it
+does not repeat their validation, concurrency, or tenant-isolation matrices,
+which remain in the backend PostgreSQL integration tests and the Vitest
+component tests.
+
+Each setup attempt provisions a DRAFT Business and its owner through the
+administrator UI, the invitation flow, and the protected development mailbox,
+with random slug and email suffixes so a worker restart cannot collide with
+earlier data. The administrator, owner A, and owner B always use separate
+browser contexts.
+
+- **Desktop journey** — sole-Business selection and calendar landing (the Services screens are opened from the sidebar); Service
+  create, edit, deactivate, reactivate, EUR price and duration presentation, and
+  reload persistence; StaffMember create, edit, deactivate, reactivate, with
+  optional email and telephone validation; assignment add, remove, and restore,
+  with inactive Services not offered; the recurring weekly schedule with
+  multiple weekdays, a split day, deterministic ordering, edit and removal,
+  persistence after navigation and reload, and an inactive StaffMember's
+  read-only schedule with a forced `STAFF_MEMBER_INACTIVE` rejection.
+- **Unsaved changes** — one representative dirty Service form through the shared
+  dialog (initial focus, continue, discard).
+- **Lifecycle** — DRAFT and ACTIVE editing, SUSPENDED read-only rendering with
+  forced mutations rejected as `BUSINESS_SUSPENDED`, Profile, password section,
+  and logout still available, and reactivation restoring editing with all data.
+- **Isolation and context** — Business B and owner B cannot read or mutate
+  Business A entities by identifier; a `PLATFORM_ADMIN` without a Membership
+  receives 403 from private configuration endpoints; the owner shell exposes no
+  platform navigation; `localStorage`, `sessionStorage`, IndexedDB, and
+  script-visible cookies hold no authentication or Business context; session
+  cookies differ per context.
+- **Mobile smoke** — a Pixel 7 context signs in as the owner, operates the
+  navigation by keyboard, identifies the active Business, reaches Services,
+  Staff, and Working Schedule, checks readable list and schedule presentation
+  and the SUSPENDED banner, and asserts no horizontal overflow.
+- **Focused negatives** — local Bulgarian Service validation and the backend's
+  duplicate-name rejection.
+
+Not asserted by design: visible schedule timezone text, the removed StaffMember
+account explanation, and a DRAFT/ACTIVE status badge (intentionally removed in
+issue #14). StaffMember/account separation is a backend invariant; see the task
+record for the cited schema tests and the documented lack of a row-count test.
+
+Troubleshooting: a serial-describe timeout restarts the Playwright worker and
+re-runs file-level setup; because fixtures are unique per attempt, the first
+reported failure is the real one. After an interrupted run, use the exact
+cleanup command in `README.md`.
+
+## Reserved public roots and stable slug verification
+
+Issue #17 Phase 2A adds backend and frontend tests for the reserved-root and
+stable-slug rules (ADR-0018). Browser coverage of public routing for reserved roots is in
+"Browser E2E for the public Business profile" below; the stable-slug rules themselves stay
+proven by the backend and component tests.
+
+- **Definition** — `ReservedBusinessSlugsTests` pins the exact 19 values, canonical
+  matching, near-misses (`booking-studio`, `my-book`, `appointments-bg`) and
+  immutability; `reservedSlugs.test.ts` pins the frontend mirror to the same values,
+  because a filesystem-coupled parity check would be brittle.
+- **Validation and service** — `BusinessInputValidatorTests` and
+  `BusinessAdministrationServiceIntegrationTests` (PostgreSQL) cover every reserved
+  value on create and DRAFT update, unchanged grandfathered DRAFT slug, activation
+  rejection, ACTIVE and SUSPENDED rejection and unchanged-slug updates, and that
+  uniqueness, immutability, reserved and version failures stay distinct.
+- **Race** — activation holding the Business row lock while a slug change waits, and
+  the reverse, are proven with a `pg_stat_activity` lock-wait observation before
+  release (no sleeps), plus an unsynchronized concurrent run asserting that no ACTIVE
+  Business ever carries a changed slug.
+- **API contract** — `PlatformBusinessApiIntegrationTests` and
+  `PlatformBusinessExceptionHandlerTests` assert statuses, codes, Bulgarian details,
+  the single `fieldErrors.slug`, no reserved-list disclosure, and no SQL, constraint,
+  identifier or submitted value in errors.
+- **Form** — `BusinessForm`, `BusinessCreate` and `BusinessDetail` component tests
+  cover inline errors, focus, backend field-error mapping without a generic alert, the
+  read-only ACTIVE and SUSPENDED slug and its note, other fields staying editable, the
+  activation guidance, and the unchanged unsaved-changes behavior.
+- **Rendered review** — on a disposable stack (own PostgreSQL container, backend and
+  Vite on non-standard ports; fixtures created through the supported APIs) the platform
+  Business form was inspected as DRAFT, ACTIVE and SUSPENDED at 1280px, 640px (the CSS
+  width of a 200% zoom) and 375px. It found and fixed a pre-existing horizontal overflow
+  caused by a 100-character slug or long name in the detail header and section summary.
+  Human visual approval remains a separate gate.
+
+## Public Business profile backend verification
+
+Issue #17 Phase 2B tests the unauthenticated `GET /api/public/businesses/{slug}` contract
+(ADR-0017) on PostgreSQL 18.4 through Testcontainers. Browser acceptance is recorded under
+"Browser E2E for the public Business profile".
+
+- **Contract and privacy** — `PublicProfileApiIntegrationTests` drives the complete servlet and
+  security chain: exact key sets for the profile, address and Service, values and EUR price
+  scale, canonical slug, active-only and deterministic order, another Business absent, `null` for
+  absent optionals, an empty list for no active Services, identical repeated responses, and an
+  identical representation for anonymous, PLATFORM_ADMIN and owner callers without a cookie. A
+  sentinel test populates the contact email, timezone, version, timestamps, StaffMember name,
+  contact and schedule, Membership and identifiers, and asserts none appears.
+- **Lifecycle collapse** — unknown, DRAFT, SUSPENDED, former, malformed, over-length, and reserved
+  slugs (including a grandfathered ACTIVE reserved slug) return one byte-equivalent 404 with no
+  slug, status, identifier, SQL or exception text.
+- **Security** — anonymous access only to the one route; neighbouring private routes,
+  `/api/public/businesses/`, deeper paths and trailing slashes stay 401; every non-GET verb is
+  refused (401/403, never 500); firewall-rejected paths return an empty 400; CORS is the unchanged
+  exact-origin policy; viewing creates no business, service, membership, user, session or
+  invitation row.
+- **Transaction and cost** — `PublicProfileTransactionIntegrationTests` counts statements with the
+  DataSource-proxy approach used for availability: two for an ACTIVE Business with one, 25, or no
+  Services, one for an unavailable slug, none for a malformed or reserved slug; asserts explicit
+  public columns, no `SELECT *`, no write or lock keyword, `REPEATABLE_READ` and read-only on the
+  connection, failure before any SQL inside a READ_COMMITTED or default-isolation transaction,
+  success inside repeatable-read or serializable, MANDATORY behavior of both published contracts,
+  and, with a change committed on another connection between the two reads, a snapshot-consistent
+  response. There are no sleeps.
+- **Unit and boundary** — `PublicBusinessProfileAccessServiceTests`,
+  `PublicServiceAccessServiceTests`, `PublicProfileControllerTests`,
+  `PublicProfileModuleBoundaryTests` (`publicprofile → business, catalog` only, no reverse
+  dependency), and the existing module-boundary tests.
+
+## Browser E2E for the Business schedule-changes journey
+
+Issue #16 Phase 6 adds `frontend/e2e/schedule-changes-journey.spec.ts` and
+`frontend/e2e/support/scheduleChanges.ts` to the Playwright layer, using the same
+isolated runner, all current migrations (V1–V10), redaction, artifact and cleanup policy. The
+spec provisions its own DRAFT Business and owner (administrator UI, invitation
+flow, protected mailbox, random slug and email suffix) and a second Business for
+isolation; the administrator, both owners and the mobile session use separate
+browser contexts. Each test seeds the records it needs through the private API,
+uses a fresh owner page, and deletes its records in `finally`; nothing depends on
+another test except that the Business starts DRAFT and ends ACTIVE (every test
+works in either state, and the lifecycle test restores what it changes). Waits are
+on visible UI, HTTP responses or route state, never fixed sleeps. Business-local
+dates are computed for `Europe/Sofia`, not from the machine zone. API helpers
+return only status, the public problem code and the public response text, never
+cookies or CSRF values.
+
+- **Navigation and list state** — one page heading and the two tabs; the
+  provisional window is replaced by the canonical Business-local window, page 0,
+  size 10, dates ascending; with 27 records exactly ten appear on the first page,
+  Next and Previous, the range summary, kind sorting resetting to page 0, page-size
+  change, and detail → "Обратно към графика" restoring window, page, size, sort and
+  direction, each asserted on the visible rows as well as the route.
+- **Derived status** — `Минала`, `В сила`, `Предстояща` from the Business-local
+  date, sorting by status, and a past record surviving a reload (no automatic
+  deletion).
+- **CRUD and terminology** — a Business-wide non-working period and a
+  StaffMember absence with adjacent periods, persisted presentation after reload,
+  edit, and detail-only delete with the confirmation focusing "Отказ" first; no
+  internal word or enum name is shown.
+- **Conflict and validation** — the kind-specific overlap message for a closure and
+  for additional hours, entered values preserved, adjacent dates accepted, and the
+  precise overlap and duplicate period messages in the dialog.
+- **Lifecycle** — DRAFT/ACTIVE mutation; SUSPENDED keeps records readable, shows the
+  shared banner once, hides mutation controls and rejects forced create, replace
+  and delete with `BUSINESS_SUSPENDED`; reactivation restores editing.
+- **Authorization** — another Business owner reads an empty list and receives
+  `SCHEDULE_EXCEPTION_NOT_FOUND` or `STAFF_MEMBER_NOT_FOUND` without leakage; a
+  `PLATFORM_ADMIN` without a Membership receives 403 and no navigation.
+- **Mobile smoke** — Pixel 7: tabs, cards, sorting control, pagination, create
+  form, one confirmation dialog, and no horizontal overflow.
+
+Evidence boundaries: the browser proves the interface and the private HTTP
+boundary only. Precedence, half-open and adjacency behavior, the 15-minute grid,
+notice, horizon, DST, deterministic aggregation, optimistic versioning and lock
+order are proven by the backend unit and PostgreSQL integration tests listed
+above, and no browser test claims them. At the time of this journey no public availability endpoint existed (it was delivered later by issue #18), so
+no browser test of this journey proves slot availability, and nothing reserves time. The automated
+mobile smoke does not replace the completed human visual approval.
+
+## Public Business page frontend verification
+
+Issue #17 Phase 3 tests the unauthenticated React page with Vitest and jsdom; browser acceptance
+is Phase 4 ("Browser E2E for the public Business profile"). Fetch is stubbed or the API module mocked with promises the test settles,
+so races are deterministic and use no timers.
+
+- **Routing** — `route.test.ts` and `AppRoot.test.tsx`: exact `/{slug}`, uppercase and trailing-slash
+  canonicalization by `replaceState` (never `pushState`), 100/101-character slugs, invalid,
+  percent-encoded, deeper and reserved paths (every one of the 19 roots), valid slugs that contain
+  a reserved word, hash routes staying with administration, refresh keeping the Business, history
+  navigation between two slugs, the existing identity paths, and that a public path sends no
+  `/api/auth/*` request.
+- **API client** — `api.test.ts`: URL encoding, `credentials: 'omit'`, no body or CSRF header, exact
+  field decoding (extra properties dropped), the unavailable answer, malformed and unexpected
+  bodies, network failure and abort.
+- **Page** — `PublicBusinessPage.test.tsx`: loading, the hero with identity, contacts and booking panel, Services as standalone
+  items, one `h1` and heading order, focus, missing and partial contacts, plain-text phone, unsafe phone text, empty and
+  many Services in backend order, text-not-markup, unknown Business type, unavailable and failure
+  states, exactly one request per retry, stale/aborted responses of a changed slug or attempt,
+  unmount, metadata for every state and its restoration, and no storage or cookie write.
+- **Shared and platform** — `businessType.test.ts` (one mapping, unknown value), the platform form
+  and detail tests (neither retired public-visibility sentence, empty note container, group or
+  dangling `aria-describedby` in create, DRAFT, ACTIVE and SUSPENDED; labels, no visibility
+  controls, dirty tracking unchanged), and CSS guards in `layoutRules.test.ts` for
+  the durable public layout rules jsdom cannot evaluate.
+
+Executed: focused selection 14 files, 264 tests; full frontend suite 50 files, 1004 tests.
+Rendered developer review at 1280, 1024, 800, 640, 412 and 375 px is recorded in
+`docs/tasks/06a-public-business-profile.md`; it is not the human visual approval.
+
+## Browser E2E for the public Business profile
+
+Issue #17 Phase 4 adds `frontend/e2e/public-business-profile.spec.ts` and
+`frontend/e2e/support/publicProfile.ts` to the Playwright layer, on the same isolated runner,
+all current Flyway migrations (V1–V10) from an empty database and redaction, artifact and cleanup policy as above.
+It reuses `provisioning.ts`, `browser.ts` and the mailbox helper; it adds only public-page helpers
+(API reads through a request context, head metadata, request audit, layout assertions).
+
+Fixtures are created only through supported APIs and the invitation UI, with a random suffix per
+setup attempt: a full ACTIVE Business (description, telephone, structured address, three active and
+one inactive Service), a minimal ACTIVE Business, an ACTIVE Business with no active Services, a
+SUSPENDED Business, a DRAFT Business (its slug is changed once, which is allowed for a DRAFT, to
+obtain a former slug), a second ACTIVE Business with another owner, and a long-content Business
+(200-character name, near-2000-character description, ten long Services). The two scenarios that
+mutate data provision their own Business and restore what they change. Visitors, owners and the
+Platform Administrator always use separate browser contexts.
+
+- **Access and allowlist** — direct `/{slug}` access, reload and a fresh context; the visible
+  allowlist (name, Bulgarian type label, description, `tel:` link, address, Service name,
+  description, duration, EUR price, booking-unavailable notice); the inactive Service absent; the
+  JSON key set of the response checked key for key, and the raw body checked for identifiers,
+  contact email, owner data, status, version and timestamps; minimal and empty-catalog pages.
+- **Lifecycle and isolation** — DRAFT, SUSPENDED, unknown, former-slug and reserved-word slugs give
+  an identical page (same markup, title, `noindex`, no canonical) and an identical 404 body;
+  two Businesses never show each other's data; cross-Business identifiers and deeper API paths give
+  only the safe result; an owner and an administrator receive byte-identical public responses.
+- **Changes** — an administrator's profile edit and an owner's Service edit and deactivation appear
+  publicly only after the successful save.
+- **Routing and metadata** — uppercase and trailing-slash canonicalization by history replacement
+  (history length unchanged, Back leaves the page), Back/Forward between Businesses and the
+  administration application, deeper paths, reserved roots and hash routes staying with the
+  authenticated application; title, canonical, description and fallback, `noindex` states, and no
+  metadata leaking across a traversal of two Businesses and an unavailable page in one document.
+- **Failure and retry** — a forced network failure and server error through `page.route` (no
+  production change), keyboard retry sending one request per activation, and no stale Business
+  while another loads or fails.
+- **Responsive and accessibility** — desktop 1280px, Pixel 7 device emulation and 640px (the CSS
+  width of a 200% zoom): one `h1`, no heading level skipped, no horizontal overflow, no clipped
+  telephone, address, price or duration, real Tab focus on the telephone with a visible focus
+  ring, text labels for every fact, and usable unavailable and failure states.
+- **Administration boundary** — administration, the Business form without the retired notes, the
+  owner shell and hash routes still work after a public visit; a public visit creates no cookie,
+  storage entry or `/api/auth/*` request.
+
+Evidence boundary: no safe public endpoint counts Customers, Memberships or Appointments, so the
+claim that a public read creates none is proven by the backend integration tests
+(`PublicProfileApiIntegrationTests`), while the browser tests prove the observable part (only the
+public GET, sent without cookies, and no session or storage state). The Vite development server
+renders under React `StrictMode`, which can send the first public read twice with the first
+aborted by the page; the request audit ignores client-aborted requests, and retries are measured
+as a delta, so the claim "one activation sends one request" is independent of that.
+
+Not covered by design: real browser zoom (640px is the CSS-width equivalent), hosting and production
+SPA fallback, server-rendered metadata (the page is client-rendered), and the human visual approval,
+which Phase 3 recorded separately.
+
+## Appointment and guest booking verification (issue #18)
+
+Decisions: ADR-0022 to ADR-0026; phases and the per-phase evidence table:
+`docs/tasks/08a-appointment-core-and-guest-booking.md`. Every test follows the reliability rules above
+(wait for the asserted state, control time, deferred promises, no sleeps, diagnose before calling anything
+flaky) and uses real PostgreSQL through Testcontainers for persistence, concurrency, and tenant isolation.
+
+- **Phase 2 (schema and overlap; executed, 244 new tests in nine classes, full suite 2469 tests, details and the full-suite result in the Phase 2
+  record of the task document):** every `V11` constraint, same-Business composite keys and cross-Business
+  rejection, the exclusion for identical, partial, and adjacent ranges, different StaffMembers and Businesses,
+  `CANCELLED` rows that do not block, DST instants, concurrent two-writer inserts with lock-wait evidence, the
+  real busy source (only `CONFIRMED` windows, one bulk query, joined transaction), placeholder removal, and
+  module boundaries.
+- **Phase 3 (schedule guard; executed, 117 new tests in seven classes and 8 added to four existing classes, full
+  suite 2594 tests; the Phase 3 record of the task document has the details and limits):** the `V12`
+  migration (byte-identical V1 to V11, a pinned V12, the backfill of existing Businesses upgraded from V11, the
+  trigger that gives every new Business its row, a rolled-back insert, exact columns and constraints); the
+  bump and guard contracts against PostgreSQL (one increment per call, Business isolation, a missing row or
+  Business as a sanitized failure, a mandatory caller transaction, the guard's repeatable-read requirement, shared
+  guards that never block each other, a held guard that blocks a later bump, an uncommitted bump that blocks the
+  guard and then fails it with `40001` or lets it succeed after a rollback, a snapshot that predates a committed
+  bump failing without waiting); each of the 13 audited mutation paths (weekly replacement and every
+  kind times create, replace, delete) advancing the revision exactly once, rolling back with the write, never
+  advancing it when rejected for validation, authorization, lifecycle, StaffMember, missing record, stale version or
+  exclusion, and coordinating with a stand-in booking transaction through `pg_blocking_pids` lock-wait evidence and
+  a stale-snapshot `40001`; writes that must **not** bump (lifecycle, timezone, Service, StaffMember,
+  assignment); lock-order observation and concurrent-writer serialization with a deliberate order violation
+  producing a deadlock victim; sanitized failures and the HTTP contract; module-boundary tests; and
+  `AvailabilityMutationInventoryTests`, the source scan that classifies every write statement. Coordination uses
+  latches, futures, and PostgreSQL's own blocking report, never fixed sleeps (`ConcurrencyTestSupport`). The
+  booking-against-schedule commit-order tests with real Appointments and Customers belong to Phase 4.
+- **Phase 4 (orchestration; executed, see the Phase 4 record of the task document for exact counts):**
+  `GuestBookingServiceTests` (unit, scripted body and fake transaction manager: entry guard before any work,
+  definition of every attempt, rollback-only for every non-`Created` result, each retryable failure in a new
+  transaction, the three-attempt bound and exhaustion, never-retried failures, and the commit-phase classification with
+  **injected** exceptions, labelled as such); domain and fingerprint tests (attempt ID forms, normalization, golden
+  encoding and HMAC vectors from an independent implementation, a matrix of every changed field, key ring
+  validation, rotation, missing key, unsupported encoding, no key leakage); `BookingFingerprintConfigurationTests`
+  (startup failure reasons, `prod` rejection of non-secret keys); real PostgreSQL classes
+  `GuestBookingIntegrationTests` (ownership, success, assignment rule including the Business-local date),
+  `GuestBookingRejectionIntegrationTests` (every rejection and the atomic rollback of Customer, Appointment, and a
+  consumer-probe write), `GuestBookingReplayIntegrationTests` (exact, equivalent, mismatch for each field and for the
+  preference, replay after suspension and Service/StaffMember/timezone changes, cancelled fixture, the replay holding
+  only the Business lock, unverifiable stored versions), `GuestBookingConcurrencyIntegrationTests` (observed lock
+  order through `FOR UPDATE SKIP LOCKED` probes, exclusion races with lock-wait evidence, identical and mismatched
+  simultaneous attempts, real `40001` and `40P01` through the orchestration, bounded retry, administrative changes
+  waiting for an open booking), `GuestBookingScheduleRaceIntegrationTests` (the ADR-0025 commit orders for all 13
+  audited paths with an availability oracle and two control runs), `GuestBookingCommitFailureIntegrationTests`
+  (real PostgreSQL and transaction-manager commit evidence, labelled; the completion-status classification, the silent-rollback verification, and misleading after-commit exceptions), `GuestBookingKeyRotationIntegrationTests`,
+  `BookingContractsIntegrationTests`, and the boundary tests. Test wiring (`BookingHookConfiguration`) wraps the real
+  collaborators with latches and a recording transaction manager; the wrappers delegate unchanged. Deadlock-victim tests fix the victim with `SET LOCAL deadlock_timeout` on the participant that must not be chosen, because PostgreSQL aborts whichever participant's check finds the cycle first, not the one that waited first.
+- **Phase 5 (public API, implemented):** real PostgreSQL through the complete servlet and security filter chain, the
+  controllable clock, and a distinct remote address per request (so the shared limiter never couples tests):
+  `PublicBookingAvailabilityApiIntegrationTests` (exact key sets, window, ordering, DST repeated hour, tenant isolation,
+  collapsed 404 and generic 409s, validation, denied routes and verbs), `PublicBookingCreationApiIntegrationTests`
+  (201, replay 200 including the cancelled fixture, mismatch, replay after suspension and snapshot changes, every
+  rejection, every field error, unknown properties, 415, the real known-rollback and uncertain-commit faults with the same
+  attempt repeated, no-store, no cookie, fixed instances, sentinel privacy including captured logs),
+  `PublicBookingSessionSecurityApiIntegrationTests` (owner, administrator, invalid, expired, and anonymous callers
+  byte-identical; every session row unchanged, with private-route controls that show a refresh and a revocation are
+  detectable; the narrow CSRF exemption and the private-mutation regression; exact-origin CORS and preflight),
+  `PublicBookingRateLimitApiIntegrationTests` and `PublicBookingRateLimitCapacityApiIntegrationTests` (small configured
+  budgets: the 429 contract, charging rules, windows with the injected clock, spoofed forwarded headers, IPv6 /64,
+  saturation, and no database or orchestration work for a rejected request), `PublicBookingDefaultRateLimitApiIntegrationTests`
+  (the shipped 10, 5, and 300), and `PublicBookingResultMappingApiIntegrationTests` (every `BookingResult` through the
+  full chain with a mocked orchestration), `PublicBookingBodyLimitApiIntegrationTests` (MockMvc evidence only: the exact
+  byte boundary, bytes versus characters, a valid multibyte Bulgarian payload, the 413 contract, charging once to the address
+  budgets, and no database work), and `PublicBookingBodyLimitContainerIntegrationTests` (real embedded Tomcat on a real socket:
+  chunked bodies, a declared length far above or below the body; MockMvc cannot produce an absent or false `Content-Length`). Unit and architecture tests: `BookingRateLimiterTests` (every budget, the
+  window boundary, expiry, capacity, canonicalization, aggregates, concurrency with 64 threads released together by a
+  latch), `PublicBookingRequestParserTests`, `PublicBookingRoutesTests` (every verb against every route and sibling),
+  `PublicStaffAccessServiceTests`, `BookingBodyLimitFilterTests`, and `PublicBookingModuleBoundaryTests`. The public-profile consumers are checked by the frontend public-profile Vitest suites and the existing `public-business-profile` Playwright journey against the final backend. **Evidence boundary:** injected outcomes
+  prove only the HTTP mapping; transactions, commits, retries, and idempotency are proven by the Phase 4 classes, and the
+  two real-fault 503 tests reuse their mechanism. No test sleeps; time moves only when a test moves the injected clock.
+- **Phase 6 (frontend, implemented; not rendered or visually approved):** Vitest and Testing Library over a fake HTTP server that speaks the real Phase 5 response shapes
+  (`src/public/booking/testSupport.tsx`), with responses held open by deferred promises where ordering matters and `vi.useFakeTimers` (only `setTimeout`, `clearTimeout`, and `Date`) for `Retry-After`;
+  no test sleeps and none relies on a larger timeout. `BookingJourney.flow.test.tsx` (happy path, preference, dependent-state reset, date and timezone handling, the repeated hour, abort and stale answers, Business switching),
+  `BookingJourney.submission.test.tsx` (duplicate-submit protection, the exact ID and body across eleven retry outcomes, the frozen uncertain state, an uncertain attempt followed by each of eleven later answers, `Retry-After`, 201, 200, a cancelled replay, every rejection),
+  `BookingJourney.states.test.tsx` (unavailable, empty, network, and rate-limited reads, validation and focus, leaving and the browser history, memory-only privacy), and the unit suites `api.test.ts`, `attempt.test.ts`, and `dates.test.ts`.
+  The date tests were also run with the browser timezone set to `Pacific/Kiritimati`, `America/Los_Angeles`, and `UTC`. These tests prove client behavior; they do not prove the booking transaction, idempotency, or tenant isolation, which the Phase 4 and 5
+  backend tests prove. The `public-business-profile` Playwright spec was updated for the new booking buttons and executed after the Phase 6 correction (19 passed, in the script's own disposable Compose project).
+- **Phase 7 (rendered review):** rendered browser review and explicit human visual approval, separate from every
+  automated test, before Phase 8.
+- **Phase 8 (browser E2E):** Playwright journeys with fixtures created only through supported APIs, conflict
+  recovery, lifecycle states, mobile, tenant isolation, and unchanged administration.
+
+## Business Appointment administration verification (issues #19 and #21)
+
+Decisions: ADR-0028, ADR-0029; phases and the per-phase evidence: `docs/tasks/09a-business-calendar-and-appointment-management.md`. Every
+test follows the reliability rules above (wait for the asserted state, control time, deferred promises, no sleeps, diagnose before calling anything
+flaky) and uses real PostgreSQL through Testcontainers for persistence, concurrency, and tenant isolation. Injected failures and statuses are kept
+apart from behavior PostgreSQL produces.
+
+- **Persistence and availability (Phase 2; executed, evidence in the Phase 2 record of task 09a).** The `V14` upgrade from V13 (old cancelled rows become `UNKNOWN` with a null time, every other column
+  identical, a corrupt fixture fails the migration and leaves nothing, V1 to V13 hashes unchanged, a fresh install equals an upgraded one); every allowed and
+  forbidden combination of the cancellation invariant; a time-changing and a StaffMember-changing `UPDATE` rejected by the exclusion constraint with the
+  original row and every other row unchanged; a shift inside the row's own interval accepted; a conditional `UPDATE` after a concurrent commit failing with
+  `40001`; the Business availability policy (zero notice, a start beyond 30 dates, a past start, an instant exactly at `now`, a daylight-saving gap, both
+  occurrences of a repeated hour, the stored duration, ignoring only the moved Appointment while adjacent and overlapping neighbors still block); the
+  public availability results unchanged by the engine parameters; the adapted raw-SQL cancellation fixtures.
+- **Read APIs (Phase 3; executed, evidence in the Phase 3 record of task 09a).** The role matrix (owner, Manager, Staff, platform-only, unauthenticated, foreign Business); Business A/B isolation with
+  byte-identical `404` bodies; `DRAFT`, `ACTIVE`, and `SUSPENDED` reads; exact key sets and privacy sentinels in responses, errors, and captured logs; the
+  31-date limit and the date bounds; overlap inclusion at both range edges; a daylight-saving day of 23 or 25 hours; ordering and stable ties; pagination sizes and
+  invalid values; statement counts independent of the number of Appointments and StaffMembers; the Customer history order and minimum fields; the `EXPLAIN ANALYZE`
+  evidence behind each `V15` index; a read-only snapshot that stays consistent when a commit lands between its statements.
+- **Owner-created Appointment (Phase 4; executed, evidence in the Phase 4 record of task 09a).** Real PostgreSQL and the real orchestration: a stored `MANUAL`, `CONFIRMED`,
+  version-0 visit with null idempotency columns and server facts only; lines in the stored profile order whatever the request order; the reviewed name, duration, and
+  price compared exactly by identifier with zero writes; the precedence (lifecycle, domain bounds, Customer, then Service, StaffMember, terms, slot); missing, foreign, and
+  inactive Services and StaffMembers byte-identical; zero notice, no horizon, the grid, the daylight-saving gap and both repeated-hour instants; the role and lifecycle
+  matrix over HTTP; CSRF; exact response keys; fixed problems; privacy sentinels in responses, problems, and captured logs; a statement count independent of the number of
+  Services. Concurrency (latches, `pg_blocking_pids`, `FOR UPDATE SKIP LOCKED` lock probes, no sleeps): the lock order, two owners and a guest booking for one slot, the
+  exclusion-index race, Service, StaffMember, assignment, Business, and Membership changes before and after the snapshot and while in flight, all thirteen schedule
+  paths in three commit orders with a guard-bypass control, a concurrent Customer contact update that does not wait, neighbouring Appointments cancelled or moved through the
+  Phase 2 persistence primitives only (the Phase 5 and 6 orchestration races are not covered **[superseded: the Phase 5 races are covered by the Phase 5 bullet below and the Phase 6 races by the Phase 6 bullet]**), retry exhaustion, and real commit failures (an after-commit failure, a
+  pre-commit rollback, a swallowed failed statement, a silent rollback found by the verification read, a terminated backend). Injected completion statuses (`COMMITTED`,
+  `ROLLED_BACK`, `UNKNOWN`, none) are proven in the runner unit tests and labelled as injected; a proven `ROLLED_BACK` is retried in a fresh transaction (at most three attempts, then temporarily unavailable), `COMMITTED`, `UNKNOWN`, and no report are uncertain and never retried, no cause or SQLState is read, and both `503` outcomes are proven through the real route with a test double of the administration capability (Phase 4 review corrections). The translation of the Business and Membership lock failures is proven in
+  the owning modules' unit tests.
+- **Reschedule and reassign (Phase 5; executed, evidence in the Phase 5 record of task 09a).** Real PostgreSQL and the real shared Business runner. A time-only move, a StaffMember-only change, and a combined change each change exactly the intended columns (compared column by column and by tuple version) and nothing else; a request that changes nothing is a validation error that leaves the row byte-identical and the version unadvanced; the three results stale version, state conflict, and lost slot are asserted as distinct, with the stale version judged first; an Appointment starting exactly at the clock instant has started (one microsecond earlier it has not); a cancelled one is a state conflict; a Service deactivated or an assignment removed after creation does not block a time-only move and the stored duration and price are kept; an inactive current StaffMember blocks a time-only move but can be reassigned away from; a missing, foreign, inactive, or unassigned target is one byte-identical result and a target assigned to only some Services of a visit is refused; lifecycle, the role matrix, and tenant isolation (a missing and a foreign Appointment are the same `404`); zero minimum notice, no horizon, the grid, the schedule, closures; only the moved Appointment is ignored while overlapping and adjacent neighbours behave as specified; the daylight-saving gap and both occurrences of the repeated hour are judged as real instants in the Business timezone, derived from `ZoneRules`. Concurrency (latches, `pg_blocking_pids`, `FOR UPDATE SKIP LOCKED` probes at every hook point, no sleeps): the lock order of a time-only move and of a reassignment (the Appointment row last, no Service and no Customer row ever), two moves of one Appointment with one winner (also observed as a row-lock wait) and the loser retried in a new transaction to the stale-version result, move versus create and move versus guest booking in both orders, both reassign directions, simultaneous moves into one interval, cancellation and note edit (Phase 2 persistence primitives) committed before, after, or while the move is in flight, the thirteen schedule mutation paths in three commit orders against an oracle that ignores the moved Appointment, StaffMember, assignment, Service, Business, and Membership changes, retry exhaustion at exactly three transactions, and real commit failures (an after-commit failure, a change landing between the commit and the verification read, a pre-commit rollback that is retried, a swallowed failed statement, a silent rollback found by the verification read, a terminated backend). Injected completion statuses are proven in the runner unit tests and labelled as injected. The route's wording is asserted for every result it can return, with a guard that no reschedule detail speaks of creating or saving an Appointment. Helper threads that a transaction hook joins use the bounded future of `ManualAppointmentTest` (the shared 20-second test timeout, an assertion naming the likely lock cycle): an unbounded `join()` inside a hook can wait for a helper whose SQL waits for a lock of the joining transaction, which PostgreSQL cannot detect, and then blocks the next test's cleanup.
+- **Cancel and internal note (Phase 6; executed, evidence in the Phase 6 record of task 09a).** Real PostgreSQL and the real `READ COMMITTED` orchestration unless stated. The exact stored facts column by column and by tuple version for a cancellation (only status, `cancelled_at`, `cancelled_by`, version, `updated_at`) and a note edit (only `internal_note`, version, `updated_at`), the lines and snapshots unchanged, the started boundary at the single clock instant (at the instant refused, one microsecond earlier allowed), repeat and stale attempts as distinct results, authorization, lifecycle (`DRAFT`, `SUSPENDED` before any domain validation), tenant isolation (a missing and a foreign Appointment indistinguishable), the freed time offered to availability, manual creation, and guest booking, guest replay after cancellation returning `CANCELLED` without the note or the actor, the note's create, replace, clear, canonical whitespace and Unicode, the 500 code point limit without truncation, every status, and the no-op that issues no `UPDATE` (the tuple version is unchanged). Concurrency (latches, `pg_blocking_pids`, `FOR UPDATE SKIP LOCKED` lock probes, a hook at the clock read, no sleeps, every helper wait bounded): the lock order (Business, Membership, then the Appointment last, nothing else), the isolation (`SHOW transaction_isolation` inside the attempt and the recorded transaction definition), one transaction per call, cancel against cancel, move, reassignment, note edit, creation, and guest booking, note against note and move, in the orders both ways. **Real commit faults:** an after-commit failure, a pre-commit rollback (`TEMPORARILY_UNAVAILABLE`, still `CONFIRMED` and still blocking, exactly one transaction), a swallowed failed statement, a silent rollback found by the verification read, a terminated backend, and a change between the commit and the verification read. **Injected:** every completion status (`COMMITTED`, `ROLLED_BACK`, `UNKNOWN`, none) in the runner unit tests, labelled as injected. **Test double:** every result of both routes through the real route in `BusinessAppointmentLifecycleUnavailableApiIntegrationTests`. Structural: lock order as call order, one clock read per body, only the two conditional updates are written and only the lifecycle bodies call them, no retry construct, no cause or SQLState read, and the exact route list of the adapter.
+- **Mutations (Phase 6, and the remaining rules of Phases 4 and 5).** For create: lines in profile order, summed totals, snapshots from locked rows, the reviewed-terms check with zero writes, the
+  eligibility matrix of ADR-0028 section 6, an explicit foreign or missing Customer, no `findOrCreate`, a required explicit eligible StaffMember with no automatic assignment. For reschedule and reassign: a time-only move after a
+  Service was deactivated or an assignment removed, rejection when the current StaffMember is inactive, reassignment to an unassigned or inactive target
+  rejected, the stored duration used after a Service duration change, price, lines, Customer, and source unchanged, started and cancelled Appointments rejected, a
+  failed move leaving the row byte-identical. For cancel and the note: attribution, before-start only, repeated and stale attempts, the freed time offered again,
+  the note on future, past, confirmed, and cancelled Appointments only while `ACTIVE`.
+- **Concurrency, deterministic and without sleeps (latches, `pg_stat_activity`, `pg_blocking_pids`, `FOR UPDATE SKIP LOCKED` probes).** The lock order of each
+  operation; create versus create, create versus guest booking, move versus create, move versus guest booking; two moves of one Appointment; reassign in both
+  orders; cancel versus move and cancel versus cancel; note versus move; schedule, exception, StaffMember, assignment, Service, and Business changes against create and
+  reschedule; a stale version, a state conflict, and a lost slot asserted as three distinct results; the loser leaves no row and the winner is untouched; the
+  controlled exclusion-index deadlock retried in a new transaction with one winner; retry bounded at three attempts with distinct transaction identifiers and
+  snapshots; commit-uncertainty classification with real `afterCommit` failures separate from injected statuses.
+- **Boundaries.** `BookingModuleBoundaryTests`, `CustomerModuleBoundaryTests` (the `customer` module still does not depend on `booking`),
+  `ScheduleRevisionModuleBoundaryTests`, `AvailabilityMutationInventoryTests`, `BusinessAppointmentRescheduleBoundaryTests` (the lock order as the order of calls in the reschedule body, no Service or Customer contract, one write method, one clock read, the only callers of the conditional reschedule and the active-StaffMember lock, exactly three attempts), and a test that the Business runner is not `@Transactional` and uses no `REQUIRES_NEW`
+  or savepoint; none is weakened.
+- **Frontend (Phases 7 to 10).** Component tests with deferred promises for stale and out-of-order responses, a fixed clock and timezone, a daylight-saving day,
+  long names, route parsing, the Business switch, role and lifecycle states, the single-flight guard, no automatic repeat after an uncertain create, the unsaved-changes
+  guard, the action order, the cancel dialog's focus rules, and no Customer data in the URL or storage.
+- **Human review and browser E2E (Phases 11 and 12).** Phase 11 is the formal rendered review and an explicit approval gate: the review covers desktop, tablet, mobile, 200% zoom, keyboard use, long Customer, Service, and StaffMember names, the day, week, and agenda views, the read-only `DRAFT` and `SUSPENDED` states, every form, conflict, and dialog, and the Customer history; the notifications after Phases 7 and 10 are not approvals; Phase 12 does not start until the approval is recorded, and a review that asks for changes keeps Phase 11 open until they are applied, verified, and approved. Human approval is recorded separately from automated tests. Phase 12 is Playwright
+  journeys on the unmodified isolated runner for view, create (one and several Services), conflict recovery, reschedule, reassign, cancel, note, Customer history,
+  isolation, denials, `DRAFT` and `SUSPENDED`, mobile, privacy of the URL and storage, and the unchanged existing journeys. The fixtures count against the public booking
+  limiter (10 bookings per address and Business in 15 minutes), so a spec that books must count its POSTs.
+
+### Business calendar frontend (issue #21 Phase 7; executed)
+
+Vitest and Testing Library with only the network helper (`identity/api` `request`) mocked, so the real feature API modules build and send every request. Covered deterministically (no sleeps; deferred promises, an injected clock, and `process.env.TZ` set to several browser timezones): the navigation label and active state, the three views and their exact bounded requests (never more than 31 dates), Business-timezone rendering under several browser timezones, repeated-hour and spring-gap days, loading, empty, failure, and retry states, request abortion and ignored late answers, no refetch on an unrelated re-render, overlapping entries (different StaffMembers and a cancelled plus a confirmed entry), ordered multi-Service rendering, `CONFIRMED` and `CANCELLED` text and structure, `DRAFT`, `ACTIVE`, and `SUSPENDED` read-only states with one notice, the detail and its safe not-found recovery, the Customer history (order, minimum facts, empty state, paging), the lost-Business recovery, browser Back and Forward, privacy of the URL, history state, title, storage, and console, the absence of mutation controls, accessible roles and names, and long-content layout rules pinned in the CSS source. Mutation and control checks (all killed, files byte-compared after restoring): timezone shift, late response, a range over 31 dates, a status missing from the text or the structure, private text in the URL, a mutation control on the detail and on the calendar, `version` shown, and a refetch on every render. A developer-rendered inspection with a throwaway mock API ran at 1280, 820, 375, and 320 px; it is not the Phase 11 human approval and 200% zoom is not yet covered. Local result: 84 files, 1938 tests, lint, and build passed.
+
+### Manual-create read routes (issue #21, discovered Phase 8 prerequisite; executed)
+
+Real PostgreSQL through the real orchestration, deterministic coordination only (a one-shot hook that commits a change on another thread between two statements, joined before the read continues; no sleeps). `BusinessAppointmentOptionsApiIntegrationTests` pins the exact request, response, and problem contracts, the intersection, the explicit StaffMember rule, the summed duration and its 480-minute limit, zero notice, busy time (adjacency, overlap, cancelled, other StaffMember), a repeated hour and a spring gap, the lifecycle, role, and tenant matrices, byte-identical missing, foreign, and inactive results, and privacy; `AppointmentCreationOptionsTransactionIntegrationTests` pins the statement counts (options 4, availability 8, independent of the size of the Business), one read-only `REPEATABLE READ` transaction, no write or lock, and snapshot consistency; `AppointmentCreationOptionsAgreeWithCreationIntegrationTests` proves the real creation accepts every offered start and rejects an unoffered one; `AppointmentCreationOptionsServiceTests` uses injected collaborators and a counting clock (labelled as such) for the decision order and the exact engine call. Mutation controls (all killed, files byte-compared): union instead of intersection, the public two-hour notice, a wrong duration aggregation, an unassigned and a foreign StaffMember accepted, and ignored busy intervals.
+
+### Reschedule option reads (issue #21, discovered Phase 9 prerequisite; executed)
+
+Real PostgreSQL through the real orchestration, deterministic coordination only (no sleeps; a one-shot hook commits a change on another thread between two statements and is joined before the read continues; a writer thread holds exclusive row locks behind a latch while the reads complete). `BusinessAppointmentRescheduleOptionsApiIntegrationTests` pins the exact request, response, and problem contracts (key sets, headers, fixed `instance`, no `Location` or `Set-Cookie`), the stored duration and Service identities against Services changed after the booking, the current-versus-replacement StaffMember rules, the ignored own interval and the unoffered unchanged start, zero notice, busy time, a repeated hour and a spring gap, the lifecycle, state, role, and tenant matrices, byte-identical missing and foreign Appointments and StaffMembers, client-supplied values that must change nothing, strict parsing, verbs and CSRF, and privacy of bodies, problems, and logs. `AppointmentRescheduleOptionsAgreeWithRescheduleIntegrationTests` is the agreement proof: every offered start is accepted by the **real** reschedule (each on a fresh Appointment) and every other start of the day is refused, the Appointment does not conflict with itself while a different overlapping one blocks and adjacency is free, the current StaffMember needs only to be active, a replacement is eligible exactly when the mutation locks it, and the lifecycle, state, role, and tenant results equal the mutation's. `AppointmentRescheduleOptionsTransactionIntegrationTests` pins the statement counts (options 6, availability 8 or 9, independent of the size of the Business and the visit), one read-only `REPEATABLE READ` transaction, no write or lock, two snapshot proofs, and non-blocking against held row locks. `AppointmentRescheduleOptionsServiceTests` uses **injected** collaborators and a counting clock (labelled so) for the decision order and the exact engine call; `BusinessAppointmentRescheduleOptionsBoundaryTests` pins the structure. The existing reschedule, manual-create option, and boundary suites ran unchanged except for the deliberate allowlist additions of the two module-boundary tests. Mutation controls (each applied, the named suites run, the file restored and byte-compared): see the Phase 9 backend prerequisite record of task 09a.
+
+### Manual-create frontend (issue #21 Phase 8; executed)
+
+Vitest and Testing Library with only the network helper mocked (a scriptable fake backend behind it speaks the real contracts), deterministic (deferred promises, an injected clock, fake timers only for the search debounce, `process.env.TZ` set to several browser timezones, no sleeps beyond waiting for a request that must not happen). Covered: the entry and its absence for `DRAFT`, `SUSPENDED`, Manager, Staff, platform-only, and anonymous sessions; the route and the return context; the six steps and headings; the Customer search (containing, abort, late answers, empty and failure states); one and five Services, the cents and minutes arithmetic, the 5-Service and 480-minute limits, canonical request bytes whatever the click order; the empty intersection versus a failed read; the starts, the repeated hour, the spring gap, and date-only handling under several browser timezones; the invalidation of every dependent choice; direct review edits; stale and late responses; the note; one POST under a double click; every documented create result and its recovery; no automatic repeat; success with history replacement; the unsaved-changes guard, Back and Forward, and Business switching; accessibility roles, names, and focus; and privacy of the URL, `history.state`, the title, storage, cookies, and the console. **111 new tests**, among them the unresolved-outcome freeze: every uncertain classification (the uncertain code, a lost response, an unreadable success, an unexpected failure, an unknown gateway failure) leaves exactly the two calendar controls, one POST, no edit or send control, and a stale handler, repeated clicks, a rerender and time cannot send another request; the recovery returns to the originating calendar state without the ordinary prompt; leaving elsewhere and browser Back show `Неясен резултат`, and Forward reaches only an empty form; a known rollback (temporary refusal, deterministic rejection) stays editable and retries only explicitly. Mutation and control checks (all 15 killed, files byte-compared; three first survived and were strengthened): independent POSTs, automatic assignment, floating totals, click-order bytes, stale dependents, automatic retry, a removed double-submit guard, the note in storage, a create control for every lifecycle, a removed route guard, the client terms over the server duration, an uncertain outcome that is not frozen, the create button available after uncertainty, a stale callback that can still submit, and review edit controls after uncertainty. A developer-rendered inspection against a throwaway mock API ran at 1280, 820, 640, 375, and 320 px; it is not the Phase 11 human approval, a real 200% zoom and the browser E2E (Phase 12) are not yet covered. Local result: 88 files, 2049 tests, lint, and build passed.
+
+### Reschedule frontend (issue #21 Phase 9; executed)
+
+Vitest and Testing Library with only the network helper mocked (a scriptable fake backend behind it speaks the committed contracts, including the server's rule that the unchanged start is not offered to the current StaffMember), deterministic (deferred promises, an injected clock, `Date` faked only at application level, `process.env.TZ` set to several browser timezones, no sleeps beyond waiting for a request that must not happen). Covered: the entry and its absence for `DRAFT`, `SUSPENDED`, cancelled, started, exactly-now, Manager, Staff, platform-only, and anonymous sessions and direct routes; the route and the return state; the read-only context; the current StaffMember, the inactive-current, empty-replacement, and nobody-available cases, and replacement eligibility; the exact availability request; the excluded current start and the same time for a replacement; a repeated hour and a spring gap; independence from the browser timezone; the invalidation of the start by a changed StaffMember or date; an aborted and a late read; a genuine no-op and an equal instant in another spelling never sent; the exact time-only, reassignment-only, and combined bodies with `expectedVersion`; double click, stale callbacks, and a response after leaving; every documented result with its recovery (the concurrent update with the new version, the state conflict, the StaffMember and slot results, the known rollback and its explicit retry, five unresolved results with exactly one POST); the guard in every state and its baseline rule (dirty means any retained owner-selected value that differs from the original Appointment, also for an incomplete proposal after a slot conflict, a failed read, or a StaffMember refusal; a reloaded Appointment is a new clean baseline); Back, Forward, and Business switching; and the privacy of the URL, history state, title, storage, cookies, and console. **Mutation controls** (each applied, the five focused suites run, files restored and byte-compared; all 18 killed): dirty state that depends only on a chosen start or on submit readiness, a stale baseline, no reload after a concurrent update, a no-op submit allowed, a client duration sent, a stale start kept after a StaffMember or date change, a late availability answer accepted, an automatic retry after an uncertain result, the mutation re-enabled after an uncertain result, `expectedVersion` omitted, an optimistic move before the answer, a navigation on a response after leaving, the current StaffMember duplicated among the replacements, an unavailable current StaffMember kept, a browser-timezone date, and the unchanged start sent. **Developer-rendered** evidence (a throwaway mock with synthetic data; not the Phase 11 approval): sixteen states at 1280, 820, 640, 375, and 320 px with no horizontal overflow, the unsaved dialog, and a real keyboard-only completion. The exact counts are in the Phase 9 record of task 09a.
+
+### Cancellation and internal-note frontend (issue #21 Phase 10; executed)
+
+Vitest and Testing Library with only the network helper mocked (a scriptable fake backend speaks the committed Phase 6 contracts: it applies a cancellation or a note edit and advances the version unless a test scripts a rejection, a lost response, or a deferred answer), deterministic (deferred promises, an injected clock, no sleeps). The hook is also driven without the page (`renderHook`) so that handlers captured before an outcome can be called exactly as a browser could still call them. Covered: the visibility matrix over Business lifecycle, status, started and exactly-now, and role; the confirmation dialog's role, accessible name and description, safe-first initial focus, action order, Escape, focus trap, inert background, and in-flight behaviour; one request per confirmation including double click and stale handlers; the re-read after every success and no optimistic state; every documented result with its exact frontend-owned text, single alert, and focus; known rollbacks with explicit retry; refusals; every unresolved kind frozen after exactly one request and left through the explicit re-read or the `Неясен резултат` warning; a concurrent update as a new clean note baseline; the note's normalization, blank clearing, no-op, 500 code points without truncation, and the dirty rule in both directions; and privacy of the URL, `history.state`, storage, cookies, title, and console. The **semantic validation of a 2xx acknowledgement** (same Appointment, expected state, a safe-integer version strictly beyond the submitted one, exactly the canonical submitted note) is covered by `SuccessValidation.test.tsx`: every invalid answer is unresolved and frozen after one request, a strictly valid success followed by a failed GET shows no stale fact. **Executed:** 204 new tests in 6 files (`Cancellation.test.tsx` 62, `InternalNote.test.tsx` 65, `SuccessValidation.test.tsx` 44, `useAppointmentOperations.test.tsx` 7, `lifecycleModel.test.ts` 8, `App.lifecycle.test.tsx` 18); the complete frontend suite 100 files, 2377 tests. 33 mutation controls were applied to the focused suites (31 killed, 2 equivalent, recorded in the Phase 10 record of task 09a). **Developer-rendered** (a throwaway mock, not the Phase 11 approval): 1280, 820, 640, 375, and 320 px; the human visual review (Phase 11), a real 200% zoom, a screen reader, and the browser E2E (Phase 12) remain.
+
+### Temporal badges and the history read (2026-10-20)
+
+`temporal.test.tsx` pins the exact boundaries (start minus 1 ms, the start, the end minus 1 ms, the end), the cancelled case, a repeated hour compared by instants, and the boundary clock (one timer ahead, none when nothing is ahead, a visibility re-read, cleanup, no network). `AppointmentTemporal.test.tsx` covers the detail, the change actions disappearing at the start without a read, and the reschedule eligibility mirror of the backend. The history read is covered by `BusinessCalendarReadApiIntegrationTests` (order across page boundaries, identical starts, the Business-local date including 25- and 23-hour days, validation, tenant isolation) and `AppointmentReadStoreIntegrationTests`.
+
+## Customer persistence verification
+
+Phase 2 tests the shared contact policy, the Customer domain, `V10`, and `CustomerStore` against
+PostgreSQL 18.4 through Testcontainers (details and counts in
+`docs/tasks/07a-business-customer-records.md`). `ContactPolicyVectorTests` (backend) and
+`contactPolicy.test.ts` (frontend) run the single golden-vector file
+`shared-test-data/contact-policy-vectors.json`; `ContactEmailPolicyTests`,
+`ContactPhoneNumbersTests`, and a Jakarta characterization test cover every rule directly.
+`CustomerSchemaIntegrationTests` cover V1–V10 order, V1–V9 byte integrity, a V9-to-V10 upgrade,
+exact columns, constraints, definitions, and indexes, the generated normalized-name expression and its
+agreement with Java, every constraint, same-Business uniqueness, cross-Business reuse, NULL
+distinctness, and the 200/201-character boundary. `CustomerStoreIntegrationTests` and
+`CustomerStoreFailureTranslationTests` cover every store operation, tenant isolation, versioned
+updates, rollback preservation, single-statement and no-lock evidence, and structural, sanitized
+failure translation. `CustomerModuleBoundaryTests` pin the module dependencies and the `shared::contact` named interface. The races belong to Phase 3.
+
+## Customer matching verification
+
+`CustomerIdentificationServiceTests` (unit, mocked store) cover every truth-table row, all invalid-field
+combinations and the immutable field set, no SQL, clock, or UUID work for invalid, existing, or
+conflicting input, canonicalization before lookup, the bounded re-read, the failure mapping, and
+redaction. `CustomerIdentificationIntegrationTests` (PostgreSQL) cover the rows with unchanged matched
+Customers, same-Business isolation, the caller-owned transaction, `READ_COMMITTED` and stronger
+isolation, rollback and rollback-only behavior, and the statement bounds (0, 1, 1, 2, and 3 for a race
+loser, counted by a recording `DataSource` that records only SQL naming the `customer` table).
+`CustomerIdentificationConcurrencyIntegrationTests` cover the creation races without sleeps (latches
+plus `pg_stat_activity` lock-wait evidence), a real `40001` from a `REPEATABLE_READ` snapshot, a real
+`40P01` from opposite-order inserts, rollback with no leftover Customer or probe row, and a retry in a
+new transaction. A test-only consumer (`CustomerConsumerProbe`) uses only the published contracts and
+writes into a test-created probe table that is never part of Flyway. `CustomerModuleBoundaryTests` also
+pin the published root-package types, their dependencies, the consumer's use of the root package only,
+the absence of any Booking module (as pinned at Phase 3; the boundary test has since been updated so that only `booking` may depend on `customer`, through the identification contract), and the absence of logging.
+
+## Customer administration frontend verification
+
+Vitest and Testing Library only (no Playwright, which is Phase 6): the shared contact golden vectors run
+against the Customer form rules; route parsing, normalization, and round trips; list requests (GET versus the
+POST body), sorting in both directions, sizes, partial and out-of-range pages, shared pagination, and cards;
+search (explicit submit, trim, the 100 code point boundary, clear, blank, pending, stale and aborted
+responses, term absent from the URL, both storages, cookie, and title); recovery of an empty later page
+(`total` above and equal to 0) by history replacement to the last valid page or page 0 with the size, sort,
+direction, and search kept, no pushed entry, and no loop; create and edit validation,
+`fieldErrors` mapping, duplicate conflicts, contact removal, stale-version guarded reload, safe generic errors,
+and every unsaved-changes exit; DRAFT, ACTIVE, and SUSPENDED behavior including a mutation that reveals the
+suspension; Business switching; access by role; and durable CSS rules in `ui/layoutRules.test.ts`. Rendered
+review used a disposable PostgreSQL container and synthetic fixtures created through the APIs. Human visual
+approval is separate and outstanding.
+
+## Navigation, Business selection, live search, and contextual SUSPENDED wording
+
+Vitest only: `ShellNavigation` through both shells (global links without a Business, a separate group headed by the
+selected Business, no technical role value, the user and not the Business above Logout, a second link for an
+administrator who manages Businesses, mobile focus and Escape); `BusinessSelection` and `App.businessSelection`
+(landing, the list of managed Businesses with lifecycle wording, `Покажи` buttons on heading-named cards, a
+checkmark and `aria-current` instead of an `Избран` badge, selecting DRAFT, ACTIVE, and
+SUSPENDED, no Customer data across Businesses, refresh through the session, return to the selection when the
+Business is unavailable, no selector in the Profile, guard around Business context); live search with fake timers
+and no sleeps (no request before the debounce, one request for the final value, deletion and clearing, page reset,
+preserved size, sort, and direction, aborted and stale responses, previous result kept busy, term absent from
+URL and storage, catalog-empty versus no-results, stale-page recovery with and without a term); the Customer
+SUSPENDED notice exactly once and no "configuration" wording; and the guard focus fallback. The rendered review
+(Playwright Chromium, disposable stack) also measured real requests during typing.
+
+## Business-context recovery and single lifecycle notice
+
+`App.contextRecovery.test.tsx` mocks only the network helper, so the real feature API modules, their error handling, and
+the application's session recovery run: recovery from every Business-scoped screen (Services, Staff and assignments,
+Working Hours, Schedule Changes, Customers), one refresh for simultaneous failures, replace-not-push, no loop when the
+session still carries the Business, the guard around a dirty form, late old-Business responses, the outcomes that must
+not clear the context (missing record, `ACCESS_DENIED`, SUSPENDED, `401`, `401` during the refresh, network failure),
+one notice per SUSPENDED screen, and the approved owner and administrator labels. A real Membership revocation has no
+supported API, so the browser check intercepted the two server answers in the browser only (documented as a
+simulation).
+
+## SUSPENDED Customer update exception
+
+`BusinessCustomerSuspendedApiIntegrationTests` (PostgreSQL): an owner updates an existing Customer in SUSPENDED with the
+canonical profile stored; creation (phone-only, email-only, both) returns `BUSINESS_SUSPENDED` and creates no row; DRAFT and
+ACTIVE behave as before; the optimistic version, validation, and contact uniqueness still apply and leave the row unchanged;
+a foreign or unknown ID is the same safe `CUSTOMER_NOT_FOUND`; `MANAGER`, `STAFF`, inactive, unselected, and platform-only
+callers are rejected before any update; and Service and StaffMember creation in SUSPENDED still return `BUSINESS_SUSPENDED`.
+`CustomerAdministrationServiceTests` pin the lock order and checks of a suspended update, and
+`CustomerAdministrationLockingIntegrationTests` prove with a real lock wait that an update queued behind a committing
+suspension still succeeds while a create is rejected. `BusinessCustomerReadApiIntegrationTests` add the surname and
+middle-fragment search regression. The published matching tests are unchanged and green.
+
+## Customer browser E2E
+
+`frontend/e2e/customer-administration-journey.spec.ts` (12), `customer-lifecycle-isolation.spec.ts` (5), and
+`customer-mobile-smoke.spec.ts` (3, an actual Pixel 7 context) run on the existing disposable stack
+(`./scripts/run-e2e.sh`) with run-time synthetic fixtures, a unique slug and owner email per provisioning, and data created only
+through the supported APIs and the invitation flow. They cover Business selection and context, creation and editing with canonical
+contacts, duplicates, live search (observable polling and responses; no sleeps and no debounce-timing claim), sorting and server-side
+pagination with an independently computed order, detail and Back, stale-page recovery through supported updates, the unsaved-changes
+guard, the Business lifecycle (SUSPENDED edit but no creation, restored in `finally`), a version conflict, tenant isolation,
+Platform Administrator and anonymous rejection, and privacy (URL, storage, cookies, title, request URLs and headers, public surfaces).
+Failure messages compare booleans, never Customer bodies. Browser tests do not prove that no account, Membership, or Appointment row
+is created: that rests on `BusinessCustomerMutationApiIntegrationTests.createNeverUsesTheOwnersContactOrCreatesAnyAccountRecord`, and
+conservative matching and the Booking seam rest on the `CustomerIdentification*Tests`. No request-interception simulation was added; the
+only intercepted lost-context evidence is the Phase 5 developer review, labeled as a simulation. The existing journeys were updated to
+the redesigned navigation (owner links, first mobile menu link, the single SUSPENDED notice) without weakening their assertions.
+Executed 2026-10-06: backend 2,229 tests, frontend 1,440 tests in 61 files, two consecutive full E2E runs of 74 passing tests each.
+The acceptance matrix is in `docs/tasks/07a-business-customer-records.md`.
+
+## Customer administration verification
+
+`BusinessCustomerAuthorizationApiIntegrationTests` (MockMvc and PostgreSQL) cover authentication, the
+absent selection, `MANAGER` and `STAFF`, platform-only, inactive, missing, and foreign Memberships,
+Business A/B isolation, byte-identical 404 bodies for foreign and unknown IDs, an ignored client
+`businessId`, the DRAFT, ACTIVE, and SUSPENDED matrix, CSRF on every POST and PUT, and an enumeration of
+every Spring MVC mapping (exactly five Customer endpoints, none public).
+`BusinessCustomerReadApiIntegrationTests` cover the exact key allowlists, `no-store`, the allowed sizes,
+invalid paging, sort, and direction, every sort in both directions, stable pages of identical names,
+empty and partial pages, the search matrix (name, email, phone exact and prefix, wildcard and malformed
+terms, the length limit, a malformed body), the absence of the term from the URI, and a constant two
+Customer statements whatever the page or result size.
+`BusinessCustomerMutationApiIntegrationTests` cover canonical create and update, validation of every
+field, the shared golden vectors through the API, duplicate phone and email (alone and together),
+cross-Business reuse, no account side effect, version and timestamp, stale versions, contact removal
+rules, explicit two-step identifier moves, and four concurrent races decided by the database.
+`BusinessCustomerPrivacyApiIntegrationTests` cover sentinel values in Problem Details and DEBUG logs,
+the fixed `instance`, injected persistence failures (`XX000`, `40001`, `40P01`, unknown Business, invalid
+data) with a rollback proved after a real `UPDATE`, and the public profile. Unit tests:
+`CustomerSearchCriteriaTests`, `CustomerInputValidatorTests`, `CustomerAdministrationServiceTests` (lock
+order, translation, hygiene), and `BusinessCustomerExceptionHandlerTests`. Store and database:
+`CustomerStoreListIntegrationTests` (ordering, tie-breakers, paging, search, scoping, statement counts),
+`CustomerAdministrationLockingIntegrationTests` (a mutation blocked behind a Business or Membership row
+lock, then decided by the committed state; reads unblocked), and
+`CustomerSearchExplainIntegrationTests` (`EXPLAIN ANALYZE` of the production SQL at about 10,000 rows).
+`CustomerModuleBoundaryTests` pin the approved dependencies on `shared`, `identity`, and `business`,
+the layer directions, the single private controller, and the unchanged published root types.
+
+## Identity and platform backend verification (early phases)
+
+Phase 2 migrates PostgreSQL 18.4 Testcontainers from empty, verifies identity
+schema constraints for `BUSINESS_OWNER`, `MANAGER`, and `STAFF`, and runs Spring
+Modulith verification. Identity tests cover normalization, password/token/session
+lifecycle, rate limits, cookie/CSRF/CORS behavior, authorization, and Business
+A/B isolation using deterministic fixtures and test-only credentials.
+
+Phase 3A adds deterministic domain/validation tests and PostgreSQL integration
+coverage for Flyway V3/V4, structured-profile constraints, preservation of the
+legacy address value, unique slugs, bounded ordering,
+optimistic compare-and-update behavior, and coordinated same-version races with
+no sleeps. The active-owner query tests inspect PostgreSQL lock/activity metadata
+to prove a concurrent Membership deactivation waits for its `FOR SHARE` lock.
+Platform orchestration tests prove activation ordering and same-Business owner
+readiness. PostgreSQL-backed MockMvc tests cover all seven platform Business
+routes, the role matrix, safe errors, CSRF, exact-origin credentialed CORS with
+PUT, response privacy, and Phase 2 authentication regressions. Modulith tests
+verify `platform → business` and `platform → identity` without reverse edges.

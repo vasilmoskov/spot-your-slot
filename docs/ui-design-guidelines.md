@@ -400,7 +400,7 @@ contains a clear page header and primary content region.
 - Global account navigation (“Бизнеси”, “Профил”) and Business-scoped navigation (“Услуги”, “Екип”, “Работно
   време”, “Клиенти”) stay visibly separate: the global links first, then a separated group headed by the selected
   Business's name. The signed-in user and “Изход” close the sidebar; the Business name belongs only to its group.
-- Planned, not yet a durable rule (issue #21, ADR-0028; it becomes one only after the rendered human review): the Business-scoped
+- Durable rule (ADR-0028; accepted in the product owner's review of the calendar): the Business-scoped
   group gains “График” for the Appointment calendar. The second tab of “Работно време”, “Промени в графика” (a tab, not a
   sidebar link), keeps its name unless the rendered review proves the two labels, which sit at different navigation levels,
   confusing. The weekly-schedule wording is unchanged unless the review decides otherwise.
@@ -730,7 +730,7 @@ compact badge in the table, the mobile cards and the detail view. Records are
 never deleted automatically; past ones stay reachable through the date filter.
 Deletion exists only in the detail view.
 
-### 15.3 Calendar views, the agenda, and the Customer history (decided in ADR-0028; read-only interface implemented in issue #21 Phase 7, awaiting the rendered human review)
+### 15.3 Calendar views, the agenda, and the Customer history (ADR-0028)
 
 This section records the section 15.1 checklist for the Business calendar (issue #21). Phase 7 implemented the read-only part; the forms of Phases 8 to 10 are not built.
 
@@ -754,7 +754,7 @@ This section records the section 15.1 checklist for the Business calendar (issue
   that creating a replacement is a separate action and that the cancellation cannot be undone); section 16 applies to every form; the action order of section 6 applies.
 - **As implemented in Phase 7.** The destination is `График` (first link of the Business group); the views are `Ден`, `Седмица`, and `Списък` (links with `aria-current`), followed by `Предишен`, `Днес`, `Следващ`, a native date field and a native StaffMember select. The day is a positional grid (a column per StaffMember, hatched non-working time, a legend, text for working time and closures) at 900 px and wider and a chronological list per StaffMember below it; the week is Monday-to-Sunday sections of cards; the agenda covers the calendar month of the date (at most 31 dates). A cancelled entry is dashed, struck through, and written `Отменен`; a confirmed one is written `Потвърден` (visually quiet inside a cramped grid block). The Customer history is a section of the Customer detail whose page and size are component state. The lifecycle statement is the single shell banner (`SUSPENDED` always, `DRAFT` on the calendar screens); the calendar screens have no action row to leave blank.
 - **Dependencies.** No calendar or drag-and-drop library is introduced; the grids use plain React and CSS. Drag-and-drop rescheduling is not part of issue #21.
-- **Wording.** Every Bulgarian label and message of the calendar is Proposed until the rendered human review.
+- **Wording.** The Bulgarian labels and messages of the calendar were reviewed and accepted by the product owner.
 
 ## 16. Authenticated mutable forms
 
@@ -880,7 +880,7 @@ a throwaway mock that never touches the development database. Never write to
 the database directly, hand-edit password hashes, or delete volumes, and report
 any fixture data created or mutated together with cleanup instructions.
 
-## 23. Manual Appointment create (issue #21 Phase 8; implemented, awaiting the rendered human review)
+## 23. Manual Appointment create
 
 The owner-only flow `Нов час` is a six-step form in one component: **Клиент**, **Избор на услуги**, **Избор на служител**, **Дата и час**, **Вътрешна бележка**, **Преглед и потвърждение** (the first and the fifth are new, the others reuse the public headings; all Bulgarian wording is Proposed until the review).
 
@@ -893,9 +893,9 @@ The owner-only flow `Нов час` is a six-step form in one component: **Кл�
 - No private value reaches the URL, `history.state`, the title, storage, or the console; leaving a started form goes through the shared guard (`Несъздаден час`, `Остани` focused).
 - Results (section 8 and the Phase 8 record of task 09a): a slot, StaffMember, Service, Customer, or terms result returns to the step that can repair it and keeps the rest; a temporary refusal is a known rollback (nothing was created) and allows an explicit retry; an **unresolved** result (uncertain, a lost or unreadable response, an unknown failure) freezes the form: the submitted review stays visible and read-only, only `Обратно към графика` and `Към графика` remain (to the originating calendar state, without the ordinary prompt), the message claims neither success nor failure, and no new creation is possible from that form before the calendar was checked, because the create has no idempotency. Leaving elsewhere shows `Неясен резултат`.
 
-## 24. Appointment reschedule and reassignment (issue #21 Phase 9; implemented, awaiting the rendered human review)
+## 24. Appointment reschedule and reassignment
 
-The owner-only flow `Промени часа` is a three-step form in one component: **Избор на служител**, **Дата и час**, **Преглед и потвърждение** (all Bulgarian wording is Proposed until the review). It is a sibling of section 23 and follows its rules (native labelled controls, rows of at least 2.75 rem, the heading focused after a step change, inline field errors, one alert for a result of the server, the shared guard); only the differences are listed.
+The owner-only flow `Промени часа` is a three-step form in one component: **Избор на служител**, **Дата и час**, **Преглед и потвърждение** (the Bulgarian wording was accepted by the product owner). It is a sibling of section 23 and follows its rules (native labelled controls, rows of at least 2.75 rem, the heading focused after a step change, inline field errors, one alert for a result of the server, the shared guard); only the differences are listed.
 
 - **Entry and route:** a primary `Промени часа` beside `Обратно към графика` on the Appointment detail, **absent** (not disabled) unless the owner of an `ACTIVE` Business views a `CONFIRMED` Appointment that has not started. The route `#/business/appointments/{id}/reschedule` carries only the safe origin (calendar state or Customer) of the detail; `Обратно към часа` sits above the step and `Отказ` is the left action of the first step.
 - **Read-only context:** the earlier steps show the unchanged Customer, the Services in stored order with the stored total (`price — duration`), the current StaffMember, the current date and time, and the status, with nothing in it editable (*amended in the Phase 11 Part 1 review: the sentence that the Customer and the Services cannot be changed is no longer shown in the form; the rule stays here and in the task record*), the version is never shown, and no technical timezone identifier is shown by the flow. The review states the unchanged Customer and Services itself, so the context is not repeated above it.
@@ -905,9 +905,9 @@ The owner-only flow `Промени часа` is a three-step form in one compon
 - **Dirty state:** the form is dirty while it retains any owner-selected value that differs from the authoritative original Appointment (another StaffMember, another date, or a chosen start), whether or not the proposal is complete or submittable; a cleared value is not a retained choice. A conflict that clears only the start therefore keeps the ordinary `Непотвърдена промяна` warning while a changed StaffMember or date remains, the form becomes clean only when nothing differs from the original, and a reloaded Appointment after a concurrent update is the new clean baseline. An unresolved outcome keeps only its stronger `Неясен резултат` warning.
 - **Results:** a concurrent update restarts the form from the re-read Appointment with an explanation; a state conflict removes the form and explains; a StaffMember or slot result returns to the step that can repair it and clears only the invalid choice; a temporary refusal says nothing was changed and allows an explicit retry; an **unresolved** result freezes the submitted review (only `Към часа` and the calendar or Customer button remain, without the ordinary prompt; leaving elsewhere shows `Неясен резултат`). The guard label for a changed proposal is `Непотвърдена промяна`.
 
-## 25. Appointment cancellation and internal note (issue #21 Phase 10; implemented, awaiting the rendered human review)
+## 25. Appointment cancellation and internal note
 
-Both operations sit on the Appointment detail; the detail is not one large form. All Bulgarian wording and the layout are Proposed until the review.
+Both operations sit on the Appointment detail; the detail is not one large form. The Bulgarian wording and the layout were reviewed and accepted by the product owner.
 
 - **Cancellation:** a separate `Отмяна на часа` section (below the notes), shown **only** to the owner of an `ACTIVE` Business for a `CONFIRMED`, not yet started Appointment (absent, not disabled, otherwise), explains that the time is freed, that it cannot be undone, and that a replacement is created separately. `Отмени часа` (destructive) opens a modal `alertdialog` that names the date, time, and Customer (wrapping long names), with `Отказ` first and focused and `Отмени часа` second; Escape and `Отказ` close it and restore focus to the opener; while the request is in flight the dialog stays open, its buttons are disabled, and Escape is ignored (section 19). No reason or other input is offered, and `cancelled_by` is never shown. After a strictly validated acknowledgement the **re-read** cancelled detail is shown (never the acknowledgement itself), with its existing cancelled notice focused as the only success message; if the re-read fails, the page states the success from the acknowledgement, shows no Appointment fact, removes every mutation control, and offers `Прочети часа отново`.
 - **Internal note:** inside `Бележки`, a labelled `textarea` with the hint that only the owner sees it, `Отказ` then `Запази бележката`; blank clears; the inline error for too long or invalid text appears while typing and again focuses the field after a refused save; nothing is truncated and there is no `maxlength`. Allowed for every status of an `ACTIVE` Business; the note stays readable but not editable for `DRAFT` and `SUSPENDED`. An unchanged normalized note is a no-op (`Бележката не е променена.`, no request). The editor is guarded while the normalized edit differs from the authoritative note (`Непотвърдена бележка`, `Остани` focused, also for the `Отказ` of a dirty edit); restoring the authoritative value makes it clean.
@@ -915,7 +915,7 @@ Both operations sit on the Appointment detail; the detail is not one large form.
 
 ## 26. Business calendar and Appointment screens after the Phase 11 human review, Part 1 (decided 2026-10-19; implemented, Part 1 awaits re-validation)
 
-The product owner's review of the calendar, the Appointment detail, the internal note, and the reschedule first step produced these durable rules; every Bulgarian text and layout stays Proposed until Phase 11 is approved.
+The product owner's review of the calendar, the Appointment detail, the internal note, and the reschedule first step produced these durable rules; the Bulgarian texts and layouts were accepted by the product owner in the later review rounds.
 
 - **Toolbar.** At most two compact control rows before one period heading: (1) the view tabs `Ден`, `Седмица`, `Месец`, the period group `Предишен`, `Днес`, `Следващ`, and the primary `Нов час`; (2) the date control and the StaffMember filter. The period is stated once, in the heading. The third view is the month-scoped list and is named `Месец`; its route value stays `agenda`.
 - **Written dates.** Standard Bulgarian: `Четвъртък, 29 октомври 2026 г.` (one comma after the weekday, no ordinal suffix, no comma before the year, a capital weekday when the date begins a heading or a card title; lower case inside a sentence). One shared formatter serves the day, week, detail, reschedule, dialog, and agenda headings. Date-only values never pass through the browser timezone.

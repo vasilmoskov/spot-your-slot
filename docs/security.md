@@ -291,7 +291,7 @@ version, list-window, and whole-body failures stay generic. Responses never
 expose SQL diagnostics, constraint names, stack traces, submitted identifiers,
 Membership details, or tenant existence.
 
-### Business Appointment administration authorization (issues #19 and #21; decided in ADR-0028 and ADR-0029; the read routes are implemented in Phase 3, create in Phase 4, reschedule and reassign in Phase 5; cancel and the note edit in Phase 6, backend only)
+### Business Appointment administration authorization
 
 The calendar, the Appointment detail, the Customer appointment history, and every Appointment mutation
 (create, reschedule and reassign, cancel, internal-note edit) derive the user and the selected Business only
@@ -300,7 +300,7 @@ Membership, or role. Access requires an active `BUSINESS_OWNER` Membership for t
 An absent, inactive, or foreign Membership, or a platform administrator alone, is `ACTIVE_BUSINESS_REQUIRED`;
 an active `MANAGER` or `STAFF` Membership of the selected Business is `ACCESS_DENIED`; an unauthenticated caller is
 `AUTH_REQUIRED`. A StaffMember record grants no access. Missing and cross-Business Appointment, Customer,
-StaffMember, and Service identifiers share one safe `404` (amended by issue #19 Phase 4: a missing, foreign, or inactive Service or StaffMember is instead one byte-identical `409`; see the create route below).
+StaffMember, and Service identifiers share one safe `404` (amended for creation: a missing, foreign, or inactive Service or StaffMember is instead one byte-identical `409`; see the create route below).
 
 | Business status | Reads | Mutations |
 |---|---|---|
@@ -308,9 +308,9 @@ StaffMember, and Service identifiers share one safe `404` (amended by issue #19 
 | `DRAFT` | allowed (read-only preview) | `409 BUSINESS_NOT_ACTIVE` (a deliberate difference from the Service, StaffMember, schedule, and Customer APIs) |
 | `SUSPENDED` | allowed | `409 BUSINESS_SUSPENDED` |
 
-**Implemented read routes (issue #21 Phase 3; all `GET`, owner-only, no CSRF token needed, every response `Cache-Control: no-store` from the default security headers).** `/api/business/calendar` and `/api/business/appointments` take `from` and `to` (required, canonical `YYYY-MM-DD`, inclusive Business-local dates, at most 31, within 2000-01-01 to 2100-12-31) and an optional `staffMemberId`; the agenda also takes `page` (from 0) and `size` (10, 25, or 50; default 10). `/api/business/appointments/{appointmentId}` is the owner-only detail and `/api/business/customers/{customerId}/appointments` the Customer history (`page`, `size`, and, since the Phase 11 sixth correction round, an optional `direction` of exactly `asc` (the default: earlier starts first, then identifier ascending) or `desc` (later first, identifier descending) and an optional `date`, one canonical Business-local `YYYY-MM-DD` within 2000-01-01 to 2100-12-31, selecting the Appointments that start on that date as the half-open interval from its start to the next date's start in the Business timezone, exact on a 23- or 25-hour day; the order and the date apply before paging across the whole history and `total` is the filtered count; any other, empty or repeated value is the generic `VALIDATION_ERROR`; Business scoping, the identical 404 for a missing and a foreign Customer, and `no-store` are unchanged). `ACTIVE`, `DRAFT`, and `SUSPENDED` Businesses are all readable and the calendar, agenda, and detail say which in `businessStatus`. Failures: `AUTH_REQUIRED` (401); `ACTIVE_BUSINESS_REQUIRED` and `ACCESS_DENIED` (403, as above); `VALIDATION_ERROR` (400, generic, never naming a field or echoing a value); `APPOINTMENT_NOT_FOUND` ("Часът не е намерен."), `CUSTOMER_NOT_FOUND` ("Клиентът не е намерен."), and `STAFF_MEMBER_NOT_FOUND` ("Членът на екипа не е намерен.") (404, byte-identical for a missing and a foreign identifier of the same resource type); `INTERNAL_ERROR` (500). Each route family has one fixed, non-echoing problem `instance`, the family's base path (the convention of the Customer API): `/api/business/calendar` for the calendar, `/api/business/appointments` for the agenda and the detail, and `/api/business/customers` for the Customer history; no identifier, query value, slug, or raw request path is ever echoed. Calendar and agenda rows carry no note, no cancellation actor, no public reference, and no contact data; the history carries neither a Customer name nor any note, reference, price, or attribution; only the owner detail carries the contact data, both notes, the public reference, the version, and the cancellation attribution. The unfiltered calendar lists every active StaffMember plus an inactive one only when it has an Appointment in the window; an explicit `staffMemberId` may name an inactive same-Business StaffMember.
+**Read routes (all `GET`, owner-only, no CSRF token needed, every response `Cache-Control: no-store` from the default security headers).** `/api/business/calendar` and `/api/business/appointments` take `from` and `to` (required, canonical `YYYY-MM-DD`, inclusive Business-local dates, at most 31, within 2000-01-01 to 2100-12-31) and an optional `staffMemberId`; the agenda also takes `page` (from 0) and `size` (10, 25, or 50; default 10). `/api/business/appointments/{appointmentId}` is the owner-only detail and `/api/business/customers/{customerId}/appointments` the Customer history (`page`, `size`, and, an optional `direction` of exactly `asc` (the default: earlier starts first, then identifier ascending) or `desc` (later first, identifier descending) and an optional `date`, one canonical Business-local `YYYY-MM-DD` within 2000-01-01 to 2100-12-31, selecting the Appointments that start on that date as the half-open interval from its start to the next date's start in the Business timezone, exact on a 23- or 25-hour day; the order and the date apply before paging across the whole history and `total` is the filtered count; any other, empty or repeated value is the generic `VALIDATION_ERROR`; Business scoping, the identical 404 for a missing and a foreign Customer, and `no-store` are unchanged). `ACTIVE`, `DRAFT`, and `SUSPENDED` Businesses are all readable and the calendar, agenda, and detail say which in `businessStatus`. Failures: `AUTH_REQUIRED` (401); `ACTIVE_BUSINESS_REQUIRED` and `ACCESS_DENIED` (403, as above); `VALIDATION_ERROR` (400, generic, never naming a field or echoing a value); `APPOINTMENT_NOT_FOUND` ("Часът не е намерен."), `CUSTOMER_NOT_FOUND` ("Клиентът не е намерен."), and `STAFF_MEMBER_NOT_FOUND` ("Членът на екипа не е намерен.") (404, byte-identical for a missing and a foreign identifier of the same resource type); `INTERNAL_ERROR` (500). Each route family has one fixed, non-echoing problem `instance`, the family's base path (the convention of the Customer API): `/api/business/calendar` for the calendar, `/api/business/appointments` for the agenda and the detail, and `/api/business/customers` for the Customer history; no identifier, query value, slug, or raw request path is ever echoed. Calendar and agenda rows carry no note, no cancellation actor, no public reference, and no contact data; the history carries neither a Customer name nor any note, reference, price, or attribution; only the owner detail carries the contact data, both notes, the public reference, the version, and the cancellation attribution. The unfiltered calendar lists every active StaffMember plus an inactive one only when it has an Appointment in the window; an explicit `staffMemberId` may name an inactive same-Business StaffMember.
 
-**Implemented create route (issue #19 Phase 4).** `POST /api/business/appointments` creates one `CONFIRMED`, `MANUAL` Appointment of one to five distinct Services for an
+**Create route.** `POST /api/business/appointments` creates one `CONFIRMED`, `MANUAL` Appointment of one to five distinct Services for an
 existing same-Business Customer and one explicit StaffMember. The body has exactly the keys `customerId`, `staffMemberId`, `start` (an ISO-8601 date-time with an explicit
 offset), `services` (each exactly `serviceId`, `reviewedServiceName`, `reviewedDurationMinutes`, `reviewedPriceCents`), and an optional `internalNote`; any other key, a
 non-canonical UUID, a non-integral number, or a start without an offset is `400 VALIDATION_ERROR`. The domain bounds (one to five distinct Services, each duration 1 to 480
@@ -328,7 +328,7 @@ is required. Wording: `BUSINESS_NOT_ACTIVE` "Бизнесът не е актив
 запазен. Опитайте отново след малко.", `APPOINTMENT_OUTCOME_UNCERTAIN` (503) "Не е ясно дали часът е запазен. Проверете графика, преди да опитате отново."; all remain
 Proposed until the rendered human review. A request of another media type is `415 UNSUPPORTED_MEDIA_TYPE`.
 
-**Implemented reschedule route (issue #19 Phase 5).** `POST /api/business/appointments/{appointmentId}/reschedule` moves a `CONFIRMED`, not yet started Appointment to a new start, to
+**Reschedule route.** `POST /api/business/appointments/{appointmentId}/reschedule` moves a `CONFIRMED`, not yet started Appointment to a new start, to
 another StaffMember, or both, in one atomic change guarded by the expected version. The path identifier must be a canonical UUID. The body has exactly the keys `expectedVersion` (required,
 an integer) and, optionally, `start` (an ISO-8601 date-time with an explicit offset) and `staffMemberId` (a canonical UUID); an absent key keeps the current value. An explicit `null`, any
 other key (a Customer, Service, duration, price, or Business included), a non-canonical identifier, a non-integral version, or a start without an offset is `400 VALIDATION_ERROR`. After
@@ -347,7 +347,7 @@ durationMinutes, price, internalNote, version, createdAt, updatedAt` and no Cust
 have succeeded, or the row was changed again before the verification read) is `503 APPOINTMENT_OUTCOME_UNCERTAIN` and is never retried; success is reported only after a read outside
 the transaction finds the row at the new version with the requested start and StaffMember.
 
-**Implemented cancellation and internal-note routes (issue #21 Phase 6).** Both are owner-only, require CSRF, accept only `application/json` (`415 UNSUPPORTED_MEDIA_TYPE` otherwise), carry `Cache-Control: no-store`, and use the fixed problem `instance` `/api/business/appointments`. A non-canonical identifier in the path, a non-object body, a missing, `null`, or unknown key, and a non-integral or out-of-range `expectedVersion` are the same `400 VALIDATION_ERROR` that echoes nothing.
+**Cancellation and internal-note routes.** Both are owner-only, require CSRF, accept only `application/json` (`415 UNSUPPORTED_MEDIA_TYPE` otherwise), carry `Cache-Control: no-store`, and use the fixed problem `instance` `/api/business/appointments`. A non-canonical identifier in the path, a non-object body, a missing, `null`, or unknown key, and a non-integral or out-of-range `expectedVersion` are the same `400 VALIDATION_ERROR` that echoes nothing.
 
 - `POST /api/business/appointments/{appointmentId}/cancel`, body exactly `{"expectedVersion": n}` (no reason, actor, time, or status can be named). Success: `200` with the complete private Appointment (keys `id, reference, status, source, start, end, timezone, staffMemberId, staffDisplayName, customerId, services[position,name,durationMinutes,price], durationMinutes, price, internalNote, version, createdAt, updatedAt`), `status` `CANCELLED`, `version` plus one, `updatedAt` the cancellation instant; it exposes no `cancelled_by`, no `cancelledAt`, no Customer name, phone, email, or Customer note.
 - `PUT /api/business/appointments/{appointmentId}/internal-note`, body exactly `{"expectedVersion": n, "internalNote": "…"}`; `internalNote` is a required JSON string, a blank string clears the note (the response carries an explicit `null`), the shared note rule applies (at most 500 code points, no control character except tab and line feed, no unpaired surrogate, never truncated). Success: `200` with the same representation; an unchanged normalized note is a `200` with the current row and no `UPDATE`, `version`, and `updatedAt` unchanged.
@@ -370,17 +370,9 @@ Precedence: authentication and CSRF, selected Business and role, lifecycle (`DRA
 | 415 | `UNSUPPORTED_MEDIA_TYPE` | Заявката не може да бъде изпълнена. | Заявката не може да бъде изпълнена. |
 | 500 | `INTERNAL_ERROR` | Възникна неочаквана грешка. | Възникна неочаквана грешка. |
 
-The results that cannot occur on these routes (`CUSTOMER_NOT_FOUND`, `APPOINTMENT_SERVICE_UNAVAILABLE`, `APPOINTMENT_STAFF_UNAVAILABLE`, `APPOINTMENT_REVIEW_CHANGED`, `APPOINTMENT_SLOT_UNAVAILABLE`) are the generic `INTERNAL_ERROR`, never create or reschedule wording. A problem body never contains SQL, a constraint name, a class, a cause, a foreign identifier, a Customer contact value, or the note. The orchestration (one `READ COMMITTED` attempt, completion-status classification, the verification read, and no retry, not even after a proven rollback) is decided in the Phase 6 note of ADR-0029. The internal note is private Business data: it never appears in a guest booking response or replay, a public log, a public error, a URL, the calendar or agenda lists, or the Customer history; only the authenticated detail and these two mutation responses carry it.
+The results that cannot occur on these routes (`CUSTOMER_NOT_FOUND`, `APPOINTMENT_SERVICE_UNAVAILABLE`, `APPOINTMENT_STAFF_UNAVAILABLE`, `APPOINTMENT_REVIEW_CHANGED`, `APPOINTMENT_SLOT_UNAVAILABLE`) are the generic `INTERNAL_ERROR`, never create or reschedule wording. A problem body never contains SQL, a constraint name, a class, a cause, a foreign identifier, a Customer contact value, or the note. The orchestration (one `READ COMMITTED` attempt, completion-status classification, the verification read, and no retry, not even after a proven rollback) is decided in ADR-0029. The internal note is private Business data: it never appears in a guest booking response or replay, a public log, a public error, a URL, the calendar or agenda lists, or the Customer history; only the authenticated detail and these two mutation responses carry it.
 
-**[Superseded for the cancellation and the note edit by the two routes above, whose codes, wording, and statuses are final for the backend; kept as the historical plan.]** Failures planned for the remaining mutations, cancel and note edit (the codes, route names, and Bulgarian wording are working names, finalised and tested in the implementing HTTP or interface phase, and the wording stays Proposed until the rendered human review; reschedule and reassign are final above): `VALIDATION_ERROR` (400),
-`AUTH_REQUIRED`, `ACTIVE_BUSINESS_REQUIRED`, `ACCESS_DENIED`, `APPOINTMENT_NOT_FOUND` and `CUSTOMER_NOT_FOUND` (404),
-`BUSINESS_NOT_ACTIVE`, `BUSINESS_SUSPENDED`, `APPOINTMENT_CONCURRENT_UPDATE` (a stale `expectedVersion`),
-`APPOINTMENT_STATE_CONFLICT` (already cancelled or started), `APPOINTMENT_SLOT_UNAVAILABLE` (the time is not offered,
-is past, or lost the overlap race), `APPOINTMENT_STAFF_UNAVAILABLE`, `APPOINTMENT_SERVICE_UNAVAILABLE`,
-`APPOINTMENT_REVIEW_CHANGED` (409), `APPOINTMENT_TEMPORARILY_UNAVAILABLE` and `APPOINTMENT_OUTCOME_UNCERTAIN` (503), and
-`INTERNAL_ERROR`. A stale version, a state conflict, and a lost slot are always distinct codes. A conflict response never
-reveals another Customer, a note, or an Appointment detail; the owner sees who occupies a time only through the refreshed
-calendar. Every mutation requires CSRF; reschedule, cancel, and note edit carry `expectedVersion`.
+A stale version, a state conflict, and a lost slot are always distinct codes. A conflict response never reveals another Customer, a note, or an Appointment detail; the owner sees who occupies a time only through the refreshed calendar. Every mutation requires CSRF; reschedule, cancel, and note edit carry `expectedVersion`.
 
 Privacy: the calendar and history lists carry the minimum facts (a Customer display name; no note, phone, or email);
 the detail alone carries the contact data and the `customer_note` and `internal_note`, owner-only. Customer names,
@@ -397,7 +389,7 @@ create automatically after an uncertain result.
 
 Repositories require `business_id`; foreign/composite constraints validate
 common ownership. STAFF is restricted to the linked StaffMember’s schedule and
-Appointments (a future capability: in issues #19 and #21 only `BUSINESS_OWNER` has Appointment access, ADR-0028). Cross-Business attempts return safe 404 where existence need not
+Appointments (a future capability: today only `BUSINESS_OWNER` has Appointment access, ADR-0028). Cross-Business attempts return safe 404 where existence need not
 be disclosed, or 403 for an established Business context. Tests cover Business
 A versus Business B reads, lists, writes, indirect IDs, and bulk operations.
 
@@ -420,12 +412,12 @@ incorrect existing-User password returns 400
 email prevents a second global User. Frontend password confirmation is
 local-only and is never sent or persisted.
 
-## Public Business profile (issue #17; backend implemented in Phase 2B)
+## Public Business profile
 
-Decided in ADR-0017 and ADR-0018; the backend contract is implemented. **Amended by ADR-0026 (Phase 5):**
-each active Service now also carries its identifier (`services[].id`), the response is session-independent in the
+Decided in ADR-0017 and ADR-0018 and amended by ADR-0026:
+each active Service also carries its identifier (`services[].id`), the response is session-independent in the
 strict sense (the session filter skips the route), and exactly three more public routes exist (see the guest
-booking section); the paragraphs below are otherwise unchanged. One unauthenticated
+booking section). One unauthenticated
 `GET /api/public/businesses/{slug}` (a single non-empty path segment) is the only new
 public route. Every other verb or deeper path under `/api/public/businesses/**` is
 denied (401 anonymous, 403 authenticated) before it reaches MVC, and every other
@@ -450,8 +442,7 @@ repeatable-read transaction whose isolation is enforced before any read.
 
 There is deliberately no application-level rate limiter for this read-only,
 index-backed endpoint and no cap on the number of active Services returned;
-edge or CDN limiting and the public availability and booking endpoints are later
-work, and this limitation is documented rather than mitigated. After first
+edge or CDN limiting is deployment work, and this limitation is documented rather than mitigated (the public availability and booking endpoints have their own limiter, below). After first
 activation a Business slug is immutable and reserved path roots cannot be slugs
 (ADR-0018), so a shared link cannot be re-pointed at a different Business.
 
@@ -471,7 +462,7 @@ Availability, booking, login, reset, invitation, and cancellation endpoints
 receive conservative per-endpoint limits using normalized IP plus a non-secret
 slug/account/token fingerprint. Return 429 without account disclosure. An
 in-process limiter is acceptable for one instance; scaling requires shared or
-edge enforcement. CAPTCHA is not default. Phase 2 uses a deterministic
+edge enforcement. CAPTCHA is not default. Authentication uses a deterministic
 10-attempt/15-minute window per flow, remote address, and sensitive-input
 fingerprint. Keys are irreversible SHA-256 digests; raw emails, tokens, and
 passwords are never retained. Counters are per-process and non-durable. The
@@ -487,11 +478,11 @@ structured Bulgarian errors. When `COMPLETED` and `NO_SHOW` are introduced (defe
 statuses are currently `CONFIRMED` and `CANCELLED`), reject them before Appointment
 start so a future slot cannot be released early.
 
-### Guest booking (issue #18; decided in ADR-0022 to ADR-0027; the backend and the frontend are implemented, the frontend journey was visually approved by the product owner in M6, and the public traffic and browser state are verified in real browsers in M7)
+### Guest booking
 
 - **Multi-Service extension (the persistence phase M1 is implemented: `appointment_service` carries `business_id` with composite same-Business restrictive foreign keys, and its constraints are translated into sanitized fixed failures; everything else decided in [ADR-0027](decisions/ADR-0027-book-several-services-as-one-atomic-visit-with-service-lines-a-versioned-set-fingerprint-and-an-explicit-review-consistency-check.md), not implemented).** The new read routes and the second booking request shape (**implemented in phase M4**; the persistence of the claims is never done) follow the same rules as the routes above: exact matchers, session independence, `no-store`, `credentials: 'omit'`, Business-scoped resolution of every identifier (a foreign or missing Service is the same `BOOKING_SERVICE_UNAVAILABLE`; a malformed selection is a `400` whose only field error is `services`, read before any transaction; identifiers must be in the exact canonical 8-4-4-4-12 form because `UUID.fromString` also accepts short and signed forms), no personal data in URLs, logs, errors, or storage, and the unchanged limiter budgets and 16 KiB body bound. The reviewed duration and price in a request are **claims that are compared with the locked Services and never persisted**; a difference creates no Appointment and no Customer and answers `409 BOOKING_REVIEW_CHANGED` without any figure. The claims are part of the request fingerprint, so a replay with other claims is a mismatch. `appointment_service` lines carry `business_id` with composite same-Business foreign keys, and the Services of a visit are locked `FOR SHARE` in ascending identifier order.
 
-- **Public surface (implemented, Phase 5).** Beyond the profile, exactly `GET …/{slug}/services/{serviceId}/booking-options`,
+- **Public surface.** Beyond the profile, exactly `GET …/{slug}/services/{serviceId}/booking-options`,
   `GET …/{slug}/services/{serviceId}/availability`, the Service-selection reads `GET …/{slug}/booking-options` and
   `GET …/{slug}/availability` (repeated `serviceId`, ADR-0027 phase M4), and `POST …/{slug}/bookings` are public, each with its one verb
   and an exact path (no wildcard); every other verb, sibling, or deeper path under `/api/public/businesses/` stays denied
@@ -506,7 +497,7 @@ start so a future slot cannot be released early.
   properties (also in `customer`) and non-string text values are rejected as `VALIDATION_ERROR`; the body is read from the
   JSON tree because the global Jackson configuration ignores unknown properties. The exact contract is in ADR-0026
   (implementation notes).
-- **CSRF and session (implemented, Phase 5).** The four public routes are session-independent: `DatabaseSessionFilter`
+- **CSRF and session.** The four public routes are session-independent: `DatabaseSessionFilter`
   skips them (the cookie is neither read nor validated), so a valid session is not refreshed, an expired one is not
   revoked, and no session or cookie is created or cleared; the controllers cannot reach `identity` or the principal
   (architecture tests). Only `POST …/bookings` is exempt from CSRF validation, through the same exact matcher
@@ -523,7 +514,7 @@ start so a future slot cannot be released early.
   The fingerprint key is a new server secret with a retained key ring; a missing historical key is a safe,
   uncertain technical failure and never a mismatch. The fingerprint columns are replay material that a future
   erasure procedure must clear (ADR-0024).
-- **Outcomes (implemented, Phase 5).** A proven rollback is `503 BOOKING_TEMPORARILY_UNAVAILABLE` with «Резервацията не беше
+- **Outcomes.** A proven rollback is `503 BOOKING_TEMPORARILY_UNAVAILABLE` with «Резервацията не беше
   направена. Опитайте отново.»; an uncertain outcome is `503 BOOKING_OUTCOME_UNCERTAIN` with «Не получихме потвърждение за
   резервацията. Опитайте отново.»; both carry `Retry-After: 2` and the same attempt can be repeated (a replay returns the
   committed Appointment, `200`). A guest is never told a booking failed when it may exist.
@@ -531,13 +522,13 @@ start so a future slot cannot be released early.
   counted in bytes actually read before the JSON tree is built (chunked, absent, and false `Content-Length` included); more is a
   sanitized `413 REQUEST_TOO_LARGE` with the fixed instance and `no-store`, charged once to the address budgets and never to the
   contact budget, with no booking or database work. Private endpoints are unchanged.
-- **Frontend memory-only handling (implemented, Phase 6 and, for a visit of several Services, phase M5; visually approved in M6 and verified in real browsers in M7).** The public journey keeps the guest's choices, details, note, and
+- **Frontend memory-only handling.** The public journey keeps the guest's choices, details, note, and
   attempt identity only in component memory: never in the URL, `history.state` (only a step marker), `localStorage`, `sessionStorage`, cookies, the page title or
   metadata, logs, or analytics. Every public request uses `credentials: 'omit'`. The details are cleared from memory as soon as the server has answered a
   booking, a Business switch discards the whole journey and ignores its pending answers, and an uncertain outcome keeps the one frozen attempt (same ID, same bytes) until the
   guest explicitly abandons it after a warning. The selected Services, their prices, and the reviewed terms are held in memory like the other choices; the Service identifiers appear only as repeated `serviceId` parameters of the public reads (public references, no name, price, or personal value), and the request carries the reviewed terms as claims the server compares and discards. `beforeunload` is best effort; a refresh discards the in-memory attempt (residual risk, ADR-0024). Evidence: the Vitest suites under
   `frontend/src/public/booking/` (they test client behavior against stubbed HTTP and do not prove backend guarantees).
-- **Abuse protection (implemented, Phase 5).** A Booking-owned, bounded, process-local, fixed-window limiter charged before
+- **Abuse protection.** A Booking-owned, bounded, process-local, fixed-window limiter charged before
   any database work (a rejected request writes nothing and reaches no orchestration). Defaults per 15 minutes: bookings 10
   per address and Business, 30 per address across Businesses, and 5 per Business and canonical phone or email (each supplied
   identifier is charged, all or none); `booking-options` and `availability` 300 per address and Business and 600 per
@@ -554,10 +545,10 @@ start so a future slot cannot be released early.
   so fake bookings can only be slowed; production public booking waits for the Business calendar (issue #21).
 - **Logging.** No request body, note, contact, attempt ID, reference, or fingerprint is logged.
 - **Schedule coordination.** Schedule mutations and bookings are ordered by the Business schedule revision row
-  and the total lock order of ADR-0025. The mutation side is implemented (Phase 3): the revision change and the
+  and the total lock order of ADR-0025. The mutation side: the revision change and the
   schedule write share one transaction, a missing revision row is a sanitized internal failure (never a silent
   success), the revision exposes no identifier, SQL, or personal data in any failure or response, and the
-  revision is never reachable from a public route. The booking side is implemented (Phase 4): the attempt takes the shared guard before availability; fingerprint keys are configured per `docs/tasks/08a` and ADR-0024, validated at startup without echoing values, and non-secret development and test keys are rejected by the `prod` profile; booking diagnostics log only fixed event codes and exception class names.
+  revision is never reachable from a public route. The booking side: the attempt takes the shared guard before availability; fingerprint keys are configured per `docs/tasks/08a` and ADR-0024, validated at startup without echoing values, and non-secret development and test keys are rejected by the `prod` profile; booking diagnostics log only fixed event codes and exception class names.
 
 ## Secrets, logging, and asynchronous work
 
@@ -576,7 +567,7 @@ links use example origin `https://spotyourslot.bg` and Business pages use
 `https://spotyourslot.bg/{businessSlug}`. Development/tests do not send. The
 domain is not configured and its availability has not been legally verified.
 
-### Customer administration and privacy (issue #20; persistence, matching, the private API, the interface, and browser E2E are implemented)
+### Customer administration and privacy
 
 The private Customer API (`/api/business/customers`, ADR-0021) derives the user and the
 selected Business only from the server-managed security context; no path, query, or body field
@@ -591,7 +582,7 @@ locks the Business lifecycle row, then the user's Membership row, then performs 
 optimistic write, and every POST and PUT remains CSRF-protected. A missing and a foreign
 Customer ID both return the identical `CUSTOMER_NOT_FOUND` (404).
 
-Implemented behavior (Phase 4): a session without a usable owner selection (`PLATFORM_ADMIN`
+Behavior: a session without a usable owner selection (`PLATFORM_ADMIN`
 alone, an inactive Membership, a Membership of another Business) is rejected with
 `ACTIVE_BUSINESS_REQUIRED` like every private API, `MANAGER` and `STAFF` of the selected
 Business with `ACCESS_DENIED`, and a SUSPENDED Business rejects create with
@@ -632,7 +623,7 @@ exceptions (`CustomerConcurrentConflict` for a retryable concurrency failure and
 constraint text, cause, or suppressed exception. Every operation requires a caller-owned transaction
 and is scoped by Business, so a foreign-Business Customer is treated as nonexistent.
 
-Browser evidence (issue #20 Phase 6): real-browser journeys confirm that Customer search terms and values never appear in
+Browser evidence: real-browser journeys confirm that Customer search terms and values never appear in
 the URL, `localStorage`, `sessionStorage`, IndexedDB, script-visible cookies, the document title, Customer request URLs or headers,
 or the public profile surfaces; that owner B receives a byte-identical `CUSTOMER_NOT_FOUND` for Business A's Customer and sees none
 of its data; and that a Platform Administrator without an owner Membership (`ACTIVE_BUSINESS_REQUIRED`) and anonymous callers
@@ -656,26 +647,26 @@ session lifecycle, token expiry/single use, enumeration-safe errors, lifecycle
 states, validation/log redaction, and real-PostgreSQL concurrent booking. A
 pre-launch threat model and dependency/container scan are required.
 
-### Business calendar frontend privacy (issue #21 Phase 7)
+### Business calendar frontend privacy
 
 The read-only calendar, the Appointment detail, and the Customer history are owner-only in the interface as in the API (Manager, Staff, and platform-only sessions are redirected and never see the destination). The route carries only the view, a Business-local date, an opaque StaffMember identifier, and the agenda page and size; a Customer name, contact value, note, or Appointment detail never appears in a URL, `history.state`, the document title, browser storage, or the console (asserted by component and application tests, and by a mutation that tries to put private text in the URL). Failures render frontend-owned Bulgarian text and never the backend text or a network diagnostic; a missing, foreign, or malformed Appointment shows the same not-found state; a lost Business context uses the shared recovery. A late answer of a previous Business, date, view, or filter never replaces newer data. `version` and `cancelledBy` are not displayed.
 
-### Manual-create read routes authorization (issue #21, discovered Phase 8 prerequisite)
+### Manual-create read routes authorization
 
 `GET /api/business/appointment-options` and `GET /api/business/appointment-options/availability` are owner-only and derive the Business and the user only from the authenticated context (a `businessId` parameter is ignored). Anonymous is `401 AUTH_REQUIRED`; no selection, platform authority alone, and an inactive, missing, or foreign Membership are `403 ACTIVE_BUSINESS_REQUIRED`; an active Manager or Staff is `403 ACCESS_DENIED`. Only an `ACTIVE` Business offers choices (`409 BUSINESS_NOT_ACTIVE` for `DRAFT`, `409 BUSINESS_SUSPENDED`), checked before any Service or StaffMember is read. A missing, foreign, and inactive Service are one byte-identical `409 APPOINTMENT_SERVICE_UNAVAILABLE`, and a missing, foreign, inactive, and unassigned StaffMember one byte-identical `409 APPOINTMENT_STAFF_UNAVAILABLE`; every malformed request is `400 VALIDATION_ERROR` and echoes nothing. Reads need no CSRF token, answer `Cache-Control: no-store`, carry the fixed problem `instance` `/api/business/appointment-options`, and contain only StaffMember identifiers and names, the summed duration, and instants: no Customer, contact, note, price, or Appointment datum, in a URL, a response, a problem, or a log.
 
-### Reschedule option reads authorization (issue #21, discovered Phase 9 prerequisite)
+### Reschedule option reads authorization
 
 `GET /api/business/appointments/{appointmentId}/reschedule-options` and `…/reschedule-options/availability?staffMemberId=…&date=…` are owner-only and derive the Business and the user only from the authenticated context; the Appointment is the only request value that names a record, and no duration, price, Service, ignored-Appointment, or Business value is read from the request (a `businessId`, `durationMinutes`, `serviceId`, or `ignoredAppointmentId` parameter is ignored and changes nothing). Anonymous is `401 AUTH_REQUIRED`; no selection, platform authority alone, and an inactive, missing, or foreign Membership are `403 ACTIVE_BUSINESS_REQUIRED`; an active Manager or Staff is `403 ACCESS_DENIED`. Only an `ACTIVE` Business offers choices (`409 BUSINESS_NOT_ACTIVE` with the reschedule wording "Бизнесът не е активен. Часовете могат да се променят само в активен бизнес." for `DRAFT`, `409 BUSINESS_SUSPENDED`). A missing and a foreign Appointment are one byte-identical `404 APPOINTMENT_NOT_FOUND`; a `CANCELLED` or started Appointment is `409 APPOINTMENT_STATE_CONFLICT` and exposes no option; a missing, foreign, inactive, and ineligible StaffMember are one byte-identical `409 APPOINTMENT_STAFF_UNAVAILABLE` ("Членът на екипа не е наличен за тази промяна."); a malformed identifier, StaffMember, or date, a missing or repeated `staffMemberId` or `date`, and a date outside 2000-01-01 to 2100-12-31 are `400 VALIDATION_ERROR`; unknown parameters are ignored, as on every other private calendar read. Reads need no CSRF token, answer `Cache-Control: no-store`, set no cookie and no `Location`, carry the fixed problem `instance` `/api/business/appointments`, and contain only StaffMember identifiers and names, the stored duration, and instants: no Customer, contact, note, price, `version`, Service, or cancellation datum, in a URL, a response, a problem, or a log. The result is advisory and reserves nothing; the reschedule revalidates everything under its own locks.
 
-### Manual-create frontend privacy and authorization (issue #21 Phase 8)
+### Manual-create frontend privacy and authorization
 
-The create flow is owner-only in the interface as in the API. The control exists only for the owner of an `ACTIVE` Business, the route redirects a `DRAFT` or `SUSPENDED` Business, a Manager, a Staff, and a platform-only session, and none of this is trusted: every refusal of the server (`ACCESS_DENIED`, `ACTIVE_BUSINESS_REQUIRED`, `BUSINESS_NOT_ACTIVE`, `BUSINESS_SUSPENDED`) blocks the confirmation. The form lives only in the memory of one mounted component, keyed by the active Business and dropped on a Business switch, on leaving, and after a success; the Customer search term travels only in the POST body of the existing search; the route carries only the calendar state; and no Customer, contact, note, Service claim, price, or attempt state is written to a URL, `history.state`, the title, local or session storage, cookies, or the console (asserted, with a mutation check). The request is exactly the Phase 4 contract with one POST per deliberate confirmation and no automatic repeat; a response that never arrived, an unreadable success, and any result that does not rule the creation out are unresolved: the form freezes (no send, edit, or reset), because the create has no idempotency, and the only way on is the calendar, where the owner checks whether the Appointment exists. A known rollback may be retried explicitly. Failures render frontend-owned Bulgarian text, never the backend text, an identifier, or SQL.
+The create flow is owner-only in the interface as in the API. The control exists only for the owner of an `ACTIVE` Business, the route redirects a `DRAFT` or `SUSPENDED` Business, a Manager, a Staff, and a platform-only session, and none of this is trusted: every refusal of the server (`ACCESS_DENIED`, `ACTIVE_BUSINESS_REQUIRED`, `BUSINESS_NOT_ACTIVE`, `BUSINESS_SUSPENDED`) blocks the confirmation. The form lives only in the memory of one mounted component, keyed by the active Business and dropped on a Business switch, on leaving, and after a success; the Customer search term travels only in the POST body of the existing search; the route carries only the calendar state; and no Customer, contact, note, Service claim, price, or attempt state is written to a URL, `history.state`, the title, local or session storage, cookies, or the console (asserted, with a mutation check). The request is exactly the creation contract with one POST per deliberate confirmation and no automatic repeat; a response that never arrived, an unreadable success, and any result that does not rule the creation out are unresolved: the form freezes (no send, edit, or reset), because the create has no idempotency, and the only way on is the calendar, where the owner checks whether the Appointment exists. A known rollback may be retried explicitly. Failures render frontend-owned Bulgarian text, never the backend text, an identifier, or SQL.
 
-### Reschedule frontend privacy and authorization (issue #21 Phase 9)
+### Reschedule frontend privacy and authorization
 
 The flow is owner-only in the interface as in the API. The control exists only for the owner of an `ACTIVE` Business viewing a `CONFIRMED`, not yet started Appointment; the route redirects a `DRAFT` or `SUSPENDED` Business to the read-only detail, a Manager, a Staff, a platform-only, and an anonymous session to their own destinations, and none of this is trusted: every refusal of the server (`ACCESS_DENIED`, `ACTIVE_BUSINESS_REQUIRED`, `BUSINESS_NOT_ACTIVE`, `BUSINESS_SUSPENDED`, `APPOINTMENT_NOT_FOUND`, `APPOINTMENT_STATE_CONFLICT`) blocks the confirmation and is shown as one frontend-owned message, never the backend text, an identifier, or SQL. The proposal lives only in the memory of one mounted component, keyed by the Business and the Appointment and dropped on a Business switch, on leaving, on a concurrent update, and after a success; the route carries only the Appointment identifier in the path and the safe calendar or Customer origin in the query (anything else is dropped when the route is read); and no Customer, Service, StaffMember name, note, price, Appointment fact, `expectedVersion`, or unresolved state is written to a URL, `history.state`, the title, local or session storage, cookies, or the console (asserted, with mutation checks). The only values sent are the Appointment in the path and, in the one POST, `expectedVersion` and, when they change, `staffMemberId` and `start`: a duration, a Service claim, a price, a Customer, or an ignored Appointment is never sent (a mutation that sends a duration is killed). One POST is sent per deliberate confirmation with a synchronous double-submit guard, and never automatically again; a response that never arrived, an unreadable success, and any result that does not rule out a committed change freeze the submitted review, because another POST from the same form could apply the same intent to a state the owner never saw, and the only way on is a re-read of the Appointment.
 
-### Cancellation and internal-note frontend privacy and authorization (issue #21 Phase 10)
+### Cancellation and internal-note frontend privacy and authorization
 
 Both operations are owner-only in the interface as in the API: the controls exist only for the owner of an `ACTIVE` Business (the cancellation also only for a `CONFIRMED`, not yet started Appointment; the note for every status), and none of that is trusted: every refusal of the server (`ACCESS_DENIED`, `ACTIVE_BUSINESS_REQUIRED`, `BUSINESS_NOT_ACTIVE`, `BUSINESS_SUSPENDED`, `APPOINTMENT_NOT_FOUND`, `APPOINTMENT_STATE_CONFLICT`) removes the mutation controls and is shown as one frontend-owned message, never the backend text, an identifier, or SQL. The requests carry only the Appointment in the path and `expectedVersion` (and the normalized note, with a blank string clearing it); no reason, actor, status, or time is ever sent. The edited note lives only in the memory of the mounted detail, is dropped on a Business switch, on leaving, on a re-read, and after a success, and is never written to a URL, `history.state`, the title, local or session storage, cookies, or the console (asserted, with mutation checks); it is absent from the calendar, agenda, Customer history, and every public contract. `version` and `cancelled_by` are never displayed. A 2xx answer counts as success only when it is a strictly validated acknowledgement of the request that was sent (same Appointment, expected state, a safe-integer version beyond the submitted one, exactly the canonical submitted note); a contradictory 2xx answer is unresolved. After a result that cannot rule a commit out (uncertain outcome, lost response, unreadable success, unknown code, unexpected 5xx) exactly one request was sent, the submitted operation is frozen without any control that could send it again, and the owner must read the Appointment again; a callback that arrives after a reset or an unmount changes nothing.
