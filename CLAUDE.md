@@ -33,6 +33,28 @@ action, or unexpected repository state requires stopping for approval at
 every risk level. Explicit phase-approval requirements in task documents
 remain authoritative.
 
+## Issue-sized delivery workflow
+
+We work in complete issue-sized deliveries, not approval gates after every
+small phase:
+full implementation with essential tests and a ZIP → consolidated code review →
+consolidated corrections → human browser validation →
+final corrections, tests, documentation, and ZIP → final review.
+
+- Write the essential correctness tests while implementing. Do not defer all
+  testing until visual approval, and do not treat automated browser (E2E)
+  evidence and human visual approval as substitutes for each other.
+- Internal phases are working structure, not approval gates: continue through
+  them within the approved issue scope. Stop only for a concrete blocker, a
+  required scope expansion, a destructive action, an unresolved decision, or
+  unexpected repository state.
+- Human visual approval remains the product owner's alone and is never claimed
+  on their behalf. Record which areas are already approved and which still
+  need validation.
+- Strict-risk safeguards (read-only inspection, explicit approval before
+  persistent state changes, no Git or GitHub mutation without authorization)
+  are unchanged by this workflow.
+
 ## Phase-start preconditions and CI
 
 Continuous integration is advisory, not a hard gate, for starting the next phase.

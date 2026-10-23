@@ -25,7 +25,8 @@ function Leave({ onProceed }: { onProceed: () => void }) {
   )
 }
 
-export type RenderOptions = { canChange?: boolean; now?: Date }
+// `now` is a fixed instant or a clock that keeps running.
+export type RenderOptions = { canChange?: boolean; now?: Date | (() => Date) }
 
 export function renderDetail(options: RenderOptions = {}) {
   const handlers = {
@@ -35,7 +36,8 @@ export function renderDetail(options: RenderOptions = {}) {
     onReschedule: vi.fn(),
   }
   const navigated = vi.fn()
-  const clock = options.now ?? NOW
+  const given = options.now ?? NOW
+  const clock = typeof given === 'function' ? given : () => given
   const view = render(
     <UnsavedChangesGuardProvider>
       <Leave onProceed={navigated} />
@@ -43,7 +45,7 @@ export function renderDetail(options: RenderOptions = {}) {
         appointmentId="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
         origin={CALENDAR_ORIGIN}
         canChange={options.canChange ?? true}
-        now={() => clock}
+        now={clock}
         {...handlers}
       />
     </UnsavedChangesGuardProvider>,

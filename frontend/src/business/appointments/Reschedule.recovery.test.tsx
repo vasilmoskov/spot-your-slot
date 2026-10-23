@@ -95,7 +95,7 @@ describe('validation and a temporary refusal keep the proposal editable', () => 
     // No automatic retry happened, and the proposal is intact.
     await act(async () => {})
     expect(backend.posts()).toHaveLength(1)
-    expect(screen.getByRole('region', { name: 'Преглед и потвърждение' })).toHaveTextContent(/След промяната: .*10:00–11:15/)
+    expect(screen.getByRole('region', { name: 'Преглед и потвърждение' })).toHaveTextContent(/След.*10:00–11:15/)
     expect(reviewButton()).toBeEnabled()
     confirm()
     await waitFor(() => expect(onRescheduled).toHaveBeenCalledTimes(1))
@@ -254,7 +254,7 @@ describe('the StaffMember and slot results', () => {
     fireEvent.click(within(group).getAllByRole('radio')[0]!)
     next()
     await screen.findByRole('button', { name: 'Промени часа' })
-    expect(screen.getByRole('region', { name: 'Преглед и потвърждение' })).toHaveTextContent(/След промяната: Георги Стилистов/)
+    expect(screen.getByRole('region', { name: 'Преглед и потвърждение' })).toHaveTextContent(/След.*Георги Стилистов/)
   })
 
   it('a StaffMember refusal found by the availability read returns to the StaffMember step', async () => {
@@ -311,7 +311,7 @@ describe('an outcome that cannot be ruled out', () => {
     for (const name of ['Напред', 'Назад', 'Отказ', 'Промени члена на екипа', 'Промени датата и часа']) {
       expect(screen.queryByRole('button', { name })).toBeNull()
     }
-    expect(screen.getByRole('region', { name: 'Преглед и потвърждение' })).toHaveTextContent(/След промяната: Георги Стилистов/)
+    expect(screen.getByRole('region', { name: 'Преглед и потвърждение' })).toHaveTextContent(/След.*Георги Стилистов/)
 
     // A stale reference to the old button, repeated clicks and keys cannot send anything.
     fireEvent.click(staleButton)

@@ -1,5 +1,5 @@
 import { expectShown } from './support/pagination'
-import { expect, test, type BrowserContext, type Page } from '@playwright/test'
+import { expect, test, type BrowserContext, type Page, type Request } from '@playwright/test'
 import { apiRequest } from './support/browser'
 import {
   CUSTOMERS_PATH,
@@ -444,6 +444,145 @@ async function createViaForm(
 }
 
 const details = (target: Page) => target.locator('dl.business-details-list')
+
+test.describe('Customer Appointment history date field', () => {
+  test('takes typed and pasted dates key by key, sends nothing partial or invalid, and clears', async () => {
+    await showBusiness(page, CATALOG_NAME)
+    await openCustomers(page)
+    await expect.poll(async () => (await visibleNames(page)).length).toBeGreaterThan(0)
+    const names = await visibleNames(page)
+    await page.getByRole('link', { name: `Отвори ${names[0]}` }).click()
+    await expect(page.getByRole('heading', { name: 'Часове', level: 3, exact: true })).toBeVisible()
+    await expect(page.getByText('Клиентът няма часове.')).toBeVisible()
+    const field = page.getByLabel('Дата', { exact: true })
+    await expect(field).toHaveValue('')
+
+    const dates: Array<string | null> = []
+    const record = (request: Request) => {
+      const url = new URL(request.url())
+      if (/\/appointments$/.test(url.pathname)) dates.push(url.searchParams.get('date'))
+    }
+    page.on('request', record)
+    try {
+      // The reported defect: day, month, then the year typed one key at a time kept dd.mm.0026.
+      await field.pressSequentially('22')
+      await expect(field).toHaveValue('22.')
+      await field.pressSequentially('10')
+      await expect(field).toHaveValue('22.10.')
+      await field.pressSequentially('2026')
+      await expect(field).toHaveValue('22.10.2026')
+      await expect(page.getByText('Няма часове на тази дата.')).toBeVisible()
+      expect(dates).toEqual(['2026-10-22'])
+
+      await field.clear()
+      await expect(page.getByText('Клиентът няма часове.')).toBeVisible()
+      expect(dates).toEqual(['2026-10-22', null])
+
+      // Digits only, and the dotted form inserted as one text, give the same date.
+      await field.pressSequentially('23102026')
+      await expect(field).toHaveValue('23.10.2026')
+      await expect(page.getByText('Няма часове на тази дата.')).toBeVisible()
+      await field.clear()
+      await page.keyboard.insertText('24.10.2026')
+      await expect(field).toHaveValue('24.10.2026')
+      await expect.poll(() => dates.at(-1)).toBe('2026-10-24')
+
+      // An impossible date is refused and sends nothing; a partial one only complains after leaving the field.
+      const sentBefore = dates.length
+      await field.clear()
+      await field.pressSequentially('31022026')
+      await expect(page.getByText('Въведете валидна дата.')).toBeVisible()
+      await field.clear()
+      await field.pressSequentially('2210')
+      await expect(page.getByText('Въведете валидна дата.')).toHaveCount(0)
+      await page.keyboard.press('Tab')
+      await expect(page.getByText('Въведете валидна дата.')).toBeVisible()
+      expect(dates.slice(sentBefore).filter((date) => date !== null)).toEqual([])
+
+      // Malformed text is kept as entered and refused: a ninth digit never becomes the date without it, and prose
+      // around a date is never mined for one.
+      await field.clear()
+      await field.pressSequentially('22102026')
+      await expect(field).toHaveValue('22.10.2026')
+      await expect.poll(() => dates.at(-1)).toBe('2026-10-22')
+      const applied = dates.length
+      await field.pressSequentially('7')
+      await expect(field).toHaveValue('22.10.20267')
+      await expect(page.getByText('Въведете валидна дата.')).toBeVisible()
+      await field.clear()
+      await page.keyboard.insertText('на 22.10.2026 г.')
+      await expect(field).toHaveValue('на 22.10.2026 г.')
+      await expect(page.getByText('Въведете валидна дата.')).toBeVisible()
+      expect(dates.slice(applied)).toEqual([null])
+
+      // The calendar button calls the browser's real picker API; the date chosen in the native control (filled the
+      // way Playwright supports for a date input) is shown as text and applied.
+      await page.evaluate(() => {
+        const original = HTMLInputElement.prototype.showPicker
+        const calls: string[] = []
+        ;(window as unknown as { pickerCalls: string[] }).pickerCalls = calls
+        HTMLInputElement.prototype.showPicker = function showPicker() {
+          try {
+            const result = original.call(this)
+            calls.push('opened')
+            return result
+          } catch (error) {
+            calls.push(`threw ${(error as Error).name}`)
+            throw error
+          }
+        }
+      })
+      await page.getByRole('button', { name: 'Избери дата от календара' }).click()
+      expect(await page.evaluate(() => (window as unknown as { pickerCalls: string[] }).pickerCalls)).toEqual(['opened'])
+      await page.keyboard.press('Escape')
+      // The popup's own input is visually hidden by design, so the fill is forced past Playwright's visibility check.
+      await page.locator('input[type="date"]').fill('2026-12-05', { force: true })
+      await expect(field).toHaveValue('05.12.2026')
+      await expect.poll(() => dates.at(-1)).toBe('2026-12-05')
+      await page.evaluate(() => { (HTMLInputElement.prototype as { showPicker?: unknown }).showPicker = undefined })
+
+      // Without the picker API the button shows the native date input instead of doing nothing.
+      await page.getByRole('button', { name: 'Избери дата от календара' }).click()
+      const fallback = page.getByLabel('Дата от календара', { exact: true })
+      await expect(fallback).toBeVisible()
+      await expect(fallback).toBeFocused()
+      // Real keyboard input into the native control. Day and month are equal, so the browser's segment order
+      // does not matter.
+      await page.keyboard.type('11112026')
+      await expect(field).toHaveValue('11.11.2026')
+      await expect.poll(() => dates.at(-1)).toBe('2026-11-11')
+      const sentAfterFirst = dates.length
+      // An incomplete native edit (the year segment erased) keeps the applied filter and the text.
+      await page.keyboard.press('Backspace')
+      await expect(field).toHaveValue('11.11.2026')
+      // A year below and one above the supported range are refused and send nothing.
+      await page.keyboard.type('0026')
+      await expect(field).toHaveValue('11.11.0026')
+      await expect(page.getByText('Въведете валидна дата.')).toBeVisible()
+      await page.keyboard.press('Backspace')
+      await page.keyboard.type('2101')
+      await expect(field).toHaveValue('11.11.2101')
+      await expect(page.getByText('Въведете валидна дата.')).toBeVisible()
+      expect(dates.length).toBe(sentAfterFirst)
+      // A valid replacement applies and clears the error.
+      await page.keyboard.press('Backspace')
+      await page.keyboard.type('2027')
+      await expect(field).toHaveValue('11.11.2027')
+      await expect(page.getByText('Въведете валидна дата.')).toHaveCount(0)
+      await expect.poll(() => dates.at(-1)).toBe('2027-11-11')
+      // Erasing every segment is an intentional clear: the filter is removed.
+      await page.keyboard.press('Backspace')
+      await page.keyboard.press('Shift+Tab')
+      await page.keyboard.press('Backspace')
+      await page.keyboard.press('Shift+Tab')
+      await page.keyboard.press('Backspace')
+      await expect(field).toHaveValue('')
+      await expect.poll(() => dates.at(-1)).toBe(null)
+    } finally {
+      page.off('request', record)
+    }
+  })
+})
 
 test.describe('Customer creation, editing and validation', () => {
   test.beforeEach(async () => {

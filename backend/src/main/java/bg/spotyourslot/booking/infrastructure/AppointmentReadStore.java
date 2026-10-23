@@ -115,24 +115,26 @@ public class AppointmentReadStore {
                 + (filteredByStaff ? "  AND a.staff_member_id = :staffMemberId\n" : "");
     }
 
-    static String historyListSql() {
+    /** The history page: start then identifier, in one direction for both; the date is an optional half-open interval. */
+    static String historyListSql(boolean dated, boolean ascending) {
+        String direction = ascending ? "ASC" : "DESC";
         return """
                 SELECT a.id, a.status, a.source, a.start_at, a.end_at, a.staff_display_name
                 FROM appointment a
                 WHERE a.business_id = :businessId
                   AND a.customer_id = :customerId
-                ORDER BY a.start_at DESC, a.id DESC
-                LIMIT :size OFFSET :offset
-                """;
+                """ + (dated ? "  AND a.start_at >= :dayStart AND a.start_at < :dayEnd\n" : "")
+                + "ORDER BY a.start_at " + direction + ", a.id " + direction + "\n"
+                + "LIMIT :size OFFSET :offset\n";
     }
 
-    static String historyCountSql() {
+    static String historyCountSql(boolean dated) {
         return """
                 SELECT count(*)
                 FROM appointment a
                 WHERE a.business_id = :businessId
                   AND a.customer_id = :customerId
-                """;
+                """ + (dated ? "  AND a.start_at >= :dayStart AND a.start_at < :dayEnd\n" : "");
     }
 
     static String linesSql() {
@@ -192,18 +194,36 @@ public class AppointmentReadStore {
 
     // ---- Customer history -----------------------------------------------------------------------
 
-    public long countHistory(UUID businessId, UUID customerId) {
-        return jdbc.sql(historyCountSql())
+    public long countHistory(UUID businessId, UUID customerId, Instant dayStartOrNull, Instant dayEndOrNull) {
+        boolean dated = dayStartOrNull != null;
+        JdbcClient.StatementSpec statement = jdbc.sql(historyCountSql(dated))
                 .param("businessId", businessId)
-                .param("customerId", customerId)
-                .query(Long.class)
-                .single();
+                .param("customerId", customerId);
+        if (dated) {
+            statement = statement.param("dayStart", databaseTime(dayStartOrNull))
+                    .param("dayEnd", databaseTime(dayEndOrNull));
+        }
+        return statement.query(Long.class).single();
     }
 
-    public List<HistoryRow> findHistoryPage(UUID businessId, UUID customerId, long offset, int size) {
-        return jdbc.sql(historyListSql())
+    public List<HistoryRow> findHistoryPage(
+            UUID businessId,
+            UUID customerId,
+            Instant dayStartOrNull,
+            Instant dayEndOrNull,
+            bg.spotyourslot.booking.AppointmentCalendarRecords.HistoryOrder order,
+            long offset,
+            int size) {
+        boolean dated = dayStartOrNull != null;
+        JdbcClient.StatementSpec statement = jdbc.sql(historyListSql(
+                        dated, order == bg.spotyourslot.booking.AppointmentCalendarRecords.HistoryOrder.OLDEST_FIRST))
                 .param("businessId", businessId)
-                .param("customerId", customerId)
+                .param("customerId", customerId);
+        if (dated) {
+            statement = statement.param("dayStart", databaseTime(dayStartOrNull))
+                    .param("dayEnd", databaseTime(dayEndOrNull));
+        }
+        return statement
                 .param("offset", offset)
                 .param("size", size)
                 .query((resultSet, rowNumber) -> new HistoryRow(

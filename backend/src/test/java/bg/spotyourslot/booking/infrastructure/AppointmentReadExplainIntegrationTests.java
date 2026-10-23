@@ -333,13 +333,13 @@ class AppointmentReadExplainIntegrationTests extends PostgresIntegrationTest {
     }
 
     private Query history(String name, UUID business, UUID customer, long offset, int size) {
-        return new Query(name, AppointmentReadStore.historyListSql(), spec -> spec
+        return new Query(name, AppointmentReadStore.historyListSql(false, false), spec -> spec
                 .param("businessId", business).param("customerId", customer)
                 .param("offset", offset).param("size", size));
     }
 
     private Query historyCount(String name, UUID business, UUID customer) {
-        return new Query(name, AppointmentReadStore.historyCountSql(), spec -> spec
+        return new Query(name, AppointmentReadStore.historyCountSql(false), spec -> spec
                 .param("businessId", business).param("customerId", customer));
     }
 

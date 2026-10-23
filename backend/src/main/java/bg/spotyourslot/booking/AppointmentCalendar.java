@@ -4,6 +4,7 @@ import bg.spotyourslot.booking.AppointmentCalendarRecords.AgendaPage;
 import bg.spotyourslot.booking.AppointmentCalendarRecords.AppointmentDetail;
 import bg.spotyourslot.booking.AppointmentCalendarRecords.CalendarView;
 import bg.spotyourslot.booking.AppointmentCalendarRecords.CustomerHistoryPage;
+import bg.spotyourslot.booking.AppointmentCalendarRecords.HistoryOrder;
 import bg.spotyourslot.identity.AuthenticatedBusinessContext;
 import java.time.LocalDate;
 import java.util.UUID;
@@ -53,10 +54,26 @@ public interface AppointmentCalendar {
     AppointmentDetail detail(AuthenticatedBusinessContext context, UUID appointmentId);
 
     /**
-     * The Appointments of one Customer, newest first by start instant, then identifier descending.
+     * The Appointments of one Customer, ordered by start instant then identifier (both ascending for
+     * {@link HistoryOrder#OLDEST_FIRST}, both descending for {@link HistoryOrder#NEWEST_FIRST}), optionally
+     * only those that start on one Business-local calendar date (the half-open interval from that date's
+     * start to the next date's start in the Business timezone, so a 23- or 25-hour day is exact). The order
+     * and the date apply before paging, across the whole history, and the total is the filtered count.
      *
+     * @param order {@code null} means {@link HistoryOrder#OLDEST_FIRST}
+     * @param dateOrNull the Business-local date within the supported range, or {@code null} for every date
+     * @throws AppointmentCalendarException.InvalidInput for a date outside the supported range
      * @throws AppointmentCalendarException.CustomerNotFound when the Customer is missing or foreign
      */
+    CustomerHistoryPage customerHistory(
+            AuthenticatedBusinessContext context,
+            UUID customerId,
+            Integer page,
+            Integer size,
+            HistoryOrder order,
+            LocalDate dateOrNull);
+
+    /** The history in the default order (oldest first) across every date. */
     CustomerHistoryPage customerHistory(
             AuthenticatedBusinessContext context, UUID customerId, Integer page, Integer size);
 }

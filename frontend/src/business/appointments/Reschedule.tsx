@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState }
 import { Button } from '../../ui/Button'
 import { useGuardedFormState, type GuardNotice } from '../../ui/UnsavedChangesGuard'
 import { SCHEDULE_MAX_DATE, SCHEDULE_MIN_DATE, isCanonicalDate, type AppointmentOrigin } from '../../navigation'
-import { formatDateOnlyLong, parseInstant } from '../../public/booking/dates'
+import { parseInstant } from '../../public/booking/dates'
 import { localDateIn } from '../schedule/exceptions/presentation'
 import { getAppointment, type AppointmentDetails } from '../calendar/api'
 import { businessDateOf, formatTimeRange } from '../calendar/presentation'
@@ -29,6 +29,7 @@ import {
   isEffective,
   reduce,
   staffChanged,
+  startChanged,
   type Original,
   type Step,
 } from './rescheduleModel'
@@ -513,7 +514,7 @@ function RescheduleForm({
     state.staffMemberId !== null &&
     effective
 
-  const currentWhen = `${formatDateOnlyLong(original.date)}, ${formatTimeRange(detail.start, detail.end, timezone)}`
+  const currentTime = formatTimeRange(detail.start, detail.end, timezone)
 
   function reviewData(): ReviewData | null {
     if (newStaffName === undefined || state.start === null) return null
@@ -522,7 +523,9 @@ function RescheduleForm({
       currentStaffName: detail.staffDisplayName,
       newStaffName,
       staffChanged: staffChanged(state, original),
-      currentWhen,
+      startChanged: startChanged(state, original),
+      currentDate: original.date,
+      currentTime,
       newDate: state.date,
       newTime: formatTimeRange(state.start.start, state.start.end, timezone),
     }

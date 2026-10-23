@@ -94,9 +94,13 @@ describe('Appointment detail', () => {
     renderDetail()
     expect(await screen.findByText('Отменен')).toBeInTheDocument()
     const notice = screen.getByRole('status')
-    expect(notice).toHaveTextContent('Отменен на')
-    expect(notice).toHaveTextContent('10 октомври 2026')
-    expect(notice).toHaveTextContent('09:30')
+    // Three separate lines, the timestamp in the Business timezone and without a weekday.
+    expect([...notice.querySelectorAll('.cancelled-notice-line')].map((line) => line.textContent)).toEqual([
+      'Този час е отменен.',
+      'Времето е свободно за ново записване.',
+      'Дата на отмяна: 10 октомври 2026 г., 09:30',
+    ])
+    expect(notice).not.toHaveTextContent('Отменен на')
     expect(document.body.textContent).not.toMatch(/BUSINESS|UNKNOWN|бизнеса е отменил/i)
     expect(screen.queryByText('Потвърден')).toBeNull()
   })

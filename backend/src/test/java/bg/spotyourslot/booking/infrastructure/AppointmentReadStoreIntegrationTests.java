@@ -13,6 +13,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import bg.spotyourslot.booking.AppointmentCalendarRecords.HistoryOrder;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -65,8 +66,8 @@ class AppointmentReadStoreIntegrationTests extends PostgresIntegrationTest {
         assertThat(store.countWindow(mine.business(), FROM, TO, foreign.staff())).isZero();
         assertThat(store.findDetail(mine.business(), other)).isEmpty();
         assertThat(store.findDetail(foreign.business(), other)).isPresent();
-        assertThat(store.countHistory(mine.business(), foreign.customer())).isZero();
-        assertThat(store.findHistoryPage(mine.business(), foreign.customer(), 0, 10)).isEmpty();
+        assertThat(store.countHistory(mine.business(), foreign.customer(), null, null)).isZero();
+        assertThat(store.findHistoryPage(mine.business(), foreign.customer(), null, null, HistoryOrder.NEWEST_FIRST, 0, 10)).isEmpty();
         assertThat(store.findLines(mine.business(), List.of(other))).isEmpty();
         assertThat(store.findLines(foreign.business(), List.of(other))).hasSize(1);
     }
@@ -114,7 +115,7 @@ class AppointmentReadStoreIntegrationTests extends PostgresIntegrationTest {
     }
 
     @Test
-    void theHistoryIsNewestFirstWithTheIdentifierAsTheDescendingTieBreaker() {
+    void theHistoryIsOrderedByStartWithTheIdentifierAsTheTieBreakerInTheSameDirection() {
         UUID high = UUID.fromString("ffffffff-0000-0000-0000-000000000000");
         UUID low = UUID.fromString("00000000-0000-0000-0000-000000000009");
         for (UUID id : List.of(low, high)) {
@@ -124,10 +125,37 @@ class AppointmentReadStoreIntegrationTests extends PostgresIntegrationTest {
         }
         UUID older = add(withStaff(mine), FROM.minusSeconds(86_400L), 30);
 
-        List<HistoryRow> page = store.findHistoryPage(mine.business(), mine.customer(), 0, 10);
+        List<HistoryRow> newest = store.findHistoryPage(mine.business(), mine.customer(), null, null, HistoryOrder.NEWEST_FIRST, 0, 10);
+        List<HistoryRow> oldest = store.findHistoryPage(mine.business(), mine.customer(), null, null, HistoryOrder.OLDEST_FIRST, 0, 10);
 
-        assertThat(page).extracting(HistoryRow::id).containsExactly(high, low, older);
-        assertThat(store.countHistory(mine.business(), mine.customer())).isEqualTo(3);
+        assertThat(newest).extracting(HistoryRow::id).containsExactly(high, low, older);
+        // Identical starts: the identifier decides, ascending when the order is ascending.
+        assertThat(oldest).extracting(HistoryRow::id).containsExactly(older, low, high);
+        assertThat(store.countHistory(mine.business(), mine.customer(), null, null)).isEqualTo(3);
+        // The order holds across the page boundary: the whole history is sorted before the page is cut.
+        assertThat(store.findHistoryPage(mine.business(), mine.customer(), null, null, HistoryOrder.OLDEST_FIRST, 1, 1))
+                .extracting(HistoryRow::id).containsExactly(low);
+        assertThat(store.findHistoryPage(mine.business(), mine.customer(), null, null, HistoryOrder.NEWEST_FIRST, 2, 1))
+                .extracting(HistoryRow::id).containsExactly(older);
+    }
+
+    @Test
+    void theHistoryDateIsAHalfOpenInstantIntervalAppliedBeforeCountingAndPaging() {
+        Instant dayStart = FROM;
+        Instant dayEnd = FROM.plusSeconds(86_400L);
+        UUID atStart = add(withStaff(mine), dayStart, 30);
+        UUID inside = add(withStaff(mine), dayStart.plusSeconds(3600), 30);
+        UUID justBefore = add(withStaff(mine), dayStart.minusSeconds(1), 30);
+        UUID atEnd = add(withStaff(mine), dayEnd, 30);
+
+        assertThat(store.countHistory(mine.business(), mine.customer(), dayStart, dayEnd)).isEqualTo(2);
+        assertThat(store.findHistoryPage(mine.business(), mine.customer(), dayStart, dayEnd, HistoryOrder.OLDEST_FIRST, 0, 10))
+                .extracting(HistoryRow::id).containsExactly(atStart, inside);
+        assertThat(store.findHistoryPage(mine.business(), mine.customer(), dayStart, dayEnd, HistoryOrder.NEWEST_FIRST, 1, 1))
+                .extracting(HistoryRow::id).containsExactly(atStart);
+        assertThat(List.of(justBefore, atEnd)).doesNotContainAnyElementsOf(
+                store.findHistoryPage(mine.business(), mine.customer(), dayStart, dayEnd, HistoryOrder.OLDEST_FIRST, 0, 10)
+                        .stream().map(HistoryRow::id).toList());
     }
 
     @Test

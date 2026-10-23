@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { routeHref, type AppointmentOrigin } from '../../navigation'
 import { Button } from '../../ui/Button'
-import { formatDateOnlyLong, formatTimeDistinct, parseInstant } from '../../public/booking/dates'
+import { formatTimeDistinct, parseInstant } from '../../public/booking/dates'
 import { formatCustomerPhone } from '../customers/presentation'
 import { CancelDialog, CancelSection, InternalNote, OperationNotice } from '../appointments/OperationViews'
 import { useAppointmentOperations, type RefreshResult } from '../appointments/useAppointmentOperations'
 import { getAppointment, type AppointmentDetails } from './api'
+import { TemporalBadge, useBoundaryClock } from './temporal'
 import {
   APPOINTMENT_NOT_FOUND_MESSAGE,
   calendarFailureMessage,
@@ -20,6 +21,7 @@ import {
   formatTotalDuration,
   sourceLabel,
   statusLabel,
+  weekColumnLines,
 } from './presentation'
 
 type AppointmentDetailProps = {
@@ -34,6 +36,9 @@ type AppointmentDetailProps = {
   onBack: () => void
   onOpenCustomer: (customerId: string) => void
 }
+
+/** "20 октомври 2026 г.": the day, the month and the year, without a weekday. */
+const cancelledDayText = (date: string) => `${weekColumnLines(date).dayMonth} ${Number(date.slice(0, 4))} г.`
 
 type LoadFailure = { message: string; retryable: boolean }
 
@@ -63,6 +68,9 @@ export function AppointmentDetail({
   const noteEditRef = useRef<HTMLButtonElement>(null)
   const noteNoticeRef = useRef<HTMLDivElement>(null)
   const headingRef = useRef<HTMLHeadingElement>(null)
+  // The exact current time: the start and end instants of the loaded Appointment arm one timer, so the temporal badge and
+  // the availability of the change actions follow the clock without polling or a network read.
+  const nowMs = useBoundaryClock(appointment ? [appointment] : [], () => now().getTime())
   // An explicit re-read replaces the page: focus returns to its heading once the data is shown again.
   const focusHeading = useRef(false)
 
@@ -241,8 +249,8 @@ export function AppointmentDetail({
     appointment.businessStatus === 'ACTIVE' &&
     appointment.status === 'CONFIRMED' &&
     startMoment !== null &&
-    startMoment > now().getTime()
-  const notStarted = startMoment !== null && startMoment > now().getTime()
+    startMoment > nowMs
+  const notStarted = startMoment !== null && startMoment > nowMs
   const ownerActive = canChange && appointment.businessStatus === 'ACTIVE'
   // Only a confirmed, future Appointment of an ACTIVE Business can be cancelled; the note is editable in
   // every status. An action that cannot work is absent, not disabled; the server decides again.
@@ -251,7 +259,7 @@ export function AppointmentDetail({
   const cancelledAt = appointment.cancellation?.cancelledAt ?? null
   const cancelledMoment =
     cancelledAt !== null && parseInstant(cancelledAt) !== null
-      ? `${formatDateOnlyLong(businessDateOf(cancelledAt, timezone))}, ${formatTimeDistinct(cancelledAt, timezone)}`
+      ? `${cancelledDayText(businessDateOf(cancelledAt, timezone))}, ${formatTimeDistinct(cancelledAt, timezone)}`
       : null
 
   // Leaving to the calendar after an unresolved outcome is the recovery itself: no ordinary prompt.
@@ -282,7 +290,7 @@ export function AppointmentDetail({
           <h2 ref={headingRef} tabIndex={-1}>
             {formatDateHeading(date)}, {formatTimeRange(appointment.start, appointment.end, timezone)}
           </h2>
-          <p>
+          <p className="calendar-badges">
             <span
               className={
                 cancelled
@@ -292,13 +300,15 @@ export function AppointmentDetail({
             >
               {statusLabel(appointment.status)}
             </span>
+            <TemporalBadge status={appointment.status} start={appointment.start} end={appointment.end} nowMs={nowMs} />
           </p>
         </header>
 
         {cancelled && (
           <p ref={cancelledRef} className="status-message status-info" role="status" tabIndex={-1}>
-            Този час е отменен и вече не заема време в графика.
-            {cancelledMoment ? ` Отменен на ${cancelledMoment}.` : ''}
+            <span className="cancelled-notice-line">Този час е отменен.</span>
+            <span className="cancelled-notice-line">Времето е свободно за ново записване.</span>
+            {cancelledMoment && <span className="cancelled-notice-line">Дата на отмяна: {cancelledMoment}</span>}
           </p>
         )}
 

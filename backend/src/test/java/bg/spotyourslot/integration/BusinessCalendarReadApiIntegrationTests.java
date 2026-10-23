@@ -435,7 +435,7 @@ class BusinessCalendarReadApiIntegrationTests extends BusinessCalendarApiIntegra
     // ---- Customer history ------------------------------------------------------------------------
 
     @Test
-    void theCustomerHistoryIsNewestFirstWithMinimumFactsAndOnlyThatCustomersAppointments() throws Exception {
+    void theCustomerHistoryNewestFirstHasMinimumFactsAndOnlyThatCustomersAppointments() throws Exception {
         UUID other = customer(owner.businessId(), "Друг Клиент");
         UUID oldest = visit(tenant, NOV_10, "Старо");
         UUID newest = appointment(tenant, NOV_10.plusSeconds(86_400L * 5), 30, row -> {
@@ -446,7 +446,7 @@ class BusinessCalendarReadApiIntegrationTests extends BusinessCalendarApiIntegra
         fixtures.cancel(cancelled);
         appointment(withCustomer(tenant, other), NOV_10.plusSeconds(86_400L * 3), 30);
 
-        var result = history(owner, tenant.customer(), null).andExpect(status().isOk());
+        var result = history(owner, tenant.customer(), "direction=desc").andExpect(status().isOk());
         JsonNode body = json(result);
 
         assertThat(keys(body)).containsExactly("timezone", "items", "page", "size", "total");
@@ -472,9 +472,9 @@ class BusinessCalendarReadApiIntegrationTests extends BusinessCalendarApiIntegra
             expected.add(new UUID(index, 0).toString());
         }
 
-        JsonNode first = json(history(owner, tenant.customer(), "page=0&size=10"));
-        JsonNode second = json(history(owner, tenant.customer(), "page=1&size=10"));
-        JsonNode beyond = json(history(owner, tenant.customer(), "page=9&size=10"));
+        JsonNode first = json(history(owner, tenant.customer(), "direction=desc&page=0&size=10"));
+        JsonNode second = json(history(owner, tenant.customer(), "direction=desc&page=1&size=10"));
+        JsonNode beyond = json(history(owner, tenant.customer(), "direction=desc&page=9&size=10"));
 
         assertThat(ids(first.get("items"))).containsExactlyElementsOf(expected.subList(0, 10));
         assertThat(ids(second.get("items"))).containsExactlyElementsOf(expected.subList(10, 13));
@@ -492,5 +492,123 @@ class BusinessCalendarReadApiIntegrationTests extends BusinessCalendarApiIntegra
 
         assertThat(body.get("items")).isEmpty();
         assertThat(body.get("total").asLong()).isZero();
+    }
+
+    /** One more Appointment of the Customer on a StaffMember of its own, so boundary instants never overlap another one. */
+    private UUID onOwnStaff(Instant start) {
+        UUID staff = staff(owner.businessId(), "Служител " + UUID.randomUUID(), true);
+        return appointment(withStaff(tenant, staff), start, 30);
+    }
+
+    // ---- Customer history: order and date (Phase 11, sixth correction round) ---------------------
+
+    @Test
+    void theDefaultOrderIsOldestFirstAndEarlierDatesComeBeforeLaterOnesAcrossPageBoundaries() throws Exception {
+        List<UUID> byStart = new ArrayList<>();
+        for (int index = 12; index >= 0; index--) {
+            // Created out of order on purpose: the server orders the whole history before it cuts a page.
+            byStart.add(appointment(tenant, NOV_10.plusSeconds(86_400L * index), 30));
+        }
+        List<String> oldestFirst = new ArrayList<>();
+        for (int index = byStart.size() - 1; index >= 0; index--) {
+            oldestFirst.add(byStart.get(index).toString());
+        }
+
+        JsonNode first = json(history(owner, tenant.customer(), "page=0&size=10"));
+        JsonNode second = json(history(owner, tenant.customer(), "direction=asc&page=1&size=10"));
+        JsonNode newestSecond = json(history(owner, tenant.customer(), "direction=desc&page=1&size=10"));
+
+        assertThat(ids(first.get("items"))).containsExactlyElementsOf(oldestFirst.subList(0, 10));
+        assertThat(ids(second.get("items"))).containsExactlyElementsOf(oldestFirst.subList(10, 13));
+        List<String> newestFirst = new ArrayList<>(oldestFirst);
+        java.util.Collections.reverse(newestFirst);
+        assertThat(ids(newestSecond.get("items"))).containsExactlyElementsOf(newestFirst.subList(10, 13));
+        assertThat(first.get("total").asLong()).isEqualTo(13);
+    }
+
+    @Test
+    void identicalStartsKeepAStableOrderByIdentifierInTheSameDirection() throws Exception {
+        List<String> ascending = new ArrayList<>();
+        for (int index = 0; index < 5; index++) {
+            UUID id = new UUID(index, 0);
+            UUID staff = staff(owner.businessId(), "Служител " + index, true);
+            appointment(withStaff(tenant, staff), NOV_10, 30, row -> row.put("id", id));
+            ascending.add(id.toString());
+        }
+        List<String> descending = new ArrayList<>(ascending);
+        java.util.Collections.reverse(descending);
+
+        assertThat(ids(json(history(owner, tenant.customer(), "direction=asc")).get("items"))).containsExactlyElementsOf(ascending);
+        assertThat(ids(json(history(owner, tenant.customer(), "direction=desc")).get("items"))).containsExactlyElementsOf(descending);
+        // Repeated reads return the same order.
+        assertThat(ids(json(history(owner, tenant.customer(), null)).get("items"))).containsExactlyElementsOf(ascending);
+    }
+
+    @Test
+    void theDateSelectsTheBusinessLocalDayBeforeCountingAndPagingAndKeepsCancelledOnes() throws Exception {
+        // Sofia is UTC+2 on 2026-11-10: that day is [2026-11-09T22:00Z, 2026-11-10T22:00Z).
+        Instant dayStart = Instant.parse("2026-11-09T22:00:00Z");
+        UUID early = onOwnStaff(dayStart);
+        UUID cancelled = onOwnStaff(dayStart.plusSeconds(3600));
+        fixtures.cancel(cancelled);
+        UUID late = onOwnStaff(dayStart.plusSeconds(86_400L - 1800));
+        UUID previousDay = onOwnStaff(dayStart.minusSeconds(1));
+        UUID nextDay = onOwnStaff(dayStart.plusSeconds(86_400L));
+
+        JsonNode asc = json(history(owner, tenant.customer(), "date=2026-11-10"));
+        JsonNode descPage = json(history(owner, tenant.customer(), "date=2026-11-10&direction=desc&page=1&size=10"));
+        JsonNode descSmall = json(history(owner, tenant.customer(), "date=2026-11-10&direction=desc&size=10"));
+
+        assertThat(ids(asc.get("items"))).containsExactly(early.toString(), cancelled.toString(), late.toString());
+        assertThat(asc.get("total").asLong()).isEqualTo(3);
+        assertThat(ids(descSmall.get("items"))).containsExactly(late.toString(), cancelled.toString(), early.toString());
+        assertThat(descPage.get("items")).isEmpty();
+        assertThat(descPage.get("total").asLong()).isEqualTo(3);
+        assertThat(ids(json(history(owner, tenant.customer(), null)).get("items")))
+                .contains(previousDay.toString(), nextDay.toString());
+        assertThat(json(history(owner, tenant.customer(), "date=2026-11-12")).get("total").asLong()).isZero();
+    }
+
+    @Test
+    void theDateIsExactOnA25HourAnd23HourDay() throws Exception {
+        // 2026-10-25 in Sofia: [2026-10-24T21:00Z, 2026-10-25T22:00Z) is 25 hours (the clocks go back at 01:00Z).
+        UUID first = onOwnStaff(Instant.parse("2026-10-24T21:00:00Z"));
+        UUID repeatedSecond = onOwnStaff(Instant.parse("2026-10-25T01:30:00Z"));
+        UUID lastMinute = onOwnStaff(Instant.parse("2026-10-25T21:59:00Z"));
+        UUID before = onOwnStaff(Instant.parse("2026-10-24T20:59:00Z"));
+        UUID after = onOwnStaff(Instant.parse("2026-10-25T22:00:00Z"));
+        // 2027-03-28 is 23 hours: [2027-03-27T22:00Z, 2027-03-28T21:00Z).
+        UUID springStart = onOwnStaff(Instant.parse("2027-03-27T22:00:00Z"));
+        UUID springLast = onOwnStaff(Instant.parse("2027-03-28T20:59:00Z"));
+        UUID springAfter = onOwnStaff(Instant.parse("2027-03-28T21:00:00Z"));
+
+        JsonNode fall = json(history(owner, tenant.customer(), "date=2026-10-25"));
+        JsonNode spring = json(history(owner, tenant.customer(), "date=2027-03-28"));
+
+        assertThat(ids(fall.get("items"))).containsExactly(first.toString(), repeatedSecond.toString(), lastMinute.toString());
+        assertThat(ids(fall.get("items"))).doesNotContain(before.toString(), after.toString());
+        assertThat(ids(spring.get("items"))).containsExactly(springStart.toString(), springLast.toString());
+        assertThat(ids(spring.get("items"))).doesNotContain(springAfter.toString());
+    }
+
+    @Test
+    void anUnsupportedDirectionOrDateIsAValidationErrorWithoutEchoingTheValue() throws Exception {
+        for (String query : List.of("direction=newest", "direction=", "direction=ASC", "direction=asc&direction=desc",
+                "date=2026-13-01", "date=2026-02-30", "date=10.11.2026", "date=2026-11-10T00:00", "date=", "date=1999-12-31",
+                "date=2101-01-01", "date=2026-11-10&date=2026-11-11")) {
+            var result = history(owner, tenant.customer(), query).andExpect(status().isBadRequest());
+            assertThat(json(result).get("code").asString()).as(query).isEqualTo("VALIDATION_ERROR");
+            assertThat(body(result)).as(query).doesNotContain("newest", "2026-13", "1999", "2101", "fieldErrors");
+        }
+        history(owner, tenant.customer(), "date=2000-01-01").andExpect(status().isOk());
+        history(owner, tenant.customer(), "date=2100-12-31").andExpect(status().isOk());
+    }
+
+    @Test
+    void aForeignCustomerIsNotFoundWithTheSameAnswerWhateverTheOrderAndDate() throws Exception {
+        UUID foreignCustomer = UUID.randomUUID();
+        var plain = history(owner, foreignCustomer, null).andExpect(status().isNotFound());
+        var filtered = history(owner, foreignCustomer, "direction=desc&date=2026-11-10").andExpect(status().isNotFound());
+        assertThat(body(filtered)).isEqualTo(body(plain));
     }
 }

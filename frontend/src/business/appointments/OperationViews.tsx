@@ -153,19 +153,34 @@ export function CancelDialog({
         aria-describedby="cancel-dialog-summary cancel-dialog-consequence"
         tabIndex={-1}
       >
-        <h4 id="cancel-dialog-title">Отмяна на часа</h4>
-        <p id="cancel-dialog-summary" className="cancel-dialog-summary">
-          {formatDateHeading(date)}, {formatTimeRange(appointment.start, appointment.end, appointment.timezone)} · {appointment.customer.displayName}
-        </p>
-        <p id="cancel-dialog-consequence">
-          Часът ще бъде отменен и времето му ще се освободи в графика. Отмяната не може да бъде върната; нов час се
-          създава отделно.
+        <h4 id="cancel-dialog-title">Отмяна на час</h4>
+        <dl id="cancel-dialog-summary" className="cancel-dialog-context">
+          <div>
+            <dt>Клиент:</dt>
+            <dd>{appointment.customer.displayName}</dd>
+          </div>
+          <div>
+            <dt>Дата:</dt>
+            <dd>{formatDateHeading(date)}</dd>
+          </div>
+          <div>
+            <dt>Час:</dt>
+            <dd>{formatTimeRange(appointment.start, appointment.end, appointment.timezone)}</dd>
+          </div>
+          <div>
+            <dt>Член на екипа:</dt>
+            <dd>{appointment.staffDisplayName}</dd>
+          </div>
+        </dl>
+        <p id="cancel-dialog-consequence" className="cancel-dialog-warning">
+          <span>Часът ще бъде отменен.</span>
+          <span>Това действие не може да бъде върнато.</span>
         </p>
         <div className="action-group unsaved-changes-actions">
           <Button type="button" variant="destructive" disabled={sending} onClick={operations.confirmCancel}>
             Отмени часа
           </Button>
-          <Button ref={safeRef} type="button" variant="destructive" className="button--outline" disabled={sending} onClick={operations.closeCancel}>
+          <Button ref={safeRef} type="button" variant="neutral" disabled={sending} onClick={operations.closeCancel}>
             Отказ
           </Button>
         </div>

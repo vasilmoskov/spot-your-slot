@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import { routeHref, type ListPageSize } from '../../navigation'
 import { Button } from '../../ui/Button'
 import { ListPagination } from '../../ui/ListSortControls'
-import { getCustomerAppointments, type CustomerAppointmentPage } from './api'
+import { getCustomerAppointments, type CustomerAppointmentPage, type HistoryDirection } from './api'
 import { calendarFailureMessage, isAuthenticationRequired } from './errors'
 import { StatusBadge } from './CalendarViews'
 import { customerHistoryServiceNames, formatDateAndRange } from './presentation'
+import { HistoryDateField } from './HistoryDateField'
+import { AppointmentBadges, TemporalClock } from './temporal'
 
 type CustomerAppointmentHistoryProps = {
   customerId: string
@@ -21,10 +23,17 @@ type HistoryState =
 
 const defaultNow = () => Date.now()
 
+const DIRECTION_LABELS: Record<HistoryDirection, string> = {
+  asc: 'От най-ранна дата',
+  desc: 'От най-късна дата',
+}
+
 /**
- * The Customer's Appointments of the selected Business, newest first, exactly as the server pages
- * them. An entry is "предстоящ", "минал" or "отменен" from its status and its own instant; the
- * server's order and totals are never reshuffled, and `version` is not history.
+ * The Customer's Appointments of the selected Business, exactly as the server orders, filters and pages them: by start,
+ * earlier first by default (past before future), optionally one Business-local date, both applied before paging across
+ * the whole history. The choices live in this component's state (never in the address) and a change returns to the
+ * first page. An entry carries its booking status and, when confirmed, a separate temporal badge ("Предстоящ",
+ * "В момента", "Минал") from exact instants; `version` is not history.
  */
 export function CustomerAppointmentHistory({
   customerId,
@@ -34,6 +43,8 @@ export function CustomerAppointmentHistory({
 }: CustomerAppointmentHistoryProps) {
   const [page, setPage] = useState(0)
   const [size, setSize] = useState<ListPageSize>(10)
+  const [direction, setDirection] = useState<HistoryDirection>('asc')
+  const [date, setDate] = useState<string | null>(null)
   const [state, setState] = useState<HistoryState>({ kind: 'loading' })
   const [reloadToken, setReloadToken] = useState(0)
   const handlers = useRef({ onAuthenticationRequired })
@@ -44,7 +55,7 @@ export function CustomerAppointmentHistory({
     setState((current) =>
       current.kind === 'loaded' ? { ...current, refreshing: true } : { kind: 'loading' },
     )
-    getCustomerAppointments(customerId, page, size, controller.signal)
+    getCustomerAppointments(customerId, page, size, controller.signal, { direction, date })
       .then((response) => {
         if (controller.signal.aborted) return
         if (page > 0 && response.items.length === 0) {
@@ -68,11 +79,36 @@ export function CustomerAppointmentHistory({
         })
       })
     return () => controller.abort()
-  }, [customerId, page, size, reloadToken])
+  }, [customerId, page, size, direction, date, reloadToken])
 
   return (
     <section className="business-section customer-history" aria-labelledby="customer-history-heading">
       <h3 id="customer-history-heading">Часове</h3>
+      <div className="customer-history-controls">
+        <div className="form-field">
+          <label htmlFor="customer-history-order">Подредба</label>
+          <select
+            id="customer-history-order"
+            value={direction}
+            onChange={(event) => {
+              setPage(0)
+              setDirection(event.target.value === 'desc' ? 'desc' : 'asc')
+            }}
+          >
+            <option value="asc">{DIRECTION_LABELS.asc}</option>
+            <option value="desc">{DIRECTION_LABELS.desc}</option>
+          </select>
+        </div>
+        <HistoryDateField
+          id="customer-history-date"
+          label="Дата"
+          value={date}
+          onChange={(next) => {
+            setPage(0)
+            setDate(next)
+          }}
+        />
+      </div>
       {state.kind === 'loading' && (
         <p className="business-list-state" aria-live="polite" aria-busy="true">
           Зареждане на часовете…
@@ -98,15 +134,14 @@ export function CustomerAppointmentHistory({
         <div className={state.refreshing ? 'calendar-results is-refreshing' : 'calendar-results'} aria-busy={state.refreshing}>
           {state.page.total === 0 ? (
             <p className="business-list-state" aria-live="polite">
-              Клиентът няма часове.
+              {date === null ? 'Клиентът няма часове.' : 'Няма часове на тази дата.'}
             </p>
           ) : (
             <>
+              <TemporalClock appointments={state.page.items} clock={now}>
               <ul className="customer-history-list">
                 {state.page.items.map((entry) => {
                   const cancelled = entry.status === 'CANCELLED'
-                  const startedAt = Date.parse(entry.start)
-                  const upcoming = !cancelled && startedAt > now()
                   return (
                     <li
                       key={entry.id}
@@ -126,12 +161,12 @@ export function CustomerAppointmentHistory({
                         >
                           {formatDateAndRange(entry.start, entry.end, state.page.timezone)}
                         </a>
-                        <StatusBadge status={entry.status} />
-                        {!cancelled && (
-                          <span className="status-badge status-badge-info calendar-timing">
-                            {upcoming ? 'Предстоящ' : 'Минал'}
-                          </span>
-                        )}
+                        <AppointmentBadges
+                          status={entry.status}
+                          start={entry.start}
+                          end={entry.end}
+                          statusBadge={<StatusBadge status={entry.status} />}
+                        />
                       </p>
                       <p className="calendar-entry-services">{customerHistoryServiceNames(entry)}</p>
                       <p className="calendar-entry-meta">{entry.staffDisplayName}</p>
@@ -139,6 +174,7 @@ export function CustomerAppointmentHistory({
                   )
                 })}
               </ul>
+              </TemporalClock>
               <ListPagination
                 label="Странициране на часовете на клиента"
                 idPrefix="customer-history"

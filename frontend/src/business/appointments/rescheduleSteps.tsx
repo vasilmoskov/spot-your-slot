@@ -1,6 +1,5 @@
 import type { ReactNode, RefObject } from 'react'
 import { Button } from '../../ui/Button'
-import { formatDateOnlyLong } from '../../public/booking/dates'
 import { formatCents, priceToCents } from '../../public/booking/money'
 import type { AppointmentDetails } from '../calendar/api'
 import { businessDateOf, formatDateHeading, formatTimeRange, formatTotalDuration, statusLabel } from '../calendar/presentation'
@@ -166,7 +165,9 @@ export type ReviewData = {
   currentStaffName: string
   newStaffName: string
   staffChanged: boolean
-  currentWhen: string
+  startChanged: boolean
+  currentDate: string
+  currentTime: string
   newDate: string
   newTime: string
 }
@@ -178,7 +179,26 @@ type ReviewStepProps = {
   onEdit?: (section: 'staff' | 'datetime') => void
 }
 
-/** The unchanged Customer and Services, and what changes: the original beside the proposed. */
+/** The Before and After blocks of one changed section: each fact on its own line. */
+function Change({ before, after }: { before: ReactNode; after: ReactNode }) {
+  return (
+    <div className="reschedule-change">
+      <div className="reschedule-from">
+        <span className="reschedule-change-label">Преди</span>
+        {before}
+      </div>
+      <div className="reschedule-to">
+        <span className="reschedule-change-label">След</span>
+        {after}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * The Customer and Services as context, and only the sections that really change, each as «Преди» and «След»: a
+ * section whose value stays the same is not shown at all (the Appointment keeps its StaffMember, or its date and time).
+ */
 export function ReviewStep({ data, effective, onEdit }: ReviewStepProps) {
   const { appointment } = data
   const row = (
@@ -203,11 +223,11 @@ export function ReviewStep({ data, effective, onEdit }: ReviewStepProps) {
     <div className="manual-step-body">
       <dl className="manual-review">
         <div className="manual-review-row">
-          <dt>Клиент (без промяна)</dt>
+          <dt>Клиент</dt>
           <dd>{appointment.customer.displayName}</dd>
         </div>
         <div className="manual-review-row">
-          <dt>Услуги (без промяна)</dt>
+          <dt>Услуги</dt>
           <dd>
             <ol className="manual-review-services">
               {[...appointment.services]
@@ -221,29 +241,36 @@ export function ReviewStep({ data, effective, onEdit }: ReviewStepProps) {
             <p className="manual-selection-total">Общо: {totalLine(appointment)}</p>
           </dd>
         </div>
-        {row(
-          'staff',
-          'Член на екипа',
-          'Промени члена на екипа',
-          <>
-            <span className="reschedule-from">Сега: {data.currentStaffName}</span>
-            <span className="reschedule-to">
-              След промяната: {data.newStaffName}
-              {data.staffChanged ? '' : ' (без промяна)'}
-            </span>
-          </>,
-        )}
-        {row(
-          'datetime',
-          'Дата и час',
-          'Промени датата и часа',
-          <>
-            <span className="reschedule-from">Сега: {data.currentWhen}</span>
-            <span className="reschedule-to">
-              След промяната: {formatDateOnlyLong(data.newDate)}, {data.newTime}
-            </span>
-          </>,
-        )}
+        {data.staffChanged &&
+          row(
+            'staff',
+            'Член на екипа',
+            'Промени члена на екипа',
+            <Change
+              before={<span>{data.currentStaffName}</span>}
+              after={<span>{data.newStaffName}</span>}
+            />,
+          )}
+        {data.startChanged &&
+          row(
+            'datetime',
+            'Дата и час',
+            'Промени датата и часа',
+            <Change
+              before={
+                <>
+                  <span>{formatDateHeading(data.currentDate)}</span>
+                  <span>{data.currentTime}</span>
+                </>
+              }
+              after={
+                <>
+                  <span>{formatDateHeading(data.newDate)}</span>
+                  <span>{data.newTime}</span>
+                </>
+              }
+            />,
+          )}
       </dl>
       {!effective && onEdit && (
         <p className="status-message status-info" role="status">

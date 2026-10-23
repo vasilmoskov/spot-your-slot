@@ -199,6 +199,31 @@ describe('the StaffMember choice', () => {
     expect(heading()).toHaveTextContent('Дата и час')
   })
 
+  it('an inactive current StaffMember blocks a time-only move but not the form: an eligible replacement can still be chosen and sent', async () => {
+    backend.options = () =>
+      optionsResponse({ currentStaffMember: { id: STAFF_ONE, displayName: 'Мила Работникова', available: false } })
+    // The form opens (the detail offers «Промени часа» whatever the StaffMember's state: it carries no such fact), but a
+    // time-only proposal cannot be made: nothing is preselected and keeping the current StaffMember is not offered.
+    const { onRescheduled } = renderForm()
+    await chooseStaff('Георги')
+    next()
+    await chooseTime(0)
+    next()
+    await screen.findByRole('heading', { level: 2, name: 'Преглед и потвърждение' })
+
+    const review = screen.getByRole('region', { name: 'Преглед и потвърждение' })
+    const staff = within(review).getByText('Член на екипа').closest('.manual-review-row')!
+    expect([...staff.querySelectorAll('.reschedule-from span, .reschedule-to span')].map((line) => line.textContent)).toEqual([
+      'Преди', 'Мила Работникова', 'След', 'Георги Стилистов',
+    ])
+    confirm()
+    await waitFor(() => expect(onRescheduled).toHaveBeenCalledTimes(1))
+    // A reassignment: the StaffMember only, never a time-only body for the inactive current StaffMember.
+    expect(backend.posts()[0]!.body).toEqual({ expectedVersion: 7, staffMemberId: STAFF_TWO })
+    // No start was ever read for the inactive current StaffMember.
+    expect(backend.calls.filter((call) => call.path.includes('/availability') && call.path.includes(`staffMemberId=${STAFF_ONE}`))).toHaveLength(0)
+  })
+
   it('an empty replacement list leaves the current StaffMember, with a statement and no error', async () => {
     backend.options = () => optionsResponse({ staffMembers: [] })
     renderForm()
@@ -340,7 +365,10 @@ describe('date and time', () => {
     next()
     await screen.findByRole('heading', { level: 2, name: 'Преглед и потвърждение' })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Промени члена на екипа' }))
+    // A time-only proposal has no StaffMember section to edit: the owner goes Back to the StaffMember step.
+    expect(screen.queryByRole('button', { name: 'Промени члена на екипа' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Назад' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Назад' }))
     await chooseStaff('Георги')
     next()
     // The date is kept, the start is not.
@@ -414,21 +442,39 @@ describe('date and time', () => {
 })
 
 describe('the review and the mutation', () => {
-  it('shows the unchanged Customer and Services, the original beside the proposal, and the stored total', async () => {
+  it('shows the Customer and Services as context and only the section that changes, as «Преди» and «След»', async () => {
     await toReview({ replacement: 'Георги', slot: 0 })
 
     const review = screen.getByRole('region', { name: 'Преглед и потвърждение' })
-    expect(within(review).getByText('Клиент (без промяна)')).toBeInTheDocument()
+    expect(within(review).getByText('Клиент')).toBeInTheDocument()
     expect(review).toHaveTextContent('Мария Тестова')
-    expect(review).toHaveTextContent('Услуги (без промяна)')
+    expect(within(review).getByText('Услуги')).toBeInTheDocument()
     expect(review).toHaveTextContent('Подстригване')
     expect(review).toHaveTextContent('Боядисване')
     expect(review).toHaveTextContent('Общо: 80.50 € — 1 ч 15 мин')
-    expect(review).toHaveTextContent('Сега: Мила Работникова')
-    expect(review).toHaveTextContent('След промяната: Георги Стилистов')
-    expect(review).toHaveTextContent(/Сега: .*10 ноември 2026 г\., 09:00–10:15/)
-    expect(review).toHaveTextContent(/След промяната: .*10 ноември 2026 г\., 09:00–10:15/)
+    const staff = within(review).getByText('Член на екипа').closest('.manual-review-row')!
+    expect([...staff.querySelectorAll('.reschedule-from span, .reschedule-to span')].map((line) => line.textContent)).toEqual([
+      'Преди', 'Мила Работникова', 'След', 'Георги Стилистов',
+    ])
+    // The start is the same time: the date and time section is not shown at all.
+    expect(within(review).queryByText('Дата и час')).toBeNull()
+    expect(review.textContent).not.toMatch(/без промяна|Сега:|След промяната/)
     expect(review).not.toHaveTextContent('Европа')
+  })
+
+  it('shows the date and time section with Преди and След on separate lines, and no StaffMember section, for a time-only change', async () => {
+    await toReview({ slot: 1 })
+
+    const review = screen.getByRole('region', { name: 'Преглед и потвърждение' })
+    expect(within(review).queryByText('Член на екипа')).toBeNull()
+    const when = within(review).getByText('Дата и час').closest('.manual-review-row')!
+    const lines = [...when.querySelectorAll('.reschedule-from span, .reschedule-to span')].map((line) => line.textContent)
+    expect(lines).toEqual([
+      'Преди', 'Вторник, 10 ноември 2026 г.', '09:00–10:15',
+      'След', 'Вторник, 10 ноември 2026 г.', expect.stringMatching(/^\d\d:\d\d–\d\d:\d\d$/),
+    ])
+    expect(lines[5]).not.toBe('09:00–10:15')
+    expect(review.textContent).not.toMatch(/UTC|Europe|Sofia|без промяна|часовника|първи път|втори път/)
   })
 
   it('sends one exact time-only body: expectedVersion and start, nothing else, and then completes', async () => {

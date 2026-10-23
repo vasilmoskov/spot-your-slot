@@ -21,6 +21,7 @@ import bg.spotyourslot.booking.AppointmentCalendarRecords.CancelledBy;
 import bg.spotyourslot.booking.AppointmentCalendarRecords.ClosureKind;
 import bg.spotyourslot.booking.AppointmentCalendarRecords.CustomerContactView;
 import bg.spotyourslot.booking.AppointmentCalendarRecords.CustomerHistoryPage;
+import bg.spotyourslot.booking.AppointmentCalendarRecords.HistoryOrder;
 import bg.spotyourslot.booking.AppointmentCalendarRecords.DetailLine;
 import bg.spotyourslot.booking.AppointmentCalendarRecords.HistoryItem;
 import bg.spotyourslot.booking.AppointmentCalendarRecords.ServiceSummary;
@@ -246,22 +247,51 @@ public class AppointmentCalendarService implements AppointmentCalendar {
     @Transactional(isolation = Isolation.REPEATABLE_READ, readOnly = true)
     public CustomerHistoryPage customerHistory(
             AuthenticatedBusinessContext context, UUID customerId, Integer page, Integer size) {
+        return history(context, customerId, page, size, HistoryOrder.OLDEST_FIRST, null);
+    }
+
+    @Override
+    @Transactional(isolation = Isolation.REPEATABLE_READ, readOnly = true)
+    public CustomerHistoryPage customerHistory(
+            AuthenticatedBusinessContext context,
+            UUID customerId,
+            Integer page,
+            Integer size,
+            HistoryOrder order,
+            LocalDate dateOrNull) {
+        return history(context, customerId, page, size, order, dateOrNull);
+    }
+
+    private CustomerHistoryPage history(
+            AuthenticatedBusinessContext context,
+            UUID customerId,
+            Integer page,
+            Integer size,
+            HistoryOrder order,
+            LocalDate dateOrNull) {
         return guarded(() -> {
             Access access = authorize(context);
-            if (customerId == null) {
+            if (customerId == null
+                    || (dateOrNull != null
+                            && (dateOrNull.isBefore(FIRST_SUPPORTED_DATE) || dateOrNull.isAfter(LAST_SUPPORTED_DATE)))) {
                 throw new InvalidInput();
             }
+            HistoryOrder validatedOrder = order == null ? HistoryOrder.OLDEST_FIRST : order;
+            // The Business-local day as a half-open instant interval: exact on a 23- or 25-hour day.
+            Instant dayStart = dateOrNull == null ? null : dateOrNull.atStartOfDay(access.zone()).toInstant();
+            Instant dayEnd = dateOrNull == null ? null : dateOrNull.plusDays(1).atStartOfDay(access.zone()).toInstant();
             int validatedPage = page == null ? 0 : page;
             int validatedSize = size == null ? DEFAULT_PAGE_SIZE : size;
             requirePaging(validatedPage, validatedSize);
             UUID businessId = access.businessId();
             customerReferences.find(businessId, customerId).orElseThrow(CustomerNotFound::new);
 
-            long total = store.countHistory(businessId, customerId);
+            long total = store.countHistory(businessId, customerId, dayStart, dayEnd);
             long offset = (long) validatedPage * validatedSize;
             List<HistoryItem> items = List.of();
             if (total > offset) {
-                List<HistoryRow> rows = store.findHistoryPage(businessId, customerId, offset, validatedSize);
+                List<HistoryRow> rows = store.findHistoryPage(
+                        businessId, customerId, dayStart, dayEnd, validatedOrder, offset, validatedSize);
                 Map<UUID, List<String>> names = new LinkedHashMap<>();
                 for (LineRow line : store.findLines(
                         businessId, rows.stream().map(HistoryRow::id).toList())) {

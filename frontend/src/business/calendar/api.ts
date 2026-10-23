@@ -153,13 +153,22 @@ export function getAppointment(
   )
 }
 
+export type HistoryDirection = 'asc' | 'desc'
+
+/**
+ * One page of a Customer's history, ordered by start (`asc`: earlier first, the default) and optionally only the
+ * Appointments that start on one Business-local date (`yyyy-MM-dd`). Both apply on the server before paging.
+ */
 export function getCustomerAppointments(
   customerId: string,
   page: number,
   size: number,
   signal?: AbortSignal,
+  filter: { direction?: HistoryDirection; date?: string | null } = {},
 ): Promise<CustomerAppointmentPage> {
   const params = new URLSearchParams({ page: String(page), size: String(size) })
+  if (filter.direction) params.set('direction', filter.direction)
+  if (filter.date) params.set('date', filter.date)
   return request<CustomerAppointmentPage>(
     `/api/business/customers/${encodeURIComponent(customerId)}/appointments?${params.toString()}`,
     options(signal),

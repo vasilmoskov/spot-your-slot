@@ -93,20 +93,33 @@ describe('Cancellation: the confirmation dialog', () => {
     openCancel()
     const panel = dialog()
     expect(panel).toHaveAttribute('aria-modal', 'true')
-    expect(within(panel).getByRole('heading', { name: 'Отмяна на часа' })).toBeInTheDocument()
-    expect(panel).toHaveTextContent('не може да бъде върната')
-    expect(panel).toHaveTextContent('нов час се създава отделно')
-    expect(panel).toHaveTextContent('Мария Тестова')
+    expect(within(panel).getByRole('heading', { name: 'Отмяна на час' })).toBeInTheDocument()
+    // The warning once, each sentence on its own line, and nothing about creating a new Appointment.
+    const warning = panel.querySelector('.cancel-dialog-warning')!
+    expect([...warning.querySelectorAll('span')].map((line) => line.textContent)).toEqual([
+      'Часът ще бъде отменен.',
+      'Това действие не може да бъде върнато.',
+    ])
+    expect(panel.textContent).not.toMatch(/създава отделно|ще се освободи/)
+    // The Appointment as separate labelled lines, not one «·» heading.
+    const context = [...panel.querySelectorAll('.cancel-dialog-context div')].map((row) => row.textContent)
+    expect(context).toEqual([
+      'Клиент:Мария Тестова',
+      expect.stringMatching(/^Дата:/),
+      expect.stringMatching(/^Час:\d\d:\d\d–\d\d:\d\d$/),
+      expect.stringMatching(/^Член на екипа:/),
+    ])
+    expect(panel.textContent).not.toContain('·')
     const buttons = within(panel).getAllByRole('button')
-    // Affirmative first, «Отказ» rightmost and red (outlined beside the solid destructive action); the safe
-    // action still receives the initial focus.
+    // Affirmative first (solid red), «Отказ» rightmost as the neutral outlined secondary action: the documented
+    // exception to the red «Отказ» rule for this dialog. The safe action still receives the initial focus.
     expect(buttons.map((button) => button.textContent)).toEqual(['Отмени часа', 'Отказ'])
     expect(buttons[1]).toHaveFocus()
     expect(buttons[0]).not.toHaveFocus()
     expect(buttons[0]).toHaveClass('button--destructive')
-    expect(buttons[1]).toHaveClass('button--destructive')
-    expect(buttons[1]).toHaveClass('button--outline')
-    expect(buttons[0]).not.toHaveClass('button--outline')
+    expect(buttons[1]).toHaveClass('button--neutral')
+    expect(buttons[1]).not.toHaveClass('button--destructive')
+    expect(buttons[1]).not.toHaveClass('button--outline')
     // No reason, actor, or other input exists.
     expect(within(panel).queryByRole('textbox')).toBeNull()
     expect(backend.posts()).toHaveLength(0)
@@ -117,8 +130,8 @@ describe('Cancellation: the confirmation dialog', () => {
     await ready()
     openCancel()
     const panel = dialog()
-    expect(panel).toHaveAccessibleName('Отмяна на часа')
-    expect(panel).toHaveAccessibleDescription(/Мария Тестова.*не може да бъде върната/s)
+    expect(panel).toHaveAccessibleName('Отмяна на час')
+    expect(panel).toHaveAccessibleDescription(/Мария Тестова.*Това действие не може да бъде върнато/s)
   })
 
   it('closes with the safe action and with Escape, restores focus, and sends nothing', async () => {
@@ -234,7 +247,7 @@ describe('Cancellation: the request and the authoritative re-read', () => {
     await ready()
     openCancel()
     confirmCancel()
-    const status = await screen.findByText(/Този час е отменен/)
+    const status = (await screen.findByText(/Този час е отменен/)).closest('[role="status"]') as HTMLElement
     expect(screen.queryByRole('alertdialog')).toBeNull()
     expect(cancelButton()).toBeNull()
     expect(screen.queryByRole('region', { name: 'Отмяна на часа' })).toBeNull()
@@ -242,7 +255,7 @@ describe('Cancellation: the request and the authoritative re-read', () => {
     expect(document.body.textContent).not.toMatch(/BUSINESS|UNKNOWN|cancelled_by|cancelledBy|версия|version/i)
     expect(document.body.textContent).not.toMatch(/\b8\b/)
     // Exactly one cancellation notice: no duplicate lifecycle message.
-    expect(screen.getAllByText(/отменен/i, { selector: '[role="status"]' })).toHaveLength(1)
+    expect(screen.getAllByRole('status').filter((element) => /отменен/i.test(element.textContent ?? ''))).toHaveLength(1)
     expect(screen.queryByRole('alert')).toBeNull()
   })
 

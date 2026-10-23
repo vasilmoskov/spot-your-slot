@@ -33,6 +33,12 @@ public final class AppointmentCalendarRecords {
         MANUAL
     }
 
+    /** The order of a Customer's history by start instant; both directions break ties by the identifier the same way. */
+    public enum HistoryOrder {
+        OLDEST_FIRST,
+        NEWEST_FIRST
+    }
+
     public enum CancelledBy {
         BUSINESS,
         UNKNOWN

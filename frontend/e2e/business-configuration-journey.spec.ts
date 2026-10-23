@@ -1032,6 +1032,11 @@ test.describe('Business-owner mobile smoke', () => {
       await expect(page.getByRole('row').filter({ hasText: HAIRCUT_EDITED.name }))
         .toContainText('42.00 €')
       await expectNoHorizontalOverflow(page, 'services list')
+      // CI regression (run 39443685396): a wider font than the developer's made the sort select's intrinsic width
+      // push the page column past the viewport. Widening every glyph reproduces that on any machine.
+      const wideText = await page.addStyleTag({ content: '*{letter-spacing:0.08em !important}' })
+      await expectNoHorizontalOverflow(page, 'services list (wide text)')
+      await wideText.evaluate((style) => style.remove())
 
       await menu.press('Enter')
       const staffLink = navigation.getByRole('link', { name: 'Екип' })

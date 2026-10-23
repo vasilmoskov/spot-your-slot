@@ -132,7 +132,10 @@ describe('the action-order standard', () => {
     const offenders: string[] = []
     for (const { file, items } of otkazGroups()) {
       for (const item of items.filter(isOtkaz)) {
-        if (!/variant="destructive"/.test(item)) offenders.push(file)
+        // The one documented exception (Phase 11, sixth correction round): in the cancellation dialog, beside the solid red
+        // «Отмени часа», «Отказ» is the neutral outlined secondary action.
+        const cancellationDialog = items.some((other) => />\s*Отмени часа\s*</.test(other)) && /variant="neutral"/.test(item)
+        if (!/variant="destructive"/.test(item) && !cancellationDialog) offenders.push(file)
       }
     }
     expect(offenders).toEqual([])
@@ -143,6 +146,8 @@ describe('the action-order standard', () => {
     for (const { file, items } of otkazGroups()) {
       const hasDestructiveAction = items.some((item) => !isOtkaz(item) && /variant="destructive"|danger/.test(item))
       const cancel = items.find(isOtkaz)!
+      // The documented exception: the cancellation dialog's neutral «Отказ» is not an outlined red one.
+      if (/variant="neutral"/.test(cancel) && items.some((item) => />\s*Отмени часа\s*</.test(item))) continue
       // A conditional destructive action (a ternary on `danger`) conditions the outline in the same way.
       if (hasDestructiveAction !== /button--outline/.test(cancel)) offenders.push(file)
     }

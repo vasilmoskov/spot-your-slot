@@ -378,6 +378,7 @@ export function BusinessCalendar({
             data={load.data}
             state={load.requested}
             wide={wide}
+            clock={() => now().getTime()}
             onOpen={(appointmentId) => onOpenAppointment(appointmentId, load.requested)}
             onStateChange={(next, mode) => onStateChange(next, mode)}
           />
@@ -392,12 +393,14 @@ function CalendarBody({
   data,
   state,
   wide,
+  clock,
   onOpen,
   onStateChange,
 }: {
   data: Loaded
   state: CalendarState
   wide: boolean
+  clock: () => number
   onOpen: (appointmentId: string) => void
   onStateChange: (next: CalendarState, mode?: ListNavigationMode) => void
 }) {
@@ -409,7 +412,7 @@ function CalendarBody({
     }
     return (
       <>
-        <AgendaList response={response} calendar={state} onOpen={onOpen} />
+        <AgendaList response={response} calendar={state} onOpen={onOpen} clock={clock} />
         <ListPagination
           label="Странициране на часовете"
           idPrefix="agenda"
@@ -429,7 +432,7 @@ function CalendarBody({
         {response.appointments.length === 0 && (
           <p className="business-list-state" aria-live="polite">Няма часове през тази седмица.</p>
         )}
-        <WeekView response={response} calendar={state} onOpen={onOpen} />
+        <WeekView response={response} calendar={state} onOpen={onOpen} clock={clock} />
       </>
     )
   }
@@ -438,7 +441,7 @@ function CalendarBody({
       {response.appointments.length === 0 && (
         <p className="business-list-state" aria-live="polite">Няма часове за този ден.</p>
       )}
-      <DayView response={response} date={date} calendar={state} wide={wide} onOpen={onOpen} />
+      <DayView response={response} date={date} calendar={state} wide={wide} onOpen={onOpen} clock={clock} />
     </>
   )
 }

@@ -12,6 +12,7 @@ import type {
   CalendarStaffMember,
 } from './api'
 import { dateRange } from './dates'
+import { AppointmentBadges, TemporalClock } from './temporal'
 import {
   businessDateOf,
   closureLabel,
@@ -112,7 +113,12 @@ export function AppointmentEntry({
         >
           {range}
         </a>
-        <StatusBadge status={appointment.status} quiet={className === 'calendar-block'} />
+        <AppointmentBadges
+          status={appointment.status}
+          start={appointment.start}
+          end={appointment.end}
+          statusBadge={<StatusBadge status={appointment.status} quiet={className === 'calendar-block'} />}
+        />
       </p>
       <p className="calendar-entry-customer">{appointment.customerDisplayName}</p>
       {visibleServices.length > 0 && (
@@ -258,9 +264,11 @@ type DayViewProps = {
   calendar: CalendarState
   wide: boolean
   onOpen: OpenAppointment
+  // The exact clock of the temporal badges (the wall clock when absent).
+  clock?: () => number
 }
 
-export function DayView({ response, date, calendar, wide, onOpen }: DayViewProps) {
+export function DayView({ response, date, calendar, wide, onOpen, clock }: DayViewProps) {
   const day = dayOf(response, date)
   const timezone = response.timezone
   if (!day) return null
@@ -273,6 +281,7 @@ export function DayView({ response, date, calendar, wide, onOpen }: DayViewProps
   ])
 
   return (
+    <TemporalClock appointments={dayAppointments} {...(clock ? { clock } : {})}>
     <div className="calendar-day">
       {closures.business && (
         <p className="calendar-closure">{closureLabel('BUSINESS_CLOSURE')} за целия ден.</p>
@@ -362,6 +371,7 @@ export function DayView({ response, date, calendar, wide, onOpen }: DayViewProps
         </ul>
       )}
     </div>
+    </TemporalClock>
   )
 }
 
@@ -518,12 +528,14 @@ type WeekViewProps = {
   response: CalendarResponse
   calendar: CalendarState
   onOpen: OpenAppointment
+  clock?: () => number
 }
 
-export function WeekView({ response, calendar, onOpen }: WeekViewProps) {
+export function WeekView({ response, calendar, onOpen, clock }: WeekViewProps) {
   const timezone = response.timezone
   const dates = dateRange(response.from, response.to)
   return (
+    <TemporalClock appointments={response.appointments} {...(clock ? { clock } : {})}>
     <div className="calendar-week" role="region" aria-label="Седмичен график" tabIndex={0}>
       {dates.map((date) => {
         const entries = appointmentsOn(response, date)
@@ -559,6 +571,7 @@ export function WeekView({ response, calendar, onOpen }: WeekViewProps) {
         )
       })}
     </div>
+    </TemporalClock>
   )
 }
 
@@ -568,12 +581,15 @@ export function AgendaList({
   response,
   calendar,
   onOpen,
+  clock,
 }: {
   response: AgendaResponse
   calendar: CalendarState
   onOpen: OpenAppointment
+  clock?: () => number
 }) {
   return (
+    <TemporalClock appointments={response.items} {...(clock ? { clock } : {})}>
     <div className="calendar-entry-list calendar-agenda">
       {response.items.map((appointment) => (
         <AppointmentEntry
@@ -586,5 +602,6 @@ export function AgendaList({
         />
       ))}
     </div>
+    </TemporalClock>
   )
 }

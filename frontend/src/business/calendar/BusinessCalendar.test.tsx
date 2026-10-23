@@ -1043,3 +1043,39 @@ describe('week cards: one line per fact', () => {
     expect([...card.querySelectorAll('.calendar-entry-services li')].map((item) => item.textContent)).toEqual(['Дамско подстригване'])
   })
 })
+
+describe('temporal badges on Appointment cards', () => {
+  // NOW is 2026-10-14T10:00Z, which is 13:00 in Sofia (+03:00).
+  const entries = [
+    appointment({ id: 'past', customerDisplayName: 'Минал Клиент', start: '2026-10-14T10:00:00+03:00', end: '2026-10-14T10:45:00+03:00' }),
+    appointment({ id: 'now', customerDisplayName: 'Текущ Клиент', start: '2026-10-14T12:30:00+03:00', end: '2026-10-14T13:30:00+03:00' }),
+    appointment({ id: 'next', customerDisplayName: 'Предстоящ Клиент', start: '2026-10-14T15:00:00+03:00', end: '2026-10-14T15:45:00+03:00' }),
+    appointment({ id: 'gone', status: 'CANCELLED', customerDisplayName: 'Отказан Клиент', start: '2026-10-14T16:00:00+03:00', end: '2026-10-14T16:45:00+03:00' }),
+  ]
+  const badgesOf = (name: string) => {
+    const card = screen.getByText(name).closest('article')!
+    return [...card.querySelectorAll('.status-badge')].map((badge) => badge.textContent)
+  }
+
+  it('gives each confirmed card its own temporal badge beside the status, and a cancelled card only «Отменен»', async () => {
+    handler = async (path) =>
+      path.startsWith('/api/business/staff-members') ? staffCatalog : calendarResponse({ appointments: entries })
+    renderCalendar({ ...BASE, view: 'week' }, NOW)
+    await screen.findByText('Минал Клиент')
+    expect(badgesOf('Минал Клиент')).toEqual(['Потвърден', 'Минал'])
+    expect(badgesOf('Текущ Клиент')).toEqual(['Потвърден', 'В момента'])
+    expect(badgesOf('Предстоящ Клиент')).toEqual(['Потвърден', 'Предстоящ'])
+    expect(badgesOf('Отказан Клиент')).toEqual(['Отменен'])
+    expect(document.body.textContent).not.toMatch(/Завършен|Проведен|Неявил/)
+  })
+
+  it('shows them in the day grid too (the status of a confirmed block stays quiet, the temporal badge is written)', async () => {
+    handler = async (path) =>
+      path.startsWith('/api/business/staff-members') ? staffCatalog : calendarResponse({ appointments: entries })
+    renderCalendar(BASE, NOW)
+    await screen.findByText('Предстоящ Клиент')
+    const block = screen.getByText('Текущ Клиент').closest('article')!
+    expect(block.querySelector('.calendar-temporal')).toHaveTextContent('В момента')
+    expect(screen.getByText('Отказан Клиент').closest('article')!.querySelector('.calendar-temporal')).toBeNull()
+  })
+})

@@ -419,6 +419,7 @@ label {
      the page content: `gap` is the single source of spacing between them, so
      feedback is never stuck to what follows it. */
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   align-content: start;
   gap: var(--space-4);
 }
@@ -464,6 +465,7 @@ label {
 
 .business-list-content {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-4);
 }
 
@@ -486,6 +488,20 @@ label {
 
 .responsive-sort-select {
   display: none;
+}
+
+/* A select's intrinsic width is its longest option, and a flex item never shrinks below that. In a
+   wider font (the CI browser's) the sort control then forced the whole page column wider than the
+   viewport. The control may shrink, and the option text clips inside it. */
+.page-size-select,
+.responsive-sort-select {
+  min-width: 0;
+}
+
+.page-size-select select,
+.responsive-sort-select select {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .business-table th.sortable-column-header {
@@ -3827,4 +3843,158 @@ select:disabled {
 /* Room under the grid for the terminal time label and before the legend. */
 .calendar-grid {
   padding-bottom: 1rem;
+}
+
+/* The booking status and the temporal position are separate badges with room between them; they wrap, never overflow. */
+.calendar-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.calendar-entry-time .calendar-temporal,
+.calendar-entry-time .status-badge {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.cancelled-notice-line {
+  display: block;
+}
+
+/* Temporal position of a confirmed Appointment: blue before the start, amber during, neutral grey after the end. The words
+   carry the meaning; the colours only repeat it (AA contrast on their own backgrounds). */
+.calendar-temporal.status-badge-info {
+  color: #1d4ed8;
+  background: #e8f0ff;
+}
+
+.calendar-temporal.status-badge-warning {
+  color: #92400e;
+  background: #fff1d6;
+}
+
+.calendar-temporal.status-badge-neutral {
+  color: #475467;
+  background: #eaecf0;
+}
+
+/* The section heading reads above its controls; the field labels below it are the smaller, uniform ones. */
+.customer-history > h3 {
+  margin: 0 0 var(--space-3);
+  font-size: 1.25rem;
+  line-height: 1.3;
+}
+
+/* The history order and date controls: compact, side by side, wrapping on a narrow screen. */
+.customer-history-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-3);
+}
+
+.customer-history-controls .form-field {
+  flex: 0 1 14rem;
+  min-width: 0;
+}
+
+.customer-history-controls label {
+  font-size: 0.875rem;
+  font-weight: 650;
+}
+
+/* The typed date and its calendar button; the native date input is only the calendar popup, anchored under the text. */
+.history-date-control {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.history-date-control > input[type="text"] {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.history-date-button {
+  flex: 0 0 auto;
+  width: 2.75rem;
+  min-width: 2.75rem;
+  padding: 0;
+  align-self: stretch;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.history-date-fallback {
+  flex: 1 0 100%;
+}
+
+.history-date-native {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* A changed section of the reschedule review: «Преди» and «След» blocks, each fact on its own line. */
+.reschedule-change {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.reschedule-change .reschedule-from,
+.reschedule-change .reschedule-to {
+  display: grid;
+  gap: 0.125rem;
+}
+
+.reschedule-change-label {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--color-text-secondary);
+}
+
+/* The cancellation dialog: the Appointment as separate labelled lines and a two-line warning. */
+.cancel-dialog-context {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0 0 var(--space-3);
+}
+
+.cancel-dialog-context div {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-2);
+}
+
+.cancel-dialog-context dt {
+  color: var(--color-text-secondary);
+}
+
+.cancel-dialog-context dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.cancel-dialog-warning span {
+  display: block;
+}
+
+/* «Отменен» is red wherever it is shown (cards, history, detail): the word and the badge, never colour alone. */
+.status-badge.calendar-status-cancelled {
+  color: var(--color-danger-text);
+  background: var(--color-danger-subtle);
+  border: 1px solid var(--color-danger-border);
 }
